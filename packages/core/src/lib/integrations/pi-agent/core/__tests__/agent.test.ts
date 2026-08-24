@@ -154,10 +154,9 @@ describe("OriginOSAgent", () => {
 	});
 
 	describe("Runtime environment and completion guard", () => {
-		it("does not run completion judging or recovery when the guard is disabled", async () => {
+		it("does not run semantic completion judging or recovery", async () => {
 			agent = new OriginOSAgent({
 				...basicConfig,
-				completionGuardEnabled: false,
 			});
 			const internalAgent = (agent as any).agent;
 			const judgeSpy = vi.spyOn(agent as any, "judgePendingCompletion");

@@ -155,7 +155,6 @@ export class PersistentAgentManager {
 			workspaceFiles,
 			builtSystemPrompt: systemPrompt,
 			cognitiveManager,
-			completionGuardEnabled: false,
 		});
 		logStep('Step 5 agent object created');
 

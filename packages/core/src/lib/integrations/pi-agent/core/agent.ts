@@ -37,6 +37,10 @@ import {
 	getRuntimeEnvironment,
 } from "../system/runtime-environment";
 import {
+	buildEmptyStopRecoveryMessage,
+	resolveEmptyStopRecoveryEnabled,
+} from "./skill-empty-stop-recovery";
+import {
 	assessCompletion,
 	buildCompletionFailureReport,
 	buildCompletionRecoveryMessage,
@@ -281,8 +285,8 @@ export class OriginOSAgent {
 	private hiddenMessages = new WeakSet<object>();
 	private activeCompletionPolicy: AgentCompletionPolicy = "chat_guard";
 
-	private isCompletionGuardEnabled(): boolean {
-		return this.config?.completionGuardEnabled !== false;
+	private isEmptyStopRecoveryEnabled(): boolean {
+		return this.config?.emptyStopRecoveryEnabled === true;
 	}
 
 	/**
@@ -534,32 +538,11 @@ export class OriginOSAgent {
 	private routeAgentEvent(event: AgentEvent): void {
 		const eventType = event.type;
 
-		if (this.isCompletionGuardEnabled() && eventType === "tool_execution_end") {
-			const status = getToolEventStatus(event);
-			this.completionToolTrace.push(
-				`${event.toolName}: ${status.failed ? "failed" : "succeeded"}${status.reason ? ` (${status.reason.slice(0, 500)})` : ""}`,
-			);
-			if (this.completionToolTrace.length > 20) {
-				this.completionToolTrace.shift();
-			}
-			if (status.failed) {
-				this.lastToolFailure = {
-					toolName: event.toolName,
-					toolCallId: event.toolCallId,
-					exitCode: status.exitCode,
-					reason: status.reason || "工具返回失败，但未提供具体原因。",
-				};
-				this.successfulToolAfterFailure = false;
-			} else if (this.lastToolFailure) {
-				this.successfulToolAfterFailure = true;
-			}
-		}
-
 		if (
-			this.isCompletionGuardEnabled() &&
+			this.isEmptyStopRecoveryEnabled() &&
 			this.activeCompletionPolicy === "chat_guard" &&
 			eventType === "agent_end" &&
-			(this.pendingPromiseStop || this.pendingCompletionCandidate)
+			this.pendingCompletionCandidate
 		) {
 			this.deferredAgentEndEvent = event;
 			return;
@@ -568,7 +551,7 @@ export class OriginOSAgent {
 		this.emitUiEvent(event);
 
 		if (
-			!this.isCompletionGuardEnabled() ||
+			!this.isEmptyStopRecoveryEnabled() ||
 			eventType !== "message_end" ||
 			event.message.role !== "assistant"
 		) {
@@ -589,20 +572,20 @@ export class OriginOSAgent {
 					(event.message as AssistantMessage).errorMessage?.trim() ||
 					"Model stream ended with stopReason=error without an errorMessage";
 				this.lastModelError = new Error(errorMessage);
-				this.pendingPromiseStop = false;
 				return;
 			}
 			if (
 				this.activeCompletionPolicy === "chat_guard" &&
 				(event.message as AssistantMessage).stopReason === "stop" &&
-				toolCallCount === 0
+				toolCallCount === 0 &&
+				text.trim().length === 0
 			) {
 				this.pendingCompletionCandidate = {
 					message: event.message,
 					text,
 					stopReason: (event.message as AssistantMessage).stopReason,
 					toolCallCount,
-					repeatedResponse: this.assistantLoopGuardTriggered,
+					repeatedResponse: false,
 				};
 			}
 		}
@@ -835,7 +818,7 @@ export class OriginOSAgent {
 		}
 	}
 
-	private async runWithCompletionGuard(
+	private async runWithEmptyStopRecovery(
 		start: () => Promise<void>,
 	): Promise<void> {
 		if (!this.agent) {
@@ -844,58 +827,40 @@ export class OriginOSAgent {
 
 		await start();
 		this.throwIfModelStreamFailed();
-		if (!this.isCompletionGuardEnabled()) {
+		if (!this.isEmptyStopRecoveryEnabled()) {
 			return;
 		}
-		await this.judgePendingCompletion();
-		let recoveryAttempt = 0;
-
-		while (
-			this.pendingPromiseStop &&
-			recoveryAttempt < DEFAULT_COMPLETION_RECOVERY_LIMIT
-		) {
-			recoveryAttempt += 1;
-			this.pendingPromiseStop = false;
-
-			const recoveryMessage: SyntheticUserMessage = {
-				role: "user",
-				content: [{
-					type: "text",
-					text: buildCompletionRecoveryMessage(
-						this.runtimeEnvironmentPrompt,
-						this.lastToolFailure,
-						recoveryAttempt,
-					),
-				}],
+		const candidate = this.pendingCompletionCandidate;
+		if (!candidate || candidate.text.trim().length > 0) {
+			return;
+		}
+		this.pendingCompletionCandidate = null;
+		this.deferredAgentEndEvent = null;
+		this.hiddenMessages.add(candidate.message);
+		const recoveryMessage: SyntheticUserMessage = {
+			role: "user",
+			content: [{ type: "text", text: buildEmptyStopRecoveryMessage(1) }],
+		};
+		this.hiddenMessages.add(recoveryMessage);
+		logInfo("[LLM EmptyStopRecovery] retrying empty terminal response — attempt=1/1");
+		try {
+			await this.agent.prompt(recoveryMessage as unknown as AgentMessage);
+			this.throwIfModelStreamFailed();
+			if (this.pendingCompletionCandidate?.text.trim().length === 0) {
+				this.pendingCompletionCandidate = null;
+				this.lastToolFailure = {
+					toolName: "empty-stop-recovery",
+					reason: "The skill returned an empty terminal response twice.",
+				};
+				this.emitCompletionFailureReport();
+			}
+		} catch (error) {
+			this.lastToolFailure = {
+				toolName: "empty-stop-recovery",
+				reason: error instanceof Error ? error.message : String(error),
 			};
-			this.hiddenMessages.add(recoveryMessage);
-			logInfo(
-				`[LLM CompletionGuard] recovering incomplete stop — attempt=${recoveryAttempt}/${DEFAULT_COMPLETION_RECOVERY_LIMIT}`,
-			);
-				try {
-					await this.agent.prompt(recoveryMessage as unknown as AgentMessage);
-					this.throwIfModelStreamFailed();
-					await this.judgePendingCompletion();
-				} catch (error) {
-					const recoveryError = error instanceof Error
-						? error
-						: new Error(String(error));
-					this.lastToolFailure = {
-						toolName: "agent-recovery",
-						reason: recoveryError.message,
-					};
-					this.pendingPromiseStop = false;
-					this.emitCompletionFailureReport();
-					return;
-				}
+			this.emitCompletionFailureReport();
 		}
-
-		if (!this.pendingPromiseStop) {
-			return;
-		}
-
-		this.pendingPromiseStop = false;
-		this.emitCompletionFailureReport();
 	}
 
 	private emitCompletionFailureReport(): void {
@@ -924,7 +889,7 @@ export class OriginOSAgent {
 			this.eventEmitter.emit(event);
 		});
 		console.error(
-			`[LLM CompletionGuard] recovery exhausted — tool=${this.lastToolFailure?.toolName ?? "unknown"}, exitCode=${this.lastToolFailure?.exitCode ?? "unknown"}, reason=${this.lastToolFailure?.reason ?? "semantic completion check reported incomplete"}`,
+			`[LLM EmptyStopRecovery] retry exhausted — tool=${this.lastToolFailure?.toolName ?? "unknown"}, exitCode=${this.lastToolFailure?.exitCode ?? "unknown"}, reason=${this.lastToolFailure?.reason ?? "empty terminal response"}`,
 		);
 	}
 
@@ -1310,7 +1275,7 @@ export class OriginOSAgent {
 				await this.agent.prompt(message as string, images);
 				this.throwIfModelStreamFailed();
 			} else {
-				await this.runWithCompletionGuard(
+				await this.runWithEmptyStopRecovery(
 					() => this.agent!.prompt(message as string, images),
 				);
 			}
@@ -1359,7 +1324,7 @@ export class OriginOSAgent {
 				this.throwIfModelStreamFailed();
 				return;
 			}
-			await this.runWithCompletionGuard(() => this.agent!.continue());
+			await this.runWithEmptyStopRecovery(() => this.agent!.continue());
 		} finally {
 			this.activeCompletionPolicy = "chat_guard";
 		}
@@ -1632,8 +1597,14 @@ export interface CreateOriginOSAgentParams {
 	 */
 	llmConfig?: RuntimeLLMConfig;
 
-	/** 是否启用语义完成度检查与自动恢复，默认开启。 */
-	completionGuardEnabled?: boolean;
+	/**
+	 * Agent session type. Only skill sessions receive deterministic empty-stop
+	 * recovery by default.
+	 */
+	agentType?: string;
+
+	/** Explicit override for skill empty-stop recovery. */
+	emptyStopRecoveryEnabled?: boolean;
 }
 
 /**
@@ -1642,7 +1613,7 @@ export interface CreateOriginOSAgentParams {
 export function createOriginOSAgent(
 	params: CreateOriginOSAgentParams
 ): OriginOSAgent {
-	const { sessionId, variables, model, thinkingLevel, useBaseModel, healthMonitor, llmConfig, completionGuardEnabled } =
+	const { sessionId, variables, model, thinkingLevel, useBaseModel, healthMonitor, llmConfig, emptyStopRecoveryEnabled, agentType } =
 		params;
 
 	// 获取配置状态
@@ -1727,7 +1698,7 @@ export function createOriginOSAgent(
 		projectContext,
 		thinkingLevel: (thinkingLevel || "low") as OriginOSAgentConfig['thinkingLevel'],
 		tools: [],
-		completionGuardEnabled,
+		emptyStopRecoveryEnabled: resolveEmptyStopRecoveryEnabled(agentType, emptyStopRecoveryEnabled),
 	};
 
 	// 返回未初始化的 Agent，用户需要调用 start() 方法

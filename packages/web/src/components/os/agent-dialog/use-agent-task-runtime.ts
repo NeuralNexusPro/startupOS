@@ -42,7 +42,7 @@ export function supportsAgentTaskRuntime(agentType: string): boolean {
   // Skills are first-class product entries too. They use the same session-host
   // and persistence boundary as role agents, so a skill can opt into a
   // long-running task from its dialog instead of falling back to chat-only
-  // CompletionGuard recovery.
+  // Goal/task runtime owns completion state; no semantic completion recovery is used here.
   return agentType === 'assistant'
     || agentType === 'agent'
     || agentType === 'role-agent'

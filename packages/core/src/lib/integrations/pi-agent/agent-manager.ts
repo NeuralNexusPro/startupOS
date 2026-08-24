@@ -332,6 +332,7 @@ export class AgentManager {
         projectName: options?.agentType || 'Agent Session',
       },
       llmConfig: options?.llmConfig,
+      agentType: options?.agentType,
     });
 
     // Register built-in tools on the agent, filtered by agent type scopes
