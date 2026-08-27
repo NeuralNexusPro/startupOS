@@ -47,8 +47,11 @@ const ERROR_CODE_ALIASES = Object.freeze({
   DUPLICATE_REQUEST_CONFLICT: 'DUPLICATE_REQUEST_CONFLICT',
   INCOMPATIBLE_RUNTIME: 'INCOMPATIBLE_RUNTIME',
   INVALID_COMMAND: 'INVALID_COMMAND',
+  INVALID_BRANCH_ENTRY: 'INVALID_BRANCH_ENTRY',
+  PERSISTENCE_FAILED: 'PERSISTENCE_FAILED',
   PERMISSION_DENIED: 'PERMISSION_DENIED',
   REVISION_CONFLICT: 'REVISION_CONFLICT',
+  RESTORE_FAILED: 'RESTORE_FAILED',
   SESSION_BUSY: 'SESSION_BUSY',
   SESSION_MISMATCH: 'SESSION_MISMATCH',
   STATE_EVENT_TIMEOUT: 'STATE_EVENT_TIMEOUT',
@@ -678,10 +681,25 @@ function mapPiTaskRuntimeError(error, fallbackCode = 'HOST_INVOCATION_FAILED') {
   const retryable = ['SESSION_BUSY', 'STATE_EVENT_TIMEOUT'].includes(code);
   const sourceDetails = error && typeof error === 'object' ? error.details : undefined;
   const details = sourceDetails ? sanitizeTaskRuntimeValue(sourceDetails) : undefined;
+  // Keep the user-facing error deliberately generic, but retain a bounded,
+  // sanitized diagnostic in the main-process log so host failures can be
+  // distinguished from model or renderer failures.
+  console.error('[TaskRuntime] host invocation failed', {
+    code,
+    retryable,
+    errorCode: error && typeof error === 'object' ? error.code : undefined,
+    reason: details && typeof details.reason === 'string'
+      ? details.reason.slice(0, 500)
+      : error instanceof Error ? error.message.slice(0, 500) : String(error || '').slice(0, 500),
+    details,
+  });
+  const reason = details && typeof details.reason === 'string' ? details.reason.slice(0, 500) : undefined;
   return {
     version: 1,
     code,
-    message: code === 'HOST_INVOCATION_FAILED' ? 'Task Runtime host invocation failed' : `Task Runtime error: ${code}`,
+    message: code === 'HOST_INVOCATION_FAILED'
+      ? `Task Runtime host invocation failed${reason ? `: ${reason}` : ''}`
+      : `Task Runtime error: ${code}`,
     retryable,
     ...(details === undefined ? {} : { details }),
   };
@@ -708,3 +726,5 @@ module.exports = {
   stableJsonHash,
   stableJsonStringify,
 };
+
+Object.assign(module.exports, require('./session-host'));

@@ -36,4 +36,40 @@ describe('ChatInputBar', () => {
 
     expect(onUpload).not.toHaveBeenCalled();
   });
+
+  it('renders the optional task action with an accessible tooltip', () => {
+    const onCreateTask = vi.fn();
+
+    render(
+      <ChatInputBar
+        onSubmit={vi.fn()}
+        onCreateTask={onCreateTask}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '创建任务' }));
+
+    expect(onCreateTask).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('tooltip')).toHaveTextContent('创建任务');
+  });
+
+  it('does not render task action for callers that do not provide it', () => {
+    render(<ChatInputBar onSubmit={vi.fn()} />);
+
+    expect(screen.queryByRole('button', { name: '创建任务' })).not.toBeInTheDocument();
+  });
+
+  it('keeps task creation disabled while the conversation input is locked', () => {
+    const onCreateTask = vi.fn();
+    render(
+      <ChatInputBar
+        onSubmit={vi.fn()}
+        onCreateTask={onCreateTask}
+        disabled
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '创建任务' }));
+    expect(onCreateTask).not.toHaveBeenCalled();
+  });
 });

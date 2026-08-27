@@ -14,6 +14,11 @@ import { bindToolsToSession } from './tools/bind-session';
 import { detectCorrections } from './cognitive/pattern/correction-detector';
 import type { RuntimeLLMConfig } from './llm-config';
 import type { AgentSession } from '../../../types/agent';
+import {
+  AgentTaskRuntimeCoordinator,
+  type AgentTaskRuntimeSnapshotV1,
+  type AgentTaskRuntimePersistenceV1,
+} from './task-runtime';
 
 type CognitiveSessionEndManager = {
   on_session_end: (messages: unknown[]) => Promise<void>;
@@ -57,6 +62,14 @@ export interface RestoredAgentRuntime {
   historyMessageCount: number;
 }
 
+export interface AgentTaskRuntimeBindingOptions {
+  persist(state: AgentTaskRuntimePersistenceV1): void | Promise<void>;
+  onState?(snapshot: AgentTaskRuntimeSnapshotV1): void;
+  onAssistantMessage?(content: string): void;
+  hasPendingUserMessage?(): boolean;
+  hasBudgetRemaining?(): boolean;
+}
+
 /**
  * 将工具列表绑定到指定 session：每次工具执行前刷新 defaultContext，
  * 避免多 session 并发时 defaultContext 被最后一个 session 覆盖导致文件写到错误目录。
@@ -81,6 +94,7 @@ function filterDisallowedToolsForAgentType(
 export class AgentManager {
   private agents = new Map<string, AgentEntry>();
   private runtimeRestorePromises = new Map<string, Promise<RestoredAgentRuntime>>();
+  private taskRuntimes = new Map<string, AgentTaskRuntimeCoordinator>();
   private config: Required<AgentManagerConfig>;
 
   constructor(config?: AgentManagerConfig) {
@@ -274,6 +288,31 @@ export class AgentManager {
         llmConfig: session.llmConfig,
       },
     );
+  }
+
+  async getOrCreateTaskRuntime(
+    session: AgentSession,
+    options: AgentTaskRuntimeBindingOptions,
+  ): Promise<AgentTaskRuntimeCoordinator> {
+    const existing = this.taskRuntimes.get(session.sessionId);
+    if (existing) {
+      return existing;
+    }
+
+    const agent = await this.getOrRestoreAgentRuntime(session);
+    const runtime = new AgentTaskRuntimeCoordinator({
+      sessionId: session.sessionId,
+      agent,
+      initialState: session.taskRuntime,
+      ...options,
+    });
+    await runtime.initialize();
+    this.taskRuntimes.set(session.sessionId, runtime);
+    return runtime;
+  }
+
+  getTaskRuntime(sessionId: string): AgentTaskRuntimeCoordinator | null {
+    return this.taskRuntimes.get(sessionId) ?? null;
   }
 
   /**
@@ -524,8 +563,11 @@ export class AgentManager {
    */
   removeAgent(sessionId: string): boolean {
     const entry = this.agents.get(sessionId);
+    const taskRuntime = this.taskRuntimes.get(sessionId);
+    taskRuntime?.destroy();
+    this.taskRuntimes.delete(sessionId);
     if (!entry) {
-      return false;
+      return Boolean(taskRuntime);
     }
 
     if (this.config.debug) {
@@ -546,15 +588,35 @@ export class AgentManager {
    * archival memory in on_session_end, so destruction must flush that hook
    * before the agent state is cleared.
    */
-  async finalizeAndRemoveAgent(sessionId: string): Promise<boolean> {
+	async finalizeAndRemoveAgent(sessionId: string): Promise<boolean> {
     const entry = this.agents.get(sessionId);
     if (!entry) {
       return false;
-    }
+	}
 
     await this.flushCognitiveSessionEnd(entry);
     return this.removeAgent(sessionId);
   }
+
+	/**
+	 * Flush and destroy every in-process session during application shutdown.
+	 * This is intentionally separate from per-window cleanup so Electron can
+	 * await cognitive persistence before terminating the main process.
+	 */
+	async shutdown(): Promise<void> {
+		const sessionIds = Array.from(this.agents.keys());
+		await Promise.all(sessionIds.map(async (sessionId) => {
+			try {
+				await this.finalizeAndRemoveAgent(sessionId);
+			} catch (error) {
+				console.error(`[AgentManager] Shutdown failed for session ${sessionId}:`, error);
+			}
+		}));
+		for (const taskRuntime of this.taskRuntimes.values()) {
+			taskRuntime.destroy();
+		}
+		this.taskRuntimes.clear();
+	}
 
   private setCognitiveManager(agent: OriginOSAgent, cognitiveManager: CognitiveSessionEndManager): void {
     (agent as unknown as { __originosCognitiveManager?: CognitiveSessionEndManager }).__originosCognitiveManager = cognitiveManager;

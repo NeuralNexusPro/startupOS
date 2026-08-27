@@ -43,11 +43,37 @@ test('公共子路径、类型声明和 allowlist 保持显式', () => {
     default: './task-runtime.js',
   });
   assert.equal(fs.existsSync(path.join(__dirname, '..', 'task-runtime.d.ts')), true);
+  assert.equal(typeof taskRuntime.createPiTaskSessionHost, 'function');
+  assert.deepEqual(taskRuntime.PI_TASK_READ_ONLY_TOOL_NAMES, [
+    'task_next',
+    'task_focus',
+    'task_resume',
+    'task_granularity_check',
+    'task_list',
+  ]);
   assert.equal(taskRuntime.isAllowedPiTaskTool('task_complete'), true);
   assert.equal(taskRuntime.isAllowedPiTaskTool('task_force_complete'), false);
   assert.throws(() => taskRuntime.assertAllowedPiTaskTool('read_file'), {
     code: 'TOOL_NOT_ALLOWED',
   });
+
+  const declarations = fs.readFileSync(
+    path.join(__dirname, '..', 'task-runtime.d.ts'),
+    'utf8',
+  );
+  assert.match(declarations, /export function createPiTaskSessionHost\(/);
+  for (const method of [
+    'restore',
+    'getSnapshot',
+    'getScope',
+    'getAgentTools',
+    'invoke',
+    'subscribeState',
+    'checkpoint',
+    'invalidate',
+  ]) {
+    assert.match(declarations, new RegExp(`\\b${method}\\(`));
+  }
 });
 
 test('command canonical hash 与 compatibility guard 可重复且 fail closed', () => {

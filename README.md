@@ -102,6 +102,14 @@ Solution design can be executed by a multi-agent runtime with visible tasks, pro
   <img src="docs/assets/readme/originos-multi-agent.jpg" width="88%" alt="Multi-agent runtime" />
 </p>
 
+## Architecture Upgrade Blueprint
+
+OriginOS already has a Pi Agent adapter, a controlled Task Runtime, worker processes, multi-agent DAG execution, JSONL collaboration events, skills, and local-first storage. The next architecture step is to consolidate these capabilities behind one small Harness Kernel instead of adding another agent implementation.
+
+The proposed architecture makes the append-only session event log the interaction source of truth, routes every tool invocation through one permissioned pipeline, composes Agent types from scoped presets, and separates Subagent execution from Workflow orchestration. It deliberately reuses the current Pi, Task, Collaboration, memory, and filesystem implementations as providers.
+
+Read the Chinese design document: [OriginOS Harness 架构升级蓝图](./docs/architecture/deepseek-harness-upgrade-blueprint.md).
+
 ## Run from Source
 
 Requirements: Node.js **24+**, pnpm **9+**, and Git.

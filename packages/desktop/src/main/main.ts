@@ -26,6 +26,9 @@ import { BufferedDailyLogWriter } from './services/daily-log-writer';
 import { captureConsoleCall, serializeConsoleArgs } from './services/console-log-capture';
 import { processHealthMonitor } from './services/process-health-monitor';
 import { attachDevToolsContextMenu } from './devtools-context-menu';
+import { agentManager } from '../../../core/src/lib/integrations/pi-agent/agent-manager';
+import { persistentAgentManager } from '../../../core/src/lib/integrations/pi-agent/persistent-agent-manager';
+import { shutdownGlobalSpawner } from '../../../core/src/modules/collaboration-runtime/sandbox/agent-spawner';
 
 if (process.platform === 'darwin' && process.arch === 'x64') {
   app.commandLine.appendSwitch('use-angle', 'gl');
@@ -57,6 +60,8 @@ const ipcServices: unknown[] = [];
 let llmLogCaptureInitialized = false;
 let desktopLogCaptureInitialized = false;
 let dailyLogWriter: BufferedDailyLogWriter | null = null;
+let shutdownInProgress = false;
+let allowQuitAfterShutdown = false;
 
 const llmLogPrefixes = [
   '[LLM',
@@ -478,15 +483,35 @@ app.on('window-all-closed', () => {
   }
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
+  if (allowQuitAfterShutdown) {
+    return;
+  }
+  event.preventDefault();
+  if (shutdownInProgress) {
+    return;
+  }
+  shutdownInProgress = true;
   processHealthMonitor.stop();
-  void dailyLogWriter?.flush();
   windowManager?.closeAllWindows();
   localFileSystem?.dispose();
-  void localAgentBridge?.shutdown();
   trayManager?.destroy();
   shortcutManager?.destroy();
   desktopSchedulerService?.stop();
   rendererServerProcess?.kill();
   rendererServerProcess = null;
+  void (async () => {
+    try {
+      await dailyLogWriter?.flush();
+      await localAgentBridge?.shutdown();
+      await agentManager.shutdown();
+      await persistentAgentManager.stopAllAgents();
+      await shutdownGlobalSpawner();
+    } catch (error) {
+      console.error('[electron] Agent shutdown failed; continuing quit', error);
+    } finally {
+      allowQuitAfterShutdown = true;
+      app.quit();
+    }
+  })();
 });

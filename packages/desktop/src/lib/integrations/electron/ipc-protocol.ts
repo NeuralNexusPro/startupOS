@@ -18,6 +18,10 @@ export const IPC_CHANNELS = {
   AGENT_ABORT: 'agent:abort',
   AGENT_EVENT: 'agent:event',
   AGENT_EXIT: 'agent:exit',
+  AGENT_TASK_CREATE: 'agent:task:create',
+  AGENT_TASK_GET: 'agent:task:get',
+  AGENT_TASK_CONTROL: 'agent:task:control',
+  AGENT_TASK_EVENT: 'agent:task:event',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

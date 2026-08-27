@@ -224,6 +224,14 @@ type SyntheticUserMessage = {
 	}>;
 };
 
+export type AgentCompletionPolicy = "chat_guard" | "task_runtime";
+
+export interface AgentExecutionOptions {
+	completionPolicy?: AgentCompletionPolicy;
+	internalMessage?: boolean;
+	internalMessageIndexes?: readonly number[];
+}
+
 // ============================================================================
 // OriginOS Agent
 // ============================================================================
@@ -271,6 +279,7 @@ export class OriginOSAgent {
 	} | null = null;
 	private deferredAgentEndEvent: AgentEvent | null = null;
 	private hiddenMessages = new WeakSet<object>();
+	private activeCompletionPolicy: AgentCompletionPolicy = "chat_guard";
 
 	private isCompletionGuardEnabled(): boolean {
 		return this.config?.completionGuardEnabled !== false;
@@ -548,6 +557,7 @@ export class OriginOSAgent {
 
 		if (
 			this.isCompletionGuardEnabled() &&
+			this.activeCompletionPolicy === "chat_guard" &&
 			eventType === "agent_end" &&
 			(this.pendingPromiseStop || this.pendingCompletionCandidate)
 		) {
@@ -583,6 +593,7 @@ export class OriginOSAgent {
 				return;
 			}
 			if (
+				this.activeCompletionPolicy === "chat_guard" &&
 				(event.message as AssistantMessage).stopReason === "stop" &&
 				toolCallCount === 0
 			) {
@@ -1227,7 +1238,8 @@ export class OriginOSAgent {
 	 */
 	async prompt(
 		message: string | AgentMessage | AgentMessage[],
-		images?: Array<{ type: "image"; data: string; mimeType: string }>
+		images?: Array<{ type: "image"; data: string; mimeType: string }>,
+		options: AgentExecutionOptions = {},
 	): Promise<void> {
 		if (!this.agent) {
 			throw new Error("Agent 未初始化");
@@ -1275,13 +1287,35 @@ export class OriginOSAgent {
 		}
 
 		const t0 = Date.now();
+		const completionPolicy = options.completionPolicy ?? "chat_guard";
 		try {
 			this.resetCompletionGuard(getPromptText(message));
-			await this.runWithCompletionGuard(
-				() => this.agent!.prompt(message as string, images),
-			);
+			const messages = Array.isArray(message) ? message : [message];
+			if (options.internalMessage) {
+				for (const candidate of messages) {
+					if (typeof candidate === "object" && candidate !== null) {
+						this.hiddenMessages.add(candidate);
+					}
+				}
+			} else if (options.internalMessageIndexes) {
+				for (const index of options.internalMessageIndexes) {
+					const candidate = messages[index];
+					if (typeof candidate === "object" && candidate !== null) {
+						this.hiddenMessages.add(candidate);
+					}
+				}
+			}
+			this.activeCompletionPolicy = completionPolicy;
+			if (completionPolicy === "task_runtime") {
+				await this.agent.prompt(message as string, images);
+				this.throwIfModelStreamFailed();
+			} else {
+				await this.runWithCompletionGuard(
+					() => this.agent!.prompt(message as string, images),
+				);
+			}
 			const elapsed = Date.now() - t0;
-			logInfo(`[LLM] <<< Prompt completed | Elapsed: ${elapsed}ms`);
+			logInfo(`[LLM] <<< Prompt completed | Policy: ${completionPolicy} | Elapsed: ${elapsed}ms`);
 		} catch (error) {
 			const elapsed = Date.now() - t0;
 			const agentError = error instanceof Error ? error : new Error(String(error));
@@ -1297,13 +1331,15 @@ export class OriginOSAgent {
 				`[LLM] <<< Prompt failed | Elapsed: ${elapsed}ms | ${redactErrorForLogging(agentError.message)}`,
 			);
 			throw agentError;
+		} finally {
+			this.activeCompletionPolicy = "chat_guard";
 		}
 	}
 
 	/**
 	 * 继续上一次请求（用于重试）
 	 */
-	async continue(): Promise<void> {
+	async continue(options: AgentExecutionOptions = {}): Promise<void> {
 		if (!this.agent) {
 			throw new Error("Agent 未初始化");
 		}
@@ -1315,7 +1351,18 @@ export class OriginOSAgent {
 			.reverse()
 			.find((message) => message.role === "user");
 		this.resetCompletionGuard(getMessageText(latestUserRequest));
-		await this.runWithCompletionGuard(() => this.agent!.continue());
+		const completionPolicy = options.completionPolicy ?? "chat_guard";
+		this.activeCompletionPolicy = completionPolicy;
+		try {
+			if (completionPolicy === "task_runtime") {
+				await this.agent.continue();
+				this.throwIfModelStreamFailed();
+				return;
+			}
+			await this.runWithCompletionGuard(() => this.agent!.continue());
+		} finally {
+			this.activeCompletionPolicy = "chat_guard";
+		}
 	}
 
 	/**
@@ -1366,6 +1413,13 @@ export class OriginOSAgent {
 			throw new Error("Agent 未初始化");
 		}
 		this.agent.state.tools = tools;
+	}
+
+	getTools(): readonly AgentTool<any>[] {
+		if (!this.agent) {
+			throw new Error("Agent 未初始化");
+		}
+		return [...this.agent.state.tools];
 	}
 
 	/**

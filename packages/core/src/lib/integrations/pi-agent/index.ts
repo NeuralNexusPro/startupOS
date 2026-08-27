@@ -43,7 +43,7 @@ export * from "./session-store";
 // ============================================================================
 
 export { agentManager } from "./agent-manager";
-export type { AgentManagerConfig } from "./agent-manager";
+export type { AgentManagerConfig, AgentTaskRuntimeBindingOptions } from "./agent-manager";
 
 // ============================================================================
 // Skill Evolution (服务端)
@@ -112,3 +112,4 @@ export * from "./core/skills.middleware";
 export * from "./stream-render-scheduler";
 export * from "./session-restore";
 export * from "./use-persistent-agent";
+export * from "./task-runtime";

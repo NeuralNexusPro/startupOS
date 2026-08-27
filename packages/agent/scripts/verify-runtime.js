@@ -62,11 +62,15 @@ async function main() {
   const core = require('@originos/pi-agent-adapter');
   const ai = require('@originos/pi-agent-adapter/ai');
   const goalExtension = require('@originos/pi-agent-adapter/goal');
+  const taskRuntime = require('@originos/pi-agent-adapter/task-runtime');
 
   assert.equal(typeof core.Agent, 'function');
   assert.equal(typeof ai.streamSimple, 'function');
   assert.equal(typeof ai.completeSimple, 'function');
   assert.equal(typeof goalExtension, 'function');
+  assert.equal(typeof taskRuntime.createPiTaskSessionHost, 'function');
+  assert.equal(taskRuntime.PI_TASK_AGENT_TOOL_NAMES.includes('task_plan'), true);
+  assert.equal(taskRuntime.PI_TASK_AGENT_TOOL_NAMES.includes('task_focus'), true);
 
   const tools = new Map();
   const commands = new Map();

@@ -2,6 +2,14 @@
 
 ---
 
+## 2026-08-19 — docs：按 startupOS 架构围栏重构 Epic ONT
+
+**类型**：docs
+**影响模块**：`docs/specs/epic-ONT/README.md`
+**摘要**：按 startupOS 的 monorepo 和模块围栏重构 Epic ONT 设计：ONT 收敛为 `packages/core` 内的 ontology bounded context，只交付 canonical schema、DataFile/JSONL store、validator、OSDK、contract validation API 和 Context Projection Protocol。Epic P2、Epic 9/collaboration-runtime、Epic C/M/T 作为下游消费方继续负责 Agent+Skill 方案、多 Agent supervisor/worker runtime、记忆与 TASTE，不迁入 ONT。
+
+---
+
 ## 2026-08-07 — release：OriginOS CE 0.1.47
 
 **类型**：release

@@ -257,6 +257,28 @@ describe("OriginOSAgent", () => {
 			expect(recoveryMessage?.content?.[0]?.text).toContain("execute_command");
 		});
 
+		it("uses only Task Runtime policy for task turns", async () => {
+			agent = new OriginOSAgent(basicConfig);
+			const internalAgent = (agent as any).agent;
+			const receivedEvents: any[] = [];
+			agent.subscribe((event) => receivedEvents.push(event));
+			const promptSpy = vi.spyOn(internalAgent, "prompt").mockImplementationOnce(async () => {
+				emitAssistantStop(internalAgent, "我会先制定计划，然后继续执行。");
+			});
+			const judgeSpy = vi.mocked(piAi.completeSimple);
+
+			await agent.prompt(
+				"创建正式任务",
+				undefined,
+				{ completionPolicy: "task_runtime" },
+			);
+
+			expect(promptSpy).toHaveBeenCalledTimes(1);
+			expect(judgeSpy).not.toHaveBeenCalled();
+			expect(receivedEvents.filter((event) => event.type === "agent_end")).toHaveLength(1);
+			expect(JSON.stringify(receivedEvents)).toContain("我会先制定计划");
+		});
+
 		it("retries an aborted completion judge with a fresh timeout signal", async () => {
 			const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 			const completeSimpleMock = vi.mocked(piAi.completeSimple);

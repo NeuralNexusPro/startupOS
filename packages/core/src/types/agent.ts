@@ -215,6 +215,7 @@ export interface AgentSession {
   agentType: string;
   config: AgentSessionConfig;
   summary?: string;
+  taskRuntime?: import('../lib/integrations/pi-agent/task-runtime').AgentTaskRuntimePersistenceV1;
   llmConfig?: {
     provider?: string;
     baseUrl?: string;
@@ -278,6 +279,7 @@ export interface UpdateSessionRequest {
     model?: string;
     maxTokens?: number;
   };
+  taskRuntime?: import('../lib/integrations/pi-agent/task-runtime').AgentTaskRuntimePersistenceV1;
 }
 
 /**
