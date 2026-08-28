@@ -1,6 +1,6 @@
 # OriginOS 文档索引
 
-**最后更新:** 2026-07-20
+**最后更新:** 2026-08-28
 
 ---
 
@@ -86,6 +86,7 @@
 **Phase 3 (后续规划):**
 7. 📋 **Epic T** (TASTE/SOUL 品味积累) - Speech-Cognition 层
 8. 📋 **Epic A2UI** (生成式交互卡片协议) - 通过 Agent-to-UI 协议承载图表、表格、表单、确认卡等生成式 UI
+9. 📋 **Epic SENSE** (感知层与外部事件触发器) - 邮箱、企业微信、飞书、钉钉事件接入与 Agent 唤醒
 
 ### Epic 文档
 
@@ -100,6 +101,7 @@
 | **Epic M**: Memory Core 记忆核心 | 📋 Planning | Critical | [specs/epic-M/README.md](./specs/epic-M/README.md) |
 | **Epic T**: TASTE/SOUL 品味积累 | 📋 Planning | High | [specs/epic-T/README.md](./specs/epic-T/README.md) |
 | **Epic A2UI**: 生成式交互卡片协议 | 📋 Planning | High | [specs/epic-A2UI/README.md](./specs/epic-A2UI/README.md) |
+| **Epic SENSE**: 感知层与外部事件触发器 | 📋 Planning | Critical | [specs/epic-SENSE/README.md](./specs/epic-SENSE/README.md) |
 
 ### Epic A2UI Stories 详览
 

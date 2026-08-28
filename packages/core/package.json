@@ -65,6 +65,8 @@
     "./modules/*": "./src/modules/*.ts",
     "./modules/scheduler": "./src/modules/scheduler/index.ts",
     "./modules/scheduler/*": "./src/modules/scheduler/*.ts",
+    "./modules/perception-runtime": "./src/modules/perception-runtime/index.ts",
+    "./modules/perception-runtime/*": "./src/modules/perception-runtime/*.ts",
     "./modules/collaboration-runtime/*": "./src/modules/collaboration-runtime/*.ts",
     "./modules/collaboration-runtime/ui/*": "./src/modules/collaboration-runtime/ui/*.tsx",
     "./modules/collaboration-runtime/sandbox/*": "./src/modules/collaboration-runtime/sandbox/*.ts",
