@@ -34,6 +34,7 @@ import type { ProjectStatus, ProjectListItem } from '@originos/core/types';
 import AgentInitializer from '@/components/os/AgentInitializer';
 import { DesktopOnboarding } from '@/components/os/DesktopOnboarding';
 import { SettingsDialog } from '@/components/os/settings/SettingsDialog';
+import { openSenseCenter } from '@/components/os/sense-center';
 import AgentDialogContent from '@/components/os/agent-dialog/AgentDialogContent';
 import Dock from '@/components/os/dock';
 import NotificationBell from '@/components/os/notification/NotificationBell';
@@ -1449,6 +1450,27 @@ export default function OSHomePage() {
                         tourId={app.id}
                       />
                     ))}
+                  </div>
+                </section>
+
+                {/* Perception Capability Section — peer to apps/projects/roles/skills */}
+                <section data-tour="sense-section" className="mb-12 rounded-[2rem] border border-blue-500/20 bg-black/20 p-6 backdrop-blur-2xl md:p-8">
+                  <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+                    <div className="max-w-2xl">
+                      <div className="mb-3 flex items-center gap-3">
+                        <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600 text-2xl" aria-hidden="true">📡</span>
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.22em] text-blue-400">系统能力</p>
+                          <h2 className="text-2xl font-semibold text-text-primary">感知中心</h2>
+                        </div>
+                      </div>
+                      <p className="text-sm text-white/55">统一管理邮箱和 IM 感知源，将外部世界的事件安全地路由到项目、角色或技能。</p>
+                    </div>
+                    <Button
+                      onClick={openSenseCenter}
+                    >
+                      打开感知中心
+                    </Button>
                   </div>
                 </section>
 
