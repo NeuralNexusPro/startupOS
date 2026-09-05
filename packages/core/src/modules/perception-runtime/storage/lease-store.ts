@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import path from 'node:path';
+import fs from 'node:fs';
 import type { ExecutionLease } from '../protocol/types';
 import { assertSafePerceptionId } from '../protocol/validation';
 import { AtomicDataFileStore } from './data-file-store';
@@ -36,6 +37,14 @@ export class ExecutionLeaseStore {
   get(leaseId: string): ExecutionLease {
     assertSafePerceptionId(leaseId, 'lease id');
     return new AtomicDataFileStore<ExecutionLease>(path.join(this.directory, `${leaseId}.json`)).read().data;
+  }
+
+  list(): ExecutionLease[] {
+    if (!fs.existsSync(this.directory)) return [];
+    return fs.readdirSync(this.directory).filter((name) => name.endsWith('.json')).flatMap((name) => {
+      try { return [new AtomicDataFileStore<ExecutionLease>(path.join(this.directory, name)).read().data]; }
+      catch { return []; }
+    });
   }
 
   private update(leaseId: string, status: 'completed' | 'failed', resultRef?: string): ExecutionLease {

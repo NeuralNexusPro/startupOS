@@ -143,6 +143,11 @@ originos/
 │   │   └── dist-electron/        # 编译产物（禁止作为源码修改入口）
 │   │
 │   ├── agent/                    # @originos/pi-agent-adapter 运行时适配边界
+│   ├── perception-plugins/       # 感知渠道插件（仅依赖 core Plugin SDK）
+│   │   ├── email/
+│   │   ├── wecom/
+│   │   ├── feishu/
+│   │   └── dingtalk/
 │   └── service/                  # 服务包（按 package 边界维护）
 │
 ├── docs/
@@ -186,6 +191,11 @@ originos/
 5. **编译与运行时产物不是源码入口**
    - 禁止把 `packages/desktop/dist-electron/`、`packages/web/.next/`、`packages/*/node_modules/` 作为修复入口
    - 如需修复打包运行问题，必须修改对应 `packages/*/src` 或 `packages/desktop/scripts`
+
+6. **感知渠道必须通过插件边界接入**
+   - 平台 SDK、协议解析与连接生命周期放在 `packages/perception-plugins/{plugin}/`
+   - 插件只能依赖 `packages/core` 对外导出的 Perception Plugin SDK，禁止依赖 Web 或 Desktop 内部实现
+   - Core 保留平台无关的事件、规则、授权、路由、Plugin Contract/Registry/Host
 
 ---
 

@@ -38,10 +38,10 @@ export class WeComAppConnector implements PerceptionConnector {
   constructor(private readonly secrets: WeComSecrets) {}
 
   async handshake(context: ConnectorHandshakeContext): Promise<ConnectorHandshakeResult> {
-    const timestamp = context.query.timestamp ?? '';
-    const nonce = context.query.nonce ?? '';
-    const signature = context.query.msg_signature ?? '';
-    const echoStr = context.query.echostr ?? '';
+    const timestamp = context.query['timestamp'] ?? '';
+    const nonce = context.query['nonce'] ?? '';
+    const signature = context.query['msg_signature'] ?? '';
+    const echoStr = context.query['echostr'] ?? '';
     try {
       const plaintext = verifyWeComUrl(this.secrets, {
         msgSignature: signature,
@@ -62,9 +62,9 @@ export class WeComAppConnector implements PerceptionConnector {
 
   async verify(payload: JsonValue, context: ConnectorVerificationContext): Promise<ConnectorVerificationResult> {
     const encrypted = encryptedFrom(payload);
-    const signature = context.query.msg_signature ?? '';
-    const timestamp = context.query.timestamp ?? '';
-    const nonce = context.query.nonce ?? '';
+    const signature = context.query['msg_signature'] ?? '';
+    const timestamp = context.query['timestamp'] ?? '';
+    const nonce = context.query['nonce'] ?? '';
     const authenticated = verifyWeComSignature(this.secrets.token, timestamp, nonce, encrypted, signature);
     const timestampMs = Number(timestamp) * 1000;
     return {
@@ -114,7 +114,7 @@ export class WeComAppConnector implements PerceptionConnector {
 
 function encryptedFrom(payload: JsonValue): string {
   if (payload === null || Array.isArray(payload) || typeof payload !== 'object') throw new Error('Invalid WeCom envelope');
-  const encrypted = payload.Encrypt;
+  const encrypted = payload['Encrypt'];
   if (typeof encrypted !== 'string' || !encrypted) throw new Error('WeCom Encrypt is required');
   return encrypted;
 }

@@ -14,6 +14,12 @@ import { existsSync, readFileSync } from 'fs';
 import { StreamEventBatcher } from './stream-event-batcher';
 import { applyAssistantMessageEnd } from './assistant-stream-state';
 import { processHealthMonitor } from './process-health-monitor';
+import type { ChannelFlowMessageIngress } from '../../../../core/src/modules/channel-runtime';
+import { runUiChannelStream } from './channel-ui-stream';
+import {
+  AgentTaskRuntimeIpcController,
+  routeAgentSessionUserMessage,
+} from './agent-task-runtime-ipc';
 import {
   assertSessionMessageOwnership,
   restoreSessionAtBoundary,
@@ -62,8 +68,15 @@ const ENTRY_TYPE_DIRS: Record<string, string> = {
 };
 
 export class AgentSessionService {
-  constructor() {
+  private readonly taskRuntimeIpc: AgentTaskRuntimeIpcController;
+
+  constructor(
+    taskRuntimeIpc = new AgentTaskRuntimeIpcController(),
+    private readonly channelIngress?: ChannelFlowMessageIngress,
+  ) {
+    this.taskRuntimeIpc = taskRuntimeIpc;
     this.registerHandlers();
+    this.taskRuntimeIpc.registerHandlers();
   }
 
   private registerHandlers(): void {
@@ -90,7 +103,7 @@ export class AgentSessionService {
 
     ipcMain.handle(
       IPC_CHANNELS.AGENT_SESSION_CREATE,
-      async (_event, request: {
+      async (event, request: {
         projectId: string;
         projectName: string;
         systemPrompt?: string;
@@ -137,6 +150,7 @@ export class AgentSessionService {
                 },
                 request.projectId,
               ) ?? existing;
+              this.taskRuntimeIpc.rememberSession(session, event.sender);
               return {
                 success: true,
                 data: session,
@@ -166,6 +180,7 @@ export class AgentSessionService {
           };
 
           const session = await agentSessionService.createSession(createRequest);
+          this.taskRuntimeIpc.rememberSession(session, event.sender);
           return {
             success: true,
             data: session,
@@ -181,7 +196,7 @@ export class AgentSessionService {
 
     ipcMain.handle(
       IPC_CHANNELS.AGENT_SESSION_GET,
-      async (_event, request: RestoreAgentSessionRequest): Promise<IpcResponse<unknown>> => {
+      async (event, request: RestoreAgentSessionRequest): Promise<IpcResponse<unknown>> => {
         try {
           if (!request.sessionId || !request.projectId || !request.entryType || !request.entryId) {
             return {
@@ -200,6 +215,7 @@ export class AgentSessionService {
               await agentManager.restoreAgentRuntime(storedSession);
             },
           });
+          await this.taskRuntimeIpc.restoreForSession(session, event.sender);
           return {
             success: true,
             data: session,
@@ -397,7 +413,7 @@ export class AgentSessionService {
 
     ipcMain.handle(
       IPC_CHANNELS.AGENT_SESSION_MESSAGE,
-      async (_event, request: {
+      async (event, request: {
         sessionId: string;
         content: string;
         role?: string;
@@ -423,7 +439,9 @@ export class AgentSessionService {
             };
           }
 
+          this.taskRuntimeIpc.rememberSession(session, event.sender);
           assertSessionMessageOwnership(session, request);
+
           const agent = await agentManager.getOrRestoreAgentRuntime(session);
 
           const updatedSession = await agentSessionService.addMessage(request.sessionId, {
@@ -470,23 +488,42 @@ export class AgentSessionService {
                 processHealthMonitor.setAgentActivity(request.sessionId, 'model_wait');
                 break;
               case 'message_end': {
-                const msg = event['message'] as { role?: string; content?: unknown } | undefined;
+                const msg = event['message'] as {
+                  role?: string;
+                  content?: unknown;
+                  completionFailure?: boolean;
+                } | undefined;
                 if (msg?.role === 'assistant' && msg.content) {
                   const extracted = extractTextContent(msg.content);
+                  if (msg.completionFailure) {
+                    hasError = true;
+                    errorMessage = extracted || '任务未能自动完成';
+                    break;
+                  }
                   if (extracted) assistantContent = reconcileFinalStreamContent(assistantContent, extracted);
                 }
                 break;
               }
               case 'agent_end': {
                 processHealthMonitor.setAgentActivity(request.sessionId, 'completion_check');
-                const msg = event['message'] as { role?: string; content?: unknown } | undefined;
-                if (msg?.role === 'assistant' && msg.content) {
+                const msg = event['message'] as {
+                  role?: string;
+                  content?: unknown;
+                  completionFailure?: boolean;
+                } | undefined;
+                if (msg?.role === 'assistant' && msg.content && !msg.completionFailure) {
                   const extracted = extractTextContent(msg.content);
                   if (extracted) assistantContent = reconcileFinalStreamContent(assistantContent, extracted);
                 }
-                const msgs = event['messages'] as { role?: string; content?: unknown }[] | undefined;
+                const msgs = event['messages'] as {
+                  role?: string;
+                  content?: unknown;
+                  completionFailure?: boolean;
+                }[] | undefined;
                 if (msgs && Array.isArray(msgs)) {
-                  const lastAssistant = [...msgs].reverse().find((m) => m?.role === 'assistant');
+                  const lastAssistant = [...msgs]
+                    .reverse()
+                    .find((m) => m?.role === 'assistant' && !m.completionFailure);
                   if (lastAssistant?.content) {
                     const extracted = extractTextContent(lastAssistant.content);
                     if (extracted) assistantContent = reconcileFinalStreamContent(assistantContent, extracted);
@@ -510,7 +547,20 @@ export class AgentSessionService {
 
           processHealthMonitor.setAgentActivity(request.sessionId, 'prompt_start');
           try {
-            await agent.prompt(request.content);
+            await routeAgentSessionUserMessage({
+              controller: this.taskRuntimeIpc,
+              session,
+              sender: event.sender,
+              content: request.content,
+              promptChat: async () => {
+                this.taskRuntimeIpc.setUserMessagePending(request.sessionId, true);
+                try {
+                  await agent.prompt(request.content);
+                } finally {
+                  this.taskRuntimeIpc.setUserMessagePending(request.sessionId, false);
+                }
+              },
+            });
           } catch (promptError) {
             hasError = true;
             errorMessage = promptError instanceof Error ? promptError.message : 'Failed to call LLM';
@@ -524,8 +574,11 @@ export class AgentSessionService {
             try {
               const state = await agent.getSessionState();
               const msgs = state.messages || [];
-              const last = msgs[msgs.length - 1];
-              if (last?.role === 'assistant' && last.content) {
+              const last = [...msgs].reverse().find((message) => {
+                const candidate = message as typeof message & { completionFailure?: boolean };
+                return candidate.role === 'assistant' && !candidate.completionFailure;
+              }) as { content?: unknown } | undefined;
+              if (last?.content) {
                 assistantContent = extractTextContent(last.content);
               }
             } catch {}
@@ -543,7 +596,11 @@ export class AgentSessionService {
 
           return {
             success: true,
-            data: { userMessage, assistantMessage },
+            data: {
+              userMessage,
+              assistantMessage,
+              ...(hasError ? { completionFailure: errorMessage } : {}),
+            },
             timestamp: new Date().toISOString(),
           };
         } catch (error) {
@@ -596,7 +653,33 @@ export class AgentSessionService {
             };
           }
 
+          this.taskRuntimeIpc.rememberSession(session, event.sender);
           assertSessionMessageOwnership(session, request);
+
+          if (this.channelIngress) {
+            const sender = event.sender;
+            const send = (payload: Record<string, unknown>): void => {
+              if (!sender.isDestroyed()) sender.send(IPC_CHANNELS.AGENT_EVENT, payload);
+            };
+            processHealthMonitor.setAgentActivity(request.sessionId, 'prompt_start');
+            this.taskRuntimeIpc.setActiveStream(request.sessionId, request.streamId);
+            void runUiChannelStream({
+              ingress: this.channelIngress,
+              session,
+              content: request.content,
+              streamId: request.streamId,
+              send,
+            }).finally(() => {
+              this.taskRuntimeIpc.setActiveStream(request.sessionId);
+              processHealthMonitor.clearAgentActivity(request.sessionId);
+            });
+            return {
+              success: true,
+              data: { started: true },
+              timestamp: new Date().toISOString(),
+            };
+          }
+
           const agent = await agentManager.getOrRestoreAgentRuntime(session);
 
           await agentSessionService.addMessage(request.sessionId, {
@@ -647,6 +730,7 @@ export class AgentSessionService {
 
           let assistantContent = '';
           let assistantMessageSent = false;
+          let completionFailed = false;
 
           const unsubscribe = agent.subscribe((event: { type: string; [key: string]: unknown }) => {
             switch (event.type) {
@@ -709,6 +793,14 @@ export class AgentSessionService {
                     completionFailure: msg.completionFailure === true,
                   });
                   if (extracted) {
+                    if (msg.completionFailure) {
+                      completionFailed = true;
+                      sendToRenderer('error', {
+                        message: extracted,
+                        recoverable: true,
+                      });
+                      break;
+                    }
                     const transition = applyAssistantMessageEnd(
                       { content: assistantContent, sent: assistantMessageSent },
                       {
@@ -722,7 +814,6 @@ export class AgentSessionService {
                       sendToRenderer('assistant_message', {
                         content: assistantContent,
                         isStreaming: false,
-                        completionFailure: msg.completionFailure === true,
                       });
                     }
                   }
@@ -732,14 +823,24 @@ export class AgentSessionService {
               case 'agent_end': {
                 processHealthMonitor.setAgentActivity(request.sessionId, 'completion_check');
                 if (assistantMessageSent) break;
-                const msg = event['message'] as { role?: string; content?: unknown } | undefined;
-                if (msg?.role === 'assistant' && msg.content) {
+                const msg = event['message'] as {
+                  role?: string;
+                  content?: unknown;
+                  completionFailure?: boolean;
+                } | undefined;
+                if (msg?.role === 'assistant' && msg.content && !msg.completionFailure) {
                   const extracted = extractTextContent(msg.content);
                   if (extracted) assistantContent = reconcileFinalStreamContent(assistantContent, extracted);
                 }
-                const msgs = event['messages'] as { role?: string; content?: unknown }[] | undefined;
+                const msgs = event['messages'] as {
+                  role?: string;
+                  content?: unknown;
+                  completionFailure?: boolean;
+                }[] | undefined;
                 if (msgs && Array.isArray(msgs)) {
-                  const lastAssistant = [...msgs].reverse().find((m) => m?.role === 'assistant');
+                  const lastAssistant = [...msgs]
+                    .reverse()
+                    .find((m) => m?.role === 'assistant' && !m.completionFailure);
                   if (lastAssistant?.content) {
                     const extracted = extractTextContent(lastAssistant.content);
                     if (extracted) assistantContent = reconcileFinalStreamContent(assistantContent, extracted);
@@ -771,7 +872,22 @@ export class AgentSessionService {
           });
 
           processHealthMonitor.setAgentActivity(request.sessionId, 'prompt_start');
-          agent.prompt(request.content).then(async () => {
+          this.taskRuntimeIpc.setActiveStream(request.sessionId, request.streamId);
+          routeAgentSessionUserMessage({
+            controller: this.taskRuntimeIpc,
+            session,
+            sender: event.sender,
+            content: request.content,
+            promptChat: async () => {
+              this.taskRuntimeIpc.setUserMessagePending(request.sessionId, true);
+              try {
+                await agent.prompt(request.content);
+              } finally {
+                this.taskRuntimeIpc.setUserMessagePending(request.sessionId, false);
+              }
+            },
+          }).then(async () => {
+            this.taskRuntimeIpc.setActiveStream(request.sessionId);
             unsubscribe();
             if (assistantContent) {
               await agentSessionService.addMessage(request.sessionId, {
@@ -779,9 +895,10 @@ export class AgentSessionService {
                 content: assistantContent,
               }, request.projectId);
             }
-            sendToRenderer('done', { content: assistantContent });
+            sendToRenderer('done', { content: assistantContent, failed: completionFailed });
             batcher.dispose();
           }).catch(async (err: unknown) => {
+            this.taskRuntimeIpc.setActiveStream(request.sessionId);
             unsubscribe();
             const visibleError = formatVisibleAgentError(err);
             await agentSessionService.addMessage(request.sessionId, {

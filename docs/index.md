@@ -164,6 +164,8 @@
 | OS.14 | Agent Runtime 工作目录与输出目录边界收敛 | ✅ Complete | N/A | [specs/epic-OS/story-OS.14/README.md](./specs/epic-OS/story-OS.14/README.md) |
 | OS.15 | 桌面应用自动更新机制 | 📋 Planning | N/A | [specs/epic-OS/story-OS.15/README.md](./specs/epic-OS/story-OS.15/README.md) |
 | OS.16 | 系统级定时任务与定时唤起能力 | 📋 Planning | N/A | [specs/epic-OS/story-OS.16/README.md](./specs/epic-OS/story-OS.16/README.md) |
+| OS.21 | 统一系统调度运行时与后台周期任务 | 📋 Planning | N/A | [specs/epic-OS/story-OS.21/README.md](./specs/epic-OS/story-OS.21/README.md) |
+| OS.22 | 统一 Agent Channel 消息入口与多 Runtime 双工输出协议 | 📋 Planning | N/A | [specs/epic-OS/story-OS.22/README.md](./specs/epic-OS/story-OS.22/README.md) |
 
 ### Epic R Stories 详览
 
@@ -255,7 +257,7 @@
 
 - [Epic 0: 技术架构实施层](./specs/epic-0/README.md) - pi-agent-core 集成（基础设施）
 - [Epic 1: 项目访谈与创建](./specs/epic-1/README.md) - 项目访谈流程（重设计中）
-- [Epic OS: OS 交互基础](./specs/epic-OS/STATUS.md) - Desktop/Dock/Agent/Spotlight/Acrylic/定时任务等 16 Stories
+- [Epic OS: OS 交互基础](./specs/epic-OS/STATUS.md) - Desktop、Agent、统一 Channel、调度与系统交互 Stories
 - [Epic R: RoleAgent pi-agent 循环](./specs/epic-R/README.md) - RoleAgent 思维循环机制 ✅
 - [Epic C: 认知系统](./specs/epic-C/README.md) - 知识库、实践日志、经验模式
 - [Epic P2: AI 解决方案设计](./specs/epic-P2/README.md) - 基于本体的 Agent 架构规划，部分实现

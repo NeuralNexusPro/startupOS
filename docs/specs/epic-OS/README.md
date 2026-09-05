@@ -76,6 +76,8 @@
 | OS.18 | Windows 内置模板技能加载修复 | ✅ Complete | High | 2026-07-23 | 1-2 天 |
 | OS.19 | Skill、Agent 与 RoleAgent 目录导出 ZIP | ✅ Complete | High | 2026-07-26 | 1-2 天 |
 | OS.20 | 窗体会话历史切换与上下文恢复 | ✅ Done | High | Agent Runtime / Desktop UX | 2-3 天 |
+| OS.21 | 统一系统调度运行时与后台周期任务 | 📋 Planning | High | System Runtime | 3-5 天 |
+| OS.22 | 统一 Agent Channel 消息入口与多 Runtime 双工输出协议 | 📋 Planning | Critical | Agent / Project / Collaboration Runtime | 5-8 天 |
 
 ---
 

@@ -44,7 +44,10 @@ export async function POST(request: NextRequest, context: { params: { connectorI
   let rawBody: string;
   try {
     rawBody = await request.text();
-    payload = JSON.parse(rawBody) as JsonValue;
+    if (Buffer.byteLength(rawBody, 'utf8') > MAX_CONTENT_LENGTH) {
+      return NextResponse.json({ success: false, error: { code: 'PAYLOAD_TOO_LARGE' } }, { status: 413 });
+    }
+    payload = parseWebhookPayload(rawBody, request.headers.get('content-type'));
   } catch {
     return NextResponse.json({ success: false, error: { code: 'INVALID_PAYLOAD' } }, { status: 400 });
   }
@@ -67,4 +70,14 @@ export async function POST(request: NextRequest, context: { params: { connectorI
     }
     return NextResponse.json({ success: false, error: { code: 'INTERNAL_ERROR' } }, { status: 500 });
   }
+}
+
+function parseWebhookPayload(rawBody: string, contentType: string | null): JsonValue {
+  if (contentType?.toLowerCase().includes('xml') || rawBody.trimStart().startsWith('<')) {
+    const match = /<Encrypt>\s*(?:<!\[CDATA\[([\s\S]*?)\]\]>|([^<]*))\s*<\/Encrypt>/i.exec(rawBody);
+    const encrypted = (match?.[1] ?? match?.[2])?.trim();
+    if (!encrypted) throw new Error('Invalid WeCom XML envelope');
+    return { Encrypt: encrypted };
+  }
+  return JSON.parse(rawBody) as JsonValue;
 }

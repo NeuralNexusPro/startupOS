@@ -43,6 +43,16 @@ export interface PerceptionAuditEntry {
   action: 'inbox.accepted' | 'inbox.rejected' | 'event.created' | 'event.duplicate' | 'rule.matched' | 'target.denied' | 'lease.acquired' | 'lease.completed' | 'lease.failed' | 'trigger.dispatched';
   occurredAt: string; connectorId?: string; eventId?: string; detail?: JsonValue;
 }
+export interface PerceptionTargetResultSummary {
+  status: ExecutionLease['status']; resultRef?: string; sessionId?: string; summary?: string;
+}
+export interface PerceptionRuleTriggerTrace {
+  ruleId: string; matchedAt?: string; dispatchedAt?: string; finishedAt?: string;
+  rule?: PerceptionTriggerRule; lease?: ExecutionLease; result?: PerceptionTargetResultSummary;
+}
+export interface PerceptionEventTrace {
+  event: PerceptionEventV1; ruleTriggers: PerceptionRuleTriggerTrace[]; audit: PerceptionAuditEntry[];
+}
 
 export type TriggerFilterPath =
   | 'source' | 'connectorId' | 'type'
@@ -94,7 +104,7 @@ export interface PerceptionTriggerExecutionContext {
   requireHitl: boolean;
   cognitionOwner: { kind: 'project' | 'role-agent'; id: string } | { kind: 'ephemeral' };
 }
-export interface TriggerExecutionResult { resultRef: string; sessionId?: string }
+export interface TriggerExecutionResult { resultRef: string; sessionId?: string; responseText?: string; responseTexts?: string[] }
 export interface TriggerExecutionPort {
   dispatch(input: { event: PerceptionEventV1; target: PerceptionTriggerTarget; context: PerceptionTriggerExecutionContext }): Promise<TriggerExecutionResult>;
 }
@@ -112,6 +122,41 @@ export type PerceptionConnectorMode = 'email-poll' | 'webhook' | 'stream';
 export interface PerceptionConnectorConfig {
   id: string; source: PerceptionSource; mode: PerceptionConnectorMode; enabled: boolean;
   secretRef?: string; settings: { [key: string]: JsonValue }; createdAt: string; updatedAt: string;
+}
+export type MailAuthMode = 'password' | 'oauth2-token';
+export interface MailConnectorSettings {
+  host: string; port: number; secure: boolean; username: string; authMode: MailAuthMode;
+  mailbox: string; pollIntervalSeconds: number;
+}
+export interface MailSecretInput { kind: MailAuthMode; value: string }
+export interface MailSecret { kind: MailAuthMode; value: string }
+export type MailConnectionErrorCode = 'SECURE_STORAGE_UNAVAILABLE' | 'INVALID_PROFILE' | 'DNS_FAILED' | 'TLS_FAILED' | 'AUTH_FAILED' | 'MAILBOX_NOT_FOUND' | 'TIMEOUT' | 'CONNECTION_FAILED';
+export interface MailConnectionTestReceipt {
+  connectorId: string; profileFingerprint: string; verifiedAt: string;
+  capabilities: string[]; mailbox: string;
+}
+export type MailConnectionTestResult =
+  | { success: true; receipt: MailConnectionTestReceipt }
+  | { success: false; code: MailConnectionErrorCode };
+export interface MailCredentialPort {
+  bind(connectorId: string, secret: MailSecretInput): Promise<string>;
+  resolve(secretRef: string): Promise<MailSecret>;
+  remove(secretRef: string): Promise<void>;
+}
+export interface MailClientPort {
+  testConnection(input: { connectorId: string; profile: MailConnectorSettings; secret: MailSecret; timeoutMs: number }): Promise<MailConnectionTestResult>;
+}
+export interface WeComConnectorSettings {
+  transport: 'aibot-websocket';
+  botId: string;
+  websocketUrl?: string;
+}
+export interface WeComBotSecretInput { value: string }
+export interface WeComBotSecret { value: string }
+export interface WeComBotCredentialPort {
+  bind(connectorId: string, secret: WeComBotSecretInput): Promise<string>;
+  resolve(secretRef: string): Promise<WeComBotSecret>;
+  remove(secretRef: string): Promise<void>;
 }
 type ConnectorHealthStatus = 'healthy' | 'degraded' | 'disconnected' | 'disabled';
 interface ConnectorHealthBase { connectorId: string; status: ConnectorHealthStatus; updatedAt: string; lastSuccessAt?: string; lastSafeCode?: string }

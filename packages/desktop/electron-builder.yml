@@ -45,6 +45,16 @@ files:
       - "coding-agent.d.ts"
       - "load-runtime.js"
       - "dist/**/*"
+  - from: ../../packages/perception-plugins/wecom
+    to: node_modules/@originos/perception-plugin-wecom
+    filter:
+      - "package.json"
+      - "dist/**/*"
+  - from: ../../packages/perception-plugins/wecom/node_modules/@wecom/aibot-node-sdk
+    to: node_modules/@wecom/aibot-node-sdk
+    filter:
+      - "package.json"
+      - "dist/**/*"
   - from: .packaging/pi-ai-runtime/node_modules
     to: node_modules
   - package.json

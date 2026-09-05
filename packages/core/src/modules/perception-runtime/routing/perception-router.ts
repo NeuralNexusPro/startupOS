@@ -19,6 +19,8 @@ export interface PerceptionRouteResult {
   leaseId?: string;
   resultRef?: string;
   reason?: string;
+  responseText?: string;
+  responseTexts?: string[];
 }
 
 interface RuleSource { list(): PerceptionTriggerRule[] }
@@ -83,7 +85,14 @@ export class PerceptionRouter {
       this.leases.complete(acquired.lease.id, dispatched.resultRef);
       this.appendAudit('trigger.dispatched', event, rule.id, { leaseId: acquired.lease.id, resultRef: dispatched.resultRef });
       this.appendAudit('lease.completed', event, rule.id, { leaseId: acquired.lease.id });
-      return { ruleId: rule.id, status: 'dispatched', leaseId: acquired.lease.id, resultRef: dispatched.resultRef };
+      return {
+        ruleId: rule.id,
+        status: 'dispatched',
+        leaseId: acquired.lease.id,
+        resultRef: dispatched.resultRef,
+        ...(dispatched.responseText ? { responseText: dispatched.responseText } : {}),
+        ...(dispatched.responseTexts?.length ? { responseTexts: dispatched.responseTexts } : {}),
+      };
     } catch {
       this.leases.fail(acquired.lease.id);
       this.appendAudit('lease.failed', event, rule.id, { leaseId: acquired.lease.id });
