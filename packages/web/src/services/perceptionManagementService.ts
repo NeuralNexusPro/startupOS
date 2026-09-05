@@ -31,6 +31,7 @@ export function getPerceptionDashboard() {
     rules: service.listRules(),
     health: service.listHealth(),
     audit: service.listAudit({ limit: 100 }),
+    eventTraces: service.listEventTraces(100),
     deadLetters: service.listDeadLetters(),
   };
 }
@@ -43,8 +44,16 @@ export function savePerceptionRule(rule: PerceptionTriggerRule) {
   return management().saveRule(rule);
 }
 
+export function deletePerceptionRule(id: string) {
+  return management().deleteRule(id);
+}
+
 export function savePerceptionGrant(grant: ExternalTriggerGrant) {
   return management().saveGrant(grant);
+}
+
+export function deletePerceptionGrant(kind: ExternalTriggerGrant['target']['kind'], id: string) {
+  return management().deleteGrant(kind, id);
 }
 
 export function setPerceptionConnectorEnabled(id: string, enabled: boolean) {

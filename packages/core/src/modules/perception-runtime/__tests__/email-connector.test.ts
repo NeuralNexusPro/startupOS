@@ -48,6 +48,24 @@ function client(batch: EmailFetchBatch): EmailClientPort {
 }
 
 describe('EmailPoller', () => {
+  it('establishes the current mailbox head on first poll and only emits later UIDs', async () => {
+    const root = tempRoot();
+    let calls = 0;
+    const poller = createFileBackedEmailPoller(root, {
+      listSince: async () => {
+        calls += 1;
+        return calls === 1
+          ? { uidValidity: 'validity-1', safeBaselineUid: 50, messages: [] }
+          : { uidValidity: 'validity-1', safeBaselineUid: 51, messages: [message(51)] };
+      },
+    });
+
+    const baseline = await poller.poll({ connectorId: 'email-main', mailbox: 'INBOX' });
+    expect(baseline).toMatchObject({ processed: 0, eventIds: [], cursor: { lastUid: 50 } });
+    const incremental = await poller.poll({ connectorId: 'email-main', mailbox: 'INBOX' });
+    expect(incremental).toMatchObject({ processed: 1, cursor: { lastUid: 51 } });
+  });
+
   it('processes an ordered incremental batch and commits the last UID', async () => {
     const root = tempRoot();
     const poller = createFileBackedEmailPoller(root, client({

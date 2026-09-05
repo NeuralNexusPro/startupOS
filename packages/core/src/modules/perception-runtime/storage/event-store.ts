@@ -1,4 +1,5 @@
 import path from 'node:path';
+import fs from 'node:fs';
 import type { PerceptionEventV1 } from '../protocol/types';
 import { validatePerceptionEvent } from '../protocol/validation';
 import { AtomicDataFileStore } from './data-file-store';
@@ -39,5 +40,16 @@ export class PerceptionEventStore {
     const filePath = resolvePerceptionPath(this.dataRoot, 'events', `${eventId}.json`);
     return new AtomicDataFileStore<PerceptionEventV1>(filePath).read().data;
   }
-}
 
+  list(limit = 50): PerceptionEventV1[] {
+    if (!fs.existsSync(this.eventsDirectory)) return [];
+    return fs.readdirSync(this.eventsDirectory)
+      .filter((name) => name.endsWith('.json') && name !== 'dedupe-index.json')
+      .flatMap((name) => {
+        try { return [new AtomicDataFileStore<PerceptionEventV1>(path.join(this.eventsDirectory, name)).read().data]; }
+        catch { return []; }
+      })
+      .sort((left, right) => right.receivedAt.localeCompare(left.receivedAt))
+      .slice(0, Math.max(1, Math.min(200, limit)));
+  }
+}

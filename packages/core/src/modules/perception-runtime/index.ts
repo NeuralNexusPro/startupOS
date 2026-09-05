@@ -16,3 +16,4 @@ export * from './connectors/dingtalk';
 export * from './rules';
 export * from './routing';
 export * from './operations';
+export * from './plugins';

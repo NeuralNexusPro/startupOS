@@ -24,6 +24,7 @@ export interface EmailPollRequest {
 export interface EmailPollResult {
   processed: number;
   duplicates: number;
+  eventIds: string[];
   reset: boolean;
   cursor: EmailCursor;
 }
@@ -98,7 +99,8 @@ export class EmailPoller {
     if (!batch.uidValidity.trim()) throw new Error('Email batch uidValidity is required');
 
     const reset = previous.uidValidity !== undefined && previous.uidValidity !== batch.uidValidity;
-    const baseline = reset ? batch.safeBaselineUid ?? 0 : previous.lastUid;
+    const firstMailboxBaseline = !stored && request.initialUid === undefined && batch.safeBaselineUid !== undefined;
+    const baseline = reset || firstMailboxBaseline ? batch.safeBaselineUid ?? 0 : previous.lastUid;
     assertUid(baseline, 'safeBaselineUid');
     let cursor: EmailCursor = {
       ...previous,
@@ -106,10 +108,11 @@ export class EmailPoller {
       lastUid: baseline,
       updatedAt: this.now(),
     };
-    if (reset) cursor = this.options.cursors.write(cursor);
+    if (reset || firstMailboxBaseline) cursor = this.options.cursors.write(cursor);
 
     let processed = 0;
     let duplicates = 0;
+    const eventIds: string[] = [];
     const messages = [...batch.messages].sort((left, right) => left.uid - right.uid);
     for (const message of messages) {
       if (message.uid <= cursor.lastUid) continue;
@@ -119,14 +122,14 @@ export class EmailPoller {
       const inboxRecord = this.options.inbox.accept(request.connectorId, payload, receivedAt);
       const saved = this.options.events.save(buildEvent(request.connectorId, message, inboxRecord, this.options.inbox, receivedAt));
       if (saved.duplicate) duplicates += 1;
-      else processed += 1;
+      else { processed += 1; eventIds.push(saved.event.id); }
       cursor = this.options.cursors.write({ ...cursor, lastUid: message.uid, updatedAt: this.now() });
     }
 
     if (messages.length === 0 && (!stored || stored.uidValidity !== batch.uidValidity)) {
       cursor = this.options.cursors.write(cursor);
     }
-    return { processed, duplicates, reset, cursor };
+    return { processed, duplicates, eventIds, reset, cursor };
   }
 }
 

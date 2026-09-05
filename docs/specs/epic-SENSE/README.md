@@ -3,7 +3,7 @@
 **Epic 编号:** SENSE  
 **Epic 名称:** Perception Layer & External Event Triggers  
 **优先级:** 🔴 Critical  
-**状态:** ✅ Complete  
+**状态:** 🟠 In Progress
 **创建日期:** 2026-08-28  
 **Owner:** OriginOS Runtime Team
 
@@ -98,6 +98,9 @@ interface PerceptionEventV1 {
 | **SENSE.7** | Trigger Rule、目标授权与 Agent/Project/Skill 路由 | Critical | SENSE.1–6 | ✅ Complete |
 | **SENSE.8** | 重试、Dead Letter、审计、可观测性与连接管理 | High | SENSE.7 | ✅ Complete |
 | **SENSE.9** | 感知中心产品入口 | High | SENSE.8 | ✅ Complete |
+| **SENSE.10** | Mail Connector Provisioning 与 Desktop 轮询闭环 | Critical | SENSE.3、SENSE.8、SENSE.9 | ✅ Complete |
+| **SENSE.11** | 企业微信 Connector Provisioning 与运行闭环 | Critical | SENSE.2、SENSE.4、SENSE.8、SENSE.9 | ✅ Complete |
+| **SENSE.12** | Perception Plugin Host 与 Connector 插件化迁移 | Critical | SENSE.1–11 | 🚧 In Progress |
 
 ## 数据目录
 

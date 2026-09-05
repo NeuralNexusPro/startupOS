@@ -21,10 +21,16 @@ import { AgentSessionService } from './services/agent-session-service';
 import { AgentProjectService } from './services/agent-project-service';
 import { WorkspaceService } from './services/workspace-service';
 import { EntryExportService } from './services/entry-export-service';
+import { MailProvisioningService } from './services/perception-mail/mail-provisioning-service';
+import { MailConnectorSupervisor } from './services/perception-mail/mail-connector-supervisor';
+import { PerceptionPluginHostService } from './services/perception-plugin-host/perception-plugin-host-service';
+import { WeComProvisioningService } from './services/perception-wecom/wecom-provisioning-service';
 import { DesktopSchedulerService } from './services/desktop-scheduler-service';
 import { BufferedDailyLogWriter } from './services/daily-log-writer';
 import { captureConsoleCall, serializeConsoleArgs } from './services/console-log-capture';
 import { processHealthMonitor } from './services/process-health-monitor';
+import { createDefaultDesktopChannelRuntime } from './services/channel-runtime-service';
+import { AgentTaskRuntimeIpcController } from './services/agent-task-runtime-ipc';
 import { attachDevToolsContextMenu } from './devtools-context-menu';
 import { agentManager } from '../../../core/src/lib/integrations/pi-agent/agent-manager';
 import { persistentAgentManager } from '../../../core/src/lib/integrations/pi-agent/persistent-agent-manager';
@@ -54,6 +60,8 @@ let trayManager: TrayManager | null = null;
 let shortcutManager: ShortcutManager | null = null;
 let autoUpdaterManager: AutoUpdaterManager | null = null;
 let desktopSchedulerService: DesktopSchedulerService | null = null;
+let mailConnectorSupervisor: MailConnectorSupervisor | null = null;
+let perceptionPluginHost: PerceptionPluginHostService | null = null;
 let rendererServerProcess: ChildProcess | null = null;
 let packagedRendererUrlPromise: Promise<string> | null = null;
 const ipcServices: unknown[] = [];
@@ -430,10 +438,18 @@ app.whenReady().then(() => {
   ipcServices.push(new MiscService());
   ipcServices.push(new OntologyDataService());
   ipcServices.push(new CollaborationService());
-  ipcServices.push(new AgentSessionService());
+  const taskRuntimeIpc = new AgentTaskRuntimeIpcController();
   ipcServices.push(new AgentProjectService());
   ipcServices.push(new WorkspaceService());
   ipcServices.push(new EntryExportService());
+  ipcServices.push(new MailProvisioningService());
+  ipcServices.push(new WeComProvisioningService());
+  const channelRuntime = await createDefaultDesktopChannelRuntime(taskRuntimeIpc);
+  ipcServices.push(channelRuntime);
+  ipcServices.push(new AgentSessionService(taskRuntimeIpc, channelRuntime.ingress));
+  console.info('[ChannelRuntime] unified ingress initialized');
+  mailConnectorSupervisor = new MailConnectorSupervisor(undefined, channelRuntime.ingress);
+  perceptionPluginHost = new PerceptionPluginHostService(channelRuntime.ingress);
   mainWindow = createWindow();
   windowManager.setMainWindow(mainWindow);
   windowManager.createDockWindow();
@@ -450,6 +466,8 @@ app.whenReady().then(() => {
     autoUpdaterManager?.scheduleAutoCheck();
   });
   desktopSchedulerService.start();
+  mailConnectorSupervisor.start();
+  perceptionPluginHost.start();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -498,6 +516,8 @@ app.on('before-quit', (event) => {
   trayManager?.destroy();
   shortcutManager?.destroy();
   desktopSchedulerService?.stop();
+  mailConnectorSupervisor?.stop();
+  perceptionPluginHost?.stop();
   rendererServerProcess?.kill();
   rendererServerProcess = null;
   void (async () => {

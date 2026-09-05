@@ -48,6 +48,29 @@ describe('POST /api/perception/webhooks/[connectorId]', () => {
     }));
   });
 
+  it('accepts a native WeCom XML encrypted envelope', async () => {
+    const body = '<xml><ToUserName><![CDATA[ww-corp]]></ToUserName><Encrypt><![CDATA[encrypted-value]]></Encrypt></xml>';
+    const request = new NextRequest('http://localhost/api/perception/webhooks/wecom-main?msg_signature=sig&timestamp=1&nonce=n', {
+      method: 'POST',
+      headers: { 'content-type': 'application/xml' },
+      body,
+    });
+    const response = await POST(request, { params: { connectorId: 'wecom-main' } });
+    expect(response.status).toBe(200);
+    expect(handlePerceptionWebhook).toHaveBeenCalledWith(expect.objectContaining({
+      connectorId: 'wecom-main', payload: { Encrypt: 'encrypted-value' }, rawBody: body,
+    }));
+  });
+
+  it('rejects XML without an encrypted envelope', async () => {
+    const request = new NextRequest('http://localhost/api/perception/webhooks/wecom-main', {
+      method: 'POST', headers: { 'content-type': 'application/xml' }, body: '<xml><Other>value</Other></xml>',
+    });
+    const response = await POST(request, { params: { connectorId: 'wecom-main' } });
+    expect(response.status).toBe(400);
+    expect(handlePerceptionWebhook).not.toHaveBeenCalled();
+  });
+
   it('rejects invalid JSON before calling the service', async () => {
     const request = new NextRequest('http://localhost/api/perception/webhooks/feishu-main', {
       method: 'POST',

@@ -14,6 +14,8 @@ import { existsSync, readFileSync } from 'fs';
 import { StreamEventBatcher } from './stream-event-batcher';
 import { applyAssistantMessageEnd } from './assistant-stream-state';
 import { processHealthMonitor } from './process-health-monitor';
+import type { ChannelFlowMessageIngress } from '../../../../core/src/modules/channel-runtime';
+import { runUiChannelStream } from './channel-ui-stream';
 import {
   AgentTaskRuntimeIpcController,
   routeAgentSessionUserMessage,
@@ -66,9 +68,13 @@ const ENTRY_TYPE_DIRS: Record<string, string> = {
 };
 
 export class AgentSessionService {
-  private readonly taskRuntimeIpc = new AgentTaskRuntimeIpcController();
+  private readonly taskRuntimeIpc: AgentTaskRuntimeIpcController;
 
-  constructor() {
+  constructor(
+    taskRuntimeIpc = new AgentTaskRuntimeIpcController(),
+    private readonly channelIngress?: ChannelFlowMessageIngress,
+  ) {
+    this.taskRuntimeIpc = taskRuntimeIpc;
     this.registerHandlers();
     this.taskRuntimeIpc.registerHandlers();
   }
@@ -435,6 +441,7 @@ export class AgentSessionService {
 
           this.taskRuntimeIpc.rememberSession(session, event.sender);
           assertSessionMessageOwnership(session, request);
+
           const agent = await agentManager.getOrRestoreAgentRuntime(session);
 
           const updatedSession = await agentSessionService.addMessage(request.sessionId, {
@@ -648,6 +655,31 @@ export class AgentSessionService {
 
           this.taskRuntimeIpc.rememberSession(session, event.sender);
           assertSessionMessageOwnership(session, request);
+
+          if (this.channelIngress) {
+            const sender = event.sender;
+            const send = (payload: Record<string, unknown>): void => {
+              if (!sender.isDestroyed()) sender.send(IPC_CHANNELS.AGENT_EVENT, payload);
+            };
+            processHealthMonitor.setAgentActivity(request.sessionId, 'prompt_start');
+            this.taskRuntimeIpc.setActiveStream(request.sessionId, request.streamId);
+            void runUiChannelStream({
+              ingress: this.channelIngress,
+              session,
+              content: request.content,
+              streamId: request.streamId,
+              send,
+            }).finally(() => {
+              this.taskRuntimeIpc.setActiveStream(request.sessionId);
+              processHealthMonitor.clearAgentActivity(request.sessionId);
+            });
+            return {
+              success: true,
+              data: { started: true },
+              timestamp: new Date().toISOString(),
+            };
+          }
+
           const agent = await agentManager.getOrRestoreAgentRuntime(session);
 
           await agentSessionService.addMessage(request.sessionId, {
