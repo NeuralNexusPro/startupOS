@@ -37,6 +37,9 @@ importers:
       '@originos/perception-plugin-dingtalk':
         specifier: workspace:*
         version: link:packages/perception-plugins/dingtalk
+      '@originos/perception-plugin-email':
+        specifier: workspace:*
+        version: link:packages/perception-plugins/email
       '@originos/perception-plugin-feishu':
         specifier: workspace:*
         version: link:packages/perception-plugins/feishu
@@ -282,6 +285,9 @@ importers:
       '@originos/perception-plugin-dingtalk':
         specifier: workspace:*
         version: link:../perception-plugins/dingtalk
+      '@originos/perception-plugin-email':
+        specifier: workspace:*
+        version: link:../perception-plugins/email
       '@originos/perception-plugin-feishu':
         specifier: workspace:*
         version: link:../perception-plugins/feishu
@@ -377,6 +383,31 @@ importers:
         specifier: workspace:*
         version: link:../../core
     devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.43
+      typescript:
+        specifier: ^5.0.0
+        version: 5.7.3
+      vitest:
+        specifier: ^1.0.0
+        version: 1.0.0(@types/node@20.19.43)(jsdom@23.0.0(canvas@3.2.3))(lightningcss@1.32.0)
+
+  packages/perception-plugins/email:
+    dependencies:
+      '@originos/core':
+        specifier: workspace:*
+        version: link:../../core
+      imapflow:
+        specifier: 1.7.6
+        version: 1.7.6
+      mailparser:
+        specifier: 3.9.20
+        version: 3.9.20
+    devDependencies:
+      '@types/mailparser':
+        specifier: 3.4.6
+        version: 3.4.6
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.43

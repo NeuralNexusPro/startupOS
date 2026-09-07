@@ -121,6 +121,7 @@ export interface ExternalTriggerGrant {
 export type PerceptionConnectorMode = 'email-poll' | 'webhook' | 'stream';
 export interface PerceptionConnectorConfig {
   id: string; source: PerceptionSource; mode: PerceptionConnectorMode; enabled: boolean;
+  pluginId?: string; pluginVersion?: string;
   secretRef?: string; settings: { [key: string]: JsonValue }; createdAt: string; updatedAt: string;
 }
 export type MailAuthMode = 'password' | 'oauth2-token';

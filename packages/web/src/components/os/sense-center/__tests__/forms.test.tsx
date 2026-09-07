@@ -4,7 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConnectorForm } from '../ConnectorForm';
 import { RuleWizard } from '../RuleWizard';
 import { TargetGrantForm } from '../TargetGrantForm';
-import type { ExternalTriggerGrant, PerceptionConnectorConfig, PerceptionTriggerRule } from '@originos/core/types';
+import type { ExternalTriggerGrant, PerceptionTriggerRule } from '@originos/core/types';
+import type { PerceptionPluginManifest } from '@originos/core/modules/perception-runtime';
 
 describe('TargetGrantForm', () => {
   it('creates an enabled, connector-scoped target grant', async () => {
@@ -51,71 +52,13 @@ describe('TargetGrantForm', () => {
 
 describe('ConnectorForm', () => {
   afterEach(() => { delete (window as Window & { electron?: unknown }).electron; });
-  it.each([['dingtalk', 'stream']] as const)('builds a disabled %s connector without browser credentials', async (source, mode) => {
-    const onSave = vi.fn<[PerceptionConnectorConfig], Promise<void>>(async () => undefined);
-    const onCancel = vi.fn();
-    render(<ConnectorForm onSave={onSave} onCancel={onCancel} />);
-    fireEvent.change(screen.getByLabelText('平台'), { target: { value: source } });
-    fireEvent.change(screen.getByLabelText('连接 ID'), { target: { value: `${source}-main` } });
-    fireEvent.click(screen.getByRole('button', { name: '保存为停用状态' }));
-    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
-    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ source, mode, enabled: false });
-    expect(onSave.mock.calls[0]?.[0]).not.toHaveProperty('secretRef');
-    expect(onCancel).toHaveBeenCalled();
-  });
-
-  it('provisions a disabled Feishu connector through Desktop IPC', async () => {
-    const invoke = vi.fn(async () => ({ success: true, data: { connectorId: 'feishu-main', secretConfigured: true }, timestamp: new Date().toISOString() }));
+  const manifests: PerceptionPluginManifest[] = [{ id: 'originos.test', name: '测试插件', version: '1.0.0', hostApi: '1.0', entry: '@originos/test', source: 'email', transport: 'poll', capabilities: [], permissions: ['credentials'], configurationSchema: { version: '1.0', fields: [{ key: 'host', label: '主机', type: 'text', required: true }, { key: 'secret', label: '密钥', type: 'password', required: true, sensitive: true }, { key: 'secure', label: 'TLS', type: 'boolean', defaultValue: true }] } }];
+  it('renders a controlled manifest schema and sends secrets only through generic IPC', async () => {
+    const invoke = vi.fn(async () => ({ success: true, data: { connectorId: 'test-main' }, timestamp: new Date().toISOString() }));
     (window as Window & { electron?: unknown }).electron = { isElectron: true, ipcRenderer: { invoke, send: vi.fn(), on: vi.fn() } };
-    render(<ConnectorForm onSave={vi.fn()} onCancel={vi.fn()} />);
-    fireEvent.change(screen.getByLabelText('平台'), { target: { value: 'feishu' } });
-    fireEvent.change(screen.getByLabelText('连接 ID'), { target: { value: 'feishu-main' } });
-    fireEvent.change(screen.getByLabelText('App ID'), { target: { value: 'cli-app' } });
-    fireEvent.change(screen.getByLabelText('App Secret（不会回显）'), { target: { value: 'app-secret' } });
-    fireEvent.click(screen.getByRole('button', { name: '保存为停用状态' }));
-    await waitFor(() => expect(invoke).toHaveBeenCalledWith('perception:feishu:provision', {
-      connectorId: 'feishu-main', profile: { appId: 'cli-app', domain: 'feishu' }, secret: { appSecret: 'app-secret' },
-    }));
-  });
-
-  it('builds a disabled WeCom connector with an environment secret reference and callback path', async () => {
-    const invoke = vi.fn(async () => ({ success: true, data: { connectorId: 'wecom-main', secretConfigured: true }, timestamp: new Date().toISOString() }));
-    (window as Window & { electron?: unknown }).electron = { isElectron: true, ipcRenderer: { invoke, send: vi.fn(), on: vi.fn() } };
-    render(<ConnectorForm onSave={vi.fn()} onCancel={vi.fn()} />);
-    fireEvent.change(screen.getByLabelText('平台'), { target: { value: 'wecom' } });
-    fireEvent.change(screen.getByLabelText('连接 ID'), { target: { value: 'wecom-main' } });
-    fireEvent.change(screen.getByLabelText('智能机器人 Bot ID'), { target: { value: 'bot-id' } });
-    fireEvent.change(screen.getByLabelText('智能机器人 Secret（不会回显）'), { target: { value: 'bot-secret' } });
-    fireEvent.click(screen.getByRole('button', { name: '保存为停用状态' }));
-    await waitFor(() => expect(invoke).toHaveBeenCalledWith('perception:wecom:provision', expect.objectContaining({ connectorId: 'wecom-main', profile: { transport: 'aibot-websocket', botId: 'bot-id' }, secret: { value: 'bot-secret' } })));
-  });
-
-  it('fails closed when mail provisioning is opened in Web-only mode', () => {
-    const onSave = vi.fn<[PerceptionConnectorConfig], Promise<void>>(async () => undefined);
-    render(<ConnectorForm onSave={onSave} onCancel={vi.fn()} />);
-    fireEvent.change(screen.getByLabelText('连接 ID'), { target: { value: 'email-main' } });
-    fireEvent.change(screen.getByLabelText('IMAP 主机'), { target: { value: 'imap.example.com' } });
-    fireEvent.change(screen.getByLabelText('用户名'), { target: { value: 'me@example.com' } });
-    fireEvent.change(screen.getByLabelText('密码（不会回显）'), { target: { value: 'not-sent' } });
-    fireEvent.click(screen.getByRole('button', { name: '保存并测试连接' }));
-    expect(screen.getByRole('alert')).toHaveTextContent('Desktop');
-    expect(onSave).not.toHaveBeenCalled();
-  });
-
-  it('sends mail credentials only over Desktop IPC and refreshes after a successful test', async () => {
-    const invoke = vi.fn(async () => ({ success: true, data: { connectorId: 'email-main', secretConfigured: true, test: { success: true, receipt: { connectorId: 'email-main', profileFingerprint: 'fp', verifiedAt: new Date().toISOString(), capabilities: [], mailbox: 'INBOX' } } }, timestamp: new Date().toISOString() }));
-    (window as Window & { electron?: unknown }).electron = { isElectron: true, ipcRenderer: { invoke, send: vi.fn(), on: vi.fn() } };
-    const onProvisioned = vi.fn(async () => undefined);
-    const onCancel = vi.fn();
-    render(<ConnectorForm onSave={vi.fn()} onProvisioned={onProvisioned} onCancel={onCancel} />);
-    fireEvent.change(screen.getByLabelText('连接 ID'), { target: { value: 'email-main' } });
-    fireEvent.change(screen.getByLabelText('IMAP 主机'), { target: { value: 'imap.example.com' } });
-    fireEvent.change(screen.getByLabelText('用户名'), { target: { value: 'me@example.com' } });
-    fireEvent.change(screen.getByLabelText('密码（不会回显）'), { target: { value: 'app-password' } });
-    fireEvent.click(screen.getByRole('button', { name: '保存并测试连接' }));
-    await waitFor(() => expect(onProvisioned).toHaveBeenCalled());
-    expect(invoke).toHaveBeenCalledWith('perception:mail:provision-test', expect.objectContaining({ secret: { kind: 'password', value: 'app-password' } }));
-    expect(onCancel).toHaveBeenCalled();
+    render(<ConnectorForm manifests={manifests} onSave={vi.fn()} onCancel={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('连接 ID'), { target: { value: 'test-main' } }); fireEvent.change(screen.getByLabelText('主机'), { target: { value: 'example.com' } }); fireEvent.change(screen.getByLabelText('密钥'), { target: { value: 'private' } }); fireEvent.click(screen.getByRole('button', { name: '保存配置' }));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('perception:plugin:provision', { pluginId: 'originos.test', connectorId: 'test-main', settings: { host: 'example.com', secure: true }, secrets: { secret: 'private' } }));
   });
 });
 

@@ -13,6 +13,7 @@
 | S12-UI-02 | Web/Core | 连接器范围目标授权 | 创建规则时只展示允许当前连接器的目标；为同一目标追加连接器授权时合并而非覆盖已有授权；不匹配的规则在保存阶段拒绝 |
 | S12-MIG-01 | Core | 旧配置迁移 | ID/source/enabled/secret/cursor/rule 保持且幂等 |
 | S12-PLG-01 | Plugin | Email | 增量、正文和故障语义保持 |
+| S12-STATE-01 | Core/Desktop | 插件私有状态 | Email 游标仅能经按 plugin/connector/key 隔离的 State Port 读写，拒绝路径穿越和跨连接器访问 |
 | S12-PLG-02 | Plugin | WeCom | 消息、重连、去重保持；使用原始 SDK frame 将本次目标执行的全部 Assistant 文本按序回复，且只在末段结束 stream |
 | S12-PLG-03 | Plugin | Feishu | WebSocket 入站保持；Agent `text_delta` 通过官方 SDK Markdown CardKit 节流流式更新，完成态收口；无 delta 的 Markdown 回复以卡片渲染；CardKit 失败降级为普通文本且回复不丢失 |
 | S12-PLG-04 | Plugin | DingTalk | 认证、回调、ACK 保持 |
@@ -42,3 +43,18 @@
 - Agent delta 必须在目标执行期间进入同一张飞书 Markdown 卡片，`completed` 后关闭流式状态。
 - 最终 Assistant 消息不得与已流式输出重复发送；没有 delta 时直接发送 Markdown 卡片。
 - CardKit 创建或更新失败时，必须使用完整累积文本回退到普通文本回复。
+
+## Email 插件迁移验收补充
+
+- 首次启用以邮箱当前 UID 头为基线，不回放历史邮件；后续仅提交增量邮件。
+- UIDVALIDITY 改变时安全重置游标；正文、主题、发送者和受控附件引用保持现有语义。
+- 凭据只经 Credential Port，游标只经隔离 State Port；插件不得直接读写 OriginOS 数据目录。
+- 停用或停止插件后取消轮询，不遗留 timer；单次 IMAP 失败只更新脱敏健康状态，下轮可恢复。
+
+## 2026-09-07 S12-T3 声明式配置验证
+
+- Core Host provisioning 测试覆盖 plugin provision 调用、权限裁剪及无 provision 插件的通用回退。
+- Web 表单只读取 manifest `configurationSchema`，覆盖 text/password/number/boolean/select，并验证敏感字段与普通 settings 分离后经统一 IPC 提交。
+- Email 与 WeCom 插件测试覆盖凭据 Port；Email 在写入凭据前执行 IMAP 连接验证，WeCom 保存兼容运行时的 transport 配置。
+- 已删除 Email、WeCom、Feishu 的专用 provisioning IPC、Desktop service 与 Web service，静态扫描无旧通道引用。
+- Email 插件已内聚配置类型与校验，编译产物不再包含对 Core Email integration 源码的运行时导入；覆盖 Windows Electron `ERR_MODULE_NOT_FOUND` 回归。

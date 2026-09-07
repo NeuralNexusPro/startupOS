@@ -149,10 +149,8 @@ export const IPC_CHANNELS = {
   DOCK_ACTION: 'dock:action',
   DOCK_SYNC_APPS: 'dock:sync-apps',
   DOCK_SET_MOUSE_IGNORE: 'dock:set-mouse-ignore',
-  PERCEPTION_MAIL_PROVISION_TEST: 'perception:mail:provision-test',
-  PERCEPTION_MAIL_CREDENTIAL_REMOVE: 'perception:mail:credential-remove',
-  PERCEPTION_WECOM_PROVISION: 'perception:wecom:provision',
-  PERCEPTION_FEISHU_PROVISION: 'perception:feishu:provision',
+  PERCEPTION_PLUGIN_CATALOG: 'perception:plugin:catalog',
+  PERCEPTION_PLUGIN_PROVISION: 'perception:plugin:provision',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

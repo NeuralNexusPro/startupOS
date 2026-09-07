@@ -56,6 +56,7 @@ function ports(): PerceptionPluginHostPorts {
     events: { submit: vi.fn() },
     network: { request: vi.fn() },
     schedule: { every: vi.fn(), cancel: vi.fn() },
+    state: { read: vi.fn(), write: vi.fn(), remove: vi.fn() },
     health: { report: vi.fn() },
     audit: { record: vi.fn() },
   };
@@ -129,6 +130,15 @@ describe('Perception Plugin Host', () => {
     expect(host.status(manifest().id, 'wecom-main').state).toBe('running');
   });
 
+  it('provisions through the plugin contract without exposing undeclared ports', async () => {
+    const registry = new PerceptionPluginRegistry();
+    const provision = vi.fn(async (context) => ({ settings: { botId: context.settings.botId }, secretRefs: { secret: 'secret://bound' } }));
+    registry.register({ plugin: plugin(manifest({ permissions: ['credentials'] }), { provision }), approvedPermissions: ['credentials'] });
+    const host = new PerceptionPluginHost(registry, ports());
+    await expect(host.provision(manifest().id, 'wecom-main', { botId: 'bot' }, { secret: 'private' })).resolves.toEqual({ settings: { botId: 'bot' }, secretRefs: { secret: 'secret://bound' } });
+    expect(provision.mock.calls[0]?.[0].ports).toEqual(expect.objectContaining({ credentials: expect.any(Object) }));
+  });
+
   it('namespaces and clears scheduled work when an instance stops', async () => {
     const registry = new PerceptionPluginRegistry();
     registry.register({
@@ -143,6 +153,18 @@ describe('Perception Plugin Host', () => {
     expect(hostPorts.schedule.every).toHaveBeenCalledWith('originos.perception.wecom:wecom-main:poll', 1_000, expect.any(Function));
     await host.stop(manifest().id, 'wecom-main');
     expect(hostPorts.schedule.cancel).toHaveBeenCalledWith('originos.perception.wecom:wecom-main:poll');
+  });
+
+  it('namespaces plugin state and rejects unsafe keys', async () => {
+    const registry = new PerceptionPluginRegistry();
+    registry.register({ plugin: plugin(manifest({ permissions: ['state'] }), { start: async (context) => {
+      await context.ports.state?.write('cursor', { lastUid: 3 });
+      await expect(context.ports.state?.read('../other')).rejects.toThrow();
+    } }), approvedPermissions: ['state'] });
+    const hostPorts = ports();
+    const host = new PerceptionPluginHost(registry, hostPorts);
+    await host.start(manifest().id, 'wecom-main');
+    expect(hostPorts.state.write).toHaveBeenCalledWith('originos.perception.wecom:wecom-main:cursor', { lastUid: 3 });
   });
 
   it('isolates one plugin failure and emits only a safe audit code', async () => {

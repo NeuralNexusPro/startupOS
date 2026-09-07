@@ -14,6 +14,7 @@ export type PerceptionPluginPermission =
   | 'events'
   | 'network'
   | 'schedule'
+  | 'state'
   | 'health'
   | 'audit'
   | 'replies';
@@ -93,6 +94,11 @@ export interface PluginSchedulePort {
   every(key: string, intervalMs: number, task: () => Promise<void>): void;
   cancel(key: string): void;
 }
+export interface PluginStatePort {
+  read(key: string): Promise<JsonValue | undefined>;
+  write(key: string, value: JsonValue): Promise<void>;
+  remove(key: string): Promise<void>;
+}
 
 export type PluginHealthStatus = 'healthy' | 'degraded' | 'disconnected' | 'disabled';
 
@@ -140,6 +146,7 @@ export interface PerceptionPluginHostPorts {
   events: PluginEventPort;
   network: PluginNetworkPort;
   schedule: PluginSchedulePort;
+  state: PluginStatePort;
   health: PluginHealthPort;
   audit: PluginAuditPort;
   replies?: PluginReplyPort;

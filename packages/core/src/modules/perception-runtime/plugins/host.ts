@@ -65,6 +65,13 @@ export class PerceptionPluginHost {
         },
       };
     }
+    if (approved.has('state')) {
+      exposed.state = {
+        read: async (key) => { assertSafePerceptionId(key, 'plugin state key'); return this.ports.state.read(`${pluginId}:${connectorId}:${key}`); },
+        write: async (key, value) => { assertSafePerceptionId(key, 'plugin state key'); await this.ports.state.write(`${pluginId}:${connectorId}:${key}`, value); },
+        remove: async (key) => { assertSafePerceptionId(key, 'plugin state key'); await this.ports.state.remove(`${pluginId}:${connectorId}:${key}`); },
+      };
+    }
     if (approved.has('health')) exposed.health = { report: (health) => this.ports.health.report({ ...health, pluginId, connectorId }) };
     if (approved.has('audit')) exposed.audit = this.ports.audit;
     if (approved.has('replies') && this.ports.replies) exposed.replies = this.ports.replies;
@@ -101,6 +108,14 @@ export class PerceptionPluginHost {
       await this.safeAudit(pluginId, connectorId, 'plugin.start.failed', { safeCode: 'PLUGIN_START_FAILED' });
     }
     return instance.status;
+  }
+
+  async provision(pluginId: string, connectorId: string, settings: Readonly<Record<string, JsonValue>>, secrets: Readonly<Record<string, string>>): Promise<import('./types').PerceptionPluginProvisionResult> {
+    const entry = this.registry.get(pluginId);
+    if (!entry) throw new Error(`Plugin not registered: ${pluginId}`);
+    if (!entry.plugin.provision) return { settings };
+    const context = this.context(pluginId, connectorId, settings);
+    return entry.plugin.provision(Object.freeze({ ...context, secrets: Object.freeze({ ...secrets }) }));
   }
 
   async stop(pluginId: string, connectorId: string): Promise<PerceptionPluginInstanceStatus> {

@@ -50,6 +50,11 @@ files:
     filter:
       - "package.json"
       - "dist/**/*"
+  - from: ../../packages/perception-plugins/email
+    to: node_modules/@originos/perception-plugin-email
+    filter:
+      - "package.json"
+      - "dist/**/*"
   - from: ../../packages/perception-plugins/feishu
     to: node_modules/@originos/perception-plugin-feishu
     filter:

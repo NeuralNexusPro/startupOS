@@ -1,6 +1,6 @@
 # Design：Perception Plugin Host
 
-Core 定义纯契约、Registry、Host 和 schema/事件校验；Desktop 注入 Credential、Network、Schedule、Health、Audit Ports；Web 只消费 manifest/schema。bundled plugins 只依赖 core 公共 SDK，不依赖宿主内部实现。
+Core 定义纯契约、Registry、Host 和 schema/事件校验；Desktop 注入 Credential、Network、Schedule、State、Health、Audit Ports；Web 只消费 manifest/schema。State Port 按 plugin/connector/key 隔离插件私有 JSON 状态，用于 Email 游标等可恢复状态，插件不得直接访问宿主数据目录。bundled plugins 只依赖 core 公共 SDK，不依赖宿主内部实现。
 
 状态事实源为 `data/perception/connectors` 和编译期 bundled catalog。Host 按 plugin/connector 隔离生命周期与凭据命名空间，单插件失败不传播。Connector 新增 pluginId/pluginVersion，迁移采用幂等双读写。
 
