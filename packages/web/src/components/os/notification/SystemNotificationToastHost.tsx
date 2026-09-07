@@ -33,6 +33,7 @@ export function SystemNotificationToastHost({
   onActivate?: (target: SystemNotificationActivationTarget) => void;
 }) {
   const [toasts, setToasts] = React.useState<SystemNotificationToast[]>([]);
+  const [expandedIds, setExpandedIds] = React.useState<Set<string>>(() => new Set());
 
   React.useEffect(() => {
     function handleNotification(event: Event) {
@@ -65,22 +66,28 @@ export function SystemNotificationToastHost({
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          role={toast.activationTarget ? 'button' : undefined}
-          tabIndex={toast.activationTarget ? 0 : undefined}
+          role="button"
+          tabIndex={0}
+          aria-label={`${toast.activationTarget ? '立即处理' : expandedIds.has(toast.id) ? '收起详情' : '查看详情'}：${toast.title}`}
+          aria-expanded={toast.activationTarget ? undefined : expandedIds.has(toast.id)}
           onClick={() => {
             if (toast.activationTarget) {
               onActivate?.(toast.activationTarget);
               setToasts((current) => current.filter((item) => item.id !== toast.id));
+              return;
             }
+            setExpandedIds((current) => {
+              const next = new Set(current);
+              if (next.has(toast.id)) next.delete(toast.id); else next.add(toast.id);
+              return next;
+            });
           }}
           onKeyDown={(event) => {
-            if ((event.key === 'Enter' || event.key === ' ') && toast.activationTarget) {
-              event.preventDefault();
-              onActivate?.(toast.activationTarget);
-              setToasts((current) => current.filter((item) => item.id !== toast.id));
-            }
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            event.currentTarget.click();
           }}
-          className={`pointer-events-auto rounded-lg border border-white/12 bg-neutral-950 px-3 py-3 text-white shadow-2xl ${toast.activationTarget ? 'cursor-pointer transition-colors hover:bg-neutral-900' : ''}`}
+          className="pointer-events-auto cursor-pointer rounded-lg border border-white/12 bg-neutral-950 px-3 py-3 text-white shadow-2xl transition-colors hover:bg-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
         >
           <div className="flex items-start gap-3">
             <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white/10">
@@ -88,7 +95,7 @@ export function SystemNotificationToastHost({
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-start justify-between gap-2">
-                <p className="truncate text-sm font-semibold text-white">{toast.title}</p>
+                <p className={`${expandedIds.has(toast.id) ? 'whitespace-normal break-words' : 'truncate'} text-sm font-semibold text-white`}>{toast.title}</p>
                 <button
                   type="button"
                   onClick={(event) => {
@@ -102,8 +109,9 @@ export function SystemNotificationToastHost({
                 </button>
               </div>
               {toast.body ? (
-                <p className="mt-1 line-clamp-3 text-xs leading-5 text-white/65">{toast.body}</p>
+                <p className={`mt-1 whitespace-pre-wrap break-words text-xs leading-5 text-white/65 ${expandedIds.has(toast.id) ? '' : 'line-clamp-3'}`}>{toast.body}</p>
               ) : null}
+              <p className={`mt-2 text-[10px] font-medium ${toast.activationTarget ? 'text-blue-300' : 'text-white/40'}`}>{toast.activationTarget ? '点击立即处理 ↗' : expandedIds.has(toast.id) ? '点击收起详情' : '点击查看详情'}</p>
               {toast.delivery ? (
                 <p className="mt-2 text-[10px] uppercase tracking-[0.18em] text-white/35">{toast.delivery}</p>
               ) : null}

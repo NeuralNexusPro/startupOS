@@ -20,6 +20,7 @@ import {
   type GetAgentTaskRequestV1,
 } from '../../../../core/src/lib/integrations/pi-agent/task-runtime';
 import { IPC_CHANNELS } from '../ipc-protocol';
+import { routeTaskAwareChannelMessage } from '../../../../core/src/modules/channel-runtime/task-aware-execution';
 
 interface TaskEventSender {
   isDestroyed(): boolean;
@@ -253,7 +254,7 @@ export class AgentTaskRuntimeIpcController {
 
   async submitUserReplyIfWaiting(
     session: AgentSession,
-    sender: TaskEventSender,
+    sender: TaskEventSender | undefined,
     content: string,
   ): Promise<{ handled: boolean; snapshot?: AgentTaskRuntimeSnapshotV1 }> {
     this.rememberSession(session, sender);
@@ -389,18 +390,17 @@ export class AgentTaskRuntimeIpcController {
 export async function routeAgentSessionUserMessage(options: {
   controller: AgentTaskRuntimeIpcController;
   session: AgentSession;
-  sender: TaskEventSender;
+  sender?: TaskEventSender;
   content: string;
   promptChat(): Promise<void>;
 }): Promise<AgentTaskUserMessageRouteResult> {
-  const taskReply = await options.controller.submitUserReplyIfWaiting(
-    options.session,
-    options.sender,
-    options.content,
-  );
-  if (taskReply.handled) {
-    return { handledBy: 'task_runtime', snapshot: taskReply.snapshot };
-  }
-  await options.promptChat();
-  return { handledBy: 'chat' };
+  return routeTaskAwareChannelMessage({
+    content: options.content,
+    submitTaskReply: (content) => options.controller.submitUserReplyIfWaiting(
+      options.session,
+      options.sender,
+      content,
+    ),
+    promptChat: options.promptChat,
+  });
 }

@@ -93,6 +93,7 @@ function createHarness(options: { createTaskOnPrompt?: boolean; status?: "active
 
 	const agent = {
 		state: { uiState: { isThinking: false } },
+		subscribe: vi.fn(() => vi.fn()),
 		getTools: () => tools,
 		setTools: (nextTools: unknown[]) => { tools = nextTools; },
 		waitForIdle: vi.fn(async () => undefined),
@@ -188,7 +189,7 @@ describe("AgentTaskRuntimeCoordinator", () => {
 		};
 		await harness.coordinator.createTask(request);
 		await harness.coordinator.createTask(request);
-		expect(harness.agent.prompt).toHaveBeenCalledTimes(1);
+		expect(harness.host.invoke).toHaveBeenCalledTimes(1);
 	});
 
 	it("planning turn 未创建 canonical Task 时返回可见失败并恢复普通工具", async () => {
@@ -260,6 +261,7 @@ describe("AgentTaskRuntimeCoordinator", () => {
 			sessionId: "session-1",
 			objective: "完成纵向闭环",
 		});
+		harness.host.invoke.mockClear();
 
 		const snapshot = await harness.coordinator.controlTask({
 			version: 1,

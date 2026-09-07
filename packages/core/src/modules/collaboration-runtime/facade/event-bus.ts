@@ -88,6 +88,13 @@ export function addElectronForwarder(cb: (event: RuntimeEvent) => void): () => v
   return () => { globalThis.__collaborationElectronForwarders!.delete(cb); };
 }
 
+/** Public, transport-neutral subscription used by Channel adapters. */
+export function subscribeToRuntimeEvents(sessionId: string, cb: (event: RuntimeEvent) => void): () => void {
+  return addElectronForwarder((event) => {
+    if (event.sessionId === sessionId) cb(event);
+  });
+}
+
 // ============================================================================
 // SSE Consumer Tracking + Grace Period Disconnect
 // ============================================================================

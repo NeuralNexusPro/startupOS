@@ -48,3 +48,6 @@ export {
 
 // Adapter
 export { MemoryAdapter } from './adapter';
+
+// Hindsight-inspired scoped cognition banks (M.12)
+export * from './bank';

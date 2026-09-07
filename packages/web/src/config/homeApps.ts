@@ -45,6 +45,15 @@ export const HOME_APPS: HomeAppConfig[] = [
     skillName: 'role-agent-creator',
   },
   {
+    id: 'skill-creator',
+    name: '创建技能',
+    description: '通过对话创建可复用的技能与工作流能力',
+    icon: '⚡',
+    color: 'from-cyan-500',
+    type: 'skill',
+    skillName: 'skill-creator-app',
+  },
+  {
     id: 'app-skill-market',
     name: '技能市场',
     description: '从技能市场搜索并安装新技能',
@@ -61,6 +70,15 @@ export const HOME_APPS: HomeAppConfig[] = [
     color: 'from-yellow-500',
     type: 'action',
     action: 'open-workspace',
+  },
+  {
+    id: 'app-sense-center',
+    name: '感知与连接',
+    description: '接收邮箱和企业消息，自动交给 Agent 处理',
+    icon: '📡',
+    color: 'from-blue-600',
+    type: 'action',
+    action: 'open-sense-center',
   },
   // --- 系统内置 Skill (SKILL_APPS) ---
   {

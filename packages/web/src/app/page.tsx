@@ -34,6 +34,7 @@ import type { ProjectStatus, ProjectListItem } from '@originos/core/types';
 import AgentInitializer from '@/components/os/AgentInitializer';
 import { DesktopOnboarding } from '@/components/os/DesktopOnboarding';
 import { SettingsDialog } from '@/components/os/settings/SettingsDialog';
+import { openSenseCenter, PerceptionStatusButton } from '@/components/os/sense-center';
 import AgentDialogContent from '@/components/os/agent-dialog/AgentDialogContent';
 import Dock from '@/components/os/dock';
 import NotificationBell from '@/components/os/notification/NotificationBell';
@@ -67,6 +68,7 @@ import { deleteProject } from '@originos/core/lib/integrations/electron/services
 import type { SpotlightItem } from '@originos/core/types';
 import { SpotlightItemType } from '@originos/core/types';
 import { hasConfiguredLLM, useSettingsStore } from '@/store/settingsStore';
+import { usePerceptionStore } from '@/store/perceptionStore';
 
 // ============================================================================
 // Types
@@ -407,11 +409,19 @@ function ProjectCard({ project, onClick, onDelete, onSolutionDesign, onCollabora
 
 function TopMenuBar({ onOpenGuide, onOpenSettings }: { onOpenGuide: () => void; onOpenSettings: () => void }) {
   const [currentTime, setCurrentTime] = React.useState(new Date());
+  const connectors = usePerceptionStore((state) => state.connectors);
+  const health = usePerceptionStore((state) => state.health);
+  const eventTraces = usePerceptionStore((state) => state.eventTraces);
+  const perceptionLoading = usePerceptionStore((state) => state.loading);
+  const perceptionError = usePerceptionStore((state) => state.error);
+  const loadPerception = usePerceptionStore((state) => state.load);
 
   React.useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  React.useEffect(() => { void loadPerception(); }, [loadPerception]);
 
   return (
     <>
@@ -449,6 +459,7 @@ function TopMenuBar({ onOpenGuide, onOpenSettings }: { onOpenGuide: () => void; 
         </div>
 
         {/* Notifications */}
+        <PerceptionStatusButton connectors={connectors} health={health} eventTraces={eventTraces} loading={perceptionLoading} error={perceptionError} onManage={openSenseCenter} />
         <NotificationBell />
 
         {/* System icons */}
@@ -646,6 +657,10 @@ export default function OSHomePage() {
         if (targetProjectId) {
           handleOpenWorkspace(targetProjectId);
         }
+        return;
+      }
+      if (detail.action === 'open-sense-center') {
+        openSenseCenter();
         return;
       }
       if (detail.action === 'launch-skill' && detail.skillId) {
@@ -1211,6 +1226,10 @@ export default function OSHomePage() {
           if (firstProject) {
             void handleOpenWorkspace(firstProject.id);
           }
+          return;
+        }
+        if (app.action === 'open-sense-center') {
+          openSenseCenter();
         }
       },
       keywords: [app.id, app.name, app.description, app.type],
@@ -1443,6 +1462,8 @@ export default function OSHomePage() {
                             if (firstProject) {
                               handleOpenWorkspace(firstProject.id);
                             }
+                          } else if (app.action === 'open-sense-center') {
+                            openSenseCenter();
                           }
                         }}
                         action="launch"
