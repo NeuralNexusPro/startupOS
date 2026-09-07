@@ -18,7 +18,7 @@ import { applyAssistantMessageEnd } from './assistant-stream-state';
 import { persistRuntimeLLMConfig } from '../../../../core/src/lib/features/user-config';
 
 const SYSTEM_TRIGGER_GREETING = '__SYSTEM_TRIGGER_GREETING__';
-const SYSTEM_GREETING_PROMPT = `系统启动触发: 请按照你的工作模式中的"启动时状态判断"流程，读取 output/business-model.json 判断当前项目状态，并生成相应的问候语。如果文件不存在，按照全新访谈流程开始；如果文件存在，进入模型审阅模式。`;
+const SYSTEM_GREETING_PROMPT = `系统启动触发: 请按照你的工作模式中的"启动时状态判断"流程，先列出 output 目录；仅当 business-model.json 存在时才读取它。文件不存在是正常的全新项目状态，请直接开始 Phase 1 访谈；文件存在时按内容判断后续阶段并生成相应问候语。`;
 
 function extractTextContent(content: unknown): string {
   return extractDisplayContent(content, { allowThinkingFallback: true });
@@ -162,6 +162,7 @@ export class AgentProjectService {
           // Track accumulated text for final assistant_message
           let assistantContent = '';
           let assistantMessageSent = false;
+          let completionFailed = false;
 
           const unsubscribe = agent.subscribe((event: { type: string; [key: string]: unknown }) => {
             switch (event.type) {
@@ -213,6 +214,14 @@ export class AgentProjectService {
                 if (msg?.role === 'assistant') {
                   const messageContent = extractTextContent(msg.content);
                   if (messageContent) {
+                    if (msg.completionFailure) {
+                      completionFailed = true;
+                      sendToAllWindows(request.projectId, 'error', {
+                        message: messageContent,
+                        recoverable: true,
+                      });
+                      break;
+                    }
                     const transition = applyAssistantMessageEnd(
                       { content: assistantContent, sent: assistantMessageSent },
                       {
@@ -228,7 +237,6 @@ export class AgentProjectService {
                         sendToAllWindows(request.projectId, 'assistant_message', {
                           content: stripped,
                           isStreaming: false,
-                          completionFailure: msg.completionFailure === true,
                         });
                       }
                     }
@@ -269,7 +277,7 @@ export class AgentProjectService {
                 sendToAllWindows(request.projectId, 'assistant_message', { content: stripped, isStreaming: false });
               }
             }
-            sendToAllWindows(request.projectId, 'done', { content: assistantContent });
+            sendToAllWindows(request.projectId, 'done', { content: assistantContent, failed: completionFailed });
           }).catch((err: unknown) => {
             unsubscribe();
             sendToAllWindows(request.projectId, 'error', {

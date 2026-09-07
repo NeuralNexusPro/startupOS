@@ -20,6 +20,7 @@ import {
 } from './persistent-agent';
 import { loadProjectContext } from './project-agent/project-context';
 import { buildProjectPromptLayers, assembleProjectPrompt } from './project-agent/project-prompt';
+import { provisionProjectSkills } from './project-agent/project-skill-provisioning';
 import { initializeBuiltInTools } from './tools/index';
 import { CognitiveManager, PracticeLogger, KnowledgeProvider, PatternProvider, KnowledgeIngest } from './cognitive';
 import { MemoryCore, MemoryProvider, CoreMemoryTools, ArchivalMemoryTools } from '../../../modules/memory-core';
@@ -80,6 +81,14 @@ export class PersistentAgentManager {
 		} catch (error) {
 			throw new Error(`Project directory not found: ${projectDir}`);
 		}
+
+		// 存量项目也必须在启动前幂等补齐访谈依赖技能。
+		const provisionedSkills = await provisionProjectSkills(projectDir);
+		const missingSkills = provisionedSkills.filter((result) => result.status === 'missing');
+		if (missingSkills.length > 0) {
+			throw new Error(`Bundled project skills not found: ${missingSkills.map((result) => result.skillName).join(', ')}`);
+		}
+		logStep('Step 3b project skills provisioned');
 
 		// 4. 读取配置文件
 		console.log(`[Manager] Step 4: Loading config files...`);
@@ -146,6 +155,7 @@ export class PersistentAgentManager {
 			workspaceFiles,
 			builtSystemPrompt: systemPrompt,
 			cognitiveManager,
+			completionGuardEnabled: false,
 		});
 		logStep('Step 5 agent object created');
 

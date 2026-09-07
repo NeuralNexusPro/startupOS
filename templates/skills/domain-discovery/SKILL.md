@@ -84,13 +84,13 @@ originos-system: true
 
 ### 写入步骤（每次确认新内容时执行）
 
-**第一步：读取或初始化**
+**第一步：检查、读取或初始化**
 
-调用 `read_file` 读取现有模型：
+先调用 `list_files` 查看 `output` 目录。只有列表中存在 `business-model.json` 时，才调用 `read_file` 读取现有模型：
 ```
 read_file({ filePath: "output/business-model.json" })
 ```
-如果文件不存在（read_file 返回错误），使用以下初始结构：
+如果文件不存在，直接使用以下初始结构（这是正常的 Phase 1 状态，不要触发一次失败的 `read_file`）：
 ```json
 {
   "projectName": "",

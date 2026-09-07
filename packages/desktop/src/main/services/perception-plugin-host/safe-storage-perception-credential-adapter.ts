@@ -22,7 +22,7 @@ export class SafeStoragePerceptionCredentialAdapter implements PluginCredentialP
   async resolve(connectorId: string, secretRef: string): Promise<string> {
     const match = /^secret:\/\/perception\/plugin\/([A-Za-z0-9][A-Za-z0-9._-]{0,127})\/([A-Za-z0-9][A-Za-z0-9._-]{0,63})$/.exec(secretRef);
     if (!match || match[1] !== connectorId) throw new Error('INVALID_SECRET_REF');
-    const record = this.store(match[1], match[2]).read().data;
+    const record = this.store(match[1]!, match[2]!).read().data;
     const value = this.storage.decryptString(Buffer.from(record.ciphertextBase64, 'base64'));
     if (!value) throw new Error('INVALID_SECRET');
     return value;
@@ -30,7 +30,7 @@ export class SafeStoragePerceptionCredentialAdapter implements PluginCredentialP
   async remove(connectorId: string, secretRef: string): Promise<void> {
     const match = /^secret:\/\/perception\/plugin\/([A-Za-z0-9][A-Za-z0-9._-]{0,127})\/([A-Za-z0-9][A-Za-z0-9._-]{0,63})$/.exec(secretRef);
     if (!match || match[1] !== connectorId) throw new Error('INVALID_SECRET_REF');
-    const store = this.store(match[1], match[2]);
+    const store = this.store(match[1]!, match[2]!);
     if (fs.existsSync(store.filePath)) fs.unlinkSync(store.filePath);
     if (fs.existsSync(store.recoveryPath)) fs.unlinkSync(store.recoveryPath);
   }

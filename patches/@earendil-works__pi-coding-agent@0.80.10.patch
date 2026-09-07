@@ -1,0 +1,118 @@
+diff --git a/dist/core/agent-session.d.ts b/dist/core/agent-session.d.ts
+index b653449..21e633a 100755
+--- a/dist/core/agent-session.d.ts
++++ b/dist/core/agent-session.d.ts
+@@ -12,7 +12,7 @@
+  *
+  * Modes use this class and add their own I/O layer on top.
+  */
+-import type { Agent, AgentEvent, AgentMessage, AgentState, AgentTool, ThinkingLevel } from "@earendil-works/pi-agent-core";
++import type { Agent, AgentEvent, AgentMessage, AgentState, AgentTool, RegisteredToolCallResult, ThinkingLevel } from "@earendil-works/pi-agent-core";
+ import type { ImageContent, Model, TextContent } from "@earendil-works/pi-ai/compat";
+ import { type BashResult } from "./bash-executor.ts";
+ import { type CompactionResult } from "./compaction/index.ts";
+@@ -126,6 +126,11 @@ export interface ExtensionBindings {
+     shutdownHandler?: ShutdownHandler;
+     onError?: ExtensionErrorListener;
+ }
++export interface RegisteredToolInvocationRequest {
++    toolCallId?: string;
++    toolName: string;
++    input?: unknown;
++}
+ /** Options for AgentSession.prompt() */
+ export interface PromptOptions {
+     /** Whether to expand file-based prompt templates (default: true) */
+@@ -292,6 +297,11 @@ export declare class AgentSession {
+      */
+     getAllTools(): ToolInfo[];
+     getToolDefinition(name: string): ToolDefinition | undefined;
++    /**
++     * Invoke one active registered tool through the standard tool pipeline
++     * without adding synthetic assistant or tool-result messages.
++     */
++    invokeRegisteredTool(request: RegisteredToolInvocationRequest): Promise<RegisteredToolCallResult>;
+     /**
+      * Set active tools by name.
+      * Only tools in the registry can be enabled. Unknown tool names are ignored.
+diff --git a/dist/core/agent-session.js b/dist/core/agent-session.js
+index 7cdf28a..7f078a9 100755
+--- a/dist/core/agent-session.js
++++ b/dist/core/agent-session.js
+@@ -14,6 +14,8 @@
+  */
+ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+ import { basename, dirname } from "node:path";
++import { randomUUID } from "node:crypto";
++import { invokeRegisteredToolCall } from "@earendil-works/pi-agent-core";
+ import { clampThinkingLevel, cleanupSessionResources, getSupportedThinkingLevels, isContextOverflow, isRetryableAssistantError, modelsAreEqual, resetApiProviders, streamSimple, } from "@earendil-works/pi-ai/compat";
+ import { getThemeByName, theme } from "../modes/interactive/theme/theme.js";
+ import { stripFrontmatter } from "../utils/frontmatter.js";
+@@ -82,6 +84,7 @@ export class AgentSession {
+     _unsubscribeAgent;
+     _eventListeners = [];
+     _isAgentRunActive = false;
++    _hostToolAbortController;
+     _idleWaitPromise;
+     _resolveIdleWait;
+     /** Tracks pending steering messages for UI display. Removed when delivered. */
+@@ -628,6 +631,51 @@ export class AgentSession {
+     getToolDefinition(name) {
+         return this._toolDefinitions.get(name)?.definition;
+     }
++    /**
++     * Invoke one currently active registered tool through the standard Pi tool
++     * pipeline without creating synthetic conversation messages.
++     */
++    async invokeRegisteredTool(request) {
++        if (!this.isIdle || this.isCompacting || this.isRetrying) {
++            const error = new Error("AgentSession is busy");
++            error.code = "SESSION_BUSY";
++            throw error;
++        }
++        if (!request || typeof request !== "object" || typeof request.toolName !== "string") {
++            const error = new TypeError("Registered tool request is invalid");
++            error.code = "INVALID_TOOL_REQUEST";
++            throw error;
++        }
++        const activeTool = this.agent.state.tools.find((tool) => tool.name === request.toolName);
++        if (!activeTool || !this._toolRegistry.has(request.toolName)) {
++            const error = new Error(`Registered tool is not active: ${request.toolName}`);
++            error.code = "TOOL_NOT_ACTIVE";
++            throw error;
++        }
++        const controller = new AbortController();
++        this._hostToolAbortController = controller;
++        this._isAgentRunActive = true;
++        try {
++            return await invokeRegisteredToolCall({
++                systemPrompt: this.agent.state.systemPrompt,
++                messages: this.agent.state.messages,
++                tools: this.agent.state.tools,
++            }, {
++                toolCallId: request.toolCallId ?? `host-${randomUUID()}`,
++                toolName: request.toolName,
++                input: request.input ?? {},
++            }, {
++                beforeToolCall: this.agent.beforeToolCall,
++                afterToolCall: this.agent.afterToolCall,
++                toolExecution: "sequential",
++            }, controller.signal, this._handleAgentEvent);
++        }
++        finally {
++            this._hostToolAbortController = undefined;
++            this._isAgentRunActive = false;
++            this._resolveIdleWaitIfIdle();
++        }
++    }
+     /**
+      * Set active tools by name.
+      * Only tools in the registry can be enabled. Unknown tool names are ignored.
+@@ -1170,6 +1218,7 @@ export class AgentSession {
+      */
+     async abort() {
+         this.abortRetry();
++        this._hostToolAbortController?.abort();
+         this.agent.abort();
+         await this.waitForIdle();
+     }

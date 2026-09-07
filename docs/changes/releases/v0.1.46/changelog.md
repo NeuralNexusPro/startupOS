@@ -14,6 +14,13 @@
 - 修复删除历史条目时事件冒泡触发切换，以及恢复空 Session 时重复发送欢迎消息。
 - 补充 `session-restore` 的 `@originos/core` package subpath export，保证 Web 和
   Desktop 均通过公共包边界引用恢复契约。
+- 修复项目访谈正常追问被 CompletionGuard 判为未完成、失败报告覆盖有效回复的问题；
+  CompletionGuard 继续用于普通 Agent、RoleAgent 和技能会话。
+- 修复项目默认技能从错误目录复制导致项目 `skills/` 为空的问题；新建与存量项目
+  均会从打包内置技能源幂等补齐完整依赖，且不覆盖项目内已有修改。
+- 将未创建 `business-model.json` 明确定义为正常 Phase 1 状态，并修复长历史压缩
+  可能产生孤立 tool result 的协议错误。
+- 移除未使用的 `.github/workflows/ci.yml`，保留桌面发布 workflow。
 
 ## 验证
 
@@ -23,6 +30,9 @@
 - 1,000 条历史消息的 schema 校验与 display projection 通过 `<500ms` 预算。
 - Core/Web TypeScript 检查、Desktop build、Web lint 和 OpenSpec strict validation
   通过。
+- 项目访谈 CompletionGuard、项目技能补齐、工具链压缩与桌面消息状态共 83 项
+  针对性测试通过；Web lint 无 error，Desktop TypeScript build 与运行时校验通过，
+  并完成本地功能验收。
 
 ## 兼容性
 

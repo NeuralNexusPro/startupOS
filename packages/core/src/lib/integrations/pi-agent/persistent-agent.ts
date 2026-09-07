@@ -202,6 +202,7 @@ export interface PersistentAgentConfig {
 	builtSystemPrompt?: string;
 	cognitiveManager?: CognitiveManager;
 	sleepScheduler?: SleepComputeScheduler;
+	completionGuardEnabled?: boolean;
 }
 
 /**
@@ -239,6 +240,7 @@ export class PersistentAgent {
 	private builtSystemPrompt?: string;
 	private cognitiveManager?: CognitiveManager;
 	private sleepScheduler?: SleepComputeScheduler;
+	private completionGuardEnabled: boolean;
 	private isRunning = false;
 	private startedAt = 0;
 	private turnCounter = 0;
@@ -255,6 +257,7 @@ export class PersistentAgent {
 		this.builtSystemPrompt = config.builtSystemPrompt;
 		this.cognitiveManager = config.cognitiveManager;
 		this.sleepScheduler = config.sleepScheduler;
+		this.completionGuardEnabled = config.completionGuardEnabled ?? true;
 	}
 
 	/**
@@ -286,6 +289,7 @@ export class PersistentAgent {
 				projectName: this.agentDefinition.name,
 			},
 			llmConfig,
+			completionGuardEnabled: this.completionGuardEnabled,
 		});
 
 		// 3. 注册工具（从 Tool.md）

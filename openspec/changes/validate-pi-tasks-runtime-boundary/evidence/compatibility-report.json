@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "decision": "rejected",
+  "gate": "A-01",
+  "story": "9.41",
+  "versions": {
+    "@originos/pi-agent-adapter": "0.80.10",
+    "@earendil-works/pi-agent-core": "0.80.10",
+    "@earendil-works/pi-ai": "0.80.10",
+    "@earendil-works/pi-coding-agent": "0.80.10",
+    "@earendil-works/pi-tui": "0.80.10",
+    "pi-tasks": "0.2.0",
+    "node": "24.14.0",
+    "pnpm": "9.15.9"
+  },
+  "capabilities": {
+    "publicExtensionLoad": "supported",
+    "publicStateEventV1": "supported",
+    "currentBranchReplay": "supported",
+    "branchIsolation": "supported",
+    "compactionLifecycle": "supported",
+    "hostToolInvocation": "unsupported",
+    "publicMutationCommandApi": "unsupported",
+    "stableRevision": "unsupported",
+    "duplicateReplayIdempotency": "unsupported",
+    "forceCompletionExcluded": "unsupported",
+    "developmentPackageResolution": "supported",
+    "windowsPackagedResolution": "not_run",
+    "macosX64PackagedResolution": "not_run",
+    "macosArm64PackagedResolution": "not_run"
+  },
+  "tests": {
+    "publicAudit": {
+      "result": "passed",
+      "count": 3,
+      "reportSha256": "08d3c8c1992f328f9d543eacd5b6af5e4966a0d8b757ef4c2b542a42d1f393dd"
+    },
+    "runtimeContract": {
+      "result": "passed",
+      "count": 5
+    },
+    "packageContract": {
+      "result": "passed",
+      "count": 7,
+      "developmentReportSha256": "a082837ec62d865e9cd577b56d5a42cb8b05f8dea37e562346fcf7dfed3e4861"
+    }
+  },
+  "commits": {
+    "runtimeBaseline": "505d157c408dc3e27ef1c09f11bf860a92cc0203",
+    "publicAudit": "95d33628090992fb63129f22878dc6dc818349a5",
+    "runtimeContract": "32623051181a3d40dae040691a542ef17b0c185c",
+    "packageContract": "adca2ff1edde4dd3058563d3fc3dc2f568a5265e"
+  },
+  "blockedReason": "stock runtime 缺少保留标准 tool pipeline 的公共宿主调用 API，pi-tasks 缺少公共 mutation API 和稳定 revision，且 replay 幂等与 force completion 契约不满足 Story 9.41。"
+}

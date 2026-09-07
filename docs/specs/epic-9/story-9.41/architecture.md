@@ -87,6 +87,11 @@ packages/web/src/
 
 ## A-01 pi-tasks 集成门
 
+> **状态更新（2026-08-01）：** A-01 拒绝 stock 组合后，A-02 已按
+> [ADR-010](../../../architecture/decisions/ADR-010-controlled-pi-task-runtime-boundary.md)
+> 建立受控 Runtime patch、`@originos/pi-tasks` 和 Adapter 公共边界。本节的禁止路径
+> 继续有效；后续产品实现只能依赖 `@originos/pi-agent-adapter/task-runtime`。
+
 ### 已知公开能力
 
 锁定版本的 `pi-tasks` 通过 extension 注册 task tools，并通过 state event 暴露只读状态。Story 不假设其存在 `create/get/cancel` 等宿主领域 API。
@@ -540,5 +545,6 @@ Story 9.42 后续可以消费相同 canonical Task：
 |------|------|
 | 2026-07-28 | 创建初版 |
 | 2026-07-28 | 改为 `pi-tasks` 任务内核和互斥执行路由 |
+| 2026-08-01 | A-02 公共边界通过，补充 ADR-010 约束和 Story 解阻状态 |
 | 2026-07-28 | 删除 Workflow、策略解析和自定义 Task Plan |
 | 2026-07-29 | 重构公开集成门、planning reservation、completion policy、持久 lease、状态映射和恢复协议 |

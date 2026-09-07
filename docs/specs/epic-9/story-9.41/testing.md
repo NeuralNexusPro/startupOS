@@ -432,7 +432,7 @@ Goal输出必须包含：
 
 ## 退出标准
 
-- A-01通过并有ADR与集成Evidence。
+- A-02 受控公共边界通过，并有 ADR-010、契约与集成 Evidence。
 - 所有P0/P1用例通过。
 - 同一turn只有一种completion policy。
 - 无Evidence gate或force completion绕过路径。
@@ -450,3 +450,4 @@ Goal输出必须包含：
 | 2026-07-28 | 改写为 `pi-tasks` 当前Session直接任务测试 |
 | 2026-07-28 | Workflow和多Agent测试迁移到Story 9.42 |
 | 2026-07-29 | 增加A-01契约、Evidence负向、policy入口、确定性竞态、崩溃窗口和量化性能测试 |
+| 2026-08-01 | A-02 公共边界回归通过，更新 verification goal 前置证据 |

@@ -186,6 +186,28 @@ function logInfo(...args: unknown[]): void {
 	console.info(...args);
 }
 
+const COMPLETION_JUDGE_MAX_ATTEMPTS = 2;
+const COMPLETION_JUDGE_TIMEOUT_MS = 15_000;
+
+type CompletionJudgeFailureCategory =
+	| "aborted"
+	| "error"
+	| "invalid_response"
+	| "exception";
+
+class CompletionJudgeAttemptError extends Error {
+	constructor(
+		public readonly category: CompletionJudgeFailureCategory,
+		public readonly stopReason: string,
+		public readonly attempt: number,
+		public readonly elapsedMs: number,
+		message: string,
+	) {
+		super(message);
+		this.name = "CompletionJudgeAttemptError";
+	}
+}
+
 type SyntheticSystemMessage = {
 	role: "system";
 	content: Array<{
@@ -201,6 +223,14 @@ type SyntheticUserMessage = {
 		text: string;
 	}>;
 };
+
+export type AgentCompletionPolicy = "chat_guard" | "task_runtime";
+
+export interface AgentExecutionOptions {
+	completionPolicy?: AgentCompletionPolicy;
+	internalMessage?: boolean;
+	internalMessageIndexes?: readonly number[];
+}
 
 // ============================================================================
 // OriginOS Agent
@@ -249,6 +279,11 @@ export class OriginOSAgent {
 	} | null = null;
 	private deferredAgentEndEvent: AgentEvent | null = null;
 	private hiddenMessages = new WeakSet<object>();
+	private activeCompletionPolicy: AgentCompletionPolicy = "chat_guard";
+
+	private isCompletionGuardEnabled(): boolean {
+		return this.config?.completionGuardEnabled !== false;
+	}
 
 	/**
 	 * Agent 状态
@@ -499,7 +534,7 @@ export class OriginOSAgent {
 	private routeAgentEvent(event: AgentEvent): void {
 		const eventType = event.type;
 
-		if (eventType === "tool_execution_end") {
+		if (this.isCompletionGuardEnabled() && eventType === "tool_execution_end") {
 			const status = getToolEventStatus(event);
 			this.completionToolTrace.push(
 				`${event.toolName}: ${status.failed ? "failed" : "succeeded"}${status.reason ? ` (${status.reason.slice(0, 500)})` : ""}`,
@@ -521,6 +556,8 @@ export class OriginOSAgent {
 		}
 
 		if (
+			this.isCompletionGuardEnabled() &&
+			this.activeCompletionPolicy === "chat_guard" &&
 			eventType === "agent_end" &&
 			(this.pendingPromiseStop || this.pendingCompletionCandidate)
 		) {
@@ -530,7 +567,11 @@ export class OriginOSAgent {
 
 		this.emitUiEvent(event);
 
-		if (eventType !== "message_end" || event.message.role !== "assistant") {
+		if (
+			!this.isCompletionGuardEnabled() ||
+			eventType !== "message_end" ||
+			event.message.role !== "assistant"
+		) {
 			return;
 		}
 
@@ -552,6 +593,7 @@ export class OriginOSAgent {
 				return;
 			}
 			if (
+				this.activeCompletionPolicy === "chat_guard" &&
 				(event.message as AssistantMessage).stopReason === "stop" &&
 				toolCallCount === 0
 			) {
@@ -633,7 +675,8 @@ export class OriginOSAgent {
 			return;
 		}
 
-		let decision: SemanticCompletionDecision;
+		let decision: SemanticCompletionDecision | null = null;
+		let lastFailure: CompletionJudgeAttemptError | null = null;
 		try {
 			const runtimeModel = this.agent.state.model as Model<any> & {
 				apiKey?: string;
@@ -641,12 +684,11 @@ export class OriginOSAgent {
 				credentialAuthMode?: string;
 				headers?: Record<string, string>;
 			};
-			const options: Record<string, unknown> = {
+			const baseOptions: Record<string, unknown> = {
 				temperature: 0,
 				maxTokens: 512,
 				reasoning: "minimal",
 				maxRetryDelayMs: 5_000,
-				signal: AbortSignal.timeout(15_000),
 			};
 			let judgeModel = runtimeModel;
 			if (
@@ -654,8 +696,8 @@ export class OriginOSAgent {
 					runtimeModel.credentialAuthMode === "oauth") &&
 				runtimeModel.authToken
 			) {
-				options["apiKey"] = runtimeModel.authToken;
-				options["headers"] = {
+				baseOptions["apiKey"] = runtimeModel.authToken;
+				baseOptions["headers"] = {
 					...(runtimeModel.headers ?? {}),
 					authorization: `Bearer ${runtimeModel.authToken}`,
 				};
@@ -666,41 +708,86 @@ export class OriginOSAgent {
 					authToken: undefined,
 				};
 			} else if (runtimeModel.apiKey) {
-				options["apiKey"] = runtimeModel.apiKey;
+				baseOptions["apiKey"] = runtimeModel.apiKey;
 			}
 
-			const judgeMessage = await piAi.completeSimple(
-				judgeModel,
-				{
-					systemPrompt: COMPLETION_JUDGE_SYSTEM_PROMPT,
-					messages: [{
-						role: "user",
-						content: buildCompletionJudgePrompt({
-							userRequest: this.activeUserRequest,
-							assistantResponse: candidate.text,
-							toolTrace: this.completionToolTrace,
-						}),
-						timestamp: Date.now(),
-					}],
-				},
-				options,
-			);
-			if (judgeMessage.stopReason === "error") {
-				throw new Error(
-					judgeMessage.errorMessage || "Completion judge model failed",
+			for (let attempt = 1; attempt <= COMPLETION_JUDGE_MAX_ATTEMPTS; attempt += 1) {
+				const startedAt = Date.now();
+				try {
+					const judgeMessage = await piAi.completeSimple(
+						judgeModel,
+						{
+							systemPrompt: COMPLETION_JUDGE_SYSTEM_PROMPT,
+							messages: [{
+								role: "user",
+								content: buildCompletionJudgePrompt({
+									userRequest: this.activeUserRequest,
+									assistantResponse: candidate.text,
+									toolTrace: this.completionToolTrace,
+								}),
+								timestamp: Date.now(),
+							}],
+						},
+						{
+							...baseOptions,
+							signal: AbortSignal.timeout(COMPLETION_JUDGE_TIMEOUT_MS),
+						},
+					);
+					const elapsedMs = Date.now() - startedAt;
+					if (
+						judgeMessage.stopReason === "error" ||
+						judgeMessage.stopReason === "aborted"
+					) {
+						throw new CompletionJudgeAttemptError(
+							judgeMessage.stopReason,
+							judgeMessage.stopReason,
+							attempt,
+							elapsedMs,
+							judgeMessage.errorMessage ||
+								`Completion judge ${judgeMessage.stopReason}`,
+						);
+					}
+					const judgeText = getMessageText(judgeMessage);
+					try {
+						decision = parseCompletionJudgeDecision(judgeText);
+					} catch (parseError) {
+						throw new CompletionJudgeAttemptError(
+							"invalid_response",
+							judgeMessage.stopReason || "unknown",
+							attempt,
+							elapsedMs,
+							`${parseError instanceof Error ? parseError.message : String(parseError)}; responseLen=${judgeText.length}; responseHash=${hashText(judgeText)}`,
+						);
+					}
+					logInfo(
+						`[LLM CompletionJudge] status=${decision.status}, reason="${previewText(decision.reason, 160)}", attempt=${attempt}/${COMPLETION_JUDGE_MAX_ATTEMPTS}, elapsedMs=${elapsedMs}`,
+					);
+					break;
+				} catch (error) {
+					const elapsedMs = Date.now() - startedAt;
+					lastFailure = error instanceof CompletionJudgeAttemptError
+						? error
+						: new CompletionJudgeAttemptError(
+							"exception",
+							"unknown",
+							attempt,
+							elapsedMs,
+							error instanceof Error ? error.message : String(error),
+						);
+					console.warn(
+						`[LLM CompletionJudge] attempt failed — attempt=${attempt}/${COMPLETION_JUDGE_MAX_ATTEMPTS}, category=${lastFailure.category}, stopReason=${lastFailure.stopReason}, elapsedMs=${lastFailure.elapsedMs}, retry=${attempt < COMPLETION_JUDGE_MAX_ATTEMPTS}, reason="${previewText(redactErrorForLogging(lastFailure.message), 300)}"`,
+					);
+				}
+			}
+			if (!decision) {
+				throw lastFailure ?? new CompletionJudgeAttemptError(
+					"exception",
+					"unknown",
+					COMPLETION_JUDGE_MAX_ATTEMPTS,
+					0,
+					"Completion judge failed without an error",
 				);
 			}
-			const judgeText = getMessageText(judgeMessage);
-			try {
-				decision = parseCompletionJudgeDecision(judgeText);
-			} catch (parseError) {
-				throw new Error(
-					`${parseError instanceof Error ? parseError.message : String(parseError)}; stopReason=${judgeMessage.stopReason}; response="${previewText(judgeText, 300)}"`,
-				);
-			}
-			logInfo(
-				`[LLM CompletionJudge] status=${decision.status}, reason="${previewText(decision.reason, 160)}"`,
-			);
 		} catch (error) {
 			const fallback = assessCompletion({
 				role: "assistant",
@@ -714,10 +801,17 @@ export class OriginOSAgent {
 				status: fallback.shouldRecover ? "incomplete" : "complete",
 				reason: `fallback:${fallback.reason}`,
 			};
-			console.warn(
-				`[LLM CompletionJudge] failed, using fallback — ${redactErrorForLogging(
+			const failure = error instanceof CompletionJudgeAttemptError
+				? error
+				: new CompletionJudgeAttemptError(
+					"exception",
+					"unknown",
+					0,
+					0,
 					error instanceof Error ? error.message : String(error),
-				)}`,
+				);
+			console.warn(
+				`[LLM CompletionJudge] failed, using fallback — decision=${decision.status}, reason="${previewText(decision.reason, 160)}", attempts=${failure.attempt}, lastFailure=${failure.category}, stopReason=${failure.stopReason}, elapsedMs=${failure.elapsedMs}`,
 			);
 		}
 
@@ -750,6 +844,9 @@ export class OriginOSAgent {
 
 		await start();
 		this.throwIfModelStreamFailed();
+		if (!this.isCompletionGuardEnabled()) {
+			return;
+		}
 		await this.judgePendingCompletion();
 		let recoveryAttempt = 0;
 
@@ -1141,7 +1238,8 @@ export class OriginOSAgent {
 	 */
 	async prompt(
 		message: string | AgentMessage | AgentMessage[],
-		images?: Array<{ type: "image"; data: string; mimeType: string }>
+		images?: Array<{ type: "image"; data: string; mimeType: string }>,
+		options: AgentExecutionOptions = {},
 	): Promise<void> {
 		if (!this.agent) {
 			throw new Error("Agent 未初始化");
@@ -1189,13 +1287,35 @@ export class OriginOSAgent {
 		}
 
 		const t0 = Date.now();
+		const completionPolicy = options.completionPolicy ?? "chat_guard";
 		try {
 			this.resetCompletionGuard(getPromptText(message));
-			await this.runWithCompletionGuard(
-				() => this.agent!.prompt(message as string, images),
-			);
+			const messages = Array.isArray(message) ? message : [message];
+			if (options.internalMessage) {
+				for (const candidate of messages) {
+					if (typeof candidate === "object" && candidate !== null) {
+						this.hiddenMessages.add(candidate);
+					}
+				}
+			} else if (options.internalMessageIndexes) {
+				for (const index of options.internalMessageIndexes) {
+					const candidate = messages[index];
+					if (typeof candidate === "object" && candidate !== null) {
+						this.hiddenMessages.add(candidate);
+					}
+				}
+			}
+			this.activeCompletionPolicy = completionPolicy;
+			if (completionPolicy === "task_runtime") {
+				await this.agent.prompt(message as string, images);
+				this.throwIfModelStreamFailed();
+			} else {
+				await this.runWithCompletionGuard(
+					() => this.agent!.prompt(message as string, images),
+				);
+			}
 			const elapsed = Date.now() - t0;
-			logInfo(`[LLM] <<< Prompt completed | Elapsed: ${elapsed}ms`);
+			logInfo(`[LLM] <<< Prompt completed | Policy: ${completionPolicy} | Elapsed: ${elapsed}ms`);
 		} catch (error) {
 			const elapsed = Date.now() - t0;
 			const agentError = error instanceof Error ? error : new Error(String(error));
@@ -1211,13 +1331,15 @@ export class OriginOSAgent {
 				`[LLM] <<< Prompt failed | Elapsed: ${elapsed}ms | ${redactErrorForLogging(agentError.message)}`,
 			);
 			throw agentError;
+		} finally {
+			this.activeCompletionPolicy = "chat_guard";
 		}
 	}
 
 	/**
 	 * 继续上一次请求（用于重试）
 	 */
-	async continue(): Promise<void> {
+	async continue(options: AgentExecutionOptions = {}): Promise<void> {
 		if (!this.agent) {
 			throw new Error("Agent 未初始化");
 		}
@@ -1229,7 +1351,18 @@ export class OriginOSAgent {
 			.reverse()
 			.find((message) => message.role === "user");
 		this.resetCompletionGuard(getMessageText(latestUserRequest));
-		await this.runWithCompletionGuard(() => this.agent!.continue());
+		const completionPolicy = options.completionPolicy ?? "chat_guard";
+		this.activeCompletionPolicy = completionPolicy;
+		try {
+			if (completionPolicy === "task_runtime") {
+				await this.agent.continue();
+				this.throwIfModelStreamFailed();
+				return;
+			}
+			await this.runWithCompletionGuard(() => this.agent!.continue());
+		} finally {
+			this.activeCompletionPolicy = "chat_guard";
+		}
 	}
 
 	/**
@@ -1280,6 +1413,13 @@ export class OriginOSAgent {
 			throw new Error("Agent 未初始化");
 		}
 		this.agent.state.tools = tools;
+	}
+
+	getTools(): readonly AgentTool<any>[] {
+		if (!this.agent) {
+			throw new Error("Agent 未初始化");
+		}
+		return [...this.agent.state.tools];
 	}
 
 	/**
@@ -1491,6 +1631,9 @@ export interface CreateOriginOSAgentParams {
 	 * 运行时 LLM 配置（可选，覆盖环境变量）
 	 */
 	llmConfig?: RuntimeLLMConfig;
+
+	/** 是否启用语义完成度检查与自动恢复，默认开启。 */
+	completionGuardEnabled?: boolean;
 }
 
 /**
@@ -1499,7 +1642,7 @@ export interface CreateOriginOSAgentParams {
 export function createOriginOSAgent(
 	params: CreateOriginOSAgentParams
 ): OriginOSAgent {
-	const { sessionId, variables, model, thinkingLevel, useBaseModel, healthMonitor, llmConfig } =
+	const { sessionId, variables, model, thinkingLevel, useBaseModel, healthMonitor, llmConfig, completionGuardEnabled } =
 		params;
 
 	// 获取配置状态
@@ -1584,6 +1727,7 @@ export function createOriginOSAgent(
 		projectContext,
 		thinkingLevel: (thinkingLevel || "low") as OriginOSAgentConfig['thinkingLevel'],
 		tools: [],
+		completionGuardEnabled,
 	};
 
 	// 返回未初始化的 Agent，用户需要调用 start() 方法

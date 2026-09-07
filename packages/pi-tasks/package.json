@@ -1,0 +1,52 @@
+{
+  "name": "@originos/pi-tasks",
+  "version": "0.2.0-originos.1",
+  "private": true,
+  "description": "OriginOS controlled pi-tasks fork with evidence-gated, branch-safe task mutations",
+  "type": "module",
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js",
+      "default": "./index.js"
+    },
+    "./contracts": {
+      "types": "./src/contracts.d.ts",
+      "import": "./src/contracts.js",
+      "default": "./src/contracts.js"
+    },
+    "./store": {
+      "types": "./src/store.d.ts",
+      "import": "./src/store.js",
+      "default": "./src/store.js"
+    }
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "src/",
+    "upstream/",
+    "LICENSE",
+    "README.md",
+    "UPSTREAM.md"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.js"
+    ]
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "typecheck": "tsc --noEmit --allowJs --checkJs false --module nodenext --moduleResolution nodenext --target es2022 index.js src/*.js",
+    "verify": "pnpm test && pnpm typecheck"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "license": "MIT"
+}

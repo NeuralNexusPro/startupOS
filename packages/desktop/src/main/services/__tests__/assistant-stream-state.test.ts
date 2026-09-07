@@ -25,7 +25,7 @@ describe('applyAssistantMessageEnd', () => {
     expect(next.shouldSend).toBe(false);
   });
 
-  it('overrides an earlier plan with a marked completion failure report', () => {
+  it('preserves an earlier response when a marked completion failure report arrives', () => {
     const next = applyAssistantMessageEnd(
       { content: 'initial plan', sent: true },
       {
@@ -35,9 +35,9 @@ describe('applyAssistantMessageEnd', () => {
     );
 
     expect(next).toEqual({
-      content: '任务未能自动完成：命令不可用',
+      content: 'initial plan',
       sent: true,
-      shouldSend: true,
+      shouldSend: false,
     });
   });
 });

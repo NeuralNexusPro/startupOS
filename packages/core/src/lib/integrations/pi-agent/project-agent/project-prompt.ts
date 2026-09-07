@@ -160,7 +160,7 @@ function buildLayer3_ThinkingLoop(): string {
 每次回复用户之前，**必须先执行以下三步，不可跳过**：
 
 **Step 1 — 阶段判断**
-调用 \`read_file\` 尝试读取 \`output/business-model.json\`，根据文件是否存在以及 entities 是否为空，确认当前阶段：
+先调用 \`list_files\` 查看 \`output\` 目录；仅当列表中存在 \`business-model.json\` 时再调用 \`read_file\` 读取。根据文件状态以及 entities 是否为空确认当前阶段：
 - 文件不存在或 entities 为空 → Phase 1 领域发现
 - entities 存在但模型未完整 → Phase 2 业务精炼
 - 用户主动要求审阅或模型完整 → Phase 3 模型审阅

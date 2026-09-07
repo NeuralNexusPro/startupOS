@@ -6,6 +6,9 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { createRequire } = require('node:module');
 const asar = require('@electron/asar');
+const {
+  verifyAsarRuntime: verifyPiTaskAsarRuntime,
+} = require('./verify-pi-task-runtime-package.js');
 
 const desktopDir = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(desktopDir, '..', '..');
@@ -92,7 +95,7 @@ function normalizeAsarEntry(entry) {
   return normalized.startsWith('/') ? normalized.slice(1) : normalized;
 }
 
-function verifyAsar() {
+async function verifyAsar() {
   requireFile(asarPath);
   if (process.exitCode) return;
 
@@ -214,6 +217,14 @@ function verifyAsar() {
     },
   });
 
+  const piTaskReport = await verifyPiTaskAsarRuntime({
+    asarPath,
+    platform: 'windows-x64',
+  });
+  console.log('[verify-windows-package] pi task runtime ok', {
+    hash: piTaskReport.hash,
+    platform: piTaskReport.platform,
+  });
   console.log('[verify-windows-package] app.asar module smoke ok');
 }
 
@@ -318,12 +329,20 @@ function findEndOfCentralDirectory(buffer) {
   throw new Error('ZIP end of central directory not found');
 }
 
-verifyAsar();
-verifyResources();
-verifyWindowsZip();
+async function main() {
+  await verifyAsar();
+  verifyResources();
+  verifyWindowsZip();
 
-if (process.exitCode) {
-  process.exit();
+  if (!process.exitCode) {
+    console.log('[verify-windows-package] verified Windows package runtime files');
+  }
 }
 
-console.log('[verify-windows-package] verified Windows package runtime files');
+main().catch((error) => {
+  console.error(
+    '[verify-windows-package] failed:',
+    error instanceof Error ? error.message : error,
+  );
+  process.exitCode = 1;
+});

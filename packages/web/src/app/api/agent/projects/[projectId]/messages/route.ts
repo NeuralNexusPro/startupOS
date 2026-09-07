@@ -86,7 +86,7 @@ function stripToolCodeBlocks(content: string): string {
  * 系统触发问候消息 —— 替换为隐藏的系统指令
  */
 const SYSTEM_TRIGGER_GREETING = '__SYSTEM_TRIGGER_GREETING__';
-const SYSTEM_GREETING_PROMPT = `系统启动触发: 请按照你的工作模式中的"启动时状态判断"流程，读取 output/business-model.json 判断当前项目状态，并生成相应的问候语。如果文件不存在，按照全新访谈流程开始；如果文件存在，进入模型审阅模式。`;
+const SYSTEM_GREETING_PROMPT = `系统启动触发: 请按照你的工作模式中的"启动时状态判断"流程，先列出 output 目录；仅当 business-model.json 存在时才读取它。文件不存在是正常的全新项目状态，请直接开始 Phase 1 访谈；文件存在时按内容判断后续阶段并生成相应问候语。`;
 
 export async function POST(
   request: NextRequest,
@@ -209,6 +209,7 @@ function createEventStream(
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   let assistantContent = '';
+  let completionFailed = false;
 
   return new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -267,6 +268,14 @@ function createEventStream(
 
             case 'message_end':
               if (event['message']?.role === 'assistant') {
+                if (event['message']?.completionFailure === true) {
+                  completionFailed = true;
+                  const failure = extractTextContent(event['message']['content']);
+                  if (failure) {
+                    send({ type: 'error', data: { message: failure, recoverable: true } });
+                  }
+                  break;
+                }
                 let content = reconcileFinalStreamContent(
                   assistantContent,
                   extractTextContent(event['message']['content'])
@@ -297,7 +306,7 @@ function createEventStream(
         await agent?.handleMessage(userContent, sessionId);
         console.log(`[Stream] Agent handleMessage completed`);
 
-        send({ type: 'done', data: null });
+        send({ type: 'done', data: { failed: completionFailed } });
       } catch (error) {
         console.error('[Stream] Error in handleMessage:', error);
         send({ type: 'error', data: { message: error instanceof Error ? error.message : 'Unknown error' } });

@@ -30,7 +30,7 @@ export class PerceptionPluginHostService {
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
-    for (const key of this.active) { const [pluginId, ...rest] = key.split(':'); void this.host.stop(pluginId, rest.join(':')); }
+    for (const key of this.active) { const [pluginId, ...rest] = key.split(':'); if (pluginId) void this.host.stop(pluginId, rest.join(':')); }
     this.active.clear();
     for (const timer of this.timers.values()) clearInterval(timer);
     this.timers.clear();
@@ -42,10 +42,11 @@ export class PerceptionPluginHostService {
     const configs = this.configs.list().filter((item) => PLUGIN_IDS[item.source] && (item.mode === 'stream' || item.mode === 'webhook'));
     const desired = new Set(configs.filter((item) => item.enabled).map((item) => `${PLUGIN_IDS[item.source]}:${item.id}`));
     for (const key of this.active) {
-      if (!desired.has(key)) { const [pluginId, ...rest] = key.split(':'); await this.host.stop(pluginId, rest.join(':')); this.active.delete(key); }
+      if (!desired.has(key)) { const [pluginId, ...rest] = key.split(':'); if (pluginId) await this.host.stop(pluginId, rest.join(':')); this.active.delete(key); }
     }
     for (const config of configs) {
       const pluginId = PLUGIN_IDS[config.source];
+      if (!pluginId) continue;
       const key = `${pluginId}:${config.id}`;
       if (!config.enabled || this.active.has(key)) continue;
       const status = await this.host.start(pluginId, config.id, { ...config.settings, secretRef: config.secretRef ?? '' });

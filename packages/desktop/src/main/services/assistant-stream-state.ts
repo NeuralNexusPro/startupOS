@@ -21,10 +21,11 @@ export function applyAssistantMessageEnd(
   if (!message.content) {
     return { ...state, shouldSend: false };
   }
-  const content = message.completionFailure
-    ? message.content
-    : reconcileFinalStreamContent(state.content, message.content);
-  const shouldSend = !state.sent || message.completionFailure === true;
+  if (message.completionFailure) {
+    return { ...state, shouldSend: false };
+  }
+  const content = reconcileFinalStreamContent(state.content, message.content);
+  const shouldSend = !state.sent;
   return {
     content,
     sent: state.sent || shouldSend,

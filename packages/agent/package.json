@@ -5,9 +5,10 @@
   "main": "./index.js",
   "types": "./index.d.ts",
   "scripts": {
+    "audit:pi-tasks": "node scripts/pi-task-runtime-audit.js --json",
     "build": "node build-runtime.js",
     "prepare": "node build-runtime.js",
-    "test": "node scripts/verify-runtime.js"
+    "test": "node scripts/verify-runtime.js && node --test scripts/pi-task-runtime-audit.test.js scripts/runtime-host-invoke-patch.test.js scripts/task-runtime.test.js scripts/task-runtime-integration.test.js scripts/task-session-host.test.js"
   },
   "exports": {
     ".": {
@@ -29,6 +30,11 @@
       "types": "./goal.d.ts",
       "require": "./goal.js",
       "default": "./goal.js"
+    },
+    "./task-runtime": {
+      "types": "./task-runtime.d.ts",
+      "require": "./task-runtime.js",
+      "default": "./task-runtime.js"
     }
   },
   "dependencies": {
@@ -41,6 +47,7 @@
     "@google/genai": "1.52.0",
     "@mistralai/mistralai": "2.2.6",
     "@opentelemetry/api": "1.9.0",
+    "@originos/pi-tasks": "workspace:0.2.0-originos.1",
     "@smithy/node-http-handler": "4.7.3",
     "http-proxy-agent": "7.0.2",
     "https-proxy-agent": "7.0.6",

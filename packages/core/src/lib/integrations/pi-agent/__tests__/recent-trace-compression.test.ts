@@ -78,4 +78,57 @@ describe('compressRecentTrace', () => {
     expect(result.messages.some((message) => JSON.stringify(message.content).includes('user-12'))).toBe(true);
     expect(result.messages.some((message) => JSON.stringify(message.content).includes('assistant-12'))).toBe(true);
   });
+
+  it('keeps a tool result with its assistant tool call across the compression boundary', () => {
+    const messages: AgentMessage[] = Array.from({ length: 20 }, (_, index) =>
+      textMessage('user', `old-${index}`),
+    );
+    messages.push({
+      role: 'assistant',
+      content: [{ type: 'toolCall', id: 'boundary-call', name: 'read_file', arguments: { filePath: 'MEMORY.md' } }],
+    } as AgentMessage);
+    messages.push({
+      role: 'toolResult',
+      content: [{ type: 'text', text: 'boundary result' }],
+      toolName: 'read_file',
+      toolCallId: 'boundary-call',
+    } as AgentMessage);
+
+    const result = compressRecentTrace(messages, {
+      maxHistory: 10,
+      keepRecent: 1,
+      preserveTraceCount: 1,
+    });
+
+    const serialized = result.messages.map((message) => JSON.stringify(message));
+    expect(serialized.some((message) => message.includes('boundary-call') && message.includes('toolCall'))).toBe(true);
+    expect(serialized.some((message) => message.includes('boundary result'))).toBe(true);
+  });
+
+  it('drops incomplete and unowned tool protocol messages', () => {
+    const messages: AgentMessage[] = Array.from({ length: 20 }, (_, index) =>
+      textMessage('user', `old-${index}`),
+    );
+    messages.push({
+      role: 'assistant',
+      content: [{ type: 'toolCall', id: 'missing-result', name: 'read_file', arguments: {} }],
+    } as AgentMessage);
+    messages.push({
+      role: 'toolResult',
+      content: [{ type: 'text', text: 'unowned result' }],
+      toolName: 'read_file',
+    } as AgentMessage);
+    messages.push(textMessage('assistant', 'visible response'));
+
+    const result = compressRecentTrace(messages, {
+      maxHistory: 10,
+      keepRecent: 3,
+      preserveTraceCount: 3,
+    });
+
+    const serialized = JSON.stringify(result.messages);
+    expect(serialized).not.toContain('missing-result');
+    expect(serialized).not.toContain('unowned result');
+    expect(serialized).toContain('visible response');
+  });
 });

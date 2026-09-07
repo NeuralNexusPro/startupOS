@@ -9,18 +9,6 @@ const repoRoot = path.resolve(desktopDir, '..', '..');
 const outputNodeModules = path.join(desktopDir, '.packaging', 'pi-ai-runtime', 'node_modules');
 const rootRequire = createRequire(path.join(repoRoot, 'package.json'));
 
-const roots = [
-  '@anthropic-ai/sdk',
-  '@aws-sdk/client-bedrock-runtime',
-  '@google/genai',
-  '@mistralai/mistralai',
-  '@opentelemetry/api',
-  '@smithy/node-http-handler',
-  'http-proxy-agent',
-  'https-proxy-agent',
-  'openai',
-];
-
 function packageNameParts(packageName) {
   return packageName.startsWith('@') ? packageName.split('/').slice(0, 2) : [packageName];
 }
@@ -72,31 +60,43 @@ function copyPackage(packageName, packageJson) {
   });
 }
 
-function collect(packageName, fromRequire, seen, ordered) {
+function collect(packageName, fromRequire, seen, ordered, optional = false) {
   if (seen.has(packageName)) {
     return;
   }
   seen.add(packageName);
 
-  const packageJson = findPackageJson(packageName, fromRequire);
+  let packageJson;
+  try {
+    packageJson = findPackageJson(packageName, fromRequire);
+  } catch (error) {
+    if (optional && error && error.code === 'MODULE_NOT_FOUND') return;
+    throw error;
+  }
   const parsed = JSON.parse(fs.readFileSync(packageJson, 'utf8'));
   ordered.push({ name: packageName, packageJson });
 
   const packageRequire = createRequire(packageJson);
-  const dependencyNames = [
-    ...Object.keys(parsed.dependencies || {}),
-    ...Object.keys(parsed.optionalDependencies || {}),
-  ].sort();
+  const dependencyNames = Object.keys(parsed.dependencies || {}).sort();
+  const optionalDependencyNames = Object.keys(parsed.optionalDependencies || {})
+    .filter((dependencyName) => !dependencyNames.includes(dependencyName))
+    .sort();
 
   for (const dependencyName of dependencyNames) {
     collect(dependencyName, packageRequire, seen, ordered);
+  }
+  for (const dependencyName of optionalDependencyNames) {
+    collect(dependencyName, packageRequire, seen, ordered, true);
   }
 }
 
 const adapterPackageJson = findPackageJson('@originos/pi-agent-adapter', rootRequire);
 const adapterRequire = createRequire(adapterPackageJson);
-const piAiPackageJson = findPackageJson('@earendil-works/pi-ai', adapterRequire);
-const piAiRequire = createRequire(piAiPackageJson);
+const adapterManifest = JSON.parse(fs.readFileSync(adapterPackageJson, 'utf8'));
+const roots = Object.keys(adapterManifest.dependencies || {}).sort();
+const optionalRoots = Object.keys(adapterManifest.optionalDependencies || {})
+  .filter((root) => !roots.includes(root))
+  .sort();
 
 fs.rmSync(outputNodeModules, { recursive: true, force: true });
 fs.mkdirSync(outputNodeModules, { recursive: true });
@@ -104,11 +104,31 @@ fs.mkdirSync(outputNodeModules, { recursive: true });
 const seen = new Set();
 const ordered = [];
 for (const root of roots) {
-  collect(root, piAiRequire, seen, ordered);
+  collect(root, adapterRequire, seen, ordered);
+}
+for (const root of optionalRoots) {
+  collect(root, adapterRequire, seen, ordered, true);
 }
 
 for (const item of ordered) {
   copyPackage(item.name, item.packageJson);
+}
+
+const adapterDir = path.dirname(adapterPackageJson);
+const stagedAdapterDir = packageOutputDir('@originos/pi-agent-adapter');
+for (const relativePath of [
+  'package.json',
+  'task-runtime.js',
+  'task-runtime.d.ts',
+  'dist/task-runtime.cjs',
+]) {
+  const source = path.join(adapterDir, relativePath);
+  if (!fs.existsSync(source)) {
+    throw new Error(`Missing Task Runtime adapter artifact: ${relativePath}`);
+  }
+  const target = path.join(stagedAdapterDir, relativePath);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.copyFileSync(source, target);
 }
 
 console.log(`[prepare-pi-ai-runtime-deps] copied ${ordered.length} packages -> ${path.relative(repoRoot, outputNodeModules)}`);

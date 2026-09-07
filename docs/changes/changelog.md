@@ -2,6 +2,20 @@
 
 ---
 
+## 2026-08-19 — docs：按 startupOS 架构围栏重构 Epic ONT
+
+**类型**：docs
+**影响模块**：`docs/specs/epic-ONT/README.md`
+**摘要**：按 startupOS 的 monorepo 和模块围栏重构 Epic ONT 设计：ONT 收敛为 `packages/core` 内的 ontology bounded context，只交付 canonical schema、DataFile/JSONL store、validator、OSDK、contract validation API 和 Context Projection Protocol。Epic P2、Epic 9/collaboration-runtime、Epic C/M/T 作为下游消费方继续负责 Agent+Skill 方案、多 Agent supervisor/worker runtime、记忆与 TASTE，不迁入 ONT。
+
+---
+
+## 2026-08-07 — release：OriginOS CE 0.1.47
+
+**类型**：release
+**影响模块**：`.github/workflows/desktop-release.yml`, `packages/core/src/lib/integrations/pi-agent/`, `packages/desktop/`, `packages/agent/`, `docs/changes/releases/v0.1.47/changelog.md`
+**摘要**：发布 OriginOS CE `0.1.47`。修复 Windows 多 Agent worker、CompletionGuard、项目技能补齐和受控 Pi Task Runtime 校验；发布流程每次成功发布都会创建或更新对应的 GitHub Release，并不再要求 `.zip.blockmap`。
+
 ## 2026-07-30 — fix：恢复窗体历史会话与执行上下文
 
 **类型**：fix
@@ -1833,3 +1847,15 @@
 **类型**：docs
 **影响模块**：`AGENTS.md`, `openspec/config.yaml`, `.codex/skills/openspec-*`, `docs/changes/changelog.md`, `docs/changes/releases/v0.1.45/changelog.md`
 **摘要**：确认 OpenSpec 1.4.1 初始化采用 `openspec/config.yaml` 和生成式 agent skills，不再强制依赖旧版 `openspec/AGENTS.md`、`project.md`。AGENTS.md 升级到 v2.5.1，并要求使用 CLI 返回的 planning/artifact 路径。`openspec/config.yaml` 补充 OriginOS 技术栈、依赖围栏、Story Task 与 Proposal 一对一追踪规则，以及 Proposal、Specs、Design、Tasks 的 subagent/worktree、测试和 Evidence 门禁。
+
+## 2026-08-05 — fix：修复项目访谈误恢复与技能依赖缺失
+
+**类型**：fix
+**影响模块**：`packages/core/src/lib/integrations/pi-agent/`, `packages/desktop/src/main/services/`, `packages/web/src/app/api/agent/projects/`, `packages/web/src/app/api/projects/`, `templates/project-interview/`, `templates/skills/domain-discovery/`
+**摘要**：项目访谈 Agent 现显式关闭面向自主任务的 CompletionGuard，避免正常追问被判定为未完成并覆盖有效回复。项目初始化和启动统一从打包内置技能源幂等补齐完整技能目录，业务模型未创建按正常 Phase 1 处理，同时保证历史压缩不产生孤立 tool result。
+
+## 2026-08-05 — ci：移除未使用的通用 GitHub Actions CI
+
+**类型**：ci
+**影响模块**：`.github/workflows/ci.yml`
+**摘要**：移除 push/pull_request 自动触发但当前不再使用的通用 CI workflow；桌面发布 workflow 保持不变。

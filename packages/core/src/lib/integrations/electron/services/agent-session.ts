@@ -3,6 +3,13 @@ import { IPC_CHANNELS, type IpcResponse } from '../ipc-protocol';
 import type { AgentSession } from '../../../../types/agent';
 import type { RuntimeLLMConfig } from '../../pi-agent/llm-config';
 import type {
+  AgentTaskRuntimeEventV1,
+  AgentTaskRuntimeSnapshotV1,
+  ControlAgentTaskRequestV1,
+  CreateAgentTaskRequestV1,
+  GetAgentTaskRequestV1,
+} from '../../pi-agent/task-runtime';
+import type {
   RestoreAgentEntryType,
   RestoreAgentSessionRequest,
 } from '../../pi-agent/session-restore';
@@ -341,6 +348,68 @@ export async function abortAgentSession(sessionId: string): Promise<IpcResponse<
     body: JSON.stringify({ sessionId }),
   });
   return readJsonResponse<IpcResponse<unknown>>(response);
+}
+
+// ── Session Task Runtime ───────────────────────────────────
+
+export async function createAgentTask(
+  request: CreateAgentTaskRequestV1,
+): Promise<IpcResponse<AgentTaskRuntimeSnapshotV1>> {
+  if (!isElectron()) {
+    throw new Error('Agent Task Runtime 当前仅支持 Electron Session');
+  }
+  return getIpcRenderer().invoke<IpcResponse<AgentTaskRuntimeSnapshotV1>>(
+    IPC_CHANNELS.AGENT_TASK_CREATE,
+    request,
+  );
+}
+
+export async function getAgentTask(
+  request: GetAgentTaskRequestV1,
+): Promise<IpcResponse<AgentTaskRuntimeSnapshotV1>> {
+  if (!isElectron()) {
+    throw new Error('Agent Task Runtime 当前仅支持 Electron Session');
+  }
+  return getIpcRenderer().invoke<IpcResponse<AgentTaskRuntimeSnapshotV1>>(
+    IPC_CHANNELS.AGENT_TASK_GET,
+    request,
+  );
+}
+
+export async function controlAgentTask(
+  request: ControlAgentTaskRequestV1,
+): Promise<IpcResponse<AgentTaskRuntimeSnapshotV1>> {
+  if (!isElectron()) {
+    throw new Error('Agent Task Runtime 当前仅支持 Electron Session');
+  }
+  return getIpcRenderer().invoke<IpcResponse<AgentTaskRuntimeSnapshotV1>>(
+    IPC_CHANNELS.AGENT_TASK_CONTROL,
+    request,
+  );
+}
+
+export function subscribeAgentTaskRuntime(
+  sessionId: string,
+  listener: (event: AgentTaskRuntimeEventV1) => void,
+): () => void {
+  if (!isElectron()) {
+    return () => {};
+  }
+  return getIpcRenderer().on(IPC_CHANNELS.AGENT_TASK_EVENT, (payload: unknown) => {
+    if (!payload || typeof payload !== 'object') {
+      return;
+    }
+    const event = payload as Partial<AgentTaskRuntimeEventV1>;
+    if (
+      event.version !== 1
+      || event.type !== 'agent_task_runtime_state'
+      || event.sessionId !== sessionId
+      || !event.snapshot
+    ) {
+      return;
+    }
+    listener(event as AgentTaskRuntimeEventV1);
+  });
 }
 
 // ── Agent Content Get ──────────────────────────────────────

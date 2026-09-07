@@ -1,0 +1,150 @@
+diff --git a/dist/agent-loop.d.ts b/dist/agent-loop.d.ts
+index 4c15b41..e38bb10 100755
+--- a/dist/agent-loop.d.ts
++++ b/dist/agent-loop.d.ts
+@@ -3,8 +3,19 @@
+  * Transforms to Message[] only at the LLM call boundary.
+  */
+ import { EventStream } from "@earendil-works/pi-ai/compat";
+-import type { AgentContext, AgentEvent, AgentLoopConfig, AgentMessage, StreamFn } from "./types.ts";
++import type { AgentContext, AgentEvent, AgentLoopConfig, AgentMessage, AgentToolResult, StreamFn } from "./types.ts";
+ export type AgentEventSink = (event: AgentEvent) => Promise<void> | void;
++export interface RegisteredToolCallRequest {
++    toolCallId: string;
++    toolName: string;
++    input: unknown;
++}
++export interface RegisteredToolCallResult {
++    toolCallId: string;
++    toolName: string;
++    result: AgentToolResult<unknown>;
++    isError: boolean;
++}
+ /**
+  * Start an agent loop with a new prompt message.
+  * The prompt is added to the context and events are emitted for it.
+@@ -21,4 +32,9 @@ export declare function agentLoop(prompts: AgentMessage[], context: AgentContext
+ export declare function agentLoopContinue(context: AgentContext, config: AgentLoopConfig, signal?: AbortSignal, streamFn?: StreamFn): EventStream<AgentEvent, AgentMessage[]>;
+ export declare function runAgentLoop(prompts: AgentMessage[], context: AgentContext, config: AgentLoopConfig, emit: AgentEventSink, signal?: AbortSignal, streamFn?: StreamFn): Promise<AgentMessage[]>;
+ export declare function runAgentLoopContinue(context: AgentContext, config: AgentLoopConfig, emit: AgentEventSink, signal?: AbortSignal, streamFn?: StreamFn): Promise<AgentMessage[]>;
+-//# sourceMappingURL=agent-loop.d.ts.map
+\ No newline at end of file
++/**
++ * Execute one registered tool through the normal tool pipeline without adding
++ * synthetic assistant or tool-result messages to the transcript.
++ */
++export declare function invokeRegisteredToolCall(context: AgentContext, request: RegisteredToolCallRequest, config: AgentLoopConfig, signal: AbortSignal | undefined, emit: AgentEventSink): Promise<RegisteredToolCallResult>;
++//# sourceMappingURL=agent-loop.d.ts.map
+diff --git a/dist/agent-loop.js b/dist/agent-loop.js
+index 4a7a3ea..a5cd449 100755
+--- a/dist/agent-loop.js
++++ b/dist/agent-loop.js
+@@ -292,30 +292,50 @@ async function executeToolCalls(currentContext, assistantMessage, config, signal
+     }
+     return executeToolCallsParallel(currentContext, assistantMessage, toolCalls, config, signal, emit);
+ }
++/**
++ * Execute one registered tool through the same validation, hook, execution, and
++ * lifecycle-event pipeline used by model-originated tool calls.
++ *
++ * This host entry deliberately does not emit assistant/tool-result messages.
++ * Callers that need transcript entries must create a normal agent turn instead.
++ */
++export async function invokeRegisteredToolCall(currentContext, request, config, signal, emit) {
++    const toolCall = {
++        type: "toolCall",
++        id: request.toolCallId,
++        name: request.toolName,
++        arguments: request.input,
++    };
++    const assistantMessage = {
++        role: "assistant",
++        content: [toolCall],
++        api: "host",
++        provider: "host",
++        model: "host",
++        stopReason: "toolUse",
++        usage: {
++            input: 0,
++            output: 0,
++            cacheRead: 0,
++            cacheWrite: 0,
++            totalTokens: 0,
++            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
++        },
++        timestamp: Date.now(),
++    };
++    const finalized = await invokeToolCall(currentContext, assistantMessage, toolCall, config, emit, signal);
++    return {
++        toolCallId: finalized.toolCall.id,
++        toolName: finalized.toolCall.name,
++        result: finalized.result,
++        isError: finalized.isError,
++    };
++}
+ async function executeToolCallsSequential(currentContext, assistantMessage, toolCalls, config, signal, emit) {
+     const finalizedCalls = [];
+     const messages = [];
+     for (const toolCall of toolCalls) {
+-        await emit({
+-            type: "tool_execution_start",
+-            toolCallId: toolCall.id,
+-            toolName: toolCall.name,
+-            args: toolCall.arguments,
+-        });
+-        const preparation = await prepareToolCall(currentContext, assistantMessage, toolCall, config, signal);
+-        let finalized;
+-        if (preparation.kind === "immediate") {
+-            finalized = {
+-                toolCall,
+-                result: preparation.result,
+-                isError: preparation.isError,
+-            };
+-        }
+-        else {
+-            const executed = await executePreparedToolCall(preparation, signal, emit);
+-            finalized = await finalizeExecutedToolCall(currentContext, assistantMessage, preparation, executed, config, signal);
+-        }
+-        await emitToolExecutionEnd(finalized, emit);
++        const finalized = await invokeToolCall(currentContext, assistantMessage, toolCall, config, emit, signal);
+         const toolResultMessage = createToolResultMessage(finalized);
+         await emitToolResultMessage(toolResultMessage, emit);
+         finalizedCalls.push(finalized);
+@@ -329,6 +349,37 @@ async function executeToolCallsSequential(currentContext, assistantMessage, tool
+         terminate: shouldTerminateToolBatch(finalizedCalls),
+     };
+ }
++/**
++ * Invoke one registered tool through the same preparation, execution, hook,
++ * and lifecycle-event pipeline used by model-originated tool calls.
++ *
++ * This primitive deliberately does not create or emit a tool-result message.
++ * Callers that are not running an assistant turn can therefore execute a tool
++ * without introducing an orphan transcript entry.
++ */
++async function invokeToolCall(currentContext, assistantMessage, toolCall, config, emit, signal) {
++    await emit({
++        type: "tool_execution_start",
++        toolCallId: toolCall.id,
++        toolName: toolCall.name,
++        args: toolCall.arguments,
++    });
++    const preparation = await prepareToolCall(currentContext, assistantMessage, toolCall, config, signal);
++    let finalized;
++    if (preparation.kind === "immediate") {
++        finalized = {
++            toolCall,
++            result: preparation.result,
++            isError: preparation.isError,
++        };
++    }
++    else {
++        const executed = await executePreparedToolCall(preparation, signal, emit);
++        finalized = await finalizeExecutedToolCall(currentContext, assistantMessage, preparation, executed, config, signal);
++    }
++    await emitToolExecutionEnd(finalized, emit);
++    return finalized;
++}
+ async function executeToolCallsParallel(currentContext, assistantMessage, toolCalls, config, signal, emit) {
+     const finalizedCalls = [];
+     for (const toolCall of toolCalls) {

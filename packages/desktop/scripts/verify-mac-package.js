@@ -5,6 +5,9 @@ const os = require('node:os');
 const path = require('node:path');
 const { createRequire } = require('node:module');
 const asar = require('@electron/asar');
+const {
+  verifyAsarRuntime: verifyPiTaskAsarRuntime,
+} = require('./verify-pi-task-runtime-package.js');
 
 const desktopDir = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(desktopDir, '..', '..');
@@ -32,7 +35,7 @@ function normalizeAsarEntry(entry) {
   return normalized.startsWith('/') ? normalized.slice(1) : normalized;
 }
 
-function verifyApp(appPath) {
+async function verifyApp(appPath) {
   const resourcesDir = path.join(appPath, 'Contents', 'Resources');
   const asarPath = path.join(resourcesDir, 'app.asar');
   if (!fs.existsSync(asarPath)) {
@@ -106,6 +109,15 @@ function verifyApp(appPath) {
         fail(`bundled skill resource missing: ${path.relative(repoRoot, skillPath)}`);
       }
     }
+    const outputDirectory = path.basename(path.dirname(appPath));
+    const piTaskReport = await verifyPiTaskAsarRuntime({
+      asarPath,
+      platform: outputDirectory === 'mac-arm64' ? 'macos-arm64' : 'macos-x64',
+    });
+    console.log('[verify-mac-package] pi task runtime ok', {
+      hash: piTaskReport.hash,
+      platform: piTaskReport.platform,
+    });
     console.log('[verify-mac-package] app.asar runtime ok', {
       appPath: path.relative(repoRoot, appPath),
     });
@@ -114,20 +126,18 @@ function verifyApp(appPath) {
   }
 }
 
-function main() {
+async function main() {
   const appPaths = candidateAppPaths.filter((appPath) => fs.existsSync(appPath));
   if (appPaths.length === 0) {
     throw new Error(`No macOS app bundle found under ${releaseDir}/mac*.`);
   }
 
   for (const appPath of appPaths) {
-    verifyApp(appPath);
+    await verifyApp(appPath);
   }
 }
 
-try {
-  main();
-} catch (error) {
+main().catch((error) => {
   console.error('[verify-mac-package] failed:', error instanceof Error ? error.message : error);
   process.exitCode = 1;
-}
+});

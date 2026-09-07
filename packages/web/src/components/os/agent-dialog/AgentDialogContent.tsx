@@ -32,6 +32,17 @@ import {
   createSessionTransitionGuard,
   shouldAutoStartSession,
 } from './session-transition-guard';
+import { AgentTaskDraftCard } from './AgentTaskDraftCard';
+import { AgentTaskCard } from './AgentTaskCard';
+import { shouldShowAgentTaskPanel } from './agent-task-panel-visibility';
+import {
+  supportsAgentTaskRuntime,
+  useAgentTaskRuntime,
+} from './use-agent-task-runtime';
+import {
+  createAgentTaskRequestId,
+  type AgentTaskDraftInput,
+} from '@/services/agent-task-runtime';
 
 interface SessionHistoryItem {
   sessionId: string;
@@ -80,6 +91,7 @@ export default function AgentDialogContent({ agentId, agentName, agentType: prop
     fallbackSessionIdRef.current = `agent-${agentId}-${Date.now()}`;
   }
   const sessionId = activeSessionId || fallbackSessionIdRef.current;
+  const taskRuntimeSupported = supportsAgentTaskRuntime(resolvedAgentType);
 
   const {
     initialize,
@@ -96,6 +108,11 @@ export default function AgentDialogContent({ agentId, agentName, agentType: prop
   } = usePiAgent();
 
   const getEffectiveConfig = useSettingsStore((s) => s.getEffectiveConfig);
+  const taskRuntime = useAgentTaskRuntime({
+    sessionId: sessionId || '',
+    enabled: taskRuntimeSupported && isInitialized && !isRestoring && !switchingSessionId,
+  });
+  const [taskDraft, setTaskDraft] = useState<AgentTaskDraftInput | null>(null);
 
   const hasAutoStartedRef = useRef(false);
 
@@ -176,6 +193,10 @@ export default function AgentDialogContent({ agentId, agentName, agentType: prop
   useEffect(() => {
     void loadSessionHistory();
   }, [loadSessionHistory]);
+
+  useEffect(() => {
+    setTaskDraft(null);
+  }, [sessionId]);
 
   // Create a new session: always start fresh
   const createNewSession = useCallback(() => {
@@ -493,6 +514,56 @@ export default function AgentDialogContent({ agentId, agentName, agentType: prop
     );
   };
 
+  const openTaskDraft = useCallback(() => {
+    if (!taskRuntimeSupported || taskRuntime.hasActiveTask || taskDraft) return;
+    taskRuntime.clearError();
+    setTaskDraft({
+      requestId: createAgentTaskRequestId(),
+      title: '',
+      objective: '',
+      acceptanceCriteria: [''],
+    });
+  }, [taskDraft, taskRuntime, taskRuntimeSupported]);
+
+  const submitTaskDraft = useCallback(async () => {
+    if (!taskDraft) return;
+    if (
+      taskRuntime.snapshot?.execution.status === 'failed'
+      && taskRuntime.snapshot.execution.requestId === taskDraft.requestId
+    ) {
+      const retried = await taskRuntime.control('retry');
+      if (retried) setTaskDraft(null);
+      return;
+    }
+    const created = await taskRuntime.create(taskDraft);
+    if (created) setTaskDraft(null);
+  }, [taskDraft, taskRuntime]);
+
+  const taskPanel = taskDraft ? (
+    <AgentTaskDraftCard
+      draft={taskDraft}
+      submitting={taskRuntime.pendingAction === 'create'}
+      error={taskRuntime.error}
+      onChange={setTaskDraft}
+      onCancel={() => {
+        taskRuntime.clearError();
+        setTaskDraft(null);
+      }}
+      onSubmit={() => void submitTaskDraft()}
+    />
+  ) : shouldShowAgentTaskPanel(taskRuntime.snapshot, taskRuntime.hasActiveTask) ? (
+      <AgentTaskCard
+        snapshot={taskRuntime.snapshot!}
+        error={taskRuntime.error}
+        pendingAction={taskRuntime.pendingAction}
+        onControl={(action) => void taskRuntime.control(action)}
+      />
+    ) : taskRuntime.error ? (
+      <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+        任务功能暂不可用：{taskRuntime.error}
+      </div>
+    ) : null;
+
   if (resolvedAgentType !== 'role-agent' && !agent) {
     return (
       <div className="flex items-center justify-center h-full text-gray-500">
@@ -626,20 +697,34 @@ export default function AgentDialogContent({ agentId, agentName, agentType: prop
       </div>
 
       <div className="flex-1 overflow-hidden flex flex-col">
-        <MessageList messages={displayMessages} isLoading={isThinking} toolExecutions={toolExecutions} onQuestionAnswer={handleQuestionAnswer} answeredQuestions={answeredQuestions} />
+        <MessageList
+          messages={displayMessages}
+          isLoading={isThinking}
+          toolExecutions={toolExecutions}
+          onQuestionAnswer={handleQuestionAnswer}
+          answeredQuestions={answeredQuestions}
+          taskContent={taskPanel}
+        />
       </div>
 
       <ChatInputBar
         onSubmit={wrappedSendMessage}
-        disabled={!isInitialized || isRunning || isRestoring || Boolean(switchingSessionId)}
+        disabled={!isInitialized || isRunning || isRestoring || Boolean(switchingSessionId) || taskRuntime.blocksChat}
         placeholder={`向 ${displayName} 发送消息...`}
         onUpload={handleUpload}
-        onStop={abort}
+        onStop={taskRuntime.blocksChat ? undefined : abort}
         isGenerating={isThinking}
         uploadedFiles={agentUploadedFiles}
         onRemoveFile={handleAgentRemoveFile}
         uploadError={agentUploadError}
         uploading={agentUploading}
+        onCreateTask={taskRuntimeSupported ? openTaskDraft : undefined}
+        createTaskDisabled={
+          taskRuntime.loading
+          || taskRuntime.hasActiveTask
+          || Boolean(taskDraft)
+          || Boolean(taskRuntime.pendingAction)
+        }
       />
 
       {uiState.errorMessage && (

@@ -2,10 +2,10 @@
   "name": "@originos/perception-plugin-wecom",
   "version": "0.1.0",
   "private": true,
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/perception-plugins/wecom/src/index.js",
+  "types": "./dist/perception-plugins/wecom/src/index.d.ts",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" }
+    ".": { "types": "./dist/perception-plugins/wecom/src/index.d.ts", "default": "./dist/perception-plugins/wecom/src/index.js" }
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

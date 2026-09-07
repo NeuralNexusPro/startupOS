@@ -29,6 +29,7 @@ async function main() {
       index: path.join(packageDir, 'src', 'core-entry.js'),
       ai: path.join(packageDir, 'src', 'ai-entry.js'),
       goal: path.join(packageDir, 'src', 'goal-entry.js'),
+      'task-runtime': path.join(packageDir, 'src', 'task-runtime', 'index.js'),
     },
     outdir,
     outExtension: { '.js': '.cjs' },

@@ -1,11 +1,11 @@
 # Story 9.41: Agent/RoleAgent 任务入口与 pi-tasks 直接执行
 
 **Epic:** 9 - Multi-Agent 协作运行时
-**状态:** Planning
+**状态:** Ready（A-02 公共边界已通过，产品实现待独立 Proposal）
 **优先级:** High
 **Owner:** Product / Agent Runtime
 **创建日期:** 2026-07-28
-**最后更新:** 2026-07-29
+**最后更新:** 2026-08-01
 
 ## User Story
 
@@ -44,12 +44,19 @@
 
 ## 架构实施门
 
-在进入产品实现前必须完成 A-01：
+在进入产品实现前必须完成公共 Task Runtime 边界门：
 
 - 锁定兼容版本并验证 `pi-tasks` 的公开 extension/tool/state event 边界。
 - 优先通过同一 Pi Session 的受支持工具调用上下文执行 `task_plan`、`task_update`、`task_evidence`、`task_resume` 和 `task_complete`。
 - 如果当前 Pi Runtime 不支持宿主安全调用已注册工具，必须选择“上游补充公共命令 API”或“维护受控 fork”，更新 ADR 后才能继续。
 - 禁止导入 `pi-tasks` 私有 reducer/store、解析其 Session 文件或直接修改 custom entry。
+
+**当前结果：** A-01 于 2026-07-29 拒绝 stock 组合；A-02 于 2026-08-01 建立并验证
+受控 Runtime patch、`@originos/pi-tasks` 与
+`@originos/pi-agent-adapter/task-runtime` 公共边界，见
+[ADR-010](../../../architecture/decisions/ADR-010-controlled-pi-task-runtime-boundary.md)。
+Story 已解除集成阻塞，但任务入口、Task 卡片、completion policy、lease、受控续跑和
+恢复仍未实现，必须通过后续独立 Proposal 推进。
 
 ## 简要验收标准
 
@@ -90,3 +97,5 @@
 | 2026-07-28 | 选型调整为 `pi-tasks`，增加证据门控和任务状态契约 |
 | 2026-07-28 | 移除 Workflow 和执行策略选择，多 Agent 接入迁移到 Story 9.42 |
 | 2026-07-29 | 根据审查修订 completion policy、创建协议、公开集成边界、持久化恢复和 evidence gate |
+| 2026-07-29 | A-01 判定 Rejected，Story 状态调整为 Blocked |
+| 2026-08-01 | A-02 公共边界通过，ADR-010 取代 ADR-009，Story 调整为 Ready |

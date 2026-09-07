@@ -117,10 +117,10 @@
 | **9.38** | 协作运行时目录收敛 | High | Phase 3 | 📋 Planning |
 | **9.39** | collaboration-runtime-bridge 残留清理 | High | Phase 3 | 📋 Planning |
 | **9.40** | 协作 UI：多 HITL 并发与消息流对齐 | Medium | Phase 3 | 📋 Planning |
-| **9.41** | Agent/RoleAgent 任务入口与 pi-tasks 直接执行 | High | Phase 3 | 📋 Planning |
+| **9.41** | Agent/RoleAgent 任务入口与 pi-tasks 直接执行 | High | Phase 3 | 📋 Ready（A-02 边界已通过） |
 | **9.42** | 多 Agent 任务与解决方案执行契约对齐 | High | Phase 3 | 📋 Planning |
 
-> **当前进度（2026-07-28）：** Epic 9 主运行时已具备 Workflow、Supervisor、黑板、协议和基础 UI，但 Phase 3 的 HITL 收敛、链路治理、任务入口、`pi-tasks` 任务契约对齐及高级协作能力尚未完成，因此 Epic 保持 In Progress，不能按整体 Complete 归档。
+> **当前进度（2026-08-01）：** Epic 9 主运行时已具备 Workflow、Supervisor、黑板、协议和基础 UI；Story 9.41 的 A-02 受控 `pi-tasks` 公共边界已通过，但任务入口、Task 卡片、completion policy、lease、续跑与恢复尚未实施。Phase 3 的 HITL 收敛、链路治理及高级协作能力也未完成，因此 Epic 保持 In Progress，不能按整体 Complete 归档。
 
 > **2026-05-22 重大更新**：基于 [PRD-collaboration-product.md](./PRD-collaboration-product.md) 的"单前台 Agent"产品强约束，新增 9.31–9.35 五个 Story，把 Supervisor 从"协调器（建议）"升级为协作会话期间用户唯一的对话伙伴。9.30 PR-B 范围转移到 9.31–9.34；9.29 SUP-01 验收同步调整。
 

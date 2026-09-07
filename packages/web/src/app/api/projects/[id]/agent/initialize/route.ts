@@ -9,16 +9,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { ApiResponse } from '@originos/core/types';
 import fs from 'fs/promises';
 import path from 'path';
-import { getDataRoot, getMonorepoRoot, getTemplatesDir } from '@originos/core/lib/paths';
-
-const PROJECT_DEFAULT_SKILLS = [
-  'domain-discovery',
-  'business-refinement',
-  'model-review',
-  'solution-design',
-  'project-skill-creator',
-  'agent-creator',
-] as const;
+import { getDataRoot, getTemplatesDir } from '@originos/core/lib/paths';
+import {
+  PROJECT_DEFAULT_SKILLS,
+  provisionProjectSkills,
+} from '@originos/core/lib/integrations/pi-agent/project-agent';
 
 export async function POST(
   _request: NextRequest,
@@ -135,27 +130,15 @@ export async function POST(
     await fs.mkdir(sessionsDir, { recursive: true });
 
     // 复制项目默认技能文件
-    const workspaceSkillsDir = path.join(getMonorepoRoot(), 'skills');
-    const projectSkillsDir = path.join(projectDir, 'skills');
     const copiedSkills: string[] = [];
 
-    for (const skillName of PROJECT_DEFAULT_SKILLS) {
-      const srcSkillMd = path.join(workspaceSkillsDir, skillName, 'SKILL.md');
-      const dstSkillDir = path.join(projectSkillsDir, skillName);
-      const dstSkillMd = path.join(dstSkillDir, 'SKILL.md');
-      const skillExists = await fs.access(dstSkillMd).then(() => true).catch(() => false);
-      if (!skillExists) {
-        try {
-          await fs.mkdir(dstSkillDir, { recursive: true });
-          await fs.copyFile(srcSkillMd, dstSkillMd);
-          copiedSkills.push(`skills/${skillName}/SKILL.md (created)`);
-          console.log(`[API] Copied skill: ${skillName}`);
-        } catch {
-          console.warn(`[API] Skill not found: ${skillName}, skipping`);
-        }
-      } else {
-        copiedSkills.push(`skills/${skillName}/SKILL.md (existing)`);
-      }
+    const skillResults = await provisionProjectSkills(projectDir, PROJECT_DEFAULT_SKILLS);
+    const missingSkills = skillResults.filter((result) => result.status === 'missing');
+    if (missingSkills.length > 0) {
+      throw new Error(`Bundled project skills not found: ${missingSkills.map((result) => result.skillName).join(', ')}`);
+    }
+    for (const result of skillResults) {
+      copiedSkills.push(`skills/${result.skillName}/SKILL.md (${result.status})`);
     }
 
     return NextResponse.json<ApiResponse<{ projectId: string; files: string[] }>>(

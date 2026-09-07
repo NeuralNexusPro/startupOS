@@ -230,6 +230,13 @@ export interface OriginOSAgentConfig {
 	 * 思考级别
 	 */
 	thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high";
+
+	/**
+	 * 是否启用语义完成度检查与自动恢复。
+	 *
+	 * 默认开启；交互式项目访谈会显式关闭，避免把正常追问误判为未完成任务。
+	 */
+	completionGuardEnabled?: boolean;
 }
 
 /**

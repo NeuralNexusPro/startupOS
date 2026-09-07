@@ -1,0 +1,48 @@
+{
+  "eventEnvelope": {
+    "id": "originos.pi-tasks.event-envelope.v2",
+    "kinds": ["mutation", "snapshot"],
+    "mutationRequired": ["version", "kind", "revision", "ledgerParentCursor", "parentCursor", "requestId", "payloadHash", "command", "event"],
+    "mutationEventNot": {
+      "anyOf": [
+        { "required": ["forceWithReason"] },
+        { "required": ["force_with_reason"] }
+      ]
+    },
+    "snapshotRequired": ["version", "kind", "revision", "ledgerParentCursor", "parentCursor", "event", "checkpoint"],
+    "checkpointRequired": ["version", "stateHash", "receiptHash", "checkpointHash", "receiptWindow", "receipts"],
+    "checkpointLegacyForcedCompletions": {
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "receiptWindow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy", "retainedCount", "omittedCount", "minRevision", "maxRevision"],
+      "properties": {
+        "policy": { "const": "latest_revision_window" },
+        "retainedCount": { "type": "integer", "minimum": 0 },
+        "omittedCount": { "type": "integer", "minimum": 0 },
+        "minRevision": { "type": ["integer", "null"], "minimum": 1 },
+        "maxRevision": { "type": ["integer", "null"], "minimum": 1 }
+      }
+    }
+  },
+  "stateEvent": {
+    "id": "originos.pi-tasks.state-event.v2",
+    "required": ["version", "reason", "widgetId", "scope", "stateHash", "state"],
+    "reasons": ["session_start", "session_tree", "task_mutation", "compaction"],
+    "sessionIdType": "string"
+  },
+  "originosCommand": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["version", "request_id", "expected_revision", "expected_cursor"],
+    "properties": {
+      "version": { "const": 1 },
+      "request_id": { "type": "string", "minLength": 1 },
+      "expected_revision": { "type": "integer", "minimum": 0 },
+      "expected_cursor": { "type": ["string", "null"], "minLength": 1 }
+    }
+  }
+}

@@ -1,8 +1,8 @@
 # 实施文档 - Story 9.41
 
 **Story:** Agent/RoleAgent 任务入口与 pi-tasks 直接执行
-**版本:** 2.1
-**最后更新:** 2026-07-29
+**版本:** 2.2
+**最后更新:** 2026-08-01
 
 ## 实施目标
 
@@ -12,15 +12,23 @@
 
 ### A-01 pi-tasks 公共边界验证
 
-- [ ] 锁定兼容当前 Pi Runtime 的 `pi-tasks` 版本和完整依赖树。
-- [ ] 审查扩展入口、注册工具、state event、custom entries、current branch replay 和 compaction 行为。
-- [ ] 证明宿主可在相同 Pi Session/branch 的受控上下文调用已注册 task tools。
-- [ ] 验证 schema validation、权限、错误结果和 state event revision。
+- [x] 锁定兼容当前 Pi Runtime 的 `pi-tasks` 版本和完整依赖树。
+- [x] 审查扩展入口、注册工具、state event、custom entries、current branch replay 和 compaction 行为。
+- [x] 证明宿主可在相同 Pi Session/branch 的受控上下文调用已注册 task tools。
+- [x] 验证 schema validation、权限、错误结果和 state event revision。
 - [ ] 验证 Electron 开发态及 Windows/macOS 打包态的 CJS/ESM 加载。
-- [ ] 形成 ADR，记录选定命令边界、版本锁定、迁移和兼容策略。
-- [ ] 如果宿主 tool invocation 不受支持，停止后续实现，选择上游 API 或受控 fork。
+- [x] 形成 ADR，记录选定命令边界、版本锁定、迁移和兼容策略。
+- [x] 如果宿主 tool invocation 不受支持，停止后续实现，选择上游 API 或受控 fork。
 
 A-01 未通过时禁止以私有 reducer/store、Session 文件解析或 custom entry 伪造替代。
+
+**边界结果：** A-01 于 2026-07-29 拒绝 stock 组合。A-02 于 2026-08-01 完成
+受控 Runtime host invoke、`@originos/pi-tasks` v2 ledger/Evidence Gate 和
+`@originos/pi-agent-adapter/task-runtime` 公共 bridge，公共契约与普通聊天回归通过。
+Story 9.41 产品实现已解阻，后续只允许使用
+`docs/architecture/decisions/ADR-010-controlled-pi-task-runtime-boundary.md` 批准的边界。
+Windows/macOS 真包结果仍需在 A-02 verification goal 中记录，不能以本地 smoke
+替代跨平台发布证据。
 
 ## 实施步骤
 
@@ -181,3 +189,5 @@ A-01 未通过时禁止以私有 reducer/store、Session 文件解析或 custom 
 | 2026-07-28 | 改为 `pi-tasks` 直接任务执行实施计划 |
 | 2026-07-28 | Workflow 和多 Agent 实施迁移到 Story 9.42 |
 | 2026-07-29 | 增加A-01集成门、planning reservation、policy入口隔离、EvidenceVerifier和持久恢复步骤 |
+| 2026-07-29 | 完成A-01审计并判定stock边界Rejected，阻止后续产品实施 |
+| 2026-08-01 | A-02 建立受控公共边界并通过完整回归，Story 产品实施解阻 |

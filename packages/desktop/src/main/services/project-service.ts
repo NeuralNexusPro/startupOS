@@ -24,17 +24,13 @@ import type {
 import { calculateProgress } from '../../../../core/src/types/project-creation';
 import { projectService } from '../../../../core/src/lib/features/services/project-service-real';
 import { projectCreationService } from '../../../../core/src/lib/features/project/project-creation-service';
-import { getDataRoot, getMonorepoRoot } from '../../../../core/src/lib/paths';
+import { getDataRoot, getTemplatesDir } from '../../../../core/src/lib/paths';
+import {
+  PROJECT_DEFAULT_SKILLS,
+  provisionProjectSkill,
+  provisionProjectSkills,
+} from '../../../../core/src/lib/integrations/pi-agent/project-agent/project-skill-provisioning';
 import { launch } from '../../../../core/src/lib/features/services/launcher/registry';
-
-const PROJECT_DEFAULT_SKILLS = [
-  'domain-discovery',
-  'business-refinement',
-  'model-review',
-  'solution-design',
-  'project-skill-creator',
-  'agent-creator',
-] as const;
 
 interface BusinessModelEntity {
   name?: string;
@@ -94,38 +90,13 @@ export class ProjectService {
     }
   }
 
-  private async copySkillDirectory(projectDir: string, skillName: string): Promise<'created' | 'existing' | 'missing'> {
-    const skillsDir = path.join(getMonorepoRoot(), 'skills');
-    const srcDir = path.join(skillsDir, skillName);
-    const dstDir = path.join(projectDir, 'skills', skillName);
-    const srcSkillMd = path.join(srcDir, 'SKILL.md');
-    const dstSkillMd = path.join(dstDir, 'SKILL.md');
-
-    if (!existsSync(srcSkillMd)) {
-      return 'missing';
-    }
-
-    if (existsSync(dstSkillMd)) {
-      return 'existing';
-    }
-
-    await fs.mkdir(dstDir, { recursive: true });
-    await fs.copyFile(srcSkillMd, dstSkillMd);
-
-    for (const entry of ['references', 'agents', 'assets', 'scripts']) {
-      const srcEntry = path.join(srcDir, entry);
-      if (!existsSync(srcEntry)) {
-        continue;
-      }
-      await fs.cp(srcEntry, path.join(dstDir, entry), { recursive: true });
-    }
-
-    return 'created';
+  private async copySkillDirectory(projectDir: string, skillName: string): Promise<'created' | 'updated' | 'existing' | 'missing'> {
+    return (await provisionProjectSkill(projectDir, skillName)).status;
   }
 
   private async initializeProjectWorkspace(projectId: string): Promise<string[]> {
     const projectDir = path.join(getDataRoot(), 'projects', projectId);
-    const templateDir = path.join(getMonorepoRoot(), 'templates', 'project-interview');
+    const templateDir = getTemplatesDir();
     const createdFiles: string[] = [];
 
     await fs.mkdir(projectDir, { recursive: true });
@@ -152,11 +123,13 @@ export class ProjectService {
       createdFiles.push(`${dirName}/ (created)`);
     }
 
-    for (const skillName of PROJECT_DEFAULT_SKILLS) {
-      const result = await this.copySkillDirectory(projectDir, skillName);
-      if (result !== 'missing') {
-        createdFiles.push(`skills/${skillName}/SKILL.md (${result})`);
-      }
+    const skillResults = await provisionProjectSkills(projectDir, PROJECT_DEFAULT_SKILLS);
+    const missingSkills = skillResults.filter((result) => result.status === 'missing');
+    if (missingSkills.length > 0) {
+      throw new Error(`Bundled project skills not found: ${missingSkills.map((result) => result.skillName).join(', ')}`);
+    }
+    for (const result of skillResults) {
+      createdFiles.push(`skills/${result.skillName}/SKILL.md (${result.status})`);
     }
 
     return createdFiles;

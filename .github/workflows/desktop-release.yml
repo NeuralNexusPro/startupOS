@@ -19,6 +19,11 @@ on:
         options:
           - "false"
           - "true"
+      artifact_run_id:
+        description: Existing Desktop Release run ID to publish without rebuilding
+        required: false
+        default: ""
+        type: string
   push:
     tags:
       - "desktop-v*"
@@ -37,6 +42,7 @@ env:
 jobs:
   windows:
     name: Build Windows
+    if: inputs.artifact_run_id == ''
     runs-on: windows-latest
     timeout-minutes: 90
     steps:
@@ -52,6 +58,12 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      - name: Verify controlled Pi Task Runtime development contract
+        run: |
+          pnpm --filter @originos/pi-agent-adapter build
+          pnpm --filter @originos/desktop test:pi-task-runtime-package
+          pnpm --filter @originos/desktop verify:pi-task-runtime
 
       - name: Verify Windows workspace upload paths
         run: pnpm --filter @originos/core exec vitest run src/lib/integrations/electron/__tests__/workspace-paths.test.ts
@@ -70,7 +82,8 @@ jobs:
 
       - run: pnpm --filter @originos/desktop generate:update-metadata
 
-      - run: pnpm --filter @originos/desktop verify:win-package
+      - name: Verify Windows x64 package including Pi Task Runtime
+        run: pnpm --filter @originos/desktop verify:win-package
 
       - run: pnpm --filter @originos/desktop verify:update-metadata
 
@@ -89,6 +102,7 @@ jobs:
 
   macos-arm64:
     name: Build macOS arm64
+    if: inputs.artifact_run_id == ''
     runs-on: macos-14
     timeout-minutes: 120
     steps:
@@ -104,6 +118,12 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      - name: Verify controlled Pi Task Runtime development contract
+        run: |
+          pnpm --filter @originos/pi-agent-adapter build
+          pnpm --filter @originos/desktop test:pi-task-runtime-package
+          pnpm --filter @originos/desktop verify:pi-task-runtime
 
       - name: Verify macOS signing secrets
         env:
@@ -141,7 +161,8 @@ jobs:
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
         run: node scripts/run-electron-builder-mac.js --config electron-builder.yml --mac --arm64 --publish never
 
-      - run: pnpm --filter @originos/desktop verify:mac-package
+      - name: Verify macOS arm64 package including Pi Task Runtime
+        run: pnpm --filter @originos/desktop verify:mac-package
 
       - run: pnpm --filter @originos/desktop verify:mac-signing
 
@@ -153,10 +174,10 @@ jobs:
             release/OriginOS CE-*-arm64.dmg
             release/OriginOS CE-*-arm64.dmg.blockmap
             release/OriginOS CE-*-arm64.zip
-            release/OriginOS CE-*-arm64.zip.blockmap
 
   macos-x64:
     name: Build macOS x64
+    if: inputs.artifact_run_id == ''
     runs-on: macos-15-intel
     timeout-minutes: 120
     steps:
@@ -172,6 +193,12 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      - name: Verify controlled Pi Task Runtime development contract
+        run: |
+          pnpm --filter @originos/pi-agent-adapter build
+          pnpm --filter @originos/desktop test:pi-task-runtime-package
+          pnpm --filter @originos/desktop verify:pi-task-runtime
 
       - name: Verify macOS signing secrets
         env:
@@ -209,7 +236,8 @@ jobs:
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
         run: node scripts/run-electron-builder-mac.js --config electron-builder.yml --mac --x64 --publish never
 
-      - run: pnpm --filter @originos/desktop verify:mac-package
+      - name: Verify macOS x64 package including Pi Task Runtime
+        run: pnpm --filter @originos/desktop verify:mac-package
 
       - run: pnpm --filter @originos/desktop verify:mac-signing
 
@@ -221,19 +249,25 @@ jobs:
             release/OriginOS CE-*-x64.dmg
             release/OriginOS CE-*-x64.dmg.blockmap
             release/OriginOS CE-*-x64.zip
-            release/OriginOS CE-*-x64.zip.blockmap
 
   publish:
-    name: Publish Qiniu
-    runs-on: macos-14
+    name: Publish Qiniu and GitHub Release
+    runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: write
     needs:
       - windows
       - macos-arm64
       - macos-x64
     timeout-minutes: 60
-    if: github.event_name == 'push' || inputs.publish == 'true'
+    if: >-
+      always() &&
+      (github.event_name == 'push' || inputs.publish == 'true') &&
+      (inputs.artifact_run_id != '' ||
+        (needs.windows.result == 'success' &&
+         needs.macos-arm64.result == 'success' &&
+         needs.macos-x64.result == 'success'))
     steps:
       - uses: actions/checkout@v4
 
@@ -255,16 +289,22 @@ jobs:
         with:
           name: windows-release
           path: .release-input/windows
+          run-id: ${{ inputs.artifact_run_id || github.run_id }}
+          github-token: ${{ github.token }}
 
       - uses: actions/download-artifact@v4
         with:
           name: macos-arm64-release
           path: .release-input/macos-arm64
+          run-id: ${{ inputs.artifact_run_id || github.run_id }}
+          github-token: ${{ github.token }}
 
       - uses: actions/download-artifact@v4
         with:
           name: macos-x64-release
           path: .release-input/macos-x64
+          run-id: ${{ inputs.artifact_run_id || github.run_id }}
+          github-token: ${{ github.token }}
 
       - name: Assemble release artifacts
         run: |
@@ -315,11 +355,17 @@ jobs:
         run: pnpm publish:qiniu
 
       - name: Publish GitHub Release
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/desktop-v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION="$(node -p "require('./packages/desktop/package.json').version")"
+          if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF" == refs/tags/desktop-v* ]]; then
+            RELEASE_TAG="$GITHUB_REF_NAME"
+            CREATE_ARGS=(--verify-tag)
+          else
+            RELEASE_TAG="desktop-v${VERSION}"
+            CREATE_ARGS=(--target "$GITHUB_SHA")
+          fi
           CHANGELOG="docs/changes/releases/v${VERSION}/changelog.md"
           PACKAGES=(
             "release/OriginOS CE-${VERSION}-x64.exe"
@@ -333,8 +379,6 @@ jobs:
             "release/OriginOS CE-${VERSION}-x64.exe.blockmap"
             "release/OriginOS CE-${VERSION}-arm64.dmg.blockmap"
             "release/OriginOS CE-${VERSION}-x64.dmg.blockmap"
-            "release/OriginOS CE-${VERSION}-arm64.zip.blockmap"
-            "release/OriginOS CE-${VERSION}-x64.zip.blockmap"
             "release/latest-win.yml"
             "release/stable-win.yml"
             "release/latest-mac.yml"
@@ -351,14 +395,14 @@ jobs:
           shasum -a 256 "${PACKAGES[@]}" > release/SHA256SUMS.txt
           ASSETS=("${PACKAGES[@]}" "${SUPPORTING_ASSETS[@]}" "release/SHA256SUMS.txt")
 
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release edit "$GITHUB_REF_NAME" \
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" \
               --title "OriginOS CE v${VERSION}" \
               --notes-file "$CHANGELOG"
-            gh release upload "$GITHUB_REF_NAME" "${ASSETS[@]}" --clobber
+            gh release upload "$RELEASE_TAG" "${ASSETS[@]}" --clobber
           else
-            gh release create "$GITHUB_REF_NAME" "${ASSETS[@]}" \
-              --verify-tag \
+            gh release create "$RELEASE_TAG" "${ASSETS[@]}" \
+              "${CREATE_ARGS[@]}" \
               --title "OriginOS CE v${VERSION}" \
               --notes-file "$CHANGELOG"
           fi

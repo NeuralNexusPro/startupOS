@@ -98,8 +98,8 @@ multiSelect: false
 
 启动对话时，**先执行以下步骤**确定当前访谈阶段（只判断一次，后续根据用户操作自然推进）：
 
-**Step 1 — 读取业务模型**
-调用 `read_file` 尝试读取 `output/business-model.json`。
+**Step 1 — 检查并读取业务模型**
+先调用 `list_files` 查看 `output` 目录。仅当列表中存在 `business-model.json` 时，再调用 `read_file` 读取；文件不存在是全新项目的正常状态，不属于工具失败。
 
 **Step 2 — 根据文件内容判断阶段**
 
