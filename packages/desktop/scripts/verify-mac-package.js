@@ -18,6 +18,18 @@ const bundledSkillEntries = fs
   .filter((entry) => entry.isDirectory())
   .map((entry) => `templates/skills/${entry.name}/SKILL.md`)
   .filter((entry) => fs.existsSync(path.join(repoRoot, entry)));
+const perceptionPluginPackages = [
+  '@originos/perception-plugin-email',
+  '@originos/perception-plugin-wecom',
+  '@originos/perception-plugin-feishu',
+  '@originos/perception-plugin-dingtalk',
+];
+const perceptionRuntimeDependencies = [
+  '@larksuiteoapi/node-sdk',
+  '@wecom/aibot-node-sdk',
+  'imapflow',
+  'mailparser',
+];
 const candidateAppPaths = [
   path.join(releaseDir, 'mac-arm64', productName),
   path.join(releaseDir, 'mac', productName),
@@ -56,6 +68,8 @@ async function verifyApp(appPath) {
     'node_modules/@originos/pi-agent-adapter/dist/index.cjs',
     'node_modules/@originos/pi-agent-adapter/dist/ai.cjs',
     'node_modules/@originos/pi-agent-adapter/dist/goal.cjs',
+    ...perceptionPluginPackages.map((dependency) => `node_modules/${dependency}/package.json`),
+    ...perceptionRuntimeDependencies.map((dependency) => `node_modules/${dependency}/package.json`),
     'node_modules/archiver/index.js',
   ];
 
@@ -88,6 +102,15 @@ async function verifyApp(appPath) {
     const archiverRuntime = smokeRequire('archiver');
     if (typeof archiverRuntime.ZipArchive !== 'function') {
       fail('archiver runtime does not expose ZipArchive');
+    }
+    for (const dependency of perceptionRuntimeDependencies) {
+      smokeRequire.resolve(dependency);
+    }
+    for (const pluginPackage of perceptionPluginPackages) {
+      const pluginModule = smokeRequire(pluginPackage);
+      if (!Object.values(pluginModule).some((value) => value?.manifest?.id)) {
+        fail(`perception plugin does not expose a manifest: ${pluginPackage}`);
+      }
     }
     smokeRequire.resolve(path.join(
       smokeDir,

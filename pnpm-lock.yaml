@@ -282,6 +282,9 @@ importers:
       '@anthropic-ai/sandbox-runtime':
         specifier: ^0.0.51
         version: 0.0.51
+      '@larksuiteoapi/node-sdk':
+        specifier: 1.73.3
+        version: 1.73.3
       '@originos/perception-plugin-dingtalk':
         specifier: workspace:*
         version: link:../perception-plugins/dingtalk
@@ -300,6 +303,9 @@ importers:
       '@sinclair/typebox':
         specifier: ^0.34.0
         version: 0.34.52
+      '@wecom/aibot-node-sdk':
+        specifier: 1.0.6
+        version: 1.0.6
       archiver:
         specifier: ^8.0.0
         version: 8.0.0

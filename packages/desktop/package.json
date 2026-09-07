@@ -1,6 +1,6 @@
 {
   "name": "@originos/desktop",
-  "version": "0.1.48",
+  "version": "0.2.0",
   "private": true,
   "main": "dist-electron/desktop/src/main/main.js",
   "scripts": {
@@ -36,12 +36,14 @@
   },
   "dependencies": {
     "@anthropic-ai/sandbox-runtime": "^0.0.51",
-    "@originos/pi-agent-adapter": "workspace:*",
-    "@originos/perception-plugin-email": "workspace:*",
+    "@larksuiteoapi/node-sdk": "1.73.3",
     "@originos/perception-plugin-dingtalk": "workspace:*",
+    "@originos/perception-plugin-email": "workspace:*",
     "@originos/perception-plugin-feishu": "workspace:*",
     "@originos/perception-plugin-wecom": "workspace:*",
+    "@originos/pi-agent-adapter": "workspace:*",
     "@sinclair/typebox": "^0.34.0",
+    "@wecom/aibot-node-sdk": "1.0.6",
     "archiver": "^8.0.0",
     "dotenv": "^16.6.1",
     "electron-log": "5.4.4",
