@@ -27,7 +27,7 @@ export class PerceptionPluginHostService {
     this.replies = new PluginReplyDeliveryService(dataRoot);
     const registry = new PerceptionPluginRegistry();
     registry.register({ plugin: weComPlugin, approvedPermissions: ['credentials', 'events', 'network', 'health', 'replies'] });
-    registry.register({ plugin: feishuPlugin, approvedPermissions: ['credentials', 'events', 'health'] });
+    registry.register({ plugin: feishuPlugin, approvedPermissions: ['credentials', 'events', 'health', 'replies'] });
     registry.register({ plugin: dingtalkPlugin, approvedPermissions: ['events', 'health'] });
     this.host = new PerceptionPluginHost(registry, this.createPorts());
   }
@@ -80,7 +80,13 @@ export class PerceptionPluginHostService {
         if (!health.connectorId) return;
         const detail = health.detail && !Array.isArray(health.detail) && typeof health.detail === 'object' ? health.detail : {};
         const state = detail['connectionState'];
-        new ConnectorHealthStore(this.dataRoot).save({ connectorId: health.connectorId, mode: 'stream', status: health.status, connectionState: state === 'connected' || state === 'reconnecting' ? state : 'disconnected', reconnectCount: typeof detail['reconnectCount'] === 'number' ? detail['reconnectCount'] : 0, pendingHandlers: 0, lastSuccessAt: typeof detail['lastSuccessAt'] === 'string' ? detail['lastSuccessAt'] : undefined, lastSafeCode: health.safeCode, updatedAt: new Date().toISOString() });
+        const config = this.configs.get(health.connectorId);
+        const common = { connectorId: health.connectorId, status: health.status, lastSuccessAt: typeof detail['lastSuccessAt'] === 'string' ? detail['lastSuccessAt'] : undefined, lastSafeCode: health.safeCode, updatedAt: new Date().toISOString() };
+        if (config?.mode === 'webhook') {
+          new ConnectorHealthStore(this.dataRoot).save({ ...common, mode: 'webhook', lastCallbackAt: typeof detail['lastCallbackAt'] === 'string' ? detail['lastCallbackAt'] : undefined, lastAckAt: typeof detail['lastAckAt'] === 'string' ? detail['lastAckAt'] : undefined });
+        } else {
+          new ConnectorHealthStore(this.dataRoot).save({ ...common, mode: 'stream', connectionState: state === 'connected' || state === 'reconnecting' ? state : 'disconnected', reconnectCount: typeof detail['reconnectCount'] === 'number' ? detail['reconnectCount'] : 0, pendingHandlers: 0 });
+        }
       } },
       audit: { record: async () => undefined },
       replies: this.replies,

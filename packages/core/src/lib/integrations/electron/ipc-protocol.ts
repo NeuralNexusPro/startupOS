@@ -152,6 +152,7 @@ export const IPC_CHANNELS = {
   PERCEPTION_MAIL_PROVISION_TEST: 'perception:mail:provision-test',
   PERCEPTION_MAIL_CREDENTIAL_REMOVE: 'perception:mail:credential-remove',
   PERCEPTION_WECOM_PROVISION: 'perception:wecom:provision',
+  PERCEPTION_FEISHU_PROVISION: 'perception:feishu:provision',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

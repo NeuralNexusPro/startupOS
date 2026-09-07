@@ -101,6 +101,7 @@ interface PerceptionEventV1 {
 | **SENSE.10** | Mail Connector Provisioning 与 Desktop 轮询闭环 | Critical | SENSE.3、SENSE.8、SENSE.9 | ✅ Complete |
 | **SENSE.11** | 企业微信 Connector Provisioning 与运行闭环 | Critical | SENSE.2、SENSE.4、SENSE.8、SENSE.9 | ✅ Complete |
 | **SENSE.12** | Perception Plugin Host 与 Connector 插件化迁移 | Critical | SENSE.1–11 | 🚧 In Progress |
+| **SENSE.13** | 感知中心首页入口与连接状态面板 | High | SENSE.8、SENSE.9、SENSE.12 | ✅ Complete |
 
 ## 数据目录
 

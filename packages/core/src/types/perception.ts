@@ -158,6 +158,8 @@ export interface WeComBotCredentialPort {
   resolve(secretRef: string): Promise<WeComBotSecret>;
   remove(secretRef: string): Promise<void>;
 }
+export interface FeishuConnectorSettings { appId: string; domain?: 'feishu' | 'lark' }
+export interface FeishuCredentialInput { appSecret: string }
 type ConnectorHealthStatus = 'healthy' | 'degraded' | 'disconnected' | 'disabled';
 interface ConnectorHealthBase { connectorId: string; status: ConnectorHealthStatus; updatedAt: string; lastSuccessAt?: string; lastSafeCode?: string }
 export type ConnectorHealth =

@@ -10,12 +10,13 @@ import type { ExternalTriggerGrant, PerceptionTargetKind } from '@originos/core/
 
 interface TargetGrantFormProps {
   connectors: Array<{ id: string }>;
+  grants?: ExternalTriggerGrant[];
   loadAssets?(kind: PerceptionTargetKind): Promise<PerceptionTargetAsset[]>;
   onSave(grant: ExternalTriggerGrant): Promise<void>;
   onCancel(): void;
 }
 
-export const TargetGrantForm = ({ connectors, loadAssets = listPerceptionTargetAssets, onSave, onCancel }: TargetGrantFormProps): JSX.Element => {
+export const TargetGrantForm = ({ connectors, grants = [], loadAssets = listPerceptionTargetAssets, onSave, onCancel }: TargetGrantFormProps): JSX.Element => {
   const [kind, setKind] = useState<PerceptionTargetKind>('project');
   const [id, setId] = useState('');
   const [assets, setAssets] = useState<PerceptionTargetAsset[]>([]);
@@ -53,11 +54,17 @@ export const TargetGrantForm = ({ connectors, loadAssets = listPerceptionTargetA
     setSaving(true);
     const now = new Date().toISOString();
     try {
+      const existing = grants.find((grant) => grant.target.kind === kind && grant.target.id === id.trim());
+      const allowedConnectorIds = connectorId
+        ? existing?.allowedConnectorIds
+          ? [...new Set([...existing.allowedConnectorIds, connectorId])]
+          : existing ? undefined : [connectorId]
+        : undefined;
       await onSave({
         target: { kind, id: id.trim() },
         enabled: true,
-        ...(connectorId ? { allowedConnectorIds: [connectorId] } : {}),
-        createdAt: now,
+        ...(allowedConnectorIds ? { allowedConnectorIds } : {}),
+        createdAt: existing?.createdAt ?? now,
         updatedAt: now,
       });
       onCancel();

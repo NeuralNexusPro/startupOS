@@ -67,6 +67,21 @@ describe('PerceptionManagementFacade', () => {
     })).toThrow('not authorized');
   });
 
+  it('rejects a rule when its source connectors are outside the target grant', () => {
+    const dataRoot = root();
+    const facade = new PerceptionManagementFacade(
+      dataRoot,
+      new PerceptionRetryService(new PerceptionRetryStore(dataRoot), new PerceptionDeadLetterStore(dataRoot)),
+    );
+    const now = '2026-09-07T08:00:00.000Z';
+    facade.saveConnector({ id: 'feishu-main', source: 'feishu', mode: 'stream', enabled: true, settings: {}, createdAt: now, updatedAt: now });
+    facade.saveGrant({ target: { kind: 'role-agent', id: 'assistant' }, enabled: true, allowedConnectorIds: ['wecom-main'], createdAt: now, updatedAt: now });
+    expect(() => facade.saveRule({
+      id: 'rule-feishu', enabled: true, sources: ['feishu'], eventTypes: ['message.received'], conditions: [],
+      target: { kind: 'role-agent', id: 'assistant' }, execution: { requireHitl: false, maxAttempts: 3 }, createdAt: now, updatedAt: now,
+    })).toThrow('not authorized');
+  });
+
   it('correlates perception data, rule timing, and the final target result', () => {
     const dataRoot = root();
     const facade = new PerceptionManagementFacade(dataRoot, new PerceptionRetryService(new PerceptionRetryStore(dataRoot), new PerceptionDeadLetterStore(dataRoot)));

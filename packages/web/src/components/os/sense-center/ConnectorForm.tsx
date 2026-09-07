@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import type { JsonValue, MailAuthMode, PerceptionConnectorConfig, PerceptionSource } from '@originos/core/types';
 import { canProvisionMail, provisionAndTestMail } from '@/services/perceptionMailService';
 import { canProvisionWeCom, provisionWeCom } from '@/services/perceptionWeComService';
+import { canProvisionFeishu, provisionFeishu } from '@/services/perceptionFeishuService';
 
 interface ConnectorDraft { id: string; source: PerceptionSource; settings: Record<string, JsonValue> }
 interface ConnectorFormProps { onSave(config: PerceptionConnectorConfig): Promise<void>; onCancel(): void; onProvisioned?(): Promise<void> | void; initial?: ConnectorDraft }
@@ -21,6 +22,9 @@ export function ConnectorForm({ onSave, onCancel, onProvisioned, initial }: Conn
   const [endpoint, setEndpoint] = useState('');
   const [botId, setBotId] = useState(value(initial, 'botId'));
   const [weComSecret, setWeComSecret] = useState('');
+  const [feishuAppId, setFeishuAppId] = useState(value(initial, 'appId'));
+  const [feishuAppSecret, setFeishuAppSecret] = useState('');
+  const [feishuDomain, setFeishuDomain] = useState<'feishu' | 'lark'>(initial?.settings['domain'] === 'lark' ? 'lark' : 'feishu');
   const [mailbox, setMailbox] = useState(value(initial, 'mailbox') || 'INBOX');
   const [pollSeconds, setPollSeconds] = useState(value(initial, 'pollIntervalSeconds') || '60');
   const [error, setError] = useState<string>();
@@ -49,6 +53,17 @@ export function ConnectorForm({ onSave, onCancel, onProvisioned, initial }: Conn
       setSaving(true);
       try { await provisionWeCom({ connectorId: id, profile: { transport: 'aibot-websocket', botId: botId.trim() }, secret: { value: weComSecret } }); setWeComSecret(''); await onProvisioned?.(); onCancel(); }
       catch { setError('企微机器人配置保存失败'); }
+      finally { setSaving(false); }
+      return;
+    }
+    if (source === 'feishu') {
+      if (!feishuAppId.trim() || !feishuAppSecret) { setError('请填写 App ID 和 App Secret'); return; }
+      if (!canProvisionFeishu()) { setError('飞书机器人凭据只能在 OriginOS Desktop 中安全配置'); return; }
+      setSaving(true);
+      try {
+        await provisionFeishu({ connectorId: id, profile: { appId: feishuAppId.trim(), domain: feishuDomain }, secret: { appSecret: feishuAppSecret } });
+        setFeishuAppSecret(''); await onProvisioned?.(); onCancel();
+      } catch { setError('飞书机器人配置保存失败'); }
       finally { setSaving(false); }
       return;
     }
@@ -82,10 +97,17 @@ export function ConnectorForm({ onSave, onCancel, onProvisioned, initial }: Conn
         <div className="rounded border border-slate-700 bg-slate-950 p-3 text-xs text-slate-400 md:col-span-2">
           使用企业微信智能机器人 WebSocket 长连接，无需公网回调地址。Secret 将由系统安全存储加密保存。
         </div>
+      </> : source === 'feishu' ? <>
+        <Field label="App ID"><input required value={feishuAppId} onChange={(event) => setFeishuAppId(event.target.value)} className={control} placeholder="cli_xxxxxxxxxxxxxxxx" /></Field>
+        <Field label="App Secret（不会回显）"><input required type="password" value={feishuAppSecret} onChange={(event) => setFeishuAppSecret(event.target.value)} className={control} autoComplete="new-password" /></Field>
+        <Field label="服务区域"><select value={feishuDomain} onChange={(event) => setFeishuDomain(event.target.value === 'lark' ? 'lark' : 'feishu')} className={control}><option value="feishu">飞书（中国）</option><option value="lark">Lark（国际）</option></select></Field>
+        <div className="rounded border border-slate-700 bg-slate-950 p-3 text-xs text-slate-400 md:col-span-2">
+          在飞书开放平台的“事件与回调”中选择“使用长连接接收事件”，订阅“接收消息”事件，并开通机器人发消息及卡片相关权限。无需公网回调地址；卡片权限不足时会降级为纯文本回复。
+        </div>
       </> : <Field label={source === 'dingtalk' ? 'Stream Endpoint' : '回调路径'}><input value={endpoint} onChange={(event) => setEndpoint(event.target.value)} className={control} placeholder={source === 'dingtalk' ? 'wss://…' : '/api/perception/webhooks/…'} /></Field>}
     </div>
     {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
-    <p className="text-xs text-slate-400">{source === 'wecom' ? 'Token 和 EncodingAESKey 不在页面填写，也不会进入管理 API 或配置文件。' : '邮箱密码只发送到 Desktop 主进程并由系统安全存储加密，不进入 Web API、配置文件或页面回显。'}</p>
+    <p className="text-xs text-slate-400">{source === 'wecom' || source === 'feishu' ? '机器人凭据只发送到 Desktop 主进程并加密保存，不进入管理 API、配置文件或页面回显。' : '邮箱密码只发送到 Desktop 主进程并由系统安全存储加密，不进入 Web API、配置文件或页面回显。'}</p>
     <div className="flex gap-2"><Button type="submit" disabled={testing || saving}>{source === 'email' ? (testing ? '正在测试…' : '保存并测试连接') : saving ? '正在保存…' : '保存为停用状态'}</Button><Button type="button" variant="outline" onClick={onCancel}>取消</Button></div>
   </form>;
 }

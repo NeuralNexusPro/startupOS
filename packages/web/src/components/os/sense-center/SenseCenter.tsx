@@ -74,7 +74,7 @@ export function SenseCenter(): JSX.Element {
         <p className="text-sm text-slate-400">只有这里明确授权的目标才能接收外部事件。</p>
         <Button onClick={() => setShowGrantForm((value) => !value)}>{showGrantForm ? '收起表单' : '添加目标权限'}</Button>
       </div>
-      {showGrantForm && <TargetGrantForm connectors={connectors} onSave={saveGrant} onCancel={() => setShowGrantForm(false)} />}
+      {showGrantForm && <TargetGrantForm connectors={connectors} grants={grants} onSave={saveGrant} onCancel={() => setShowGrantForm(false)} />}
       {grants.length === 0 ? <Empty icon={<ShieldCheck className="h-8 w-8" />} text="尚未授权任何外部触发目标" /> : <div className="grid gap-3 md:grid-cols-2">{grants.map((grant) => {
         const key = `${grant.target.kind}:${grant.target.id}`;
         return <article key={key} className="rounded border border-slate-700 bg-slate-900 p-4">

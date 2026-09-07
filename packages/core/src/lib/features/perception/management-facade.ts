@@ -54,6 +54,11 @@ export class PerceptionManagementFacade {
   saveRule(rule: PerceptionTriggerRule): PerceptionTriggerRule {
     const grant = this.grants.list().find((item) => item.target.kind === rule.target.kind && item.target.id === rule.target.id && item.enabled);
     if (!grant) throw new Error('Perception rule target is not authorized for external triggers');
+    if (grant.allowedConnectorIds) {
+      const hasAuthorizedSource = this.connectors.list().some((connector) =>
+        rule.sources.includes(connector.source) && grant.allowedConnectorIds?.includes(connector.id));
+      if (!hasAuthorizedSource) throw new Error('Perception rule target is not authorized for external triggers');
+    }
     return this.rules.save(rule);
   }
   listRules(): PerceptionTriggerRule[] { return this.rules.list() }

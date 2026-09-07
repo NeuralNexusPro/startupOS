@@ -25,6 +25,7 @@ import { MailProvisioningService } from './services/perception-mail/mail-provisi
 import { MailConnectorSupervisor } from './services/perception-mail/mail-connector-supervisor';
 import { PerceptionPluginHostService } from './services/perception-plugin-host/perception-plugin-host-service';
 import { WeComProvisioningService } from './services/perception-wecom/wecom-provisioning-service';
+import { FeishuProvisioningService } from './services/perception-plugin-host/feishu-provisioning-service';
 import { DesktopSchedulerService } from './services/desktop-scheduler-service';
 import { BufferedDailyLogWriter } from './services/daily-log-writer';
 import { captureConsoleCall, serializeConsoleArgs } from './services/console-log-capture';
@@ -444,6 +445,7 @@ app.whenReady().then(() => {
   ipcServices.push(new EntryExportService());
   ipcServices.push(new MailProvisioningService());
   ipcServices.push(new WeComProvisioningService());
+  ipcServices.push(new FeishuProvisioningService());
   const channelRuntime = await createDefaultDesktopChannelRuntime(taskRuntimeIpc);
   ipcServices.push(channelRuntime);
   ipcServices.push(new AgentSessionService(taskRuntimeIpc, channelRuntime.ingress));

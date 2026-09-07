@@ -10,10 +10,11 @@
 | S12-ISO-01 | Host | 单插件崩溃 | 其他插件继续，健康和审计脱敏 |
 | S12-SEC-01 | Desktop | 四插件 Secret | 仅经 IPC/safeStorage，配置/日志/响应不可检索 |
 | S12-UI-01 | Web | 四 schema 渲染 | 无平台条件组件，字段、错误、可访问性正确 |
+| S12-UI-02 | Web/Core | 连接器范围目标授权 | 创建规则时只展示允许当前连接器的目标；为同一目标追加连接器授权时合并而非覆盖已有授权；不匹配的规则在保存阶段拒绝 |
 | S12-MIG-01 | Core | 旧配置迁移 | ID/source/enabled/secret/cursor/rule 保持且幂等 |
 | S12-PLG-01 | Plugin | Email | 增量、正文和故障语义保持 |
 | S12-PLG-02 | Plugin | WeCom | 消息、重连、去重保持；使用原始 SDK frame 将本次目标执行的全部 Assistant 文本按序回复，且只在末段结束 stream |
-| S12-PLG-03 | Plugin | Feishu | 验签、挑战、ACK 保持 |
+| S12-PLG-03 | Plugin | Feishu | WebSocket 入站保持；Agent `text_delta` 通过官方 SDK Markdown CardKit 节流流式更新，完成态收口；无 delta 的 Markdown 回复以卡片渲染；CardKit 失败降级为普通文本且回复不丢失 |
 | S12-PLG-04 | Plugin | DingTalk | 认证、回调、ACK 保持 |
 | S12-PKG-01 | Packaging | Windows/macOS | bundled catalog 与依赖完整 |
 | S12-DEP-01 | Architecture | lint/madge/import scan | 无循环、反向依赖、平台分支 |
@@ -27,3 +28,17 @@
 - Core/Web typecheck 与 Desktop build 通过；相关 ESLint 0 error（保留既有 warning）；`git diff --check` 通过。
 - 依赖扫描确认通用 Host/Registry 无渠道名称分支，企微官方 SDK 仅由 `@originos/perception-plugin-wecom` 持有；Electron 打包清单显式包含插件和 SDK。
 - 尚未使用真实 Bot ID/Secret 联机，Windows 打包态和企微服务端连接作为 S12-T7 人工/打包验收剩余项。
+
+## 2026-09-07 飞书插件验证
+
+- 飞书插件覆盖受控 manifest、官方 SDK WebSocket 生命周期、自动重连健康、消息归一化、事件提交和原消息双工回复。
+- 插件不再导入 Core 飞书 Connector；平台逻辑只依赖 Core 公共 Plugin SDK。
+- 飞书配置表单测试通过；飞书插件 WebSocket、Markdown 和流式卡片专项 7 项通过。
+- 已移除默认 Webhook 回环桥和 Verification Token/Encrypt Key 配置；桌面模式无需公网域名。
+- 真实飞书 App ID/App Secret 尚未联机；仍需在飞书后台选择长连接、订阅 `im.message.receive_v1`、授予消息权限并发布应用。
+
+## 2026-09-07 飞书流式 Markdown 验收补充
+
+- Agent delta 必须在目标执行期间进入同一张飞书 Markdown 卡片，`completed` 后关闭流式状态。
+- 最终 Assistant 消息不得与已流式输出重复发送；没有 delta 时直接发送 Markdown 卡片。
+- CardKit 创建或更新失败时，必须使用完整累积文本回退到普通文本回复。

@@ -9,7 +9,7 @@
 ## 简要验收标准
 
 - [x] Core 已提供平台无关的 Plugin Contract、Registry、Host 与感知运行时。
-- [ ] 四个渠道迁入独立 bundled perception plugins（当前 WeCom 已迁移，Feishu/DingTalk 已接入 Host 适配器，Email 仍由旧 supervisor 承载）。
+- [ ] 四个渠道迁入独立 bundled perception plugins（当前 WeCom、Feishu 插件实现已迁移；DingTalk 尚待完整迁移，Email 仍由旧 supervisor 承载）。
 - [ ] 感知中心由声明式 schema 渲染配置，不再包含平台条件分支。
 - [x] Plugin SDK 限定权限、凭据、生命周期和事件输出边界，并支持 webhook dispatch。
 - [ ] 旧 Connector 配置可自动迁移或得到明确提示。
@@ -23,3 +23,5 @@
 | 日期 | 内容 | 变更人 |
 |---|---|---|
 | 2026-09-04 | 建立 Story 与实施前规格 | Codex |
+| 2026-09-07 | 飞书插件改用官方 Node SDK WebSocket 长连接，完成安全配置、重连健康和双工回复 | Codex |
+| 2026-09-07 | 飞书回复接入官方 Markdown CardKit 流式更新与纯文本失败降级 | Codex |

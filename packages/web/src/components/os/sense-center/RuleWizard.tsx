@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import type { ConnectorSummary } from '@/store/perceptionStore';
@@ -15,7 +15,8 @@ export function RuleWizard({ connectors, grants, initial, onSave, onCancel }: Ru
   const initialCondition = initial?.conditions[0];
   const [id, setId] = useState(() => initial?.id ?? `rule-${Date.now().toString(36)}`);
   const [connectorId, setConnectorId] = useState(() => connectors.find((item) => initial?.sources.includes(item.source))?.id ?? connectors[0]?.id ?? '');
-  const [targetKey, setTargetKey] = useState(() => initial ? `${initial.target.kind}:${initial.target.id}` : enabledGrants[0] ? `${enabledGrants[0].target.kind}:${enabledGrants[0].target.id}` : '');
+  const connectorGrants = useMemo(() => enabledGrants.filter((grant) => !grant.allowedConnectorIds || grant.allowedConnectorIds.includes(connectorId)), [connectorId, enabledGrants]);
+  const [targetKey, setTargetKey] = useState(() => initial ? `${initial.target.kind}:${initial.target.id}` : '');
   const [path, setPath] = useState<TriggerFilterPath>(initialCondition?.path ?? 'content.text');
   const [operator, setOperator] = useState<TriggerFilterOperator>(initialCondition?.operator ?? 'contains');
   const [value, setValue] = useState(() => typeof initialCondition?.value === 'string' ? initialCondition.value : '');
@@ -24,11 +25,17 @@ export function RuleWizard({ connectors, grants, initial, onSave, onCancel }: Ru
   const [enabled, setEnabled] = useState(initial?.enabled ?? false);
   const [error, setError] = useState<string>();
 
+  useEffect(() => {
+    setTargetKey((current) => connectorGrants.some((grant) => `${grant.target.kind}:${grant.target.id}` === current)
+      ? current
+      : connectorGrants[0] ? `${connectorGrants[0].target.kind}:${connectorGrants[0].target.id}` : '');
+  }, [connectorGrants]);
+
   const submit = async (event: React.FormEvent): Promise<void> => {
     event.preventDefault(); setError(undefined);
     if (!RULE_ID_PATTERN.test(id)) { setError('规则 ID 只能使用英文字母、数字和 . _ : -，且必须以字母或数字开头'); return; }
     const connector = connectors.find((item) => item.id === connectorId);
-    const grant = enabledGrants.find((item) => `${item.target.kind}:${item.target.id}` === targetKey);
+    const grant = connectorGrants.find((item) => `${item.target.kind}:${item.target.id}` === targetKey);
     if (!connector || !grant) { setError('必须选择已配置来源和已授权目标'); return; }
     const now = new Date().toISOString();
     const target = grant.target.kind === 'skill'
@@ -50,13 +57,14 @@ export function RuleWizard({ connectors, grants, initial, onSave, onCancel }: Ru
       <Field label="来源"><select required value={connectorId} onChange={(event) => setConnectorId(event.target.value)} className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2">{connectors.map((item) => <option key={item.id} value={item.id}>{item.id} ({item.source})</option>)}</select></Field>
       <Field label="白名单字段"><select value={path} onChange={(event) => setPath(event.target.value as TriggerFilterPath)} className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2"><option value="content.text">正文</option><option value="content.subject">主题</option><option value="actor.externalId">发送者</option><option value="conversation.externalId">会话</option><option value="type">事件类型</option></select></Field>
       <Field label="条件"><div className="flex gap-2"><select value={operator} onChange={(event) => setOperator(event.target.value as TriggerFilterOperator)} className="rounded border border-slate-700 bg-slate-950 px-2"><option value="contains">包含</option><option value="equals">等于</option><option value="startsWith">开头为</option></select><input value={value} onChange={(event) => setValue(event.target.value)} className="min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-3 py-2" /></div></Field>
-      <Field label="已授权目标"><select required value={targetKey} onChange={(event) => setTargetKey(event.target.value)} className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2"><option value="">请选择</option>{enabledGrants.map((item) => <option key={`${item.target.kind}:${item.target.id}`} value={`${item.target.kind}:${item.target.id}`}>{item.target.kind}/{item.target.id}</option>)}</select></Field>
+      <Field label="已授权目标"><select required value={targetKey} onChange={(event) => setTargetKey(event.target.value)} className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2"><option value="">请选择</option>{connectorGrants.map((item) => <option key={`${item.target.kind}:${item.target.id}`} value={`${item.target.kind}:${item.target.id}`}>{item.target.kind}/{item.target.id}</option>)}</select></Field>
       {targetKey.startsWith('skill:') && <Field label="Skill 认知归属"><select value={ownerKey} onChange={(event) => setOwnerKey(event.target.value)} className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2"><option value="ephemeral">Standalone（临时）</option>{enabledGrants.filter((item) => item.target.kind === 'project' || item.target.kind === 'role-agent').map((item) => <option key={`${item.target.kind}:${item.target.id}`} value={`${item.target.kind}:${item.target.id}`}>继承 {item.target.kind}/{item.target.id}</option>)}</select></Field>}
     </div>
     <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={requireHitl} onChange={(event) => setRequireHitl(event.target.checked)} />高风险动作要求人工确认（HITL）</label>
     <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />{initial ? '规则已启用' : '创建后立即启用'}</label>
     {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
     {enabledGrants.length === 0 && <p role="alert" className="text-sm text-yellow-400">尚无允许外部触发的目标，请先在目标设置中授予权限。</p>}
+    {enabledGrants.length > 0 && connectorGrants.length === 0 && <p role="alert" className="text-sm text-yellow-400">当前感知源尚未获得任何目标授权，请先在目标设置中为它授予权限。</p>}
     <div className="flex gap-2"><Button type="submit" disabled={!connectorId || !targetKey}>{initial ? '保存规则' : enabled ? '创建并启用' : '保存为停用规则'}</Button><Button type="button" variant="outline" onClick={onCancel}>取消</Button></div>
   </form>;
 }

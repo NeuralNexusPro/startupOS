@@ -2,9 +2,9 @@
 
 1. `S12-T1` 串行：更新项目地图；定义 Plugin SDK、manifest、schema、权限、版本。**完成**：`packages/core/src/modules/perception-runtime/plugins`。
 2. `S12-T2` 串行：实现 Registry/Host、故障隔离、生命周期、健康。**完成**：Host 对端口、事件、调度键和故障进行隔离；新增 webhook dispatch 边界。
-3. `S12-T3` 串行：实现声明式表单与统一 provisioning IPC/API。
+3. `S12-T3` 串行：实现声明式表单与统一 provisioning IPC/API。**进行中**：飞书 App ID/App Secret 已通过 Desktop IPC + safeStorage 配置，通用 schema renderer 仍待完成。
 4. `S12-T4` 可并行：迁移 WeCom、Email 及凭据/游标。**进行中**：WeCom 已迁移；Email 仍复用 Desktop mail supervisor，待迁移为 poll plugin。
-5. `S12-T5` 可并行：迁移 Feishu、DingTalk 及 webhook/stream。**进行中**：已通过 bundled package 注册 Feishu webhook 与 DingTalk stream 适配器，待接入统一 webhook gateway/stream supervisor。
+5. `S12-T5` 可并行：迁移 Feishu、DingTalk 及 webhook/stream。**进行中**：Feishu 已使用官方 `@larksuiteoapi/node-sdk` WSClient 完成长连接、自动重连、事件归一化、Desktop safeStorage provisioning，以及 `LarkChannel` Markdown CardKit 流式双工回复与纯文本降级，无需公网回调；DingTalk 仍待完整迁移。
 6. `S12-T6` 串行：旧配置迁移、打包清单、删除平台硬编码。
 7. `S12-T7` 串行：全量回归、依赖检查、验证 Goal、Windows 打包。
 
