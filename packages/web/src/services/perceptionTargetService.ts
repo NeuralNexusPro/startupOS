@@ -1,4 +1,5 @@
 import type { PerceptionTargetKind } from '@originos/core/types';
+import { listUserAgents } from '@originos/core/lib/integrations/electron/services/user-registry';
 
 export interface PerceptionTargetAsset {
   id: string;
@@ -24,8 +25,13 @@ export async function listPerceptionTargetAssets(kind: PerceptionTargetKind): Pr
     return projects.map((project) => ({ id: project.id, name: project.name, description: project.description, detail: project.domain }));
   }
   if (kind === 'role-agent') {
-    const data = await getData<{ agents: Array<{ id: string; name: string; description?: string; agentType?: string; role?: string }> }>('/api/user-agents');
-    return data.agents.map((agent) => ({ id: agent.id, name: agent.name, description: agent.description, detail: agent.role || (agent.agentType === 'role-agent' ? '角色 Agent' : 'Agent') }));
+    // Use the shared registry adapter so Electron resolves agents through the
+    // main-process IPC (the renderer API server may have a different DATA_ROOT).
+    const result = await listUserAgents();
+    if (!result.success || !result.data) throw new Error('TARGET_ASSETS_UNAVAILABLE');
+    return result.data
+      .filter((agent) => agent.agentType === 'role-agent')
+      .map((agent) => ({ id: agent.id, name: agent.name, description: agent.description, detail: agent.role || '角色 Agent' }));
   }
   const data = await getData<{ skills: Array<{ name: string; code?: string; description?: string; source: string }> }>('/api/skills?includeDiagnostics=false');
   return data.skills.map((skill) => ({ id: skill.code || skill.name, name: skill.name, description: skill.description, detail: skill.source }));
