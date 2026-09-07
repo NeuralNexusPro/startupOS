@@ -6,6 +6,7 @@ import { ChannelTriggerExecutionAdapter, ConnectorHealthStore, ExternalTriggerGr
 import type { ChannelMessageIngress } from '../../../../../core/src/modules/channel-runtime';
 import { SafeStorageWeComCredentialAdapter } from '../perception-wecom/safe-storage-wecom-credential-adapter';
 import { SafeStoragePerceptionCredentialAdapter } from './safe-storage-perception-credential-adapter';
+import { PluginReplyDeliveryService } from './plugin-reply-delivery-service';
 
 const PLUGIN_IDS: Record<string, string> = { wecom: 'originos.wecom', feishu: 'originos.feishu', dingtalk: 'originos.dingtalk' };
 
@@ -13,6 +14,7 @@ export class PerceptionPluginHostService {
   private readonly timers = new Map<string, NodeJS.Timeout>();
   private readonly host: PerceptionPluginHost;
   private readonly configs: PerceptionConnectorConfigStore;
+  private readonly replies: PluginReplyDeliveryService;
   private timer: NodeJS.Timeout | null = null;
   private active = new Set<string>();
   constructor(
@@ -20,8 +22,9 @@ export class PerceptionPluginHostService {
     private readonly dataRoot = getDataRoot(),
   ) {
     this.configs = new PerceptionConnectorConfigStore(dataRoot);
+    this.replies = new PluginReplyDeliveryService(dataRoot);
     const registry = new PerceptionPluginRegistry();
-    registry.register({ plugin: weComPlugin, approvedPermissions: ['credentials', 'events', 'network', 'health'] });
+    registry.register({ plugin: weComPlugin, approvedPermissions: ['credentials', 'events', 'network', 'health', 'replies'] });
     registry.register({ plugin: feishuPlugin, approvedPermissions: ['credentials', 'events', 'health'] });
     registry.register({ plugin: dingtalkPlugin, approvedPermissions: ['events', 'health'] });
     this.host = new PerceptionPluginHost(registry, this.createPorts());
@@ -58,7 +61,7 @@ export class PerceptionPluginHostService {
     const pluginCredentials = new SafeStoragePerceptionCredentialAdapter(this.dataRoot, safeStorage);
     const events = new PerceptionEventStore(this.dataRoot);
     const grants = new ExternalTriggerGrantStore(this.dataRoot);
-    const execution = new ChannelTriggerExecutionAdapter(this.channelIngress);
+    const execution = new ChannelTriggerExecutionAdapter(this.channelIngress, undefined, this.replies);
     const router = new PerceptionRouter(this.dataRoot, new TriggerRuleStore(this.dataRoot), new FileTargetAuthorizationPort(grants, new FileSystemPerceptionTargetRegistry(this.dataRoot)), execution);
     return {
       credentials: { bind: async (id, name, secret) => name === 'wecom' ? wecomCredentials.bind(id, { value: secret }) : pluginCredentials.bind(id, name, secret), resolve: async (id, ref) => ref.startsWith('secret://perception/wecom/') ? (await wecomCredentials.resolve(ref)).value : pluginCredentials.resolve(id, ref), remove: async (id, ref) => ref.startsWith('secret://perception/wecom/') ? wecomCredentials.remove(ref) : pluginCredentials.remove(id, ref) },
@@ -78,6 +81,7 @@ export class PerceptionPluginHostService {
         new ConnectorHealthStore(this.dataRoot).save({ connectorId: health.connectorId, mode: 'stream', status: health.status, connectionState: state === 'connected' || state === 'reconnecting' ? state : 'disconnected', reconnectCount: typeof detail['reconnectCount'] === 'number' ? detail['reconnectCount'] : 0, pendingHandlers: 0, lastSuccessAt: typeof detail['lastSuccessAt'] === 'string' ? detail['lastSuccessAt'] : undefined, lastSafeCode: health.safeCode, updatedAt: new Date().toISOString() });
       } },
       audit: { record: async () => undefined },
+      replies: this.replies,
     };
   }
 }

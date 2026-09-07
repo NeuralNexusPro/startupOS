@@ -67,6 +67,7 @@ export class PerceptionPluginHost {
     }
     if (approved.has('health')) exposed.health = { report: (health) => this.ports.health.report({ ...health, pluginId, connectorId }) };
     if (approved.has('audit')) exposed.audit = this.ports.audit;
+    if (approved.has('replies') && this.ports.replies) exposed.replies = this.ports.replies;
     if (approved.has('events')) {
       exposed.events = {
         submit: async (event) => {

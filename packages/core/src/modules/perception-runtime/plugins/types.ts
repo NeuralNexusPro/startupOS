@@ -15,7 +15,8 @@ export type PerceptionPluginPermission =
   | 'network'
   | 'schedule'
   | 'health'
-  | 'audit';
+  | 'audit'
+  | 'replies';
 
 export type PluginConfigurationFieldType = 'text' | 'password' | 'number' | 'boolean' | 'select';
 
@@ -111,6 +112,29 @@ export interface PluginAuditPort {
   record(action: string, detail?: JsonValue): Promise<void>;
 }
 
+export interface PluginReplyPort {
+  register(replyHandle: string, deliver: (event: PluginReplyEvent) => Promise<PluginReplyReceipt>): () => void;
+}
+
+export type PluginReplyEvent =
+  | { type: 'accepted'; sessionId: string }
+  | { type: 'text_delta'; delta: string }
+  | { type: 'assistant_message'; content: string }
+  | { type: 'tool_status'; label: string; state: 'running' | 'completed' | 'failed' }
+  | { type: 'hitl_request'; requestId: string; summary: string }
+  | { type: 'completed'; resultRef: string }
+  | { type: 'cancelled' }
+  | { type: 'failed'; safeCode: string };
+
+export interface PluginReplyReceipt {
+  messageId: string;
+  connectorId: string;
+  status: 'delivered' | 'retrying' | 'failed' | 'expired';
+  attempt: number;
+  deliveredAt?: string;
+  safeCode?: string;
+}
+
 export interface PerceptionPluginHostPorts {
   credentials: PluginCredentialPort;
   events: PluginEventPort;
@@ -118,6 +142,7 @@ export interface PerceptionPluginHostPorts {
   schedule: PluginSchedulePort;
   health: PluginHealthPort;
   audit: PluginAuditPort;
+  replies?: PluginReplyPort;
 }
 
 export type PerceptionPluginRuntimePorts = Partial<PerceptionPluginHostPorts>;

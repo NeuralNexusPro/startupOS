@@ -16,7 +16,7 @@ const CAPABILITIES = new Set<PerceptionPluginCapability>([
   'inbound-events', 'outbound-reply', 'callback-handshake', 'encrypted-payload', 'attachments',
 ]);
 const PERMISSIONS = new Set<PerceptionPluginPermission>([
-  'credentials', 'events', 'network', 'schedule', 'health', 'audit',
+  'credentials', 'events', 'network', 'schedule', 'health', 'audit', 'replies',
 ]);
 const FIELD_TYPES = new Set(['text', 'password', 'number', 'boolean', 'select']);
 

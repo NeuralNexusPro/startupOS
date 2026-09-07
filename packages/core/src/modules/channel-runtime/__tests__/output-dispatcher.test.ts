@@ -59,4 +59,14 @@ describe('ChannelOutputDispatcher', () => {
     expect(receipts[0]).toMatchObject({ status: 'failed', attempt: 2, safeCode: 'CHANNEL_DELIVERY_EXHAUSTED' });
     expect(deliver).toHaveBeenCalledTimes(4);
   });
+
+  it('uses proactive push when no reply handle is available', async () => {
+    const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'originos-delivery-'));
+    roots.push(dataRoot);
+    const push = vi.fn(async () => ({ messageId: 'ignored', connectorId: 'wecom-main', status: 'delivered' as const, attempt: 1 }));
+    const dispatcher = new ChannelOutputDispatcher({ deliver: vi.fn(), push }, new ChannelDeliveryStore(dataRoot));
+    await dispatcher.dispatch({ connectorId: 'wecom-main', conversationId: 'chat-1', packets: packets() });
+    expect(push).toHaveBeenCalledTimes(2);
+    expect(push).toHaveBeenNthCalledWith(1, 'chat-1', { type: 'assistant_message', content: 'hello' });
+  });
 });

@@ -89,6 +89,7 @@ export interface DeliveryReceipt {
 
 export interface ChannelDeliveryPort {
   deliver(replyHandle: string, event: AgentOutputEvent): Promise<DeliveryReceipt>;
+  push?(conversationId: string, event: AgentOutputEvent): Promise<DeliveryReceipt>;
 }
 
 export interface ChannelSessionBinding {

@@ -2,6 +2,8 @@ import AiBot from '@wecom/aibot-node-sdk';
 import type {
   PerceptionPlugin,
   PerceptionPluginRuntimeContext,
+  PluginReplyEvent,
+  PluginReplyReceipt,
 } from '@originos/core/modules/perception-runtime/plugins';
 import { weComManifest } from './manifest';
 import { normalizeWeComFrame } from './normalizer';
@@ -87,10 +89,18 @@ export class WeComPerceptionPlugin implements PerceptionPlugin {
   }
 
   private async submit(context: PerceptionPluginRuntimeContext, client: WeComBotClient, frame: WeComFrame): Promise<void> {
+    let unregisterReply: (() => void) | undefined;
     try {
       if (!context.ports.events) throw new Error('WECOM_EVENT_PORT_MISSING');
       const event = normalizeWeComFrame({ connectorId: context.connectorId, frame });
+      const replyHandle = event.provenance.rawPayloadRef;
+      if (context.ports.replies) {
+        const streamId = `perception-${event.id}`;
+        unregisterReply = context.ports.replies.register(replyHandle, (output) =>
+          this.deliverOutput(context.connectorId, client, frame, streamId, output));
+      }
       const results = await context.ports.events.submit(event);
+      if (context.ports.replies) return;
       const dispatched = results.find((result) => result.status === 'dispatched' && (result.responseTexts?.length || result.responseText));
       const responses = dispatched?.responseTexts?.length
         ? dispatched.responseTexts
@@ -101,7 +111,28 @@ export class WeComPerceptionPlugin implements PerceptionPlugin {
       }
     } catch {
       await context.ports.health?.report({ status: 'degraded', safeCode: 'WECOM_EVENT_SUBMIT_FAILED' });
+    } finally {
+      unregisterReply?.();
     }
+  }
+
+  private async deliverOutput(
+    connectorId: string,
+    client: WeComBotClient,
+    frame: WeComFrame,
+    streamId: string,
+    output: PluginReplyEvent,
+  ): Promise<PluginReplyReceipt> {
+    if (output.type === 'assistant_message') {
+      await client.replyStream(frame, streamId, limitReply(output.content), false);
+    } else if (output.type === 'hitl_request') {
+      await client.replyStream(frame, streamId, limitReply(`需要人工确认：${output.summary}`), false);
+    } else if (output.type === 'completed') {
+      await client.replyStream(frame, streamId, '', true);
+    } else if (output.type === 'failed' || output.type === 'cancelled') {
+      await client.replyStream(frame, streamId, output.type === 'failed' ? output.safeCode : '任务已取消', true);
+    }
+    return { messageId: 'pending', connectorId, status: 'delivered', attempt: 1, deliveredAt: new Date().toISOString() };
   }
 }
 

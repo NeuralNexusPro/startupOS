@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ChannelTriggerExecutionAdapter } from '../routing/channel-trigger-execution-adapter';
-import type { ChannelInvocation, ChannelMessageIngress } from '../../channel-runtime';
+import type { ChannelFlowMessageIngress, ChannelInvocation, ChannelMessageIngress } from '../../channel-runtime';
 import type { PerceptionEventV1, PerceptionTriggerExecutionContext, PerceptionTriggerTarget } from '../../../types/perception';
 
 const event: PerceptionEventV1 = {
@@ -64,5 +64,35 @@ describe('ChannelTriggerExecutionAdapter', () => {
     const ingress: ChannelMessageIngress = { send: async function* () { yield { type: 'failed', safeCode: 'CHANNEL_RUNTIME_FAILED' }; } };
     await expect(new ChannelTriggerExecutionAdapter(ingress).dispatch({ event, target: { kind: 'role-agent', id: 'role-1' }, context }))
       .rejects.toThrow('CHANNEL_TRIGGER_FAILED');
+  });
+
+  it('degrades HITL to a system notification when the source has no active reply handle', async () => {
+    const ingress: ChannelMessageIngress = { send: async function* () {
+      yield { type: 'accepted', sessionId: 'session-1' };
+      yield { type: 'hitl_request', requestId: 'review-1', summary: 'Approve?' };
+      yield { type: 'completed', resultRef: 'session://session-1' };
+    } };
+    const notify = vi.fn(async () => undefined);
+    const adapter = new ChannelTriggerExecutionAdapter(ingress, { notify }, { canDeliver: () => false, dispatch: vi.fn() });
+    await adapter.dispatch({ event, target: { kind: 'role-agent', id: 'role-1' }, context });
+    expect(notify).toHaveBeenCalledOnce();
+  });
+
+  it('fans packets into collection and registered plugin delivery', async () => {
+    const ingress: ChannelFlowMessageIngress = {
+      send: async function* () { /* packet path is required */ },
+      sendPackets: async function* () {
+        yield { protocolVersion: '1.0', flowId: 'flow-1', packetId: 'p0', sequence: 0, port: 'runtime.output', kind: 'data', emittedAt: event.receivedAt, payload: { type: 'accepted', sessionId: 'session-1' } };
+        yield { protocolVersion: '1.0', flowId: 'flow-1', packetId: 'p1', sequence: 1, port: 'runtime.output', kind: 'data', emittedAt: event.receivedAt, payload: { type: 'assistant_message', content: 'Delivered response' } };
+        yield { protocolVersion: '1.0', flowId: 'flow-1', packetId: 'p2', sequence: 2, port: 'runtime.output', kind: 'complete', emittedAt: event.receivedAt, payload: { type: 'completed', resultRef: 'session://session-1' } };
+      },
+    };
+    const dispatch = vi.fn(async ({ packets }: { packets: AsyncIterable<unknown> }) => {
+      for await (const _packet of packets) { /* consume delivery branch */ }
+      return [];
+    });
+    const adapter = new ChannelTriggerExecutionAdapter(ingress, undefined, { canDeliver: () => true, dispatch });
+    await expect(adapter.dispatch({ event, target: { kind: 'project', id: 'project-1' }, context })).resolves.toMatchObject({ responseText: 'Delivered response' });
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ connectorId: 'email-main', replyHandle: 'perception://raw/one' }));
   });
 });

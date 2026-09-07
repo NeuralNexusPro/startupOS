@@ -7,11 +7,14 @@ export interface ChannelOutputDispatcherOptions {
   sleep?: (attempt: number) => Promise<void>;
 }
 
-export interface ChannelOutputDispatchInput {
+interface ChannelOutputDispatchBase {
   connectorId: string;
-  replyHandle: string;
   packets: AsyncIterable<FlowPacket<AgentOutputEvent>>;
 }
+export type ChannelOutputDispatchInput = ChannelOutputDispatchBase & (
+  | { replyHandle: string; conversationId?: never }
+  | { conversationId: string; replyHandle?: never }
+);
 
 export class ChannelOutputDispatcher {
   private readonly maxAttempts: number;
@@ -49,7 +52,11 @@ export class ChannelOutputDispatcher {
   ): Promise<DeliveryReceipt> {
     for (let attempt = 1; attempt <= this.maxAttempts; attempt += 1) {
       try {
-        const delivered = await this.delivery.deliver(input.replyHandle, packet.payload);
+        const delivered = 'replyHandle' in input && input.replyHandle
+          ? await this.delivery.deliver(input.replyHandle, packet.payload)
+          : this.delivery.push && input.conversationId
+            ? await this.delivery.push(input.conversationId, packet.payload)
+            : { messageId: packet.packetId, connectorId: input.connectorId, status: 'expired' as const, attempt };
         const receipt: DeliveryReceipt = {
           ...delivered,
           messageId: packet.packetId,

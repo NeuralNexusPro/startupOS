@@ -9,7 +9,7 @@ export const weComManifest: PerceptionPluginManifest = {
   source: 'wecom',
   transport: 'stream',
   capabilities: ['inbound-events', 'outbound-reply'],
-  permissions: ['credentials', 'events', 'network', 'health'],
+  permissions: ['credentials', 'events', 'network', 'health', 'replies'],
   configurationSchema: {
     version: '1.0',
     fields: [

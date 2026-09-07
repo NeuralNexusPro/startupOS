@@ -97,22 +97,43 @@ describe('WeComPerceptionPlugin', () => {
       safeCode: 'WECOM_AUTH_FAILED',
       detail: { connectionState: 'disconnected', reconnectCount: 0 },
     }));
-    expect(JSON.stringify(vi.mocked(host.ports.health?.report).mock.calls)).not.toContain('invalid secret');
+    expect(JSON.stringify(vi.mocked(host.ports.health!.report).mock.calls)).not.toContain('invalid secret');
   });
 
   it('replies to the original WeCom frame with the target final response', async () => {
     const client = new FakeClient();
     const plugin = new WeComPerceptionPlugin(() => client);
     const host = context();
-    vi.mocked(host.ports.events?.submit).mockResolvedValue([{ status: 'dispatched', responseText: '最终回复', responseTexts: ['处理中', '最终回复'] }]);
+    vi.mocked(host.ports.events!.submit).mockResolvedValue([{ status: 'dispatched', responseText: '最终回复', responseTexts: ['处理中', '最终回复'] }]);
     await plugin.start(host);
     const frame: WeComFrame = { headers: { req_id: 'request-1' }, body: { msgid: 'message-1', text: { content: '你好' } } };
 
     client.emit('message.text', frame);
 
     await vi.waitFor(() => expect(client.replyStream).toHaveBeenCalledTimes(2));
-    const streamId = client.replyStream.mock.calls[0]?.[1];
-    expect(client.replyStream).toHaveBeenNthCalledWith(1, frame, streamId, '处理中', false);
-    expect(client.replyStream).toHaveBeenNthCalledWith(2, frame, streamId, '最终回复', true);
+    expect(client.replyStream).toHaveBeenNthCalledWith(1, frame, expect.any(String), '处理中', false);
+    expect(client.replyStream).toHaveBeenNthCalledWith(2, frame, expect.any(String), '最终回复', true);
+  });
+
+  it('registers an opaque reply handle and delivers Channel output through the SDK frame closure', async () => {
+    const client = new FakeClient();
+    const plugin = new WeComPerceptionPlugin(() => client);
+    let deliver: ((event: import('@originos/core/modules/perception-runtime/plugins').PluginReplyEvent) => Promise<unknown>) | undefined;
+    const unregister = vi.fn();
+    const register = vi.fn((_handle: string, next: NonNullable<PerceptionPluginRuntimeContext['ports']['replies']>['register'] extends (...args: infer Args) => unknown ? Args[1] : never) => { deliver = next; return unregister; });
+    const submit = vi.fn(async () => {
+      await deliver?.({ type: 'assistant_message', content: '真实回复' });
+      await deliver?.({ type: 'completed', resultRef: 'session://one' });
+      return [{ status: 'dispatched' as const }];
+    });
+    const base = context();
+    const host = context({ ports: { ...base.ports, events: { submit }, replies: { register } } });
+    await plugin.start(host);
+    const frame: WeComFrame = { headers: { req_id: 'request-2' }, body: { msgid: 'message-2', text: { content: '你好' } } };
+    client.emit('message.text', frame);
+    await vi.waitFor(() => expect(unregister).toHaveBeenCalledOnce());
+    expect(register).toHaveBeenCalledWith('wecom-ws://connector-1/request-2', expect.any(Function));
+    expect(client.replyStream).toHaveBeenNthCalledWith(1, frame, expect.any(String), '真实回复', false);
+    expect(client.replyStream).toHaveBeenNthCalledWith(2, frame, expect.any(String), '', true);
   });
 });
