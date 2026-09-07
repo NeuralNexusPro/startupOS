@@ -30,9 +30,9 @@ OS.20（会话恢复）、SENSE.12（感知插件宿主）、Collaboration Runti
 - OS22-T1-T7 已完成：协议、FBP Packet/有界 Port、统一 Ingress、全部 Runtime、Session 并发控制、Desktop 组合根、OS 输入框及感知主路径迁移。
 - OS 输入框通过 Desktop Channel Adapter 保持原渲染协议，并继续复用 Task Runtime 等待态、流式去重、工具状态与解决方案产物刷新。
 - OS22-T5 已完成：Session Binding 支持复用、过期、重置、并发创建合并，同 Session 消息由协调器串行执行。
-- 感知与 Channel 专项 87 项、企微插件 8 项、Desktop 感知/组合 14 项通过；Desktop TypeScript 构建通过。
-- T6 暂未切换 OS 输入框：现有流包含 Task Runtime IPC 语义，需先提取 Task Runtime-aware 执行 Port，避免任务续跑和控制域回归。
-- 现有 Agent Session、感知、企微与 Collaboration Runtime 回归 116 项通过，Desktop 构建通过；尚未切换现有 UI 主链。
+- 已合入 Task Runtime 完整基线并保留 Channel Task-aware 执行 Port；OS 输入框主链已切换，任务续跑和控制域专项回归通过。
+- 当前 Channel、Task Runtime 与感知专项 110 项、Desktop Channel/Task 17 项、企微插件 8 项通过；Desktop TypeScript 构建通过。
+- T8/T9 仍待完成：真实渠道 Delivery/receipt、fan-out/取消闭环、其他渠道独立插件迁移及最终验证 Goal。
 
 ## 变更历史
 
@@ -43,3 +43,4 @@ OS.20（会话恢复）、SENSE.12（感知插件宿主）、Collaboration Runti
 | 2026-09-04 | 按 FBP 范式补充有界流、背压、顺序、取消与唯一终态协议 | Codex |
 | 2026-09-04 | 完成 T2-T4：接入真实 Launcher/Session/AgentManager 与 Collaboration facade | Codex |
 | 2026-09-05 | 完成 T5/T7：会话串行化；企微与邮件感知迁移到 Channel，删除 Session 差值桥接 | Codex |
+| 2026-09-07 | 合入 dev Task Runtime 基线，修复当前 feature 分支的 Channel UI 构建与测试断层 | Codex |
