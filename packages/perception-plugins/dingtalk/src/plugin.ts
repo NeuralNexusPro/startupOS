@@ -1,5 +1,5 @@
-import { DingTalkStreamNormalizer, parseFrameData } from '../../../core/src/lib/integrations/perception';
-import type { DingTalkStreamFrame } from '../../../core/src/lib/integrations/perception';
+import { DingTalkStreamNormalizer, parseFrameData } from './normalizer';
+import type { DingTalkStreamFrame } from './types';
 import type { PerceptionPlugin, PerceptionPluginManifest, PerceptionPluginRuntimeContext, PerceptionPluginWebhookRequest, PerceptionPluginWebhookResult } from '@originos/core/modules/perception-runtime/plugins';
 
 export const dingtalkManifest: PerceptionPluginManifest = {
