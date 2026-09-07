@@ -6,6 +6,8 @@ import type {
   PerceptionPluginPermission,
   PerceptionPluginRuntimeContext,
   PerceptionPluginRuntimePorts,
+  PerceptionPluginWebhookRequest,
+  PerceptionPluginWebhookResult,
 } from './types';
 import { PerceptionPluginRegistry } from './registry';
 import { assertPluginEvent } from './validation';
@@ -127,6 +129,15 @@ export class PerceptionPluginHost {
 
   status(pluginId: string, connectorId: string): PerceptionPluginInstanceStatus {
     return this.instances.get(instanceKey(pluginId, connectorId))?.status ?? { pluginId, connectorId, state: 'registered' };
+  }
+
+  /** Dispatches an already bounded webhook through the running plugin instance. */
+  async handleWebhook(pluginId: string, connectorId: string, request: PerceptionPluginWebhookRequest): Promise<PerceptionPluginWebhookResult> {
+    const instance = this.instances.get(instanceKey(pluginId, connectorId));
+    if (!instance || instance.status.state !== 'running') throw new Error('Plugin is not running');
+    const plugin = this.registry.get(pluginId)?.plugin;
+    if (!plugin?.handleWebhook) throw new Error('Plugin does not support webhooks');
+    return plugin.handleWebhook(instance.context, request);
   }
 
   private async safeAudit(pluginId: string, connectorId: string, action: string, detail: JsonValue): Promise<void> {

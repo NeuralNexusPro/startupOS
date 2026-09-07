@@ -138,9 +138,25 @@ export interface PerceptionPluginProvisionResult {
   secretRefs?: Readonly<Record<string, string>>;
 }
 
+/** Input delivered by the webhook gateway to a webhook-capable plugin. */
+export interface PerceptionPluginWebhookRequest {
+  payload: JsonValue;
+  headers: Readonly<Record<string, string>>;
+  query: Readonly<Record<string, string>>;
+  receivedAt: string;
+  rawBody?: string;
+}
+
+export interface PerceptionPluginWebhookResult {
+  status: number;
+  headers?: Readonly<Record<string, string>>;
+  body?: JsonValue | string;
+}
+
 export interface PerceptionPlugin {
   readonly manifest: PerceptionPluginManifest;
   provision?(context: PerceptionPluginProvisionContext): Promise<PerceptionPluginProvisionResult>;
+  handleWebhook?(context: PerceptionPluginRuntimeContext, request: PerceptionPluginWebhookRequest): Promise<PerceptionPluginWebhookResult>;
   start(context: PerceptionPluginRuntimeContext): Promise<void>;
   stop(context: PerceptionPluginRuntimeContext): Promise<void>;
   health?(context: PerceptionPluginRuntimeContext): Promise<PluginHealthReport>;

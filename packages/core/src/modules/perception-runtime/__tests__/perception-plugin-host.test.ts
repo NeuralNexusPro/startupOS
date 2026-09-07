@@ -37,6 +37,7 @@ function plugin(pluginManifest = manifest(), hooks: Partial<PerceptionPlugin> = 
     stop: hooks.stop ?? vi.fn().mockResolvedValue(undefined),
     health: hooks.health,
     provision: hooks.provision,
+    handleWebhook: hooks.handleWebhook,
   };
 }
 
@@ -157,5 +158,16 @@ describe('Perception Plugin Host', () => {
     const auditCalls = vi.mocked(hostPorts.audit.record).mock.calls as Array<[string, JsonValue?]>;
     expect(JSON.stringify(auditCalls)).toContain('PLUGIN_START_FAILED');
     expect(JSON.stringify(auditCalls)).not.toContain('secret-token-value');
+  });
+
+  it('dispatches webhooks only to a running plugin instance', async () => {
+    const handleWebhook = vi.fn().mockResolvedValue({ status: 202, body: { accepted: true } });
+    const registry = new PerceptionPluginRegistry();
+    registry.register({ plugin: plugin(manifest({ transport: 'webhook' }), { handleWebhook }), approvedPermissions: [] });
+    const host = new PerceptionPluginHost(registry, ports());
+    await expect(host.handleWebhook(manifest().id, 'wecom-main', { payload: {}, headers: {}, query: {}, receivedAt: '2026-09-06T00:00:00.000Z' })).rejects.toThrow('not running');
+    await host.start(manifest().id, 'wecom-main');
+    await expect(host.handleWebhook(manifest().id, 'wecom-main', { payload: {}, headers: {}, query: {}, receivedAt: '2026-09-06T00:00:00.000Z' })).resolves.toMatchObject({ status: 202 });
+    expect(handleWebhook).toHaveBeenCalledTimes(1);
   });
 });

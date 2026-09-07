@@ -1,12 +1,13 @@
 import { safeStorage } from 'electron';
-import { weComPlugin } from '@originos/perception-plugin-wecom';
+import { dingtalkPlugin, feishuPlugin, weComPlugin } from '@originos/perception-plugin-wecom';
 import { getDataRoot } from '../../../../../core/src/lib/paths';
 import { FileSystemPerceptionTargetRegistry } from '../../../../../core/src/lib/features/services/perception-target-registry';
-import { ChannelTriggerExecutionAdapter, ConnectorHealthStore, ExternalTriggerGrantStore, FileTargetAuthorizationPort, PerceptionConnectorConfigStore, PerceptionEventStore, PerceptionPluginHost, PerceptionPluginRegistry, PerceptionRouter, TriggerRuleStore, type PerceptionPluginHostPorts } from '../../../../../core/src/modules/perception-runtime';
+import { ChannelTriggerExecutionAdapter, ConnectorHealthStore, ExternalTriggerGrantStore, FileTargetAuthorizationPort, PerceptionConnectorConfigStore, PerceptionEventStore, PerceptionPluginHost, PerceptionPluginRegistry, PerceptionRouter, TriggerRuleStore, type PerceptionPluginHostPorts, type PerceptionPluginWebhookRequest, type PerceptionPluginWebhookResult } from '../../../../../core/src/modules/perception-runtime';
 import type { ChannelMessageIngress } from '../../../../../core/src/modules/channel-runtime';
 import { SafeStorageWeComCredentialAdapter } from '../perception-wecom/safe-storage-wecom-credential-adapter';
+import { SafeStoragePerceptionCredentialAdapter } from './safe-storage-perception-credential-adapter';
 
-const PLUGIN_ID = 'originos.wecom';
+const PLUGIN_IDS: Record<string, string> = { wecom: 'originos.wecom', feishu: 'originos.feishu', dingtalk: 'originos.dingtalk' };
 
 export class PerceptionPluginHostService {
   private readonly timers = new Map<string, NodeJS.Timeout>();
@@ -21,35 +22,45 @@ export class PerceptionPluginHostService {
     this.configs = new PerceptionConnectorConfigStore(dataRoot);
     const registry = new PerceptionPluginRegistry();
     registry.register({ plugin: weComPlugin, approvedPermissions: ['credentials', 'events', 'network', 'health'] });
+    registry.register({ plugin: feishuPlugin, approvedPermissions: ['credentials', 'events', 'health'] });
+    registry.register({ plugin: dingtalkPlugin, approvedPermissions: ['events', 'health'] });
     this.host = new PerceptionPluginHost(registry, this.createPorts());
   }
   start(): void { if (!this.timer) { void this.reconcile(); this.timer = setInterval(() => { void this.reconcile(); }, 5_000); this.timer.unref(); } }
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
-    for (const id of this.active) void this.host.stop(PLUGIN_ID, id);
+    for (const key of this.active) { const [pluginId, ...rest] = key.split(':'); void this.host.stop(pluginId, rest.join(':')); }
     this.active.clear();
     for (const timer of this.timers.values()) clearInterval(timer);
     this.timers.clear();
   }
+  async handleWebhook(pluginId: string, connectorId: string, request: PerceptionPluginWebhookRequest): Promise<PerceptionPluginWebhookResult> {
+    return this.host.handleWebhook(pluginId, connectorId, request);
+  }
   private async reconcile(): Promise<void> {
-    const configs = this.configs.list().filter((item) => item.source === 'wecom' && item.mode === 'stream');
-    const desired = new Set(configs.filter((item) => item.enabled).map((item) => item.id));
-    for (const id of this.active) if (!desired.has(id)) { await this.host.stop(PLUGIN_ID, id); this.active.delete(id); }
+    const configs = this.configs.list().filter((item) => PLUGIN_IDS[item.source] && (item.mode === 'stream' || item.mode === 'webhook'));
+    const desired = new Set(configs.filter((item) => item.enabled).map((item) => `${PLUGIN_IDS[item.source]}:${item.id}`));
+    for (const key of this.active) {
+      if (!desired.has(key)) { const [pluginId, ...rest] = key.split(':'); await this.host.stop(pluginId, rest.join(':')); this.active.delete(key); }
+    }
     for (const config of configs) {
-      if (!config.enabled || this.active.has(config.id)) continue;
-      const status = await this.host.start(PLUGIN_ID, config.id, { ...config.settings, secretRef: config.secretRef ?? '' });
-      if (status.state === 'running') this.active.add(config.id);
+      const pluginId = PLUGIN_IDS[config.source];
+      const key = `${pluginId}:${config.id}`;
+      if (!config.enabled || this.active.has(key)) continue;
+      const status = await this.host.start(pluginId, config.id, { ...config.settings, secretRef: config.secretRef ?? '' });
+      if (status.state === 'running') this.active.add(key);
     }
   }
   private createPorts(): PerceptionPluginHostPorts {
-    const credentials = new SafeStorageWeComCredentialAdapter(this.dataRoot, safeStorage);
+    const wecomCredentials = new SafeStorageWeComCredentialAdapter(this.dataRoot, safeStorage);
+    const pluginCredentials = new SafeStoragePerceptionCredentialAdapter(this.dataRoot, safeStorage);
     const events = new PerceptionEventStore(this.dataRoot);
     const grants = new ExternalTriggerGrantStore(this.dataRoot);
     const execution = new ChannelTriggerExecutionAdapter(this.channelIngress);
     const router = new PerceptionRouter(this.dataRoot, new TriggerRuleStore(this.dataRoot), new FileTargetAuthorizationPort(grants, new FileSystemPerceptionTargetRegistry(this.dataRoot)), execution);
     return {
-      credentials: { bind: async (id, _name, secret) => credentials.bind(id, { value: secret }), resolve: async (_id, ref) => (await credentials.resolve(ref)).value, remove: async (_id, ref) => credentials.remove(ref) },
+      credentials: { bind: async (id, name, secret) => name === 'wecom' ? wecomCredentials.bind(id, { value: secret }) : pluginCredentials.bind(id, name, secret), resolve: async (id, ref) => ref.startsWith('secret://perception/wecom/') ? (await wecomCredentials.resolve(ref)).value : pluginCredentials.resolve(id, ref), remove: async (id, ref) => ref.startsWith('secret://perception/wecom/') ? wecomCredentials.remove(ref) : pluginCredentials.remove(id, ref) },
       events: {
         submit: async (event) => {
           const saved = events.save(event);

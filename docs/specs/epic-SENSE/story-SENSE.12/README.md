@@ -8,10 +8,10 @@
 
 ## 简要验收标准
 
-- [ ] Core 只保留平台无关的 Plugin Contract、Registry、Host 与感知运行时。
-- [ ] 四个渠道迁入独立 bundled perception plugins。
+- [x] Core 已提供平台无关的 Plugin Contract、Registry、Host 与感知运行时。
+- [ ] 四个渠道迁入独立 bundled perception plugins（当前 WeCom 已迁移，Feishu/DingTalk 已接入 Host 适配器，Email 仍由旧 supervisor 承载）。
 - [ ] 感知中心由声明式 schema 渲染配置，不再包含平台条件分支。
-- [ ] Plugin SDK 限定权限、凭据、生命周期和事件输出边界。
+- [x] Plugin SDK 限定权限、凭据、生命周期和事件输出边界，并支持 webhook dispatch。
 - [ ] 旧 Connector 配置可自动迁移或得到明确提示。
 
 ## 文档导航
