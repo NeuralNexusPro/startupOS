@@ -134,6 +134,33 @@ describe('WeComPerceptionPlugin', () => {
     await vi.waitFor(() => expect(unregister).toHaveBeenCalledOnce());
     expect(register).toHaveBeenCalledWith('wecom-ws://connector-1/request-2', expect.any(Function));
     expect(client.replyStream).toHaveBeenNthCalledWith(1, frame, expect.any(String), '真实回复', false);
-    expect(client.replyStream).toHaveBeenNthCalledWith(2, frame, expect.any(String), '', true);
+    expect(client.replyStream).toHaveBeenNthCalledWith(2, frame, expect.any(String), '真实回复', true);
+  });
+
+  it('keeps cumulative delta content in the final WeCom stream frame', async () => {
+    const client = new FakeClient();
+    const plugin = new WeComPerceptionPlugin(() => client);
+    let deliver: ((event: import('@originos/core/modules/perception-runtime/plugins').PluginReplyEvent) => Promise<unknown>) | undefined;
+    const register = vi.fn((_handle: string, next: NonNullable<PerceptionPluginRuntimeContext['ports']['replies']>['register'] extends (...args: infer Args) => unknown ? Args[1] : never) => {
+      deliver = next;
+      return vi.fn();
+    });
+    const submit = vi.fn(async () => {
+      await deliver?.({ type: 'text_delta', delta: '你' });
+      await deliver?.({ type: 'text_delta', delta: '好' });
+      await deliver?.({ type: 'completed', resultRef: 'session://one' });
+      return [{ status: 'dispatched' as const }];
+    });
+    const base = context();
+    const host = context({ ports: { ...base.ports, events: { submit }, replies: { register } } });
+    await plugin.start(host);
+    const frame: WeComFrame = { headers: { req_id: 'request-delta' }, body: { msgid: 'message-delta', text: { content: 'hi' } } };
+
+    client.emit('message.text', frame);
+
+    await vi.waitFor(() => expect(client.replyStream).toHaveBeenCalledTimes(3));
+    expect(client.replyStream).toHaveBeenNthCalledWith(1, frame, expect.any(String), '你', false);
+    expect(client.replyStream).toHaveBeenNthCalledWith(2, frame, expect.any(String), '你好', false);
+    expect(client.replyStream).toHaveBeenNthCalledWith(3, frame, expect.any(String), '你好', true);
   });
 });

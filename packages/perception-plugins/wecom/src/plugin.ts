@@ -96,8 +96,9 @@ export class WeComPerceptionPlugin implements PerceptionPlugin {
       const replyHandle = event.provenance.rawPayloadRef;
       if (context.ports.replies) {
         const streamId = `perception-${event.id}`;
+        const replyState = { content: '' };
         unregisterReply = context.ports.replies.register(replyHandle, (output) =>
-          this.deliverOutput(context.connectorId, client, frame, streamId, output));
+          this.deliverOutput(context.connectorId, client, frame, streamId, replyState, output));
       }
       const results = await context.ports.events.submit(event);
       if (context.ports.replies) return;
@@ -121,16 +122,23 @@ export class WeComPerceptionPlugin implements PerceptionPlugin {
     client: WeComBotClient,
     frame: WeComFrame,
     streamId: string,
+    state: { content: string },
     output: PluginReplyEvent,
   ): Promise<PluginReplyReceipt> {
-    if (output.type === 'assistant_message') {
-      await client.replyStream(frame, streamId, limitReply(output.content), false);
+    if (output.type === 'text_delta') {
+      state.content = limitReply(`${state.content}${output.delta}`);
+      await client.replyStream(frame, streamId, state.content, false);
+    } else if (output.type === 'assistant_message') {
+      state.content = limitReply(output.content);
+      await client.replyStream(frame, streamId, state.content, false);
     } else if (output.type === 'hitl_request') {
-      await client.replyStream(frame, streamId, limitReply(`需要人工确认：${output.summary}`), false);
+      state.content = limitReply(`需要人工确认：${output.summary}`);
+      await client.replyStream(frame, streamId, state.content, false);
     } else if (output.type === 'completed') {
-      await client.replyStream(frame, streamId, '', true);
+      await client.replyStream(frame, streamId, state.content, true);
     } else if (output.type === 'failed' || output.type === 'cancelled') {
-      await client.replyStream(frame, streamId, output.type === 'failed' ? output.safeCode : '任务已取消', true);
+      state.content = output.type === 'failed' ? output.safeCode : '任务已取消';
+      await client.replyStream(frame, streamId, state.content, true);
     }
     return { messageId: 'pending', connectorId, status: 'delivered', attempt: 1, deliveredAt: new Date().toISOString() };
   }
