@@ -35,6 +35,7 @@ export interface StreamingSessionRuntimeAdapterOptions {
 }
 
 export class StreamingSessionRuntimeAdapter implements ChannelFlowRuntimePort {
+  private readonly active = new Map<string, { output: BoundedFlowPort<AgentOutputEvent>; runtime: ChannelRuntimeHandle }>();
   constructor(
     private readonly sessions: ChannelSessionResolverPort,
     private readonly messages: ChannelSessionMessageStorePort,
@@ -52,6 +53,7 @@ export class StreamingSessionRuntimeAdapter implements ChannelFlowRuntimePort {
       port: 'runtime.output',
       capacity: this.options.portCapacity,
     });
+    this.active.set(session.sessionId, { output, runtime: session.runtime });
     await output.send({ type: 'accepted', sessionId: session.sessionId });
     await this.messages.appendUserMessage(
       session.sessionId,
@@ -91,8 +93,17 @@ export class StreamingSessionRuntimeAdapter implements ChannelFlowRuntimePort {
       }
     } finally {
       unsubscribe();
+      if (this.active.get(session.sessionId)?.output === output) this.active.delete(session.sessionId);
       if (!reachedTerminal && session.runtime.abort) await session.runtime.abort();
     }
+  }
+
+  async cancel(sessionId: string): Promise<void> {
+    const active = this.active.get(sessionId);
+    if (!active) return;
+    await active.runtime.abort?.();
+    try { await active.output.cancel({ type: 'cancelled' }); }
+    catch (error: unknown) { if (!(error instanceof FlowPortClosedError)) throw error; }
   }
 }
 

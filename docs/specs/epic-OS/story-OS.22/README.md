@@ -33,6 +33,7 @@ OS.20（会话恢复）、SENSE.12（感知插件宿主）、Collaboration Runti
 - 已合入 Task Runtime 完整基线并保留 Channel Task-aware 执行 Port；OS 输入框主链已切换，任务续跑和控制域专项回归通过。
 - 当前 Channel、Task Runtime 与感知专项 110 项、Desktop Channel/Task 17 项、企微插件 8 项通过；Desktop TypeScript 构建通过。
 - T8/T9 仍待完成：真实渠道 Delivery/receipt、fan-out/取消闭环、其他渠道独立插件迁移及最终验证 Goal。
+- T8 进行中：已实现独立有界 fan-out、分支关闭显式降级、Runtime abort 取消传播及 ACK/HITL receipt 安全过滤测试；下一步接入插件真实 Delivery Port。
 
 ## 变更历史
 

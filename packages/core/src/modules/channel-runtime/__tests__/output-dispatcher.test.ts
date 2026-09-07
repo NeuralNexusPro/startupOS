@@ -14,6 +14,22 @@ async function* packets(): AsyncIterable<FlowPacket<AgentOutputEvent>> {
 }
 
 describe('ChannelOutputDispatcher', () => {
+  it('delivers ACK and HITL packets while keeping internal artifact paths off external channels', async () => {
+    const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'originos-delivery-'));
+    roots.push(dataRoot);
+    const deliver = vi.fn(async () => ({ messageId: 'ignored', connectorId: 'wecom-main', status: 'delivered' as const, attempt: 1 }));
+    async function* controlPackets(): AsyncIterable<FlowPacket<AgentOutputEvent>> {
+      yield { protocolVersion: '1.0', flowId: 'flow-control', packetId: 'ack-1', sequence: 0, port: 'runtime.output', kind: 'data', emittedAt: '2026-09-07T00:00:00.000Z', payload: { type: 'accepted', sessionId: 'session-1' } };
+      yield { protocolVersion: '1.0', flowId: 'flow-control', packetId: 'hitl-1', sequence: 1, port: 'runtime.output', kind: 'data', emittedAt: '2026-09-07T00:00:00.000Z', payload: { type: 'hitl_request', requestId: 'review-1', summary: 'Approve release?' } };
+      yield { protocolVersion: '1.0', flowId: 'flow-control', packetId: 'internal-1', sequence: 2, port: 'runtime.output', kind: 'data', emittedAt: '2026-09-07T00:00:00.000Z', payload: { type: 'artifact_changed', filename: 'manifest.json', filePath: '/private/solutions/manifest.json', artifactType: 'solution' } };
+    }
+    const dispatcher = new ChannelOutputDispatcher({ deliver }, new ChannelDeliveryStore(dataRoot));
+    const receipts = await dispatcher.dispatch({ connectorId: 'wecom-main', replyHandle: 'reply-1', packets: controlPackets() });
+    expect(deliver.mock.calls.map((call) => call[1].type)).toEqual(['accepted', 'hitl_request']);
+    expect(receipts).toHaveLength(2);
+    expect(new ChannelDeliveryStore(dataRoot).list()).toHaveLength(2);
+  });
+
   it('retries delivery, persists receipts and skips already delivered packets', async () => {
     const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'originos-delivery-'));
     roots.push(dataRoot);

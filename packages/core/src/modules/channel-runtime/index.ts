@@ -1,5 +1,6 @@
 export * from './types';
 export * from './flow-port';
+export * from './fan-out';
 export * from './packet-stream';
 export * from './agent-family';
 export * from './binding-ingress';

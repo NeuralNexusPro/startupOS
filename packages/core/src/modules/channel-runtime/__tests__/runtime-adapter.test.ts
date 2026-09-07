@@ -74,4 +74,24 @@ describe('StreamingSessionRuntimeAdapter', () => {
     expect(events.some((event) => event.type === 'completed')).toBe(false);
     expect(JSON.stringify(events)).not.toContain('provider secret');
   });
+
+  it('propagates cancellation to the active runtime and emits one cancelled terminal packet', async () => {
+    let releasePrompt: (() => void) | undefined;
+    const abort = vi.fn();
+    const adapter = new StreamingSessionRuntimeAdapter({ resolve: async () => ({
+      sessionId: 'session-1', resultRef: 'session://session-1',
+      runtime: {
+        subscribe: () => vi.fn(),
+        prompt: () => new Promise<void>((resolve) => { releasePrompt = resolve; }),
+        abort,
+      },
+    }) }, { appendUserMessage: async () => undefined, appendAssistantMessage: async () => undefined });
+    const iterator = adapter.invokePackets({ ...invocation, sessionId: 'session-1' })[Symbol.asyncIterator]();
+    await expect(iterator.next()).resolves.toMatchObject({ value: { payload: { type: 'accepted' } } });
+    await adapter.cancel('session-1');
+    await expect(iterator.next()).resolves.toMatchObject({ value: { kind: 'control', payload: { type: 'cancelled' } } });
+    await expect(iterator.next()).resolves.toMatchObject({ done: true });
+    expect(abort).toHaveBeenCalledOnce();
+    releasePrompt?.();
+  });
 });
