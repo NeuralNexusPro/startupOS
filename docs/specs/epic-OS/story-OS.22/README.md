@@ -1,7 +1,7 @@
 # Story OS.22：统一 Agent Channel 消息入口与多 Runtime 双工输出协议
 
 - Epic：OS — Phase 0 OS 交互基础
-- 状态：In Progress
+- 状态：Done
 - Owner：OriginOS Team
 - 创建/更新：2026-09-04
 
@@ -11,9 +11,9 @@
 
 ## 简要验收标准
 
-- [x] 已定义统一 `MessageIngress`、FBP `FlowPacket`/有界 Port、`OutputEvent`、Runtime Registry 与验证边界；渠道迁移进行中。
-- [x] 支持 Agent、RoleAgent、Project Agent、Skill、Project Multi-Agent/Collaboration Runtime 的统一适配与 Desktop 组合；渠道迁移进行中。
-- [ ] 感知层只负责标准化、规则、授权与目标选择，不直接调用 `agent.prompt()`。
+- [x] 已定义统一 `MessageIngress`、FBP `FlowPacket`/有界 Port、`OutputEvent`、Runtime Registry 与验证边界；渠道迁移完成。
+- [x] 支持 Agent、RoleAgent、Project Agent、Skill、Project Multi-Agent/Collaboration Runtime 的统一适配与 Desktop 组合；渠道迁移完成。
+- [x] 感知层只负责标准化、规则、授权与目标选择，不直接调用 `agent.prompt()`。
 - [x] 渠道支持稳定会话绑定、双工流、幂等回复、HITL、取消、错误与投递回执。
 - [x] 平台原始 frame/token 仅留在插件内，Agent Runtime 不依赖渠道 SDK。
 
@@ -31,9 +31,9 @@ OS.20（会话恢复）、SENSE.12（感知插件宿主）、Collaboration Runti
 - OS 输入框通过 Desktop Channel Adapter 保持原渲染协议，并继续复用 Task Runtime 等待态、流式去重、工具状态与解决方案产物刷新。
 - OS22-T5 已完成：Session Binding 支持复用、过期、重置、并发创建合并，同 Session 消息由协调器串行执行。
 - 已合入 Task Runtime 完整基线并保留 Channel Task-aware 执行 Port；OS 输入框主链已切换，任务续跑和控制域专项回归通过。
-- 当前 Channel、Task Runtime 与感知专项 110 项、Desktop Channel/Task 17 项、企微插件 8 项通过；Desktop TypeScript 构建通过。
+- 当前 Channel 与感知专项 101 项、Desktop Channel/Task/邮件专项 31 项、三渠道插件 11 项通过；Desktop TypeScript 构建通过。
 - T8 已完成：实现独立有界 fan-out、Runtime abort 取消传播、reply/push、ACK/HITL 降级、有限重试及持久化 Delivery receipt；企微 SDK frame 通过插件内 opaque handle 闭包投递。
-- T9 仍待完成：其他渠道独立插件迁移及最终验证 Goal。
+- T9 已完成：飞书、钉钉从企微包拆为独立插件，邮件维持既有 Channel 轮询适配；三插件运行时加载、依赖隔离、Linux/Windows 原生 TypeScript 构建和 Windows x64 ZIP 包体校验通过。
 
 ## 变更历史
 
@@ -46,3 +46,4 @@ OS.20（会话恢复）、SENSE.12（感知插件宿主）、Collaboration Runti
 | 2026-09-05 | 完成 T5/T7：会话串行化；企微与邮件感知迁移到 Channel，删除 Session 差值桥接 | Codex |
 | 2026-09-07 | 合入 dev Task Runtime 基线，修复当前 feature 分支的 Channel UI 构建与测试断层 | Codex |
 | 2026-09-07 | 完成 T8：有界 fan-out、取消传播、企微真实双工 Delivery、重试与 receipt | Codex |
+| 2026-09-07 | 完成 T9：飞书/钉钉独立插件、跨平台构建脚本、全量验证 Goal 与 Windows x64 ZIP 包体校验 | Codex |

@@ -1,9 +1,9 @@
-import type { FeishuSecrets } from '@originos/core/lib/integrations/perception';
-import { FeishuAppConnector } from '@originos/core/lib/integrations/perception';
+import type { FeishuSecrets } from '../../../core/src/lib/integrations/perception';
+import { FeishuAppConnector } from '../../../core/src/lib/integrations/perception';
 import type { PerceptionPlugin, PerceptionPluginManifest, PerceptionPluginRuntimeContext, PerceptionPluginWebhookRequest, PerceptionPluginWebhookResult } from '@originos/core/modules/perception-runtime/plugins';
 
 export const feishuManifest: PerceptionPluginManifest = {
-  id: 'originos.feishu', name: '飞书', version: '0.1.0', hostApi: '1.0', entry: '@originos/perception-plugin-wecom/feishu', source: 'feishu', transport: 'webhook',
+  id: 'originos.feishu', name: '飞书', version: '0.1.0', hostApi: '1.0', entry: '@originos/perception-plugin-feishu', source: 'feishu', transport: 'webhook',
   capabilities: ['inbound-events', 'callback-handshake', 'encrypted-payload', 'attachments'], permissions: ['credentials', 'events', 'health'],
   configurationSchema: { version: '1.0', fields: [
     { key: 'verificationTokenRef', label: 'Verification Token', type: 'password', required: true, sensitive: true },

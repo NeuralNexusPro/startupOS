@@ -50,6 +50,16 @@ files:
     filter:
       - "package.json"
       - "dist/**/*"
+  - from: ../../packages/perception-plugins/feishu
+    to: node_modules/@originos/perception-plugin-feishu
+    filter:
+      - "package.json"
+      - "dist/**/*"
+  - from: ../../packages/perception-plugins/dingtalk
+    to: node_modules/@originos/perception-plugin-dingtalk
+    filter:
+      - "package.json"
+      - "dist/**/*"
   - from: ../../packages/perception-plugins/wecom/node_modules/@wecom/aibot-node-sdk
     to: node_modules/@wecom/aibot-node-sdk
     filter:

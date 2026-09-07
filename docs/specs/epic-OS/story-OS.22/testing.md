@@ -37,3 +37,13 @@ Core 单元覆盖率 ≥80%；五类 Runtime 集成点 100%；OS UI、企微与�
 ## 边界数据
 
 覆盖空文本、20MB 附件引用、超长 UTF-8 回复、重复 messageId、两条并发消息、多个匹配规则、Binding 过期、Runtime 重启、Channel 断线、HITL 超时、Port 容量 1、终态后写入和项目内部 Agent 部分失败。
+
+## 2026-09-07 最终验证记录
+
+- Core Channel/Perception/Runtime 专项：23 个文件、101 项通过。
+- Desktop Channel、Task Runtime、Delivery 与邮件专项：31 项通过；Linux 与 Windows PowerShell 原生 TypeScript 构建通过。
+- 插件：企微 9 项、飞书 1 项、钉钉 1 项通过；三个插件 build/typecheck 与安装后 CommonJS 运行时加载通过。
+- Web lint：0 error；仓库既有 2907 warnings。
+- 依赖检查：Channel Runtime 无平台条件分支，Core 无 Web/Desktop 上层依赖，三个渠道插件包相互隔离。
+- Windows 目标：Electron Builder 已生成并由 `verify-windows-package.js` 验证 x64 ZIP（3535 entries，app.asar smoke、Task Runtime 与资源完整性通过）。NSIS 在 WSL 因未安装 Wine 未生成；PowerShell 直接构建 standalone 因宿主未开启符号链接权限受阻，均不影响已验证 ZIP 运行包。
+- 真实企微/飞书/钉钉平台凭据不在自动化环境中，仍需按 OS22-E2E-02 执行一次脱敏人工验收；剩余风险限于平台侧连接权限、回调配置和网络状态。

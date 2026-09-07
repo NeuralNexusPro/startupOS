@@ -34,6 +34,12 @@ importers:
       '@neural-nexus/view-manager':
         specifier: ^0.1.5
         version: 0.1.5
+      '@originos/perception-plugin-dingtalk':
+        specifier: workspace:*
+        version: link:packages/perception-plugins/dingtalk
+      '@originos/perception-plugin-feishu':
+        specifier: workspace:*
+        version: link:packages/perception-plugins/feishu
       '@originos/perception-plugin-wecom':
         specifier: workspace:*
         version: link:packages/perception-plugins/wecom
@@ -273,6 +279,12 @@ importers:
       '@anthropic-ai/sandbox-runtime':
         specifier: ^0.0.51
         version: 0.0.51
+      '@originos/perception-plugin-dingtalk':
+        specifier: workspace:*
+        version: link:../perception-plugins/dingtalk
+      '@originos/perception-plugin-feishu':
+        specifier: workspace:*
+        version: link:../perception-plugins/feishu
       '@originos/perception-plugin-wecom':
         specifier: workspace:*
         version: link:../perception-plugins/wecom
@@ -358,6 +370,38 @@ importers:
       wait-on:
         specifier: ^8.0.5
         version: 8.0.5
+
+  packages/perception-plugins/dingtalk:
+    dependencies:
+      '@originos/core':
+        specifier: workspace:*
+        version: link:../../core
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.43
+      typescript:
+        specifier: ^5.0.0
+        version: 5.7.3
+      vitest:
+        specifier: ^1.0.0
+        version: 1.0.0(@types/node@20.19.43)(jsdom@23.0.0(canvas@3.2.3))(lightningcss@1.32.0)
+
+  packages/perception-plugins/feishu:
+    dependencies:
+      '@originos/core':
+        specifier: workspace:*
+        version: link:../../core
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.43
+      typescript:
+        specifier: ^5.0.0
+        version: 5.7.3
+      vitest:
+        specifier: ^1.0.0
+        version: 1.0.0(@types/node@20.19.43)(jsdom@23.0.0(canvas@3.2.3))(lightningcss@1.32.0)
 
   packages/perception-plugins/wecom:
     dependencies:

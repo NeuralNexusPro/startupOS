@@ -1,5 +1,7 @@
 import { safeStorage } from 'electron';
-import { dingtalkPlugin, feishuPlugin, weComPlugin } from '@originos/perception-plugin-wecom';
+import { dingtalkPlugin } from '@originos/perception-plugin-dingtalk';
+import { feishuPlugin } from '@originos/perception-plugin-feishu';
+import { weComPlugin } from '@originos/perception-plugin-wecom';
 import { getDataRoot } from '../../../../../core/src/lib/paths';
 import { FileSystemPerceptionTargetRegistry } from '../../../../../core/src/lib/features/services/perception-target-registry';
 import { ChannelTriggerExecutionAdapter, ConnectorHealthStore, ExternalTriggerGrantStore, FileTargetAuthorizationPort, PerceptionConnectorConfigStore, PerceptionEventStore, PerceptionPluginHost, PerceptionPluginRegistry, PerceptionRouter, TriggerRuleStore, type PerceptionPluginHostPorts, type PerceptionPluginWebhookRequest, type PerceptionPluginWebhookResult } from '../../../../../core/src/modules/perception-runtime';
