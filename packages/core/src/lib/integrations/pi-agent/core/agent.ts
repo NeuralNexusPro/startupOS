@@ -33,7 +33,6 @@ import { createWorkingSummaryMessage } from "../runtime-working-summary";
 import { getVisibleStreamDelta } from "../stream-dedupe";
 import {
 	appendRuntimeEnvironmentPrompt,
-	buildRuntimeEnvironmentPrompt,
 	getRuntimeEnvironment,
 } from "../system/runtime-environment";
 import {
@@ -43,8 +42,6 @@ import {
 import {
 	assessCompletion,
 	buildCompletionFailureReport,
-	buildCompletionRecoveryMessage,
-	DEFAULT_COMPLETION_RECOVERY_LIMIT,
 	type ToolFailureSummary,
 } from "./completion-guard";
 import {
@@ -267,7 +264,6 @@ export class OriginOSAgent {
 	private runtimeEnvironment = getRuntimeEnvironment({
 		defaultShell: findSuitableShell() ?? undefined,
 	});
-	private runtimeEnvironmentPrompt = buildRuntimeEnvironmentPrompt(this.runtimeEnvironment);
 	private pendingPromiseStop = false;
 	private lastToolFailure: ToolFailureSummary | null = null;
 	private successfulToolAfterFailure = false;
@@ -641,7 +637,7 @@ export class OriginOSAgent {
 		}
 	}
 
-	private async judgePendingCompletion(): Promise<void> {
+	protected async judgePendingCompletion(): Promise<void> {
 		const candidate = this.pendingCompletionCandidate;
 		if (!candidate || !this.agent) {
 			return;
