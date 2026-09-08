@@ -846,7 +846,10 @@ export class OriginOSAgent {
 		try {
 			await this.agent.prompt(recoveryMessage as unknown as AgentMessage);
 			this.throwIfModelStreamFailed();
-			if (this.pendingCompletionCandidate?.text.trim().length === 0) {
+			const recoveryCandidate = this.pendingCompletionCandidate as
+				| typeof candidate
+				| null;
+			if (recoveryCandidate?.text.trim().length === 0) {
 				this.pendingCompletionCandidate = null;
 				this.lastToolFailure = {
 					toolName: "empty-stop-recovery",
