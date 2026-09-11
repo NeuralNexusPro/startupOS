@@ -231,4 +231,4 @@ Week 3+
 
 ## AG5-T1 架构决策
 
-单一 `.eslintrc.cjs` 以自身目录确定根路径，现有 import 规则与包级 tsconfig resolver 负责检查，一个 Node 脚本负责扫描和断言。详细边界与覆盖限制见 `openspec/changes/fix-monorepo-boundary-lint/design.md`。本轮不创建业务 shared 工厂，不新增依赖，不改变运行时分层；旧的全工具链设计保留为后续规划。
+单一 `.eslintrc.cjs` 以自身目录确定根路径，现有 import 规则与包级 tsconfig resolver 负责检查，一个 Node 脚本负责扫描和断言。详细边界与覆盖限制见 `openspec/changes/archive/2026-09-11-fix-monorepo-boundary-lint/design.md`。本轮不创建业务 shared 工厂，不新增依赖，不改变运行时分层；旧的全工具链设计保留为后续规划。

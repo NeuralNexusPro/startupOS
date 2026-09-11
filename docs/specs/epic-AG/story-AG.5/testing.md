@@ -431,3 +431,5 @@ T1-01–T1-10 全部由真实 ESLint 自测通过：43 imports × 2 个 CWD，�
 T1-11：Web lint 383 文件，0 errors / 2920 warnings；与变更前 2931 warnings 对比，非边界诊断逐条完全相同。配置级比较也证明除过时架构限制与 resolver 外全部规则保持一致。移除的是过期 app→feature 与 collaboration-runtime→lib 的架构限制，不是降低无关代码质量规则。
 
 全量扫描实际返回 1：853 生产文件、34 条真实架构违规。此失败证明扫描器工作，不能记成仓库架构全绿；[完整基线](lint-baseline.md)保留每条路径、位置与原因。`git diff --check` 通过。自动化验证 goal 已建立，目标为通过 AG5-T1 全部 case 并完成 dev 集成与清理；最终状态随交付记录。
+
+交付收尾：已合入本地 dev（`0eac78e`），主工作区自测再次通过；独立 Task/Proposal 分支和 worktree 已清理，提案归档到 `openspec/changes/archive/2026-09-11-fix-monorepo-boundary-lint/`，主规范新增 3 条需求。全部 T1 测试 case 已通过；34 条业务存量仍未修复。
