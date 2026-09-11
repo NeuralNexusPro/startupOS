@@ -29,8 +29,8 @@ import { processHealthMonitor } from './services/process-health-monitor';
 import { createDefaultDesktopChannelRuntime } from './services/channel-runtime-service';
 import { AgentTaskRuntimeIpcController } from './services/agent-task-runtime-ipc';
 import { attachDevToolsContextMenu } from './devtools-context-menu';
-import { agentManager } from '../../../core/src/lib/integrations/pi-agent/agent-manager';
-import { persistentAgentManager } from '../../../core/src/lib/integrations/pi-agent/persistent-agent-manager';
+import { agentManager } from '../../../core/src/lib/features/agent/server/index';
+import { persistentAgentManager } from '../../../core/src/lib/features/agent/server/index';
 import { shutdownGlobalSpawner } from '../../../core/src/modules/collaboration-runtime/sandbox/agent-spawner';
 
 if (process.platform === 'darwin' && process.arch === 'x64') {

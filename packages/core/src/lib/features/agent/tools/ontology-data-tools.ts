@@ -5,16 +5,16 @@
 
 import type { Static } from "@sinclair/typebox";
 import { Type } from "@sinclair/typebox";
-import type { ToolRegistration } from "../types";
+import type { ToolRegistration } from "../../../integrations/pi-agent/types";
 import type { AgentToolResult, AgentToolUpdateCallback } from "@originos/pi-agent-adapter";
 
-import * as store from "../../../../lib/features/ontology-data-store/store";
-import * as queryEngine from "../../../../lib/features/ontology-data-store/query-engine";
-import * as schemaValidator from "../../../../lib/features/ontology-data-store/schema-validator";
+import * as store from '../../ontology-data-store';
+import * as queryEngine from '../../ontology-data-store';
+import * as schemaValidator from '../../ontology-data-store';
 import {
 	createInstanceRelation,
 	listInstanceRelations,
-} from "../../../../lib/features/ontology-data-store/instance-relations";
+} from '../../ontology-data-store';
 
 // ============================================================================
 // 工具执行辅助（复用 ontology-tools.ts 模式）
@@ -482,7 +482,7 @@ const ListConceptsTool: ToolRegistration = {
 			logToolStart(ctx, params);
 			checkAbort(ctx.signal);
 
-			const concepts = await import("../../../../lib/features/ontology-data-store/ontology-ops").then(
+			const concepts = await import('../../ontology-data-store').then(
 				(m) => m.listConcepts(params.ontologyId)
 			);
 

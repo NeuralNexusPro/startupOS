@@ -1,11 +1,57 @@
+import type {
+  SkillListRequest,
+  SkillListItem,
+  SkillListResponse,
+  SkillContentRequest,
+  SkillContentResponse,
+  SkillDetailRequest,
+  SkillDetailResponse,
+  SkillSessionsRequest,
+  SkillSessionsResponse,
+  SkillExecutionStartRequest,
+  SkillExecutionStartResponse,
+  SkillExecutionCompleteRequest,
+  SkillExecutionCompleteResponse,
+  SkillExecutionTimelineRequest,
+  SkillExecutionTimelineItem,
+  SkillExecutionTimelineResponse,
+  SkillExecutionMessageRequest,
+  SkillExecutionMessageResponse,
+  SkillExecutionStreamEvent,
+  SkillExecutionStreamRequest,
+} from '../../../types/skill-service';
+export type {
+  SkillSource,
+  SkillListRequest,
+  SkillListItem,
+  SkillListResponse,
+  SkillContentRequest,
+  SkillContentResponse,
+  SkillDetailRequest,
+  SkillDetailResponse,
+  SkillSessionsRequest,
+  SkillSessionsResponse,
+  SkillExecutionStartRequest,
+  SkillExecutionStartResponse,
+  SkillExecutionCompleteRequest,
+  SkillExecutionCompleteResponse,
+  SkillExecutionTimelineRequest,
+  SkillExecutionTimelineItem,
+  SkillExecutionTimelineResponse,
+  SkillExecutionMessageRequest,
+  SkillExecutionMessageResponse,
+  SkillExecutionStreamEventType,
+  SkillExecutionStreamEvent,
+  SkillExecutionStreamRequest,
+} from '../../../types/skill-service';
 import { readFileSync, existsSync, mkdirSync } from 'fs';
 import path from 'path';
 import { getDataRoot, getSkillsDataDir } from '../../paths';
 import { agentSessionService } from '../agent/session-service';
 import { ontologyStorage } from '../ontology/storage';
-import type { AgentMessage, AgentSession, SessionListItem } from '../../../types/agent';
+import type { AgentMessage, AgentSession } from '../../../types/agent';
 import type { SkillContext, SkillResult, SkillTools } from '../../../types/skill';
-import { agentManager } from '../../integrations/pi-agent/agent-manager';
+import { agentManager } from '../agent/server/index';
 import { handle as taskManagerHandler } from './bundled/task-manager/handler';
 import { handle as infoQueryHandler } from './bundled/info-query/handler';
 import { handle as ontologyEditorHandler } from './bundled/ontology-editor/handler';
@@ -16,157 +62,9 @@ import {
   materializeBundledSkill,
   parseFrontmatter,
   type Skill,
-  type SkillDiagnostic,
-  type SkillFrontmatter,
 } from '../../integrations/pi-agent/core/skills';
 import { extractDisplayContent } from '../../integrations/pi-agent/display-content';
 import { getVisibleStreamDelta, reconcileFinalStreamContent } from '../../integrations/pi-agent/stream-dedupe';
-
-export type SkillSource = Skill['source'];
-
-export interface SkillListRequest {
-  source?: SkillSource;
-  includeInvisible?: boolean;
-  includeDiagnostics?: boolean;
-}
-
-export interface SkillListItem {
-  name: string;
-  code?: string;
-  description: string;
-  source: SkillSource;
-  filePath?: string;
-  baseDir?: string;
-  disableModelInvocation?: boolean;
-  systemManaged?: boolean;
-}
-
-export interface SkillListResponse {
-  skills: SkillListItem[];
-  diagnostics: SkillDiagnostic[];
-}
-
-export interface SkillContentRequest {
-  name: string;
-  includeFrontmatter?: boolean;
-}
-
-export interface SkillContentResponse {
-  content: string;
-  baseDir: string;
-  /** 技能工作目录（CWD，用于 bash 执行和认知文件写入） */
-  workingDir: string;
-  /** 产物输出目录（用于创建 Agent 等产物） */
-  outputDir: string;
-  /** 系统内置技能不允许作为用户技能导出 */
-  systemManaged: boolean;
-  frontmatter?: SkillFrontmatter;
-}
-
-export interface SkillDetailRequest {
-  name: string;
-  includeInvisible?: boolean;
-}
-
-export interface SkillDetailResponse {
-  name: string;
-  description: string;
-  source: SkillSource;
-  filePath: string;
-  baseDir: string;
-  disableModelInvocation: boolean;
-  content: string;
-  frontmatter: SkillFrontmatter;
-}
-
-export interface SkillSessionsRequest {
-  skillName?: string;
-}
-
-export interface SkillSessionsResponse {
-  sessions: SessionListItem[];
-  count: number;
-}
-
-export interface SkillExecutionStartRequest {
-  skillName?: string;
-  sessionId?: string;
-  data?: unknown;
-  args?: unknown;
-  config?: unknown;
-  input?: unknown;
-}
-
-export interface SkillExecutionStartResponse {
-  executionId: string;
-  skillName: string;
-  status: 'initializing' | 'running' | 'completed' | 'failed';
-  startedAt: string;
-  sessionId: string;
-  message?: string;
-  data?: unknown;
-}
-
-export interface SkillExecutionCompleteRequest {
-  executionId: string;
-  sessionId?: string;
-  cancelled?: boolean;
-}
-
-export interface SkillExecutionCompleteResponse {
-  success: boolean;
-  status: 'completed' | 'cancelled';
-  endedAt: string;
-  summary: {
-    totalMessages: number;
-    duration: number;
-  };
-}
-
-export interface SkillExecutionTimelineRequest {
-  executionId: string;
-  sessionId?: string;
-}
-
-export interface SkillExecutionTimelineItem {
-  type: 'start' | 'end' | 'message' | 'tool' | 'error';
-  timestamp: string;
-  data: Record<string, unknown>;
-}
-
-export interface SkillExecutionTimelineResponse {
-  executionId: string;
-  skillName: string;
-  startedAt: string;
-  status: 'completed' | 'failed' | 'running';
-  endedAt?: string;
-  timeline: SkillExecutionTimelineItem[];
-}
-
-export interface SkillExecutionMessageRequest {
-  executionId: string;
-  sessionId?: string;
-  content?: string;
-  role?: AgentMessage['role'];
-  metadata?: Record<string, unknown>;
-}
-
-export interface SkillExecutionMessageResponse {
-  message: {
-    role: string;
-    content: string;
-    timestamp: string;
-  };
-  assistantMessage?: {
-    role: 'assistant';
-    content: string;
-    timestamp: string;
-  };
-  executionStatus?: {
-    status: string;
-    progress?: unknown;
-  };
-}
 
 function resolveSkillWorkingDirectory(skill: Skill): string {
   const skillCode = skill.code ?? skill.name;
@@ -207,22 +105,6 @@ function resolveSkillOutputDir(skill: Skill): string {
     return resolveOutputDirFromFrontmatter(skill.outputDir);
   }
   return workingDir;
-}
-
-export type SkillExecutionStreamEventType =
-  | 'user_message'
-  | 'assistant_message'
-  | 'error'
-  | 'done';
-
-export interface SkillExecutionStreamEvent {
-  executionId: string;
-  type: SkillExecutionStreamEventType;
-  data: unknown;
-}
-
-export interface SkillExecutionStreamRequest extends SkillExecutionMessageRequest {
-  streamId?: string;
 }
 
 type AgentStreamEvent = {

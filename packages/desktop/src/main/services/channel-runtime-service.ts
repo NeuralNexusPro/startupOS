@@ -43,7 +43,7 @@ export async function createDefaultDesktopChannelRuntime(
   const [agentFeature, launcher, manager, paths, channelGateway, collaborationBackend] = await Promise.all([
     import('../../../../core/src/lib/features/agent'),
     import('../../../../core/src/lib/features/services/launcher'),
-    import('../../../../core/src/lib/integrations/pi-agent/agent-manager'),
+    import('../../../../core/src/lib/features/agent/server/index'),
     import('../../../../core/src/lib/paths'),
     import('../../../../core/src/modules/channel-runtime/pi-agent-session-gateway'),
     import('../../../../core/src/modules/collaboration-runtime/integrations/facade-channel-backend'),

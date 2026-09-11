@@ -2,11 +2,11 @@
  * OS.7: Agent Host Integration
  */
 
-import { usePiAgentStore } from '../../../lib/integrations/pi-agent/store';
+import type { PiAgentStore } from '../../../lib/integrations/pi-agent/store';
 import type { AgentEvent } from '@originos/pi-agent-adapter';
 
 export class AgentHostIntegration {
-  private piAgentStore = usePiAgentStore.getState();
+  constructor(private readonly piAgentStore: PiAgentStore) {}
 
   async initAgent(config: {
     agentId: string;

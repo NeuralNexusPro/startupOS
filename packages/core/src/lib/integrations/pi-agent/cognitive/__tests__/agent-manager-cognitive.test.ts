@@ -1,3 +1,4 @@
+import { integrateAgentMemory } from '../../../../features/agent/cognitive/in-process';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs';
 import path from 'path';
@@ -32,11 +33,10 @@ describe('AgentManager cognitive registration', () => {
     } as any);
 
     const toolsMod = await import('@/lib/integrations/pi-agent/tools/index');
-    vi.spyOn(toolsMod, 'initializeBuiltInTools').mockReturnValue(undefined as any);
     vi.spyOn(toolsMod, 'getAgentToolsForScope').mockReturnValue([]);
 
     const { AgentManager } = await import('@/lib/integrations/pi-agent/agent-manager');
-    const manager = new AgentManager();
+    const manager = new AgentManager(undefined, { initializeTools: () => {}, integrateMemory: integrateAgentMemory });
     await manager.getOrCreateAgent('test-session', 'test-project', {
       agentBaseDir: agentDir,
       agentType: 'worker',
@@ -59,11 +59,10 @@ describe('AgentManager cognitive registration', () => {
     } as any);
 
     const toolsMod = await import('@/lib/integrations/pi-agent/tools/index');
-    vi.spyOn(toolsMod, 'initializeBuiltInTools').mockReturnValue(undefined as any);
     vi.spyOn(toolsMod, 'getAgentToolsForScope').mockReturnValue([]);
 
     const { AgentManager } = await import('@/lib/integrations/pi-agent/agent-manager');
-    const manager = new AgentManager();
+    const manager = new AgentManager(undefined, { initializeTools: () => {}, integrateMemory: integrateAgentMemory });
     await manager.getOrCreateAgent('test-session-2', 'test-project', {
       agentType: 'worker',
     });
@@ -86,11 +85,10 @@ describe('AgentManager cognitive registration', () => {
     } as any);
 
     const toolsMod = await import('@/lib/integrations/pi-agent/tools/index');
-    vi.spyOn(toolsMod, 'initializeBuiltInTools').mockReturnValue(undefined as any);
     vi.spyOn(toolsMod, 'getAgentToolsForScope').mockReturnValue([]);
 
     const { AgentManager } = await import('@/lib/integrations/pi-agent/agent-manager');
-    const manager = new AgentManager();
+    const manager = new AgentManager(undefined, { initializeTools: () => {}, integrateMemory: integrateAgentMemory });
     await manager.getOrCreateAgent('standalone-skill-session', 'skill-demo', {
       agentBaseDir: agentDir,
       agentType: 'skill',

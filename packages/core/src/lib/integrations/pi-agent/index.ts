@@ -42,26 +42,12 @@ export * from "./session-store";
 // Agent Manager (服务端)
 // ============================================================================
 
-export { agentManager } from "./agent-manager";
 export type { AgentManagerConfig, AgentTaskRuntimeBindingOptions } from "./agent-manager";
 
 // ============================================================================
 // Skill Evolution (服务端)
 // ============================================================================
 
-export {
-  recordRun,
-  shouldEvolve,
-  runEvolution,
-  readEvolutionState,
-  handleSkillEvolution,
-} from "./skill-evolution";
-export type {
-  EvolutionRun,
-  EvolutionState,
-  EvolutionResult,
-  SkillEvolutionRequest,
-} from "./skill-evolution";
 
 // ============================================================================
 // React Hooks (客户端安全)

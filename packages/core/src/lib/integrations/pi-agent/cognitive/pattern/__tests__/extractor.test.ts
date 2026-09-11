@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { extractAndIngest } from '../extractor';
+import { extractAndIngest } from '../../../../../features/agent/cognitive/pattern/extractor';
 import type { TurnCognitiveData } from '../../types';
 
 // 轻量级 mock ArchivalMemory

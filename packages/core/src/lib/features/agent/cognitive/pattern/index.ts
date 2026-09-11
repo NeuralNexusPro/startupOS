@@ -11,14 +11,14 @@
 
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs';
 import path from 'path';
-import type { CognitiveProvider, TurnCognitiveData } from '../types';
+import type { CognitiveProvider, TurnCognitiveData } from '../../../../integrations/pi-agent/cognitive/types';
 import type { ArchivalMemory } from '../../../../../modules/memory-core/archival/archival-memory';
-import { detectCorrections } from './correction-detector';
+import { detectCorrections } from '../../../../integrations/pi-agent/cognitive/pattern/correction-detector';
 import { extractAndIngest } from './extractor';
 import { PatternRenderer } from './renderer';
 import { migratePatternsToArchival } from '../../../../../modules/memory-core/archival/pattern-ingest';
 import { ingestReflectionToArchival } from '../../../../../modules/memory-core/archival/pattern-ingest';
-import type { CognitionDataFile, PatternEvidenceCandidate } from '../../../../../modules/memory-core/bank';
+import type { CognitionDataFile, PatternEvidenceCandidate } from '../../../../../modules/memory-core/bank/index';
 
 interface PatternEvidenceIndexEntry {
   archivalId: string;

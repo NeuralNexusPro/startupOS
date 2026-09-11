@@ -8,7 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { agentSessionService } from '@originos/core/lib/features/agent';
-import { agentManager } from '@originos/core/lib/integrations/pi-agent/agent-manager';
+import { agentManager } from '@originos/core/lib/features/agent/server';
 import { sanitizeAgentDisplayContent } from '@originos/core/lib/integrations/pi-agent/display-content';
 import { getVisibleStreamDelta, reconcileFinalStreamContent } from '@originos/core/lib/integrations/pi-agent/stream-dedupe';
 import {

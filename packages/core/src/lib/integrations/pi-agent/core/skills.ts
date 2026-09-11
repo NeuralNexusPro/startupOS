@@ -24,48 +24,8 @@ export const MAX_DESCRIPTION_LENGTH = 1024;
 
 const IGNORE_FILE_NAMES = [".gitignore", ".ignore", ".fdignore"];
 
-/**
- * Frontmatter structure for SKILL.md files
- */
-export interface SkillFrontmatter {
-	name?: string;
-	code?: string;
-	description?: string;
-	"disable-model-invocation"?: boolean;
-	"originos-system"?: boolean | string;
-	[key: string]: unknown;
-}
-
-/**
- * Skill object representing a loaded skill
- */
-export interface Skill {
-	name: string;
-	code?: string;
-	description: string;
-	filePath: string;
-	baseDir: string;
-	source: "bundled" | "user" | "project";
-	disableModelInvocation: boolean;
-	systemManaged?: boolean;
-	/** 产物输出目录（与 workingDirectory 分离）。相对路径基于 getDataRoot() 解析 */
-	outputDir?: string;
-}
-
-/**
- * Diagnostic info from skill loading
- */
-export interface SkillDiagnostic {
-	type: "warning" | "error" | "collision";
-	message: string;
-	path: string;
-	collision?: {
-		resourceType: string;
-		name: string;
-		winnerPath: string;
-		loserPath: string;
-	};
-}
+import type { Skill, SkillFrontmatter, SkillDiagnostic } from '../../../../types/skill-service';
+export type { Skill, SkillFrontmatter, SkillDiagnostic } from '../../../../types/skill-service';
 
 /**
  * Result of loading skills

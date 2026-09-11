@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ObservationPolicyResolver } from '../../../../../modules/memory-core';
-import { createOwnedCognitiveProviders } from '../provider-factory';
+import { createOwnedCognitiveProviders } from '../../../../features/agent/cognitive/provider-factory';
 
 let dataRoot: string;
 

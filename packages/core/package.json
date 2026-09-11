@@ -45,7 +45,6 @@
     "./lib/features/culture/services/CultureDetectionService": "./src/lib/features/culture/services/CultureDetectionService.ts",
     "./lib/features/culture/services/CultureSessionService": "./src/lib/features/culture/services/CultureSessionService.ts",
     "./lib/integrations/*/agent-manager": "./src/lib/integrations/*/agent-manager.ts",
-    "./lib/integrations/*/persistent-agent-manager": "./src/lib/integrations/*/persistent-agent-manager.ts",
     "./lib/integrations/*/server-config": "./src/lib/integrations/*/server-config.ts",
     "./lib/integrations/*/stream-dedupe": "./src/lib/integrations/*/stream-dedupe.ts",
     "./lib/integrations/*/store": "./src/lib/integrations/*/store.ts",
@@ -81,6 +80,7 @@
     "./modules/memory-core/*": "./src/modules/memory-core/*.ts",
     "./modules/memory-core/core/*": "./src/modules/memory-core/core/*.ts",
     "./modules/memory-core/session/*": "./src/modules/memory-core/session/*.ts",
-    "./modules/memory-core/tools/*": "./src/modules/memory-core/tools/*.ts"
+    "./modules/memory-core/tools/*": "./src/modules/memory-core/tools/*.ts",
+    "./lib/features/agent/server": "./src/lib/features/agent/server/index.ts"
   }
 }
