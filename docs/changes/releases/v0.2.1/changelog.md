@@ -16,3 +16,9 @@
 
 - Email、企业微信、飞书和钉钉感知插件均通过独立 TypeScript 构建。
 - Windows、macOS arm64 和 macOS x64 安装包均通过 GitHub Actions 构建与运行时依赖校验。
+
+## 2026-09-11 — docs：架构治理首轮检查修正提案
+
+**类型**：docs
+**影响模块**：docs/specs/epic-AG、openspec/changes/fix-monorepo-boundary-lint
+**摘要**：复现旧 ESLint 目录边界随 CWD 漏报，建立 AG5-T1 提案、正反例验收和实施边界。当前待批准，未修改应用源码或宣称完成架构治理。

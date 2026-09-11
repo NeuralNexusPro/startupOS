@@ -1867,3 +1867,9 @@
 **类型**：ci
 **影响模块**：`.github/workflows/ci.yml`
 **摘要**：移除 push/pull_request 自动触发但当前不再使用的通用 CI workflow；桌面发布 workflow 保持不变。
+
+## 2026-09-11 — docs：架构治理首轮检查修正提案
+
+**类型**：docs
+**影响模块**：docs/specs/epic-AG、openspec/changes/fix-monorepo-boundary-lint
+**摘要**：复现旧 ESLint 目录边界随 CWD 漏报，建立 AG5-T1 提案、正反例验收和实施边界。当前待批准，未修改应用源码或宣称完成架构治理。

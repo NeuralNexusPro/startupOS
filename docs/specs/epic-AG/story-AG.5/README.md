@@ -1,5 +1,10 @@
 # Story AG.5: 自动化围栏（ESLint 边界 + dead-code 工具 + any 预算 + CI 接入）
 
+## 2026-09-11：首轮可执行任务 AG5-T1
+
+本轮仅实施现有 Monorepo 边界检查修正，提案为 `fix-monorepo-boundary-lint`，状态为待批准。下方历史整套工具链规划不作为 AG5-T1 验收要求；不得因此宣称 AG.5 全部完成。现行架构以 AGENTS.md 为准，旧 `src/`、atoms/organisms 目录及旧 CLI 命令仅作为历史背景。
+
+
 **Epic:** AG — 架构治理与围栏对齐
 **状态:** 📋 Planning
 **优先级:** 🟡 Medium（治理「再发生」的护栏，需在 AG.1~AG.4 落地后再启用 error 级）
@@ -9,7 +14,7 @@
 
 ## Story 概览
 
-> 作为 OriginOS 维护者，我需要把 CLAUDE.md 中的架构围栏从「人工评审」升级为「CI 自动拦截」。当前没有 ESLint `no-restricted-imports` 全局规则、没有 dead-code 工具、没有 `any` 预算门 — 任何穿透模块边界、`any` 滥用、未使用导出都依赖人工 PR review 把关。本 Story 接入工具链，让违规在 CI 阶段被拦截在合入前。
+> 作为 OriginOS 维护者，我需要把 CLAUDE.md 中的架构围栏从「人工评审」升级为「CI 自动拦截」。当前已有 ESLint `no-restricted-imports` 与 `import/no-restricted-paths`，但包路径和扫描覆盖需修正；dead-code 与 `any` 预算仍属后续规划 — 任何穿透模块边界、`any` 滥用、未使用导出都依赖人工 PR review 把关。本 Story 接入工具链，让违规在 CI 阶段被拦截在合入前。
 
 ---
 
@@ -68,3 +73,18 @@
 - [架构设计](./architecture.md)
 - [测试策略](./testing.md)
 - [Epic AG README](../README.md)
+
+## AG5-T1 需求与验收
+
+Owner：OriginOS 维护者 / Codex。作为维护者，我需要同一违规在根目录和包目录被一致检出，并获得真实存量基线。
+
+- [ ] 工作目录与导入写法不影响边界判定。
+- [ ] 合法 app → Core 公共 API 不误报。
+- [ ] 生产扫描、自测和失败退出码符合 testing.md 的 AG5-T1 用例。
+- [ ] 无新增工具依赖，默认 lint 兼容级别保留。
+
+补充导航：[交互](interaction.md) · [实施](implementation.md)。
+
+## 变更历史
+
+- 2026-09-11：核实旧围栏失效原因，建立 AG5-T1 提案与验收用例；未修改应用源码。
