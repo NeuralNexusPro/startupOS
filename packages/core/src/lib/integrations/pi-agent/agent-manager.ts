@@ -44,6 +44,7 @@ export interface InProcessAgentOptions {
 interface AgentEntry {
   agent: OriginOSAgent;
   cognitiveManager?: CognitiveSessionEndManager;
+  baseSystemPrompt?: string;
   sessionId: string;
   projectId: string;
   createdAt: number;
@@ -148,8 +149,9 @@ export class AgentManager {
       entry.lastAccessedAt = Date.now();
 
       // Update systemPrompt if provided and different
-      if (options?.systemPrompt && entry.agent.isInitialized()) {
+      if (options?.systemPrompt && options.systemPrompt !== entry.baseSystemPrompt && entry.agent.isInitialized()) {
         entry.agent.setSystemPrompt(options.systemPrompt);
+        entry.baseSystemPrompt = options.systemPrompt;
       }
 
       // Apply llmConfig if provided (launcher may have created agent without it)
@@ -214,6 +216,7 @@ export class AgentManager {
     this.agents.set(sessionId, {
       agent,
       cognitiveManager: this.getCognitiveManager(agent),
+      baseSystemPrompt: options?.systemPrompt,
       sessionId,
       projectId,
       createdAt: Date.now(),
