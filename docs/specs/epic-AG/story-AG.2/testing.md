@@ -31,3 +31,11 @@ TC04/TC08 使用项目已有会话/worker测试和本地可控模型替身覆盖
 ## 完成证据
 
 待实施后补充命令、退出码、测试数量、日志路径及限制。当前所有执行项尚未验收，不声明Story完成。
+
+## 实施前基线（2026-09-11）
+
+Web类型检查退出0。Core明确清单47文件635用例，620通过，15既有失败集中于capability-matcher（12）与dag-executor HITL（3）；日志 /private/tmp/originos-ag2-baseline-stable.log。agent-spawner因本地tsx缺失及Electron下载无法完成，已中止，日志 /private/tmp/originos-ag2-baseline-tests-unsandboxed.log。沙箱外node-executor七例全部通过。
+
+## P1完成证据
+
+提交55553c8：组件原样迁移，4调用方更新，14tests通过，Web类型检查通过，lint 0errors/2918warnings，自测43x2通过，扫描853文件剩Core33条。日志 /private/tmp/ag2-ui-{tests,lint,boundaries,selftest,typecheck}.log。

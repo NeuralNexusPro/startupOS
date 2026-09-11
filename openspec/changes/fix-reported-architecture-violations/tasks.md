@@ -3,14 +3,14 @@
 负责：父代理。依赖：AG5-T1；写入：本Proposal及AG.2文档。必需检查：strict validation、文档与基线一致性审查；证据：验证输出和批准记录。
 
 - [x] 1.1 更新AG.2六份文档及34处基线引用，完成设计/specs/tasks审查与strict validation。
-- [ ] 1.2 记录用户显式批准，在最新Proposal提交创建独立Task工作树；批准前不得实施。
+- [x] 1.2 记录用户显式批准，在最新Proposal提交创建独立Task工作树；批准前不得实施。
 
 ## 2. AG2-T1-P1 通用聊天UI（可与P2并行）
 
 负责：UI subagent。依赖：P0；写入：web/src/components内ToolExecutionFrame、直接调用方及对应组件测试，禁止修改Core或非组件启动入口。必需测试：TC09及受影响文件lint/typecheck；证据：Task提交、调用方清单、测试输出。
 
-- [ ] 2.1 将ToolExecutionFrame移至ui/chat并更新所有直接调用方，保持props和展示。
-- [ ] 2.2 验证工具状态、空列表和已有状态、名称与运行提示展示，提交Task分支并交付证据。
+- [x] 2.1 将ToolExecutionFrame移至ui/chat并更新所有直接调用方，保持props和展示。
+- [x] 2.2 验证工具状态、空列表和已有状态、名称与运行提示展示，提交Task分支并交付证据。
 
 ## 3. AG2-T1-P2 Core依赖修复（与P1并行，内部串行）
 
@@ -20,6 +20,8 @@
 - [ ] 3.2 将记忆/认知业务组装上移，经最小依赖入口提供给Agent与session运行时；验证owner隔离、恢复及缺依赖失败。
 - [ ] 3.3 将业务工具组装上移，接通完整启动链，更新runtimeImport、导出和打包路径，验证重复注册、scope及授权。
 - [ ] 3.4 跑对应回归并提交Task；若需修改组件调用方，先报告，待P1集成后按串行方式处理，不重叠写入。
+
+P2 内部进一步隔离纯契约下沉工作包，由 Core subagent 创建 contracts Task worktree：只负责 Electron IPC/用户注册 DTO、EntryType/权限常量、记忆 Markdown 解析与配置存储及其直接调用方。Core 主工作包保留 memory ownership/认知类型、运行时与业务工具，两者写入范围不重叠，contracts 合回 Core 后再整体集成。
 
 ## 4. AG2-T1-P3 集成与验证（串行）
 
