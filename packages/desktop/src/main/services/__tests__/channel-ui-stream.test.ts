@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AgentSession } from '../../../../../core/src/types/agent';
-import type { ChannelFlowMessageIngress } from '../../../../../core/src/modules/channel-runtime';
+import { DefaultChannelMessageIngress, type ChannelRuntimeTarget, type ChannelFlowMessageIngress } from '../../../../../core/src/modules/channel-runtime';
 import { runUiChannelStream, toUiChannelTarget } from '../channel-ui-stream';
 
 const session: AgentSession = {
@@ -51,4 +51,32 @@ describe('UI Channel stream adapter', () => {
     expect(send).toHaveBeenCalledWith(expect.objectContaining({ type: 'error', data: { message: 'CHANNEL_RUNTIME_FAILED' } }));
     expect(send).toHaveBeenCalledWith(expect.objectContaining({ type: 'done', data: { content: '', failed: true } }));
   });
+});
+
+// TC11: exercise real ingress validation instead of a mocked packet source.
+it.each(['skill', 'role-agent', 'agent'] as const)('streams notification entry with a Unicode %s directory name', async (kind) => {
+  const ingress = new DefaultChannelMessageIngress({
+    invoke: async function* () { yield { type: 'completed', resultRef: 'session://session-1' }; },
+  });
+  const send = vi.fn();
+  await runUiChannelStream({
+    ingress, content: '开始处理', send,
+    session: { ...session, projectContext: { ...session.projectContext, entryType: kind, entryId: '每日高优先级 待办📝' } },
+  });
+  expect(send).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
+  expect(send).toHaveBeenCalledWith(expect.objectContaining({ type: 'done', data: { content: '', failed: false } }));
+});
+
+it('passes a Unicode inherited role owner through real ingress', async () => {
+  const target: ChannelRuntimeTarget = { kind: 'skill', id: '每日待办', ownership: { mode: 'inherited', ownerKind: 'role-agent', ownerId: '执行 助手🤖' } };
+  const invoke = vi.fn(async function* () { yield { type: 'completed' as const, resultRef: 'session://session-1' }; });
+  const realIngress = new DefaultChannelMessageIngress({ invoke });
+  await runUiChannelStream({
+    session, content: '开始处理', send: vi.fn(),
+    ingress: {
+      send: (input) => realIngress.send({ ...input, target }),
+      sendPackets: (input) => realIngress.sendPackets({ ...input, target }),
+    },
+  });
+  expect(invoke).toHaveBeenCalledWith(expect.objectContaining({ target }));
 });
