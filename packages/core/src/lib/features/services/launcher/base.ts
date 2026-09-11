@@ -11,12 +11,16 @@
 import { readFileSync, existsSync } from 'fs';
 import path from 'path';
 import { agentSessionService } from '../../../../lib/features/agent';
-import { agentManager } from '../../../../lib/integrations/pi-agent/agent-manager';
+import {
+  agentManager,
+  type AgentMemoryOwnership,
+} from '../../../../lib/integrations/pi-agent/agent-manager';
 import { loadToolConfig } from '../../../../lib/integrations/pi-agent/tool-config-loader';
 import type { RuntimeLLMConfig } from '../../../../lib/integrations/pi-agent/llm-config';
 import { toStableMemoryExcerpt } from '../../../../lib/integrations/pi-agent/memory-consumption';
 import { appendGlobalUserPreferencesPrompt } from '../../../../lib/integrations/pi-agent/user-preferences';
 import type { CreateSessionRequest } from '../../../../types/agent';
+import type { ObservationContext } from '../../../../modules/memory-core';
 
 // ============ 通用接口 ============
 
@@ -136,6 +140,10 @@ export interface LaunchContext {
   isWindowBound?: boolean;
   /** 用户配置的 LLM 参数（覆盖环境变量默认值） */
   llmConfig?: RuntimeLLMConfig;
+  /** 当前用户的稳定标识；未提供时使用本地单用户默认值。 */
+  userId?: string;
+  /** 仅由调用方显式传递；Skill 不得从工作目录或 projectId 猜测认知归属。 */
+  cognitionOwner?: { kind: 'project' | 'role-agent'; id: string };
 }
 
 export interface LaunchResult {
@@ -221,6 +229,8 @@ export abstract class Launcher {
       agentBaseDir?: string;
       isWindowBound?: boolean;
       llmConfig?: LaunchContext['llmConfig'];
+      memoryOwnership?: AgentMemoryOwnership;
+      observationContext?: ObservationContext;
     },
   ): Promise<string[]> {
     await agentManager.getOrCreateAgent(sessionId, projectId, {
@@ -229,6 +239,8 @@ export abstract class Launcher {
       agentBaseDir: options.agentBaseDir,
       isWindowBound: options.isWindowBound,
       llmConfig: options.llmConfig,
+      memoryOwnership: options.memoryOwnership,
+      observationContext: options.observationContext,
     });
 
     // Agent is created with tools already registered via AgentManager.getOrCreateAgent

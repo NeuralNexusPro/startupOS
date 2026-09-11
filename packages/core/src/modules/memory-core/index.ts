@@ -16,9 +16,14 @@ export {
   deserializeBlock,
 } from './core/block';
 
-export { Memory, type CompileOptions, type BlocksVersionSnapshot } from './core/memory';
-export { MemoryCore } from './core/memory-core';
+export { Memory, parseBlocksFromMarkdown, type CompileOptions, type BlocksVersionSnapshot } from './core/memory';
+export { MemoryCore, type MemoryOwnershipContext } from './core/memory-core';
 export { MemoryConsolidator, type ConsolidationResult } from './core/consolidator';
+export {
+  consolidateOwnedMemory,
+  type ConsolidateOwnedMemoryInput,
+  type MemoryConsolidationEntryType,
+} from './consolidation-service';
 
 // Archival
 export { ArchivalMemory, type ArchivalEntry, type ArchivalSearchResult, type SearchOptions } from './archival/archival-memory';
@@ -34,7 +39,7 @@ export { CoreMemoryTools } from './tools/core-memory-tools';
 export { ArchivalMemoryTools } from './tools/archival-memory-tools';
 
 // Session / Provider
-export { MemoryProvider } from './session/memory-provider';
+export { MemoryProvider, type KnowledgeCandidateBatch } from './session/memory-provider';
 export { EnhancedPatternProvider } from './session/enhanced-pattern-provider';
 
 // Pattern Ingest (M.7)
@@ -45,9 +50,6 @@ export {
   migratePatternsToArchival,
   type PatternIngestEntry,
 } from './archival/pattern-ingest';
-
-// Adapter
-export { MemoryAdapter } from './adapter';
 
 // Hindsight-inspired scoped cognition banks (M.12)
 export * from './bank';

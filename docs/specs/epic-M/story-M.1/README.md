@@ -1,7 +1,7 @@
 # Story M.1: 类型定义与 Block 抽象
 
 **Epic:** M — Memory Core 记忆核心
-**状态:** ⬜ Pending
+**状态:** ✅ Complete
 **优先级:** Critical
 **估计工时:** 1-2 天
 

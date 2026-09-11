@@ -4,10 +4,14 @@ import type { IpcResponse } from '../../../../core/src/lib/integrations/electron
 import { agentSessionService } from '../../../../core/src/lib/features/agent';
 import { persistRuntimeLLMConfig } from '../../../../core/src/lib/features/user-config';
 import { agentManager } from '../../../../core/src/lib/integrations/pi-agent/agent-manager';
+import { createAutoModel } from '../../../../core/src/lib/integrations/pi-agent/server-config';
 import { extractDisplayContent } from '../../../../core/src/lib/integrations/pi-agent/display-content';
 import { getVisibleStreamDelta, reconcileFinalStreamContent } from '../../../../core/src/lib/integrations/pi-agent/stream-dedupe';
 import type { RuntimeLLMConfig } from '../../../../core/src/lib/integrations/pi-agent/llm-config';
-import { MemoryConsolidator } from '../../../../core/src/modules/memory-core/core/consolidator';
+import {
+  consolidateOwnedMemory,
+  type MemoryConsolidationEntryType,
+} from '../../../../core/src/modules/memory-core';
 import { getDataRoot, getClaudeDir } from '../../../../core/src/lib/paths';
 import path from 'path';
 import { existsSync, readFileSync } from 'fs';
@@ -59,13 +63,7 @@ function formatVisibleAgentError(error: unknown): string {
   return `LLM 请求失败：${compact || 'Unknown error'}`;
 }
 
-const ENTRY_TYPE_DIRS: Record<string, string> = {
-  project: 'projects',
-  solution: 'projects',
-  agent: 'agents',
-  'role-agent': 'agents',
-  skill: 'skills',
-};
+const MEMORY_ENTRY_TYPES = new Set<MemoryConsolidationEntryType>(['project', 'solution', 'agent', 'role-agent', 'skill']);
 
 export class AgentSessionService {
   private readonly taskRuntimeIpc: AgentTaskRuntimeIpcController;
@@ -1020,17 +1018,18 @@ export class AgentSessionService {
               timestamp: new Date().toISOString(),
             };
           }
-          const baseDir = ENTRY_TYPE_DIRS[request.entryType];
-          if (!baseDir) {
+          if (!MEMORY_ENTRY_TYPES.has(request.entryType as MemoryConsolidationEntryType)) {
             return {
               success: false,
               error: { code: 'INVALID_REQUEST', message: `Unknown entryType: ${request.entryType}` },
               timestamp: new Date().toISOString(),
             };
           }
-          const agentDir = path.join(getDataRoot(), baseDir, request.entryId);
-          const consolidator = new MemoryConsolidator(agentDir);
-          const result = await consolidator.consolidate();
+          const result = await consolidateOwnedMemory({
+            dataRoot: getDataRoot(),
+            entryType: request.entryType as MemoryConsolidationEntryType,
+            entryId: request.entryId,
+          }, { createAutoModel });
           return {
             success: true,
             data: result,

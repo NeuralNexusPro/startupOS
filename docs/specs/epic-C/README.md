@@ -85,6 +85,13 @@ CognitiveManager（认知管理器，类似 MemoryManager）
 - 中途生成的知识只写入磁盘，不修改内存中的快照
 - 保持 LLM prefix cache 稳定，避免每轮重建 prompt
 
+### 认知所有权分域（Story M.12）
+
+- 用户 Profile 位于 `data/users/{userId}/cognition/`，由所有 Agent 只读共享快照。
+- Agent/RoleAgent 世界模型位于各自 `data/agents/{id}/cognition/`；Project 位于 `data/projects/{id}/cognition/`。
+- 独立 Skill 不拥有持久 Knowledge、Pattern 或 cognition bank；继承型 Skill 仅可写入显式调用方 owner。
+- 旧 `Memory.md` human block 与 `Taste.md` 首次启动时迁移为低置信候选，保留原文件并写入幂等 marker。
+
 ### 知识库 — LLM Wiki 模式 + Ontology 承载
 
 参考 [LLM Wiki](../../llm-wiki.md) 模式，知识库采用三层结构：

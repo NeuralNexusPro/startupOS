@@ -1,7 +1,7 @@
 # Story M.2: Memory 集合 + compile/render
 
 **Epic:** M — Memory Core 记忆核心
-**状态:** ⬜ Pending
+**状态:** ✅ Complete
 **优先级:** Critical
 **估计工时:** 2-3 天
 

@@ -4,6 +4,7 @@ import path from 'path';
 import { describe, expect, it } from 'vitest';
 import { getMonorepoRoot, setMonorepoRoot } from '../../../../paths';
 import { SkillLauncher } from '../skill';
+import { CognitionBank, MentalModelStore } from '../../../../../modules/memory-core';
 
 class TestSkillLauncher extends SkillLauncher {
   protected override async createOrRestoreSession(): Promise<{ sessionId: string; isNew: boolean }> {
@@ -177,6 +178,51 @@ describe('SkillLauncher', () => {
       } else {
         process.env.DATA_ROOT = originalDataRoot;
       }
+    }
+  });
+
+  it('injects the global user profile as read-only without creating a skill cognition bank', async () => {
+    const originalRoot = getMonorepoRoot();
+    const originalDataRoot = process.env.DATA_ROOT;
+    const tempRoot = mkdtempSync(path.join(tmpdir(), 'originos-skill-profile-'));
+    const monorepoRoot = path.join(tempRoot, 'repo');
+    const dataRoot = path.join(tempRoot, 'data');
+    const bundledSkillDir = path.join(monorepoRoot, 'templates', 'skills', 'profile-reader');
+    mkdirSync(bundledSkillDir, { recursive: true });
+    writeFileSync(path.join(bundledSkillDir, 'SKILL.md'), '---\nname: profile-reader\n---\n\nRead context.', 'utf8');
+
+    try {
+      setMonorepoRoot(monorepoRoot);
+      process.env.DATA_ROOT = dataRoot;
+      const userBank = new CognitionBank({ scope: 'user', ownerId: 'alice', dataRoot });
+      userBank.retain({
+        kind: 'observation',
+        content: '用户偏好简洁回复',
+        confidence: 0.9,
+        status: 'active',
+        evidence: {
+          id: 'e-user-pref',
+          source: 'user_confirmation',
+          sourceId: 'profile-test',
+          excerpt: '用户偏好简洁回复',
+          observedAt: new Date().toISOString(),
+        },
+      });
+      new MentalModelStore().refreshUserProfile(userBank);
+
+      const result = await new TestSkillLauncher().launch({
+        entryId: 'profile-reader',
+        entryType: 'skill',
+        userId: 'alice',
+      });
+
+      expect(result.systemPrompt).toContain('<global_user_profile readonly="true">');
+      expect(result.systemPrompt).toContain('用户偏好简洁回复');
+      expect(existsSync(path.join(result.baseDir, 'cognition'))).toBe(false);
+    } finally {
+      setMonorepoRoot(originalRoot);
+      if (originalDataRoot === undefined) delete process.env.DATA_ROOT;
+      else process.env.DATA_ROOT = originalDataRoot;
     }
   });
 });

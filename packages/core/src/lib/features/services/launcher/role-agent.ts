@@ -6,8 +6,8 @@
  * 2. 加载 RoleContext（5 个 .md 文件 + 已安装技能）
  * 3. 成功加载时用 6 层 prompt 替换旧流程
  * 4. 失败时降级到 buildAgentSystemPrompt（向后兼容）
- * 5. 初始化 MemoryTracker + StateMachine
- * 6. 注册 turn_end 钩子（状态机检查 + 记忆追踪）
+ * 5. 初始化 StateMachine
+ * 6. 注册 turn_end 钩子（状态机检查）
  * 7. 创建会话 + 注册 Agent
  */
 
@@ -16,14 +16,14 @@ import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { createHash } from 'crypto';
 import { Launcher, type LaunchContext, type LaunchResult, buildAgentSystemPrompt } from './base';
 import { agentManager } from '../../../../lib/integrations/pi-agent/agent-manager';
-import { type AgentEvent, type AgentMessage } from '@originos/pi-agent-adapter';
+import { type AgentEvent } from '@originos/pi-agent-adapter';
 import { loadRoleContext, parseToolMdTools, type RoleContext } from '../../../../lib/integrations/pi-agent/role-agent/role-context';
 import { scanInstalledSkills } from '../../../../lib/integrations/pi-agent/role-agent/skill-resolver';
 import { parseStateMachine, checkTransition, applyTransition, type StateMachine } from '../../../../lib/integrations/pi-agent/role-agent/state-machine';
 import { buildPromptLayers, rebuildToolboxLayer, assemblePrompt, type PromptLayers } from '../../../../lib/integrations/pi-agent/role-agent/system-prompt';
-import { MemoryTracker } from '../../../../lib/integrations/pi-agent/role-agent/memory-tracker';
+import { ObservationPolicyResolver } from '../../../../modules/memory-core';
 
-import { getAgentsDataDir } from '../../../paths';
+import { getAgentsDataDir, getDataRoot } from '../../../paths';
 
 const AGENTS_DIR = getAgentsDataDir();
 
@@ -34,7 +34,6 @@ const AGENTS_DIR = getAgentsDataDir();
 interface RoleAgentSessionState {
   roleContext: RoleContext;
   stateMachine: StateMachine;
-  memoryTracker: MemoryTracker;
   lastToolMdHash: string;
   lastSkillsHash: string;
   promptLayers: PromptLayers;
@@ -157,7 +156,7 @@ function refreshToolMdIfNeeded(sessionId: string, state: RoleAgentSessionState):
 
 /**
  * 为特定 session 设置 role-agent turn_end hook。
- * 仅对 role-agent 类型生效。
+ * 仅对 role-agent 类型生效；记忆记录由统一 MemoryProvider 负责。
  */
 function setupRoleAgentTurnHook(sessionId: string): (() => void) | null {
   return agentManager.subscribeToAgent(sessionId, (event: AgentEvent) => {
@@ -166,10 +165,10 @@ function setupRoleAgentTurnHook(sessionId: string): (() => void) | null {
     const state = roleSessions.get(sessionId);
     if (!state) return;
 
-    const turnEnd = event as unknown as { message: AgentMessage; toolResults: unknown[] };
+    const turnEnd = event as unknown as { message: unknown; toolResults: unknown[] };
 
     // 1. 状态机检查
-    const messages = [turnEnd.message];
+    const messages = [turnEnd.message] as Parameters<typeof checkTransition>[1];
     const transition = checkTransition(state.stateMachine, messages);
     if (transition) {
       applyTransition(state.stateMachine, transition.to);
@@ -178,32 +177,7 @@ function setupRoleAgentTurnHook(sessionId: string): (() => void) | null {
       updateRoleMdPhase(state.roleContext.agentBaseDir, transition.to);
     }
 
-    // 2. 记忆追踪
-    const userText = extractUserText(turnEnd.message);
-    state.memoryTracker.recordTurn(userText, state.memoryTracker.turnCount + 1);
-    if (state.memoryTracker.shouldFlush()) {
-      const memoryPath = path.join(state.roleContext.agentBaseDir, 'Memory.md');
-      const existingMemory = existsSync(memoryPath) ? readFileSync(memoryPath, 'utf-8') : null;
-      state.memoryTracker.flushMemory(existingMemory).catch(err => {
-        console.error('[RoleAgent] Memory flush failed:', err);
-      });
-    }
-
   });
-}
-
-/** 从 AgentMessage 中提取文本内容 */
-function extractUserText(msg: AgentMessage): string {
-  const m = msg as { content?: unknown };
-  if (typeof m.content === 'string') return m.content;
-  if (Array.isArray(m.content)) {
-    const items = m.content as Array<{ type?: string; text?: string }>;
-    return items
-      .filter(c => c.type === 'text' && c.text)
-      .map(c => c.text!)
-      .join(' ');
-  }
-  return '';
 }
 
 /** 状态转换时更新 Role.md 的 currentPhase */
@@ -271,9 +245,6 @@ export class RoleAgentLauncher extends Launcher {
         // 更新角色上下文的当前阶段
         roleContext.currentPhase = stateMachine.currentPhase;
 
-        // 初始化 MemoryTracker
-        const memoryTracker = new MemoryTracker(agentBaseDir);
-
         // 记录 Tool.md 初始 hash
         const toolMdPath = path.join(agentBaseDir, 'Tool.md');
         const initialToolMd = existsSync(toolMdPath) ? readFileSync(toolMdPath, 'utf-8') : '';
@@ -286,7 +257,6 @@ export class RoleAgentLauncher extends Launcher {
         roleSessions.set(ctx.entryId, {
           roleContext,
           stateMachine,
-          memoryTracker,
           lastToolMdHash: initialToolMdHash,
           lastSkillsHash: initialSkillsHash,
           promptLayers,
@@ -313,6 +283,11 @@ export class RoleAgentLauncher extends Launcher {
         agentBaseDir,
         sessionId: ctx.restoreSessionId || ctx.sessionId,
       });
+      const observationContext = new ObservationPolicyResolver().resolve({
+        entryType: 'role-agent',
+        sessionId,
+        agentId: ctx.entryId,
+      });
 
       // 4. 注册 Agent 到 AgentManager
       await this.registerAgent(sessionId, ctx.entryId, {
@@ -320,6 +295,14 @@ export class RoleAgentLauncher extends Launcher {
         agentType: 'role-agent',
         agentBaseDir,
         isWindowBound: ctx.isWindowBound,
+        memoryOwnership: {
+          ownerScope: 'agent',
+          ownerId: ctx.entryId,
+          userId: ctx.userId ?? 'default',
+          dataRoot: getDataRoot(),
+          ownerDirectory: agentBaseDir,
+        },
+        observationContext,
       });
 
       return {

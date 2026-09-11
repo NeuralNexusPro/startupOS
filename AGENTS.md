@@ -647,10 +647,22 @@ CognitiveManager
     │       ├── project.json      # 项目元数据
     │       ├── sessions/         # 项目会话
     │       │   └── {sessionId}.json
-    │       └── files/            # 项目文件
+    │       ├── files/            # 项目文件
+    │       └── cognition/        # Project 独立世界认知
+    │           ├── records.json
+    │           └── snapshots/
+    │               └── world-model.json
     │
     ├── sessions/                 # 全局会话（非项目会话）
     │   └── {sessionId}.json
+    │
+    ├── users/                    # 全局用户认知（Story M.12）
+    │   └── {userId}/
+    │       └── cognition/
+    │           ├── records.json
+    │           ├── versions/
+    │           └── snapshots/
+    │               └── user-profile.json
     │
     ├── skills/                   # 技能运行时产物
     │   └── {skillName}/          # 从首页内置应用入口触发时的输出目录
@@ -667,6 +679,12 @@ CognitiveManager
     │       ├── .skills/            # 已安装技能（软链接）
     │       ├── memory/             # 记忆存储
     │       │   └── history.jsonl   # JSONL 历史记录
+    │       ├── cognition/          # Agent/RoleAgent 独立世界认知
+    │       │   ├── records.json
+    │       │   ├── snapshots/
+    │       │   │   └── world-model.json
+    │       │   └── migrations/
+    │       │       └── legacy-user-signals-v1.json
     │       ├── knowledge/          # 知识库（认知系统）
     │       │   ├── schema.md
     │       │   ├── index.md

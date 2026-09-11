@@ -7,6 +7,8 @@ export { PracticeLogger } from './practice-logger';
 export { KnowledgeProvider } from './knowledge-provider';
 export { KnowledgeIngest } from './knowledge-ingest';
 export { PatternProvider } from './pattern/index';
+export { createOwnedCognitiveProviders } from './provider-factory';
+export type { OwnedCognitiveProviderBundle } from './provider-factory';
 export { UnifiedOntology } from './unified-ontology';
 export { RuleEngine } from './rule-engine';
 export type { CognitiveProvider, TurnCognitiveData, PrefetchResult } from './types';

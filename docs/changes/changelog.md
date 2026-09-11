@@ -2,6 +2,14 @@
 
 ---
 
+## 2026-09-10 — refactor：清退旧记忆运行时
+
+**类型**：refactor
+**影响模块**：`packages/core/src/modules/memory-core/`, `packages/core/src/lib/integrations/pi-agent/role-agent/`, `packages/core/src/lib/integrations/pi-agent/project-agent/`
+**摘要**：完成 Story M.13，删除 Dream、MemoryTracker、MemoryBlockManager 和 MemoryAdapter，RoleAgent 统一通过 MemoryCore 写入与 reflect；Markdown block 解析迁入 MemoryCore 公共 API，并保留旧单文件 history 的非覆盖式迁移。
+
+---
+
 ## 2026-08-19 — docs：按 startupOS 架构围栏重构 Epic ONT
 
 **类型**：docs

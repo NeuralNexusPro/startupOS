@@ -32,6 +32,7 @@
 | M12-SEC-01 | 安全 | ownerId=`../../outside` | 拒绝且 workspace 外无文件 |
 | M12-SEC-02 | 安全 | retain 含 token/secret | 阻断或脱敏后才进入存储 |
 | M12-PERF-01 | 性能 | 10K records recall | p95 <200ms，mental model 启动读取不调用 LLM |
+| M12-UT-07 | 单元 | session end 少于 5 个 turn | 跳过 LLM reflect；明确用户偏好仍以零 LLM 路径进入 Profile |
 
 ## 关键失败与边界路径
 
@@ -48,5 +49,5 @@
 ## 当前状态
 
 - 规格与测试 case：✅ 已补齐
-- 自动化实现：⬜ 待 Phase 1 开始
+- 自动化实现：✅ Phase 1–5 完成（相关回归 183/183，包含 legacy 幂等迁移、secret 脱敏与 10K recall 性能门槛）
 - E2E/人工认知质量验证：⬜ 待实现后执行

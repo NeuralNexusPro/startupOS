@@ -8,7 +8,7 @@ import { existsSync, readFileSync } from 'fs';
 import path from 'path';
 import { scanInstalledSkills, type SkillInfo } from '../role-agent/skill-resolver';
 import type { MemoryBlock } from '../../../../lib/integrations/pi-agent/cognitive/types';
-import { parseBlocksFromMarkdown } from '../role-agent/memory-tracker';
+import { parseBlocksFromMarkdown } from '../../../../modules/memory-core';
 
 export { type SkillInfo };
 

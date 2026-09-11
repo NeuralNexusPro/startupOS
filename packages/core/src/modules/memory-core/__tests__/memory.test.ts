@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { Memory } from '../core/memory';
+import { Memory, parseBlocksFromMarkdown } from '../core/memory';
 import { DEFAULT_BLOCKS, createBlock } from '../core/block';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -189,7 +189,9 @@ describe('Memory', () => {
       const before = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
       memory.setBlock('human', 'new');
       const after = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
-      expect(after.length).toBe(before.length + 1);
+      expect(after.version).toBe('memory-core/1.0');
+      expect(after.createdAt).toBe(before.createdAt);
+      expect(after.data.blocks.length).toBe(before.data.blocks.length + 1);
     });
 
     it('loads blocks from existing Memory.md', () => {
@@ -209,11 +211,47 @@ describe('Memory', () => {
         memory.setBlock('human', `version ${i}`);
       }
       const snapshots = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
-      expect(snapshots.length).toBe(10);
+      expect(snapshots.data.blocks.length).toBe(10);
+    });
+
+    it('reads the legacy blocks array and rewrites it as a DataFile', () => {
+      const jsonPath = path.join(dir, 'blocks.json');
+      const current = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+      fs.writeFileSync(jsonPath, JSON.stringify(current.data.blocks), 'utf8');
+
+      memory.setBlock('human', 'migrated');
+
+      const migrated = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+      expect(migrated.version).toBe('memory-core/1.0');
+      expect(Array.isArray(migrated.data.blocks)).toBe(true);
+    });
+
+    it('backs up and migrates a legacy Memory.md without the format header', () => {
+      const legacy = '## human\n{description: User facts}\n{limit: 2000}\n{readOnly: false}\n\nPrefers concise answers\n';
+      fs.writeFileSync(path.join(dir, 'Memory.md'), legacy);
+
+      const migrated = new Memory(dir);
+
+      expect(migrated.getBlock('human')?.value).toBe('Prefers concise answers');
+      expect(fs.readFileSync(path.join(dir, 'Memory.md.legacy'), 'utf-8')).toBe(legacy);
+      expect(fs.readFileSync(path.join(dir, 'Memory.md'), 'utf-8')).toMatch(/^# Memory/);
     });
   });
 
   describe('parseMemoryMd', () => {
+    it('exposes the parser for context loaders', () => {
+      const blocks = parseBlocksFromMarkdown(
+        '# Memory\n\n## human\n{description: User facts}\n{limit: 42}\n{readOnly: false}\n\nPrefers concise answers\n',
+      );
+
+      expect(blocks.get('human')).toEqual(expect.objectContaining({
+        value: 'Prefers concise answers',
+        description: 'User facts',
+        limit: 42,
+        readOnly: false,
+      }));
+    });
+
     it('parses markdown format back into blocks', () => {
       memory.setBlock('human', 'user prefers concise answers');
       memory.setBlock('persona', 'You are a helpful coding assistant');

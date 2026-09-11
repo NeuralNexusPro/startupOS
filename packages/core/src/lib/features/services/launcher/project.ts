@@ -14,6 +14,7 @@ import path from 'path';
 import { Launcher, type LaunchContext, type LaunchResult } from './base';
 import { appendGlobalUserPreferencesPrompt } from '../../../../lib/integrations/pi-agent/user-preferences';
 import { getDataRoot } from '../../../paths';
+import { ObservationPolicyResolver } from '../../../../modules/memory-core';
 
 const PROJECTS_DIR = path.join(getDataRoot(), 'projects');
 
@@ -58,6 +59,11 @@ export class ProjectLauncher extends Launcher {
         agentBaseDir: projectBaseDir,
         sessionId: ctx.restoreSessionId || ctx.sessionId,
       });
+      const observationContext = new ObservationPolicyResolver().resolve({
+        entryType: 'project',
+        sessionId,
+        projectId: ctx.entryId,
+      });
 
       // 4. 注册 Agent 到 AgentManager
       const tools = await this.registerAgent(sessionId, ctx.entryId, {
@@ -65,6 +71,14 @@ export class ProjectLauncher extends Launcher {
         agentType: 'project',
         agentBaseDir: projectBaseDir,
         isWindowBound: ctx.isWindowBound,
+        memoryOwnership: {
+          ownerScope: 'project',
+          ownerId: ctx.entryId,
+          userId: ctx.userId ?? 'default',
+          dataRoot: getDataRoot(),
+          ownerDirectory: projectBaseDir,
+        },
+        observationContext,
       });
 
       return {

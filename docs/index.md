@@ -128,6 +128,7 @@
 | M.9 | 语义检索能力补齐 | 📋 Planning | Critical | [specs/epic-M/story-M.9/README.md](./specs/epic-M/story-M.9/README.md) |
 | M.10 | 文档与协作场景对齐 | 📋 Planning | High | [specs/epic-M/story-M.10/README.md](./specs/epic-M/story-M.10/README.md) |
 | M.11 | 用 Memory Core 统一 history-to-cognition 管线并替代 Dream | 📋 Planning | Critical | [specs/epic-M/story-M.11/README.md](./specs/epic-M/story-M.11/README.md) |
+| M.13 | 旧记忆机制清退 | ✅ Complete | Critical | [specs/epic-M/story-M.13/README.md](./specs/epic-M/story-M.13/README.md) |
 
 ### Epic T Stories 详览
 

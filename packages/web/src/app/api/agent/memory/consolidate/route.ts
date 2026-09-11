@@ -8,18 +8,15 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import path from 'path';
-import { MemoryConsolidator } from '@originos/core/modules/memory-core/core/consolidator';
+import {
+  consolidateOwnedMemory,
+  type MemoryConsolidationEntryType,
+} from '@originos/core/modules/memory-core/index';
 import type { ApiResponse } from '@originos/core/types';
 import { getDataRoot } from '@originos/core/lib/paths';
+import { createAutoModel } from '@originos/core/lib/integrations/pi-agent/server-config';
 
-const ENTRY_TYPE_DIRS: Record<string, string> = {
-  project: 'projects',
-  solution: 'projects',
-  agent: 'agents',
-  'role-agent': 'agents',
-  skill: 'skills',
-};
+const ENTRY_TYPES = new Set<MemoryConsolidationEntryType>(['project', 'solution', 'agent', 'role-agent', 'skill']);
 
 export async function POST(request: NextRequest) {
   try {
@@ -37,8 +34,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const baseDir = ENTRY_TYPE_DIRS[entryType];
-    if (!baseDir) {
+    if (!ENTRY_TYPES.has(entryType as MemoryConsolidationEntryType)) {
       return NextResponse.json<ApiResponse<unknown>>(
         {
           success: false,
@@ -49,9 +45,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const agentDir = path.join(getDataRoot(), baseDir, entryId);
-    const consolidator = new MemoryConsolidator(agentDir);
-    const result = await consolidator.consolidate();
+    const result = await consolidateOwnedMemory({
+      dataRoot: getDataRoot(),
+      entryType: entryType as MemoryConsolidationEntryType,
+      entryId,
+    }, { createAutoModel });
 
     return NextResponse.json<ApiResponse<unknown>>({
       success: true,

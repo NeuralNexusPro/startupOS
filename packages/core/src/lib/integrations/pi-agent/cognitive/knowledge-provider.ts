@@ -12,17 +12,14 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } fr
 import path from 'path';
 import type { CognitiveProvider, TurnCognitiveData } from './types';
 import { UnifiedOntology, type Entity } from './unified-ontology';
+import type { KnowledgeCognitionCandidate } from '../../../../modules/memory-core/bank';
+import type { KnowledgeCandidateBatch } from '../../../../modules/memory-core';
 
 // ============================================================================
 // 知识提取接口
 // ============================================================================
 
 interface ExtractedKnowledge {
-  entities: Array<{ name: string; type: string; attributes: Record<string, unknown> }>;
-  facts: string[];
-}
-
-export interface KnowledgeCandidateBatch {
   entities: Array<{ name: string; type: string; attributes: Record<string, unknown> }>;
   facts: string[];
 }
@@ -189,6 +186,13 @@ export class KnowledgeProvider implements CognitiveProvider {
     this.writeWikiPages(merged);
     this.updateIndex(merged);
     this.exportSnapshot();
+  }
+
+  async ingestCognitionCandidates(candidates: KnowledgeCognitionCandidate[]): Promise<void> {
+    await this.ingestCandidates(candidates.map((candidate) => ({
+      entities: [],
+      facts: [candidate.content],
+    })));
   }
 
   // ==========================================================================

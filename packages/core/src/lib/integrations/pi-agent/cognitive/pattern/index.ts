@@ -9,7 +9,7 @@
  * modules/memory-core/session/enhanced-pattern-provider.ts。
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs';
 import path from 'path';
 import type { CognitiveProvider, TurnCognitiveData } from '../types';
 import type { ArchivalMemory } from '../../../../../modules/memory-core/archival/archival-memory';
@@ -18,6 +18,16 @@ import { extractAndIngest } from './extractor';
 import { PatternRenderer } from './renderer';
 import { migratePatternsToArchival } from '../../../../../modules/memory-core/archival/pattern-ingest';
 import { ingestReflectionToArchival } from '../../../../../modules/memory-core/archival/pattern-ingest';
+import type { CognitionDataFile, PatternEvidenceCandidate } from '../../../../../modules/memory-core/bank';
+
+interface PatternEvidenceIndexEntry {
+  archivalId: string;
+  proofCount: number;
+  evidenceIds: string[];
+  updatedAt: string;
+}
+
+type PatternEvidenceIndex = Record<string, PatternEvidenceIndexEntry>;
 
 export class PatternProvider implements CognitiveProvider {
   readonly name = 'pattern';
@@ -26,6 +36,7 @@ export class PatternProvider implements CognitiveProvider {
   private readonly archival: ArchivalMemory;
   private readonly snapshotMdPath: string;
   private readonly migrationMarkerPath: string;
+  private readonly evidenceIndexPath: string;
   private readonly renderer: PatternRenderer;
   private migrated = false;
 
@@ -34,6 +45,7 @@ export class PatternProvider implements CognitiveProvider {
     this.archival = archival;
     this.snapshotMdPath = path.join(agentDir, 'Patterns.md');
     this.migrationMarkerPath = path.join(agentDir, 'archival', '.pattern-migration-v1.json');
+    this.evidenceIndexPath = path.join(agentDir, 'patterns', 'evidence-index.json');
     this.renderer = new PatternRenderer(agentDir, archival);
   }
 
@@ -102,5 +114,53 @@ export class PatternProvider implements CognitiveProvider {
 
   async on_session_end(_messages: unknown[]): Promise<void> {
     await this.renderer.regenerate();
+  }
+
+  async ingestPatternEvidence(candidates: PatternEvidenceCandidate[]): Promise<void> {
+    const file = this.readEvidenceIndex();
+    for (const candidate of candidates) {
+      const existing = file.data[candidate.stableKey];
+      if (existing && existing.proofCount === candidate.proofCount) continue;
+      if (existing) this.archival.delete(existing.archivalId);
+      const text = [
+        `[${candidate.polarity.toUpperCase()}] ${candidate.content}`,
+        `适用范围: ${candidate.applicability}`,
+        `证据数: ${candidate.proofCount}`,
+      ].join('\n');
+      const archivalId = await this.archival.insert(text, [
+        'pattern',
+        candidate.polarity,
+        `owner:${candidate.ownerScope}:${candidate.ownerId}`,
+        `applicability:${candidate.applicability}`,
+        ...(candidate.sourceSkillId ? [`source-skill:${candidate.sourceSkillId}`] : []),
+      ]);
+      file.data[candidate.stableKey] = {
+        archivalId,
+        proofCount: candidate.proofCount,
+        evidenceIds: candidate.evidenceRefs.map((evidence) => evidence.id),
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    this.writeEvidenceIndex(file);
+  }
+
+  private readEvidenceIndex(): CognitionDataFile<PatternEvidenceIndex> {
+    if (existsSync(this.evidenceIndexPath)) {
+      try {
+        return JSON.parse(readFileSync(this.evidenceIndexPath, 'utf8')) as CognitionDataFile<PatternEvidenceIndex>;
+      } catch {
+        // Rebuild the lightweight index as candidates are routed again.
+      }
+    }
+    const now = new Date().toISOString();
+    return { version: '1.0', createdAt: now, updatedAt: now, data: {} };
+  }
+
+  private writeEvidenceIndex(file: CognitionDataFile<PatternEvidenceIndex>): void {
+    mkdirSync(path.dirname(this.evidenceIndexPath), { recursive: true });
+    file.updatedAt = new Date().toISOString();
+    const temporaryPath = `${this.evidenceIndexPath}.${process.pid}.tmp`;
+    writeFileSync(temporaryPath, `${JSON.stringify(file, null, 2)}\n`, 'utf8');
+    renameSync(temporaryPath, this.evidenceIndexPath);
   }
 }

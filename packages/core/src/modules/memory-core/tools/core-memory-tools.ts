@@ -8,9 +8,20 @@ import { Memory } from '../core/memory';
 import { BlockDefinition, createBlock } from '../core/block';
 
 export class CoreMemoryTools {
-  constructor(private memory: Memory) {}
+  constructor(
+    private memory: Memory,
+    private readonly protectedLabels: ReadonlySet<string> = new Set(),
+  ) {}
+
+  private writeProtectionError(label: string): string | null {
+    return this.protectedLabels.has(label)
+      ? `Error: Block '${label}' is a legacy read-only block.`
+      : null;
+  }
 
   async core_memory_append(label: string, content: string): Promise<string> {
+    const protectionError = this.writeProtectionError(label);
+    if (protectionError) return protectionError;
     const block = this.memory.getBlock(label);
     if (!block) return `Error: Block '${label}' does not exist.`;
     if (block.readOnly) return `Error: Block '${label}' is read-only.`;
@@ -27,6 +38,8 @@ export class CoreMemoryTools {
     oldContent: string,
     newContent: string,
   ): Promise<string> {
+    const protectionError = this.writeProtectionError(label);
+    if (protectionError) return protectionError;
     const block = this.memory.getBlock(label);
     if (!block) return `Error: Block '${label}' does not exist.`;
     if (block.readOnly) return `Error: Block '${label}' is read-only.`;

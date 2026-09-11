@@ -8,12 +8,13 @@
 import { OriginOSAgent, createOriginOSAgent } from './core/agent';
 import type { AgentEvent, AgentTool } from '@originos/pi-agent-adapter';
 import { initializeBuiltInTools, getAgentToolsForScope } from './tools/index';
-import { createRuntimeModel } from './server-config';
+import { createAutoModel, createRuntimeModel } from './server-config';
 import { setToolContext, removeToolContext, getToolContextManager, type ToolExecutionContext } from './tools/context';
 import { bindToolsToSession } from './tools/bind-session';
 import { detectCorrections } from './cognitive/pattern/correction-detector';
 import type { RuntimeLLMConfig } from './llm-config';
 import type { AgentSession } from '../../../types/agent';
+import type { MemoryOwnershipContext, ObservationContext } from '../../../modules/memory-core';
 import {
   AgentTaskRuntimeCoordinator,
   type AgentTaskRuntimeSnapshotV1,
@@ -23,6 +24,19 @@ import {
 type CognitiveSessionEndManager = {
   on_session_end: (messages: unknown[]) => Promise<void>;
 };
+
+export type AgentMemoryOwnership = Omit<MemoryOwnershipContext, 'workingDirectory' | 'sessionId'>;
+
+interface InProcessAgentOptions {
+  systemPrompt?: string;
+  agentType?: string;
+  agentBaseDir?: string;
+  outputDir?: string;
+  isWindowBound?: boolean;
+  llmConfig?: RuntimeLLMConfig;
+  memoryOwnership?: AgentMemoryOwnership;
+  observationContext?: ObservationContext;
+}
 
 /**
  * Agent session entry
@@ -116,14 +130,7 @@ export class AgentManager {
   async getOrCreateAgent(
     sessionId: string,
     projectId: string,
-    options?: {
-      systemPrompt?: string;
-      agentType?: string;
-      agentBaseDir?: string;
-      outputDir?: string;
-      isWindowBound?: boolean;
-      llmConfig?: RuntimeLLMConfig;
-    }
+    options?: InProcessAgentOptions
   ): Promise<OriginOSAgent> {
     const startAt = Date.now();
     const entry = this.agents.get(sessionId);
@@ -321,7 +328,7 @@ export class AgentManager {
   private async createInProcessAgent(
     sessionId: string,
     projectId: string,
-    options?: { systemPrompt?: string; agentType?: string; agentBaseDir?: string; isWindowBound?: boolean; llmConfig?: RuntimeLLMConfig }
+    options?: InProcessAgentOptions
   ): Promise<OriginOSAgent> {
     const t0 = Date.now();
     const agent = createOriginOSAgent({
@@ -345,30 +352,54 @@ export class AgentManager {
     console.log(`[AgentManager] OriginOSAgent + ${tools.length} tools prepared in ${Date.now() - t0}ms`);
 
     // 接入 Memory Core（三层记忆 + CognitiveManager + 记忆工具）
-    if (options?.agentBaseDir) {
+    const hasLegacyCognitiveOwner = Boolean(options?.agentBaseDir && options.agentType !== 'skill');
+    const hasExplicitCognitiveOwner = Boolean(options?.memoryOwnership);
+    if (hasLegacyCognitiveOwner || hasExplicitCognitiveOwner) {
       try {
+        if (!options?.agentBaseDir) {
+          throw new Error('Cognitive integration requires agentBaseDir');
+        }
+        if (options.memoryOwnership && !options.observationContext) {
+          throw new Error('Explicit memory ownership requires observationContext');
+        }
         const memoryStart = Date.now();
         const { MemoryCore } = await import('../../../modules/memory-core');
         const { MemoryProvider } = await import('../../../modules/memory-core/session/memory-provider');
         const { CognitiveManager } = await import('./cognitive/manager');
-        const { CoreMemoryTools } = await import('../../../modules/memory-core/tools/core-memory-tools');
         const { ArchivalMemoryTools } = await import('../../../modules/memory-core/tools/archival-memory-tools');
 
         const { PracticeLogger } = await import('./cognitive/practice-logger');
         const { PatternProvider } = await import('./cognitive/pattern/index');
+        const { createOwnedCognitiveProviders } = await import('./cognitive/provider-factory');
 
-        const memoryCore = new MemoryCore(options.agentBaseDir, sessionId);
-        const memoryProvider = new MemoryProvider(memoryCore, sessionId);
+        const owned = options.memoryOwnership && options.observationContext
+          ? createOwnedCognitiveProviders({
+              ...options.memoryOwnership,
+              workingDirectory: options.agentBaseDir,
+              sessionId,
+            }, options.observationContext)
+          : null;
+        const memoryCore = owned?.memoryCore ?? new MemoryCore(options.agentBaseDir, sessionId);
+        const memoryProvider = owned?.memoryProvider ?? new MemoryProvider(
+          memoryCore,
+          sessionId,
+          undefined,
+          undefined,
+          { createAutoModel },
+        );
         const cognitiveManager = new CognitiveManager(options.agentBaseDir);
         cognitiveManager.register(new PracticeLogger(options.agentBaseDir));
         cognitiveManager.register(memoryProvider);
-        const patternProvider = new PatternProvider(options.agentBaseDir, memoryCore.archival);
+        if (owned) {
+          cognitiveManager.register(owned.knowledgeProvider);
+        }
+        const patternProvider = owned?.patternProvider ?? new PatternProvider(options.agentBaseDir, memoryCore.archival);
         patternProvider.initialize()
           .then(() => console.log(`[AgentManager] PatternProvider initialized in background for ${sessionId}`))
           .catch((e: unknown) => console.warn('[AgentManager] PatternProvider init error:', e));
         cognitiveManager.register(patternProvider);
 
-        const coreMemoryTools = new CoreMemoryTools(memoryCore.memory);
+        const coreMemoryTools = memoryCore.coreTools;
         const archivalMemoryTools = new ArchivalMemoryTools(memoryCore.archival);
 
         const registerMemoryTool = (name: string, description: string, label: string, params: unknown, execute: (toolCallId: string, args: any) => Promise<{ content: { type: string; text: string }[]; details: {} }>) => {

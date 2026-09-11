@@ -22,8 +22,8 @@ import { loadProjectContext } from './project-agent/project-context';
 import { buildProjectPromptLayers, assembleProjectPrompt } from './project-agent/project-prompt';
 import { provisionProjectSkills } from './project-agent/project-skill-provisioning';
 import { initializeBuiltInTools } from './tools/index';
-import { CognitiveManager, PracticeLogger, KnowledgeProvider, PatternProvider, KnowledgeIngest } from './cognitive';
-import { MemoryCore, MemoryProvider, CoreMemoryTools, ArchivalMemoryTools } from '../../../modules/memory-core';
+import { CognitiveManager, PracticeLogger, KnowledgeIngest, createOwnedCognitiveProviders } from './cognitive';
+import { ObservationPolicyResolver, type MemoryCore, ArchivalMemoryTools } from '../../../modules/memory-core';
 import fs from 'fs/promises';
 import path from 'path';
 import { getDataRoot } from '../../paths';
@@ -120,16 +120,23 @@ export class PersistentAgentManager {
 		// 4d. 创建认知管理器并注册 Providers
 		const cognitiveManager = new CognitiveManager(projectDir);
 		cognitiveManager.register(new PracticeLogger(projectDir));
-		const knowledgeProvider = new KnowledgeProvider(projectDir);
+		const observationContext = new ObservationPolicyResolver().resolve({
+			entryType: 'project',
+			sessionId: projectId,
+			projectId,
+		});
+		const providerBundle = createOwnedCognitiveProviders({
+			ownerScope: 'project',
+			ownerId: projectId,
+			userId: 'default',
+			dataRoot: getDataRoot(),
+			workingDirectory: projectDir,
+			ownerDirectory: projectDir,
+			sessionId: projectId,
+		}, observationContext);
+		const { memoryCore, memoryProvider, knowledgeProvider, patternProvider } = providerBundle;
 		cognitiveManager.register(knowledgeProvider);
-
-		// 4d2. 注册 Memory Core Provider（三层记忆）
-		const memoryCore = new MemoryCore(projectDir, projectId);
-		const memoryProvider = new MemoryProvider(memoryCore, projectId, knowledgeProvider);
 		cognitiveManager.register(memoryProvider);
-
-		// 4d3. 注册新版 PatternProvider（上层应用，底层走 archival）
-		const patternProvider = new PatternProvider(projectDir, memoryCore.archival);
 		patternProvider.initialize()
 			.then(() => console.log(`[Manager] PatternProvider initialized in background for ${projectId}`))
 			.catch((e: unknown) => console.warn('[Manager] PatternProvider init error:', e));
@@ -274,7 +281,7 @@ export class PersistentAgentManager {
 			const innerAgent = agent.getAgent();
 			if (!innerAgent) return;
 
-			const coreMemoryTools = new CoreMemoryTools(memoryCore.memory);
+			const coreMemoryTools = memoryCore.coreTools;
 			const archivalMemoryTools = new ArchivalMemoryTools(memoryCore.archival);
 
 			const registerTool = (name: string, description: string, label: string, params: unknown, execute: (toolCallId: string, args: any) => Promise<{ content: { type: string; text: string }[]; details: {} }>) => {

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { RecallMemory } from '../recall/recall-memory';
+import { HistoryStore } from '../recall/history-store';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -42,7 +43,51 @@ describe('RecallMemory', () => {
       const historyPath = path.join(dir, 'memory', 'history', 'default.jsonl');
       expect(fs.existsSync(historyPath)).toBe(true);
       const content = fs.readFileSync(historyPath, 'utf-8');
-      expect(content).toContain('test message');
+      const line = JSON.parse(content.trim());
+      expect(line).toEqual(expect.objectContaining({
+        version: 'memory-core/1.0',
+        createdAt: expect.any(String),
+        updatedAt: expect.any(String),
+        data: expect.objectContaining({ userMessage: 'test message' }),
+      }));
+    });
+
+    it('reads legacy unwrapped history entries', () => {
+      const historyDir = path.join(dir, 'memory', 'history');
+      fs.mkdirSync(historyDir, { recursive: true });
+      fs.writeFileSync(path.join(historyDir, 'legacy.jsonl'), `${JSON.stringify({
+        turnNumber: 7,
+        userMessage: 'legacy message',
+        summary: 'legacy message',
+        timestamp: 1,
+      })}\n`);
+
+      expect(new HistoryStore(historyDir, 'default').readAll()[0]?.userMessage).toBe('legacy message');
+    });
+
+    it('moves the legacy single history file without losing entries', () => {
+      const memoryDir = path.join(dir, 'memory');
+      fs.mkdirSync(memoryDir, { recursive: true });
+      const entry = { turnNumber: 8, userMessage: 'migrate me', summary: 'migrate me', timestamp: 1 };
+      fs.writeFileSync(path.join(memoryDir, 'history.jsonl'), `${JSON.stringify(entry)}\n`);
+
+      const history = new HistoryStore(path.join(memoryDir, 'history'), 'default');
+
+      expect(history.readAll()).toEqual([entry]);
+      expect(fs.existsSync(path.join(memoryDir, 'history.jsonl'))).toBe(false);
+    });
+
+    it('does not overwrite an existing history destination', () => {
+      const memoryDir = path.join(dir, 'memory');
+      const historyDir = path.join(memoryDir, 'history');
+      fs.mkdirSync(historyDir, { recursive: true });
+      fs.writeFileSync(path.join(memoryDir, 'history.jsonl'), 'legacy source\n');
+      fs.writeFileSync(path.join(historyDir, 'default.jsonl'), 'existing destination\n');
+
+      new HistoryStore(historyDir, 'default');
+
+      expect(fs.readFileSync(path.join(memoryDir, 'history.jsonl'), 'utf-8')).toBe('legacy source\n');
+      expect(fs.readFileSync(path.join(historyDir, 'default.jsonl'), 'utf-8')).toBe('existing destination\n');
     });
   });
 
@@ -67,29 +112,4 @@ describe('RecallMemory', () => {
     });
   });
 
-  describe('Dream cursor', () => {
-    it('get/set dream cursor', () => {
-      expect(recall.getDreamCursor()).toBe(0);
-      recall.setDreamCursor(42);
-      expect(recall.getDreamCursor()).toBe(42);
-    });
-
-    it('cursor persists to disk', () => {
-      recall.setDreamCursor(100);
-      const recall2 = new RecallMemory(dir);
-      expect(recall2.getDreamCursor()).toBe(100);
-    });
-
-    it('readRecentHistory returns entries since cursor', () => {
-      recall.recordTurn({ turnNumber: 1, userMessage: 'first' });
-      recall.recordTurn({ turnNumber: 2, userMessage: 'second' });
-      recall.recordTurn({ turnNumber: 3, userMessage: 'third' });
-      recall.setDreamCursor(2);
-
-      const history = recall.readRecentHistory(2);
-      expect(history).toContain('second');
-      expect(history).toContain('third');
-      expect(history).not.toContain('first');
-    });
-  });
 });

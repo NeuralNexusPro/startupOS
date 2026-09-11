@@ -162,9 +162,15 @@ export class ArchivalMemory {
   /** 持久化到磁盘 */
   async persist(): Promise<void> {
     // entries.jsonl
-    const lines = this.entries.map((e) =>
-      JSON.stringify({ id: e.id, text: e.text, tags: e.tags, createdAt: e.createdAt })
-    ).join('\n');
+    const lines = this.entries.map((e) => {
+      const timestamp = new Date(e.createdAt).toISOString();
+      return JSON.stringify({
+        version: 'memory-core/1.0',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        data: { id: e.id, text: e.text, tags: e.tags, createdAt: e.createdAt },
+      });
+    }).join('\n');
     fs.writeFileSync(this.entriesFile, lines + '\n', 'utf-8');
 
     // hnsw-index.bin (JSON serialized for now)
@@ -182,12 +188,16 @@ export class ArchivalMemory {
 
       for (const line of lines) {
         try {
-          const data = JSON.parse(line);
+          const parsed = JSON.parse(line) as Record<string, unknown>;
+          const data = parsed['data'] && typeof parsed['data'] === 'object'
+            ? parsed['data'] as Record<string, unknown>
+            : parsed;
+          if (typeof data['id'] !== 'string' || typeof data['text'] !== 'string') continue;
           this.entries.push({
-            id: data.id,
-            text: data.text,
-            tags: data.tags ?? [],
-            createdAt: data.createdAt ?? Date.now(),
+            id: data['id'],
+            text: data['text'],
+            tags: Array.isArray(data['tags']) ? data['tags'].filter((tag): tag is string => typeof tag === 'string') : [],
+            createdAt: typeof data['createdAt'] === 'number' ? data['createdAt'] : Date.now(),
             embedding: undefined, // embeddings 需重新编码
           });
         } catch {

@@ -94,7 +94,13 @@ describe('ArchivalMemory', () => {
   describe('persistence', () => {
     it('persists entries to disk', async () => {
       await archival.insert('persisted entry');
-      expect(fs.existsSync(path.join(dir, 'archival', 'entries.jsonl'))).toBe(true);
+      const entry = JSON.parse(fs.readFileSync(path.join(dir, 'archival', 'entries.jsonl'), 'utf8').trim());
+      expect(entry).toEqual(expect.objectContaining({
+        version: 'memory-core/1.0',
+        createdAt: expect.any(String),
+        updatedAt: expect.any(String),
+        data: expect.objectContaining({ text: 'persisted entry' }),
+      }));
     });
 
     it('loads entries from disk on restart', async () => {
@@ -103,6 +109,12 @@ describe('ArchivalMemory', () => {
 
       const archival2 = new ArchivalMemory(dir);
       expect(archival2.count()).toBe(2);
+    });
+
+    it('loads legacy unwrapped entries', () => {
+      const file = path.join(dir, 'archival', 'entries.jsonl');
+      fs.writeFileSync(file, `${JSON.stringify({ id: 'legacy', text: 'old entry', tags: [], createdAt: 1 })}\n`, 'utf8');
+      expect(new ArchivalMemory(dir).getAll()).toEqual([expect.objectContaining({ id: 'legacy', text: 'old entry' })]);
     });
   });
 });

@@ -8,9 +8,11 @@
 import type { CognitiveProvider, TurnCognitiveData } from '../../../lib/shared/cognitive';
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { MemoryCore } from '../core/memory-core';
-import { MemoryConsolidator, type ConsolidationResult } from '../core/consolidator';
-import type { KnowledgeCandidateBatch } from '../../../lib/integrations/pi-agent/cognitive/knowledge-provider';
+import { MemoryConsolidator, type ConsolidationResult, type MemoryConsolidatorDeps } from '../core/consolidator';
+import { CognitionCandidateRouter, MentalModelStore, ObservationEngine } from '../bank';
+import type { CognitionCandidateConsumers, ObservationContext } from '../bank';
 
 export interface MemoryQueryResult {
   recent_history: string[];
@@ -20,10 +22,20 @@ export interface MemoryQueryResult {
   knowledge_candidate: string[];
 }
 
+export interface KnowledgeCandidateBatch {
+  entities: Array<{ name: string; type: string; attributes: Record<string, unknown> }>;
+  facts: string[];
+}
+
 interface PersistedKnowledgeCandidate {
   savedAt: number;
   entities: Array<{ name: string; type: string; attributes: Record<string, unknown> }>;
   facts: string[];
+}
+
+export interface MemoryCognitionRouting {
+  context: ObservationContext;
+  consumers: CognitionCandidateConsumers;
 }
 
 export class MemoryProvider implements CognitiveProvider {
@@ -36,6 +48,7 @@ export class MemoryProvider implements CognitiveProvider {
   private lastConsolidation: ConsolidationResult | null = null;
   private knowledgeCandidatesPath: string;
   private knowledgeConsumer?: { ingestCandidates(candidates: KnowledgeCandidateBatch[]): Promise<void> };
+  private mentalModels = new MentalModelStore();
 
   /**
    * 构造 MemoryProvider。
@@ -46,6 +59,8 @@ export class MemoryProvider implements CognitiveProvider {
     coreOrAgentDir: MemoryCore | string,
     sessionId: string = 'default',
     knowledgeConsumer?: { ingestCandidates(candidates: KnowledgeCandidateBatch[]): Promise<void> },
+    private readonly cognitionRouting?: MemoryCognitionRouting,
+    consolidatorDeps?: MemoryConsolidatorDeps,
   ) {
     this.sessionId = sessionId;
     this.knowledgeConsumer = knowledgeConsumer;
@@ -56,7 +71,10 @@ export class MemoryProvider implements CognitiveProvider {
       this.agentDir = coreOrAgentDir;
       this.core = new MemoryCore(coreOrAgentDir, sessionId);
     }
-    this.consolidator = new MemoryConsolidator(this.agentDir, this.sessionId);
+    this.consolidator = new MemoryConsolidator(this.agentDir, this.sessionId, consolidatorDeps, {
+      userBank: this.core.userCognition,
+      ownerBank: this.core.ownerCognition,
+    });
     this.knowledgeCandidatesPath = path.join(this.agentDir, 'knowledge', 'candidates.json');
   }
 
@@ -96,7 +114,17 @@ export class MemoryProvider implements CognitiveProvider {
   }
 
   async system_prompt_block(): Promise<string> {
-    return this.core.memory.compile({ format: 'xml' });
+    const sections: string[] = [];
+    if (this.core.userCognition) {
+      const profile = this.mentalModels.read(this.core.userCognition, 'user-profile');
+      if (profile?.data.content) sections.push(`<global_user_profile readonly="true">\n${profile.data.content}\n</global_user_profile>`);
+    }
+    if (this.core.ownerCognition) {
+      const world = this.mentalModels.read(this.core.ownerCognition, 'world-model');
+      if (world?.data.content) sections.push(`<owner_world_model readonly="true">\n${world.data.content}\n</owner_world_model>`);
+    }
+    sections.push(this.core.memory.compile({ format: 'xml' }));
+    return sections.join('\n\n');
   }
 
   async on_session_end(_messages: unknown[]): Promise<ConsolidationResult | null> {
@@ -111,7 +139,40 @@ export class MemoryProvider implements CognitiveProvider {
       this.persistKnowledgeCandidates(this.lastConsolidation.knowledgeCandidates);
       await this.knowledgeConsumer?.ingestCandidates(this.lastConsolidation.knowledgeCandidates);
     }
+    this.retainStableUserMemory(result.stableMemory);
+    this.refreshMentalModels();
+    if (this.cognitionRouting && this.core.ownerCognition) {
+      await new CognitionCandidateRouter(this.cognitionRouting.consumers)
+        .route(this.core.ownerCognition.list(), this.cognitionRouting.context);
+    }
     return this.lastConsolidation;
+  }
+
+  private refreshMentalModels(): void {
+    if (this.core.userCognition) this.mentalModels.refreshUserProfile(this.core.userCognition);
+    if (this.core.ownerCognition) this.mentalModels.refreshWorldModel(this.core.ownerCognition);
+  }
+
+  private retainStableUserMemory(memories: string[]): void {
+    const bank = this.core.userCognition;
+    const context = this.cognitionRouting?.context;
+    if (!bank || !context) return;
+    const observations = new ObservationEngine();
+    for (const content of memories) {
+      observations.fold(bank, {
+        kind: 'observation',
+        content,
+        confidence: 0.9,
+        tags: ['user-profile', 'explicit-preference'],
+        evidence: {
+          id: createHash('sha256').update(`${this.sessionId}\0user-preference\0${content}`).digest('hex'),
+          source: 'user_confirmation',
+          sourceId: this.sessionId,
+          excerpt: content,
+          observedAt: new Date().toISOString(),
+        },
+      }, context.policy);
+    }
   }
 
   getLastConsolidation(): ConsolidationResult | null {

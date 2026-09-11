@@ -2,10 +2,8 @@
  * Recall Memory — 对话历史索引 + 语义搜索。
  *
  * Story M.4: 升级现有关键词搜索为语义搜索，保留 keyword 回退。
- * 兼容现有 MemoryTracker.recordTurn() 和 Dream cursor 行为。
  */
 
-import fs from 'node:fs';
 import path from 'node:path';
 import { HistoryStore, type RecallEntry } from './history-store';
 import { cosineSimilarity, embeddingEngine } from '../archival/embedding';
@@ -20,18 +18,16 @@ export interface RecallSearchResult {
 export class RecallMemory {
   private entries: RecallEntry[] = [];
   private historyStore: HistoryStore;
-  private dreamCursorPath: string;
 
   constructor(agentDir: string, sessionId: string = 'default') {
     this.historyStore = new HistoryStore(
       path.join(agentDir, 'memory', 'history'),
       sessionId
     );
-    this.dreamCursorPath = path.join(agentDir, '.dream_cursor');
     this.loadFromDisk();
   }
 
-  /** 记录一轮对话（兼容现有 MemoryTracker.recordTurn()） */
+  /** 记录一轮对话 */
   recordTurn(data: {
     turnNumber: number;
     userMessage: string;
@@ -79,33 +75,6 @@ export class RecallMemory {
     return scored.slice(0, maxResults);
   }
 
-  // ==========================================================================
-  // Dream cursor 兼容
-  // ==========================================================================
-
-  getDreamCursor(): number {
-    if (!fs.existsSync(this.dreamCursorPath)) return 0;
-    try {
-      return parseInt(fs.readFileSync(this.dreamCursorPath, 'utf-8').trim(), 10) || 0;
-    } catch {
-      return 0;
-    }
-  }
-
-  setDreamCursor(cursor: number): void {
-    fs.writeFileSync(this.dreamCursorPath, String(cursor), 'utf-8');
-  }
-
-  readRecentHistory(sinceCursor: number): string {
-    const entries = this.readSince(sinceCursor);
-    return entries
-      .map(
-        (e) =>
-          `Turn #${e.turnNumber}:\nUser: ${e.userMessage}\nAssistant: ${e.assistantMessage ?? ''}\n`
-      )
-      .join('\n');
-  }
-
   count(): number {
     return this.entries.length;
   }
@@ -116,10 +85,6 @@ export class RecallMemory {
 
   private loadFromDisk(): void {
     this.entries = this.historyStore.readAll();
-  }
-
-  private readSince(turnNumber: number): RecallEntry[] {
-    return this.entries.filter((e) => e.turnNumber >= turnNumber);
   }
 
   private scoreKeyword(entry: RecallEntry, query: string): RecallSearchResult {

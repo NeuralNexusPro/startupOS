@@ -86,5 +86,59 @@ describe('CognitionBank', () => {
     const file = JSON.parse(fs.readFileSync(bank.filePath, 'utf8')) as Record<string, unknown>;
     expect(file).toEqual(expect.objectContaining({ version: '1.0', createdAt: expect.any(String), updatedAt: expect.any(String), data: expect.any(Object) }));
   });
-});
 
+  it('recalls records with keyword and semantic-compatible search', async () => {
+    const dataRoot = createDataRoot();
+    const bank = new CognitionBank({ scope: 'agent', ownerId: 'researcher', dataRoot });
+    bank.retain({
+      kind: 'world_fact',
+      content: 'OriginOS uses the Next.js App Router',
+      evidence: { id: 'doc-next', source: 'document', sourceId: 'AGENTS.md', excerpt: 'App Router is mandatory', observedAt: '2026-08-28T00:00:00.000Z' },
+    });
+    bank.retain({
+      kind: 'experience',
+      content: 'The release pipeline builds desktop packages',
+      evidence: { id: 'tool-release', source: 'tool', sourceId: 'actions', excerpt: 'desktop release', observedAt: '2026-08-28T00:00:01.000Z' },
+    });
+
+    expect(bank.recallKeyword('Next.js', { kinds: ['world_fact'] })[0]?.record.content).toContain('App Router');
+    const semantic = await bank.recall('release pipeline', { limit: 1 });
+    expect(semantic[0]?.record.kind).toBe('experience');
+  });
+
+  it('redacts secrets from retained content and evidence', () => {
+    const dataRoot = createDataRoot();
+    const bank = new CognitionBank({ scope: 'user', ownerId: 'default', dataRoot });
+    const retained = bank.retain({
+      kind: 'observation',
+      content: 'api_key=super-secret-value password: hunter2',
+      evidence: {
+        id: 'secret-turn',
+        source: 'conversation',
+        sourceId: 'session-secret',
+        excerpt: 'Authorization: Bearer abcdefghijklmnop',
+        observedAt: '2026-09-09T00:00:00.000Z',
+      },
+    });
+
+    expect(retained.content).toBe('api_key=[REDACTED] password: [REDACTED]');
+    expect(retained.evidence[0]?.excerpt).toContain('Bearer [REDACTED]');
+    expect(fs.readFileSync(bank.filePath, 'utf8')).not.toContain('super-secret-value');
+    expect(fs.readFileSync(bank.filePath, 'utf8')).not.toContain('abcdefghijklmnop');
+  });
+
+  it('quarantines a corrupt bank and restores the latest valid version', () => {
+    const dataRoot = createDataRoot();
+    const bank = new CognitionBank({ scope: 'project', ownerId: 'project-recovery', dataRoot });
+    bank.retain({
+      kind: 'world_fact',
+      content: 'The project uses local JSON storage',
+      evidence: { id: 'doc-storage', source: 'document', sourceId: 'AGENTS.md', excerpt: 'local JSON', observedAt: '2026-08-28T00:00:00.000Z' },
+    });
+    fs.writeFileSync(bank.filePath, '{broken', 'utf8');
+
+    expect(bank.list()).toHaveLength(1);
+    expect(fs.readdirSync(bank.directory).some((name) => name.startsWith('records.corrupt-'))).toBe(true);
+    expect(() => JSON.parse(fs.readFileSync(bank.filePath, 'utf8'))).not.toThrow();
+  });
+});

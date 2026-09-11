@@ -10,11 +10,59 @@ import path from 'node:path';
 import {
   Block,
   BlockDefinition,
+  LegacyMemoryBlock,
   DEFAULT_BLOCKS,
   createBlock,
   serializeBlock,
   validateBlock,
 } from './block';
+
+/** Parse the public Memory.md format without constructing a writable Memory instance. */
+export function parseBlocksFromMarkdown(content: string): Map<string, LegacyMemoryBlock> {
+  const blocks = new Map<string, LegacyMemoryBlock>();
+  let label: string | null = null;
+  let description = '';
+  let limit = 2000;
+  let readOnly = false;
+  const value: string[] = [];
+
+  const flush = () => {
+    if (!label) return;
+    blocks.set(label, {
+      label,
+      value: value.join('\n').trim(),
+      limit,
+      description: description || label,
+      metadata: {},
+      readOnly,
+    });
+  };
+
+  for (const rawLine of content.split('\n')) {
+    const line = rawLine.trimEnd();
+    const heading = line.match(/^##\s+(.+)$/);
+    if (heading?.[1]) {
+      flush();
+      label = heading[1].trim();
+      description = '';
+      limit = 2000;
+      readOnly = false;
+      value.length = 0;
+      continue;
+    }
+    if (!label || line === '# Memory') continue;
+    const metadata = line.match(/^\{(description|limit|readOnly):\s*(.*?)\}$/);
+    if (metadata?.[1]) {
+      if (metadata[1] === 'description') description = metadata[2] ?? '';
+      if (metadata[1] === 'limit') limit = Number.parseInt(metadata[2] ?? '', 10) || 2000;
+      if (metadata[1] === 'readOnly') readOnly = metadata[2] === 'true';
+      continue;
+    }
+    value.push(line);
+  }
+  flush();
+  return blocks;
+}
 
 export interface CompileOptions {
   format?: 'markdown' | 'xml';
@@ -27,6 +75,13 @@ export interface BlocksVersionSnapshot {
   timestamp: number;
   blocks: Array<Record<string, unknown>>;
   changedBlocks?: string[];
+}
+
+interface BlocksDataFile {
+  version: string;
+  createdAt: string;
+  updatedAt: string;
+  data: { blocks: BlocksVersionSnapshot[] };
 }
 
 export class Memory {
@@ -155,7 +210,7 @@ export class Memory {
     const lines: string[] = ['# Memory\n'];
     for (const block of this.blocks.values()) {
       if (includeLabels && !includeLabels.includes(block.label)) continue;
-      if ((block.metadata as any).hidden && !includeHidden) continue;
+      if (block.metadata.hidden && !includeHidden) continue;
 
       lines.push(`## ${block.label}`);
       lines.push(`{description: ${block.description}}`);
@@ -183,7 +238,7 @@ export class Memory {
 
     for (const block of this.blocks.values()) {
       if (includeLabels && !includeLabels.includes(block.label)) continue;
-      if ((block.metadata as any).hidden && !includeHidden) continue;
+      if (block.metadata.hidden && !includeHidden) continue;
 
       s.push(`<${block.label}>`);
       s.push(`<description>${block.description}</description>`);
@@ -235,18 +290,46 @@ export class Memory {
       snapshots.shift();
     }
 
-    fs.writeFileSync(filePath, JSON.stringify(snapshots, null, 2), 'utf-8');
+    const previous = this.loadBlocksDataFile();
+    const now = new Date().toISOString();
+    const file: BlocksDataFile = {
+      version: 'memory-core/1.0',
+      createdAt: previous?.createdAt ?? now,
+      updatedAt: now,
+      data: { blocks: snapshots },
+    };
+    fs.writeFileSync(filePath, JSON.stringify(file, null, 2), 'utf-8');
   }
 
   private loadBlocksSnapshot(): BlocksVersionSnapshot[] | null {
     const filePath = path.join(this.agentDir, 'blocks.json');
     if (!fs.existsSync(filePath)) return null;
     try {
-      const raw = fs.readFileSync(filePath, 'utf-8');
-      return JSON.parse(raw);
+      const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as unknown;
+      if (Array.isArray(parsed)) return parsed as BlocksVersionSnapshot[];
+      return this.isBlocksDataFile(parsed) ? parsed.data.blocks : null;
     } catch {
       return null;
     }
+  }
+
+  private loadBlocksDataFile(): BlocksDataFile | null {
+    const filePath = path.join(this.agentDir, 'blocks.json');
+    if (!fs.existsSync(filePath)) return null;
+    try {
+      const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as unknown;
+      return this.isBlocksDataFile(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private isBlocksDataFile(value: unknown): value is BlocksDataFile {
+    if (!value || typeof value !== 'object') return false;
+    const candidate = value as { version?: unknown; createdAt?: unknown; updatedAt?: unknown; data?: unknown };
+    if (typeof candidate.version !== 'string' || typeof candidate.createdAt !== 'string' || typeof candidate.updatedAt !== 'string') return false;
+    if (!candidate.data || typeof candidate.data !== 'object') return false;
+    return Array.isArray((candidate.data as { blocks?: unknown }).blocks);
   }
 
   private getNextVersion(snapshots: BlocksVersionSnapshot[]): number {
@@ -260,77 +343,25 @@ export class Memory {
     if (fs.existsSync(memoryMdPath)) {
       const content = fs.readFileSync(memoryMdPath, 'utf-8');
       this.parseMemoryMd(content);
+      if (this.blocks.size > 0 && !content.split('\n').some((line) => line.trim() === '# Memory')) {
+        const backupPath = `${memoryMdPath}.legacy`;
+        if (!fs.existsSync(backupPath)) fs.copyFileSync(memoryMdPath, backupPath);
+        this.save();
+      }
     }
   }
 
   /** 解析 Memory.md 格式的文本为 Block */
   private parseMemoryMd(content: string): void {
-    const lines = content.split('\n');
-    let currentLabel: string | null = null;
-    let currentDesc = '';
-    let currentLimit = 2000;
-    let currentReadOnly = false;
-    let currentTags: string[] = [];
-    const valueLines: string[] = [];
-
-    const flushBlock = () => {
-      if (currentLabel) {
-        const def: BlockDefinition = {
-          label: currentLabel,
-          description: currentDesc || currentLabel,
-          limit: currentLimit,
-          readOnly: currentReadOnly,
-          tags: currentTags,
-        };
-        const block = createBlock(def, valueLines.join('\n').trim());
-        // 从现有 blocks.json 恢复版本信息（如果有）
-        this.blocks.set(block.label, block);
-      }
-    };
-
-    for (const rawLine of lines) {
-      const line = rawLine.trimEnd();
-
-      // ## label
-      const headingMatch = line.match(/^## (.+)$/);
-      if (headingMatch?.[1]) {
-        flushBlock();
-        currentLabel = headingMatch[1].trim();
-        currentDesc = '';
-        currentLimit = 2000;
-        currentReadOnly = false;
-        currentTags = [];
-        valueLines.length = 0;
-        continue;
-      }
-
-      // {key: value}
-      if (line.startsWith('{') && line.endsWith('}')) {
-        const inner = line.slice(1, -1);
-        const colonIdx = inner.indexOf(':');
-        if (colonIdx > 0) {
-          const key = inner.substring(0, colonIdx).trim();
-          const val = inner.substring(colonIdx + 1).trim();
-          if (key === 'description') currentDesc = val;
-          else if (key === 'limit') currentLimit = parseInt(val, 10) || 2000;
-          else if (key === 'readOnly') currentReadOnly = val === 'true';
-          else if (key === 'tags') currentTags = val.split(',').map((t) => t.trim()).filter(Boolean);
-        }
-        continue;
-      }
-
-      // Skip header line
-      if (line === '# Memory' || line === '') {
-        if (line === '' && currentLabel && valueLines.length === 0 && !currentDesc) continue;
-        // Skip blank separator lines between header metadata and value
-        if (line === '' && currentLabel && valueLines.length === 0 && !currentDesc) continue;
-      }
-
-      if (currentLabel) {
-        valueLines.push(line);
-      }
+    for (const legacy of parseBlocksFromMarkdown(content).values()) {
+      const block = createBlock({
+        label: legacy.label,
+        description: legacy.description,
+        limit: legacy.limit,
+        readOnly: legacy.readOnly,
+      }, legacy.value);
+      this.blocks.set(block.label, block);
     }
-    flushBlock();
   }
 
   private initializeDefaults(definitions?: BlockDefinition[]): void {
