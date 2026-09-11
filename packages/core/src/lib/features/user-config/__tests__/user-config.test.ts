@@ -1,9 +1,9 @@
-import { mkdtempSync, readFileSync, rmSync } from 'fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { persistRuntimeLLMConfig, readUserConfig, readUserConfigWithProductDefaults } from '..';
+import { persistRuntimeLLMConfig, readUserConfig, readUserConfigWithProductDefaults, writeUserConfig } from '..';
 
 let previousDataRoot: string | undefined;
 let previousAnthropicAuthToken: string | undefined;
@@ -134,3 +134,16 @@ function restoreEnv(key: string, value: string | undefined): void {
     process.env[key] = value;
   }
 }
+
+
+describe('shared user config storage', () => {
+  it('preserves missing, malformed and stored configuration behavior', () => {
+    expect(readUserConfig()).toEqual({});
+    writeFileSync(path.join(dataRoot, 'user-config.json'), '{broken');
+    expect(readUserConfig()).toEqual({});
+    const config = { preferences: { language: 'zh-CN', showOnboarding: false } };
+    writeUserConfig(config);
+    expect(readUserConfig()).toEqual(config);
+    expect(JSON.parse(readFileSync(path.join(dataRoot, 'user-config.json'), 'utf-8'))).toEqual(config);
+  });
+});
