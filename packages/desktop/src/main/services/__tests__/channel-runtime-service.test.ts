@@ -5,6 +5,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChannelInvocation } from '../../../../../core/src/modules/channel-runtime';
 import { composeDesktopChannelRuntime } from '../channel-runtime-service';
 
+// The composition test runs in Node; task-runtime IPC imports the Electron host.
+vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }));
+
 const roots: string[] = [];
 afterEach(() => { for (const value of roots.splice(0)) fs.rmSync(value, { recursive: true, force: true }); });
 
