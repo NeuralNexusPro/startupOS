@@ -1,14 +1,14 @@
 import type { Static } from "@sinclair/typebox";
 import { Type } from "@sinclair/typebox";
 import type { AgentToolResult } from "@originos/pi-agent-adapter";
-import type { ToolRegistration } from "../types";
+import type { ToolRegistration } from "../../../integrations/pi-agent/types";
 import {
 	DefaultSchedulerActionRunner,
 	SchedulerService,
 	type ScheduledAction,
 	type ScheduleTrigger,
-} from "../../../../modules/scheduler";
-import { setToolContext } from "./context";
+} from "../../../../modules/scheduler/index";
+import { setToolContext } from "../../../integrations/pi-agent/tools/context";
 
 const TriggerSchema = Type.Union([
 	Type.Object({

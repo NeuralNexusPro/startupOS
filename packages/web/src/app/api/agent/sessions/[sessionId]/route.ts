@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { agentSessionService } from '@originos/core/lib/features/agent';
 import type { ApiResponse } from '@originos/core/types';
-import { agentManager } from '@originos/core/lib/integrations/pi-agent/agent-manager';
+import { agentManager } from '@originos/core/lib/features/agent/server';
 import {
   restoreSessionAtBoundary,
   RestoreAgentSessionError,

@@ -7,10 +7,10 @@
  *   skip     = no toolCalls (pure dialogue)
  */
 
-import type { TurnCognitiveData } from '../types';
-import type { PatternIngestPayload, PatternPolarity } from './types';
-import type { CorrectionSignal } from './types';
-import { maxStrength } from './correction-detector';
+import type { TurnCognitiveData } from '../../../../integrations/pi-agent/cognitive/types';
+import type { PatternIngestPayload, PatternPolarity } from '../../../../integrations/pi-agent/cognitive/pattern/types';
+import type { CorrectionSignal } from '../../../../integrations/pi-agent/cognitive/pattern/types';
+import { maxStrength } from '../../../../integrations/pi-agent/cognitive/pattern/correction-detector';
 import { ArchivalMemory } from '../../../../../modules/memory-core/archival/archival-memory';
 
 function classify(data: TurnCognitiveData): PatternPolarity | 'skip' {

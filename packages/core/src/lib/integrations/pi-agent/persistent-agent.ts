@@ -1,3 +1,4 @@
+import type { AgentSession, CreateSessionRequest, UpdateSessionRequest } from '../../../types/agent';
 /**
  * Persistent Agent - 持久化 Agent 实例
  *
@@ -7,10 +8,9 @@
  */
 
 import { OriginOSAgent, createOriginOSAgent } from './core/agent';
-import { getAgentTools, initializeBuiltInTools } from './tools/index';
+import { getAgentTools } from './tools/index';
 import { setToolContext, removeToolContext, getToolContextManager } from './tools/context';
 import { bindToolsToSession } from './tools/bind-session';
-import { agentSessionService } from '../../../lib/features/agent/session-service';
 import { CognitiveManager } from './cognitive';
 import { detectCorrections } from './cognitive/pattern/correction-detector';
 import { SleepComputeScheduler } from './cognitive/sleep-compute';
@@ -193,6 +193,12 @@ export interface SkillDefinition {
  * Persistent Agent 配置
  */
 export interface PersistentAgentConfig {
+  initializeTools: () => void;
+  sessionPersistence: {
+    createSession(request: CreateSessionRequest): Promise<AgentSession>;
+    updateSession(sessionId: string, updates: UpdateSessionRequest, projectId?: string): Promise<AgentSession | null>;
+  };
+
 	projectId: string;
 	workingDirectory: string;
 	agentDefinition: AgentDefinition;
@@ -245,7 +251,8 @@ export class PersistentAgent {
 	private turnArgs = new Map<string, unknown>();
 	private processingPromise: Promise<void> | null = null;
 
-	constructor(config: PersistentAgentConfig) {
+	constructor(private readonly config: PersistentAgentConfig) {
+        if (!config.initializeTools || !config.sessionPersistence) throw new Error('PersistentAgent business dependencies are required');
 		this.projectId = config.projectId;
 		this.workingDirectory = config.workingDirectory;
 		this.agentDefinition = config.agentDefinition;
@@ -303,7 +310,7 @@ export class PersistentAgent {
 
 		// 5. 创建持久化 session 记录
 		try {
-			await agentSessionService.createSession({
+			await this.config.sessionPersistence.createSession({
 				sessionId: persistentSessionId,
 				projectId: this.projectId,
 				projectName: this.agentDefinition.name,
@@ -323,7 +330,7 @@ export class PersistentAgent {
 
 			if (event.type === 'agent_end' && event.messages?.length > 0) {
 				try {
-					await agentSessionService.updateSession(persistentSessionId, {
+					await this.config.sessionPersistence.updateSession(persistentSessionId, {
 						messages: event.messages,
 						status: 'completed',
 					}, this.projectId);
@@ -645,7 +652,7 @@ export class PersistentAgent {
 	 */
 	private buildTools(): AgentTool[] {
 		// 防御性调用：确保内置工具已注册（避免时序问题）
-		initializeBuiltInTools();
+		this.config.initializeTools();
 
 		// 1. 获取所有内置工具
 		const builtInTools = getAgentTools();

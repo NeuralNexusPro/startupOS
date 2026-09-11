@@ -10,11 +10,11 @@
 
 import { readFileSync, existsSync } from 'fs';
 import path from 'path';
-import { agentSessionService } from '../../../../lib/features/agent';
+import { agentSessionService } from '../../agent/server/index';
 import {
   agentManager,
   type AgentMemoryOwnership,
-} from '../../../../lib/integrations/pi-agent/agent-manager';
+} from '../../agent/server/index';
 import { loadToolConfig } from '../../../../lib/integrations/pi-agent/tool-config-loader';
 import type { RuntimeLLMConfig } from '../../../../lib/integrations/pi-agent/llm-config';
 import { toStableMemoryExcerpt } from '../../../../lib/integrations/pi-agent/memory-consumption';

@@ -4,10 +4,10 @@ import {
   migrateLegacyUserSignals,
   type MemoryOwnershipContext,
   type ObservationContext,
-} from '../../../../modules/memory-core';
-import { KnowledgeProvider } from './knowledge-provider';
-import { PatternProvider } from './pattern';
-import { createAutoModel } from '../server-config';
+} from '../../../../modules/memory-core/index';
+import { KnowledgeProvider } from '../../../integrations/pi-agent/cognitive/knowledge-provider';
+import { PatternProvider } from './pattern/index';
+import { createAutoModel } from '../../../integrations/pi-agent/server-config';
 
 export interface OwnedCognitiveProviderBundle {
   memoryCore: MemoryCore;

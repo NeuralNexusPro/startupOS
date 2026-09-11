@@ -12,8 +12,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } fr
 import path from 'path';
 import type { CognitiveProvider, TurnCognitiveData } from './types';
 import { UnifiedOntology, type Entity } from './unified-ontology';
-import type { KnowledgeCognitionCandidate } from '../../../../modules/memory-core/bank';
-import type { KnowledgeCandidateBatch } from '../../../../modules/memory-core';
+import type { KnowledgeCognitionCandidate } from '../../../shared/cognitive/cognition-types';
+import type { KnowledgeCandidateBatch } from '../../../shared/cognitive/cognition-types';
 
 // ============================================================================
 // 知识提取接口

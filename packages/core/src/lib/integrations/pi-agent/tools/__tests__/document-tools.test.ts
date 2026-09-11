@@ -3,7 +3,7 @@ import { join } from 'path';
 import { mkdirSync, rmSync, writeFileSync, existsSync } from 'fs';
 import os from 'os';
 import { getToolContextManager } from '../context';
-import { documentTools } from '../document-tools';
+import { documentTools } from '../../../../features/agent/tools/document-tools';
 
 function tempDir(): string {
 	return join(os.tmpdir(), `originos-document-tools-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);

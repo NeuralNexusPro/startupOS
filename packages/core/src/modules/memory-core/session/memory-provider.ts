@@ -22,10 +22,8 @@ export interface MemoryQueryResult {
   knowledge_candidate: string[];
 }
 
-export interface KnowledgeCandidateBatch {
-  entities: Array<{ name: string; type: string; attributes: Record<string, unknown> }>;
-  facts: string[];
-}
+import type { KnowledgeCandidateBatch } from '../../../lib/shared/cognitive/cognition-types';
+export type { KnowledgeCandidateBatch } from '../../../lib/shared/cognitive/cognition-types';
 
 interface PersistedKnowledgeCandidate {
   savedAt: number;

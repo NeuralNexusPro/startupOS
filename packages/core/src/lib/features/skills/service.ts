@@ -51,7 +51,7 @@ import { agentSessionService } from '../agent/session-service';
 import { ontologyStorage } from '../ontology/storage';
 import type { AgentMessage, AgentSession } from '../../../types/agent';
 import type { SkillContext, SkillResult, SkillTools } from '../../../types/skill';
-import { agentManager } from '../../integrations/pi-agent/agent-manager';
+import { agentManager } from '../agent/server/index';
 import { handle as taskManagerHandler } from './bundled/task-manager/handler';
 import { handle as infoQueryHandler } from './bundled/info-query/handler';
 import { handle as ontologyEditorHandler } from './bundled/ontology-editor/handler';

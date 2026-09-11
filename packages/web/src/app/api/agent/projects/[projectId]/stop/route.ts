@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { persistentAgentManager } from '@originos/core/lib/integrations/pi-agent/persistent-agent-manager';
+import { persistentAgentManager } from '@originos/core/lib/features/agent/server';
 import { getGlobalSpawner } from '@originos/core/modules/collaboration-runtime/sandbox/agent-spawner';
 import { getRuntimeAgent, removeRuntimeAgent } from '@/app/api/agent/_runtime-agent-registry';
 import type { ApiResponse } from '@originos/core/types';

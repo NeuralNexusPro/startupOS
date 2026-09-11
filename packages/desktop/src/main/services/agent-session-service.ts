@@ -3,7 +3,7 @@ import { IPC_CHANNELS } from '../ipc-protocol';
 import type { IpcResponse } from '../../../../core/src/lib/integrations/electron/ipc-protocol';
 import { agentSessionService } from '../../../../core/src/lib/features/agent';
 import { persistRuntimeLLMConfig } from '../../../../core/src/lib/features/user-config';
-import { agentManager } from '../../../../core/src/lib/integrations/pi-agent/agent-manager';
+import { agentManager } from '../../../../core/src/lib/features/agent/server/index';
 import { createAutoModel } from '../../../../core/src/lib/integrations/pi-agent/server-config';
 import { extractDisplayContent } from '../../../../core/src/lib/integrations/pi-agent/display-content';
 import { getVisibleStreamDelta, reconcileFinalStreamContent } from '../../../../core/src/lib/integrations/pi-agent/stream-dedupe';
