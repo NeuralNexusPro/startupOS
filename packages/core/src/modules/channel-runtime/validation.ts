@@ -41,10 +41,12 @@ export function validateChannelRuntimeTarget(target: ChannelRuntimeTarget): Chan
   if (target.kind === 'skill') {
     if (target.ownership.mode === 'inherited') {
       if (target.ownership.ownerKind !== 'project' && target.ownership.ownerKind !== 'role-agent') throw new Error('CHANNEL_SKILL_OWNER_INVALID');
-      assertId(target.ownership.ownerId, 'CHANNEL_SKILL_OWNER_INVALID');
+      const validateOwner = target.ownership.ownerKind === 'role-agent' ? assertEntryId : assertId;
+      validateOwner(target.ownership.ownerId, 'CHANNEL_SKILL_OWNER_INVALID');
     }
   }
-  assertId(target.id, 'CHANNEL_TARGET_ID_INVALID');
+  const validateTarget = target.kind === 'project-agent' ? assertId : assertEntryId;
+  validateTarget(target.id, 'CHANNEL_TARGET_ID_INVALID');
   return target;
 }
 
@@ -55,4 +57,10 @@ export function isExternallyVisibleOutput(event: AgentOutputEvent): boolean {
 
 function assertId(value: string, code: string): void {
   if (!SAFE_ID.test(value)) throw new Error(code);
+}
+
+// Skill and agent IDs are directory names, not ASCII transport identifiers.
+function assertEntryId(value: string, code: string): void {
+  if (typeof value !== 'string' || !value.trim() || value.length > 256
+    || value === '.' || value === '..' || /[\p{Cc}/\\]/u.test(value)) throw new Error(code);
 }

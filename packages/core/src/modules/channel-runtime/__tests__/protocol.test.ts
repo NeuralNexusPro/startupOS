@@ -65,3 +65,15 @@ describe('channel protocol', () => {
     expect(packets[0]).toMatchObject({ kind: 'complete', sequence: 0, payload: { type: 'completed' } });
   });
 });
+
+// Directory names may be Unicode; transport and project identifiers stay strict.
+it('rejects unsafe entry directory names without loosening project or transport IDs', () => {
+  for (const id of ['', '   ', '.', '..', '../escape', 'a/b', 'a\\b', 'a\0b', 'a\nb', 'a\u007fb', 'a'.repeat(257)]) {
+    expect(() => validateChannelRuntimeTarget({ kind: 'role-agent', id })).toThrow('CHANNEL_TARGET_ID_INVALID');
+    expect(() => validateChannelRuntimeTarget({ kind: 'skill', id: 'safe', ownership: { mode: 'inherited', ownerKind: 'role-agent', ownerId: id } })).toThrow('CHANNEL_SKILL_OWNER_INVALID');
+  }
+  expect(() => validateChannelRuntimeTarget({ kind: 'project-agent', id: 'project-1', projectId: '中文项目' })).toThrow('CHANNEL_PROJECT_ID_INVALID');
+  expect(() => validateChannelRuntimeTarget({ kind: 'skill', id: 'safe', ownership: { mode: 'inherited', ownerKind: 'project', ownerId: '中文项目' } })).toThrow('CHANNEL_SKILL_OWNER_INVALID');
+  expect(() => validateChannelInboundMessage(message({ actorId: '中文用户' }))).toThrow('CHANNEL_ACTOR_ID_INVALID');
+  expect(() => validateChannelInboundMessage(message({ replyHandle: '中文句柄' }))).toThrow('CHANNEL_REPLY_HANDLE_INVALID');
+});
