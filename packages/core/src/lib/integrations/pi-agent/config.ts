@@ -112,7 +112,7 @@ function getEnvConfig(): PiAgentEnv {
 
 		// 叠加 data/user-config.json（文件配置优先级高于环境变量）
 		try {
-			const { readUserConfig } = require('../../features/user-config');
+			const { readUserConfig } = require('../../storage/user-config');
 			const userCfg = readUserConfig();
 			const llm = userCfg?.llm;
 			if (llm && llm.enabled !== false) {
