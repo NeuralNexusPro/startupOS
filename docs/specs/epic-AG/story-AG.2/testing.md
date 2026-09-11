@@ -1,112 +1,33 @@
 # 测试策略 - Story AG.2
 
-**Story:** 模块边界修复 — DI 接口扩展 + UI 解耦 + shared 层
-**Epic:** AG — 架构治理与围栏对齐
-**最后更新:** 2026-07-17
+**任务:** AG2-T1；**最后更新:** 2026-09-11
+**状态:** 用例已定义，实施与验证待批准。
 
----
+## 基线与执行约束
 
-## 测试策略
+基线 dev b2d6bdb，34 处违规清单见 AG.5/lint-baseline.md。所有持久化测试使用临时数据根；不修改真实用户数据。优先复用现有 Vitest/脚本，在缺少关键覆盖时补最小回归用例。实现完成后创建自动化测试验证 goal，目标明确为“通过 Story AG.2 AG2-T1 中定义的测试 case”。
 
-本 Story 的测试分为**静态验证**（grep 扫描确认越界 import 清零）和**动态验证**（TypeScript 编译 + 协作运行时 e2e 测试）。变更应拆分为至少 3 个 PR（shared 建立 / collaboration-runtime 修复 / memory-core 修复），每个 PR 独立通过验证。
+## 验收用例
 
-### 测试前置条件
+| ID | 场景与操作 | 通过条件 |
+|----|------------|----------|
+| AG2-T1-TC01 | 在仓库根运行 pnpm lint:boundaries | 原34处消除，退出0，无新增违规，无缩小扫描范围/白名单/规则放宽 |
+| AG2-T1-TC02 | node scripts/check-architecture-boundaries.cjs --self-test | 既有43案例在两个工作目录下全部符合预期；禁止导入仍失败 |
+| AG2-T1-TC03 | 运行 pnpm lint、受影响包类型检查和现有构建 | 无本次引入的类型/构建错误；Web lint 无新增边界或其他错误，保留前后证据 |
+| AG2-T1-TC04 | Web与Desktop普通Agent、Role/Project、协作入口创建会话，保存并恢复；对必需业务依赖缺失单独测试 | 标识和历史可恢复，事件/钩子不重复，缺依赖明确报错而非静默禁用持久化 |
+| AG2-T1-TC05 | 不同owner并发记录、flush、整理、重新加载；另测错配owner和session-only会话 | 独立目录无串写；错配被拒绝；临时会话不写持久owner；Frozen Snapshot仅重启更新 |
+| AG2-T1-TC06 | 用既有记忆JSON/JSONL、空Markdown、普通块、带容量元数据块测试共享解析；测试配置缺失、正常、损坏输入 | 数据与字段不变，解析结果与原实现一致，配置路径/优先级/错误行为不变 |
+| AG2-T1-TC07 | 多次初始化工具；不同scope查询；文档/本体/定时工具成功和非法参数/未授权调用 | 注册集合完整且无重复，schema、scope、错误返回与授权语义不变 |
+| AG2-T1-TC08 | 验证IPC契约类型；从桌面构建产物独立启动worker，加载并执行代表性业务工具 | 公共DTO兼容，无模块缺失，主进程/worker正确收发结果 |
+| AG2-T1-TC09 | 渲染ToolExecutionFrame运行中/完成/失败及空列表，验证现有状态、名称与运行提示展示；检查两类聊天调用方 | 状态正确，空列表无异常，原props和交互兼容，ui不引用业务组件 |
+| AG2-T1-TC10 | 运行受影响既有memory-core、认知provider、agent/session、工具和协作集成测试 | 无本次引入的回归；逐项记录实际测试文件与结果 |
 
-- AG.1 清场作业已完成
-- 协作运行时 4 项核心 e2e 在当前基线上已通过
+## 自动化与人工补充
 
----
+TC04/TC08 使用项目已有会话/worker测试和本地可控模型替身覆盖，不依赖真实远端模型回复。若GUI冒烟或真实模型端到端无法自动化，必须在goal输出列出原因、未覆盖项、人工步骤及剩余风险，不能标记该项已通过。
 
-## 验收测试用例
+人工步骤：启动构建后的OriginOS；分别开启普通、Role和Project会话；发送消息并查看工具执行；退出重启恢复历史；核对测试账号独立目录的记忆和快照；检查失败操作的错误提示。人工检查仅补充自动化，不替代边界、持久化和打包检查。
 
-### TC-1: modules 层 `@/lib` 越界 import 清零
+## 完成证据
 
-**验证目标：** `src/modules/**` 中不存在任何直接 import `@/lib/**`（shared 除外）
-
-```bash
-grep -rn "from ['\"]@/lib" src/modules/ | wc -l
-```
-
-**预期结果：** 输出 `0`
-
----
-
-### TC-2: modules 层 `@/components` 越界 import 清零
-
-**验证目标：** `src/modules/**` 中不存在任何直接 import `@/components/**`
-
-```bash
-grep -rn "from ['\"]@/components" src/modules/ | wc -l
-```
-
-**预期结果：** 输出 `0`
-
----
-
-### TC-3: shared 层目录结构完整
-
-**验证目标：** `src/lib/shared/` 目录已建立，含 `agent/`、`cognitive/`、`model/` 三个子目录
-
-**检查项：**
-- `src/lib/shared/agent/` 存在且含 `persistent-agent.ts` + `index.ts`
-- `src/lib/shared/cognitive/` 存在且含 `types.ts` + `index.ts`
-- `src/lib/shared/model/` 存在且含 `factory.ts` + `index.ts`
-- `src/lib/shared/index.ts` barrel 文件存在
-
----
-
-### TC-4: CollaborationRuntimeDeps 扩展字段注入验证
-
-**验证目标：** `modelFactory` 字段已在所有调用方组装 deps 时传入
-
-**检查项：**
-- `src/app/api/collaboration/sessions/**` 路由中 `createCollaborationRuntime()` 调用含 `modelFactory` 参数
-- `npx tsc --noEmit` 无 missing property error
-
----
-
-### TC-5: MemoryCoreDeps 扩展验证
-
-**验证目标：** 若 `MemoryCoreDeps` 已存在，`modelFactory` 字段已在调用方注入；若不存在 DI 入口，已顺势补齐
-
-**检查项：**
-- `MemoryCoreDeps` 接口含 `modelFactory` 字段
-- 所有创建 memory-core 实例的位置传入了 `modelFactory`
-
----
-
-### TC-6: TypeScript 编译通过
-
-**验证目标：** 所有类型搬移和 DI 扩展未引入类型错误
-
-```bash
-npx tsc --noEmit
-```
-
-**预期结果：** 0 error
-
----
-
-### TC-7: 协作运行时核心 e2e 通过
-
-**验证目标：** DI 改造后运行时行为不受影响
-
-**测试用例：**
-1. HITL recovery — 人在回路中断恢复
-2. DAG execution — 工作流 DAG 执行
-3. Supervisor mode — 主管模式任务分发
-4. User message routing — 用户消息路由
-
-**预期结果：** 全部 4 项通过
-
----
-
-### TC-8: 多 PR 拆分完整性
-
-**验证目标：** 变更拆分为至少 3 个独立 PR，便于精准 revert
-
-**检查项：**
-- PR 1: `src/lib/shared/` 建立
-- PR 2: `collaboration-runtime` 越界修复
-- PR 3: `memory-core` 越界修复
-- 每个 PR 独立通过 CI
+待实施后补充命令、退出码、测试数量、日志路径及限制。当前所有执行项尚未验收，不声明Story完成。
