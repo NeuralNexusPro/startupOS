@@ -1867,3 +1867,15 @@
 **类型**：ci
 **影响模块**：`.github/workflows/ci.yml`
 **摘要**：移除 push/pull_request 自动触发但当前不再使用的通用 CI workflow；桌面发布 workflow 保持不变。
+
+## 2026-09-11 — docs：架构治理首轮检查修正提案
+
+**类型**：docs
+**影响模块**：docs/specs/epic-AG、openspec/changes/fix-monorepo-boundary-lint
+**摘要**：复现旧 ESLint 目录边界随 CWD 漏报，建立 AG5-T1 提案、正反例验收和实施边界。当前待批准，未修改应用源码或宣称完成架构治理。
+
+## 2026-09-11 — fix：恢复 Monorepo 架构边界检查
+
+**类型**：fix
+**影响模块**：.eslintrc.cjs、scripts/check-architecture-boundaries.cjs、package.json、AGENTS.md、docs/specs/epic-AG
+**摘要**：使用固定仓库根与各包 resolver 修复随 CWD 漏报，复用现有 ESLint 新增 lint:boundaries 与真实导入自测，零新增依赖。43 × 2 用例通过，原 lint 非架构诊断零变化；扫描 853 个生产文件记录 34 条未解决存量，不掩盖违规。

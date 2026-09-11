@@ -1,5 +1,10 @@
 # 架构设计 - Story AG.5
 
+## 2026-09-11：首轮可执行任务 AG5-T1
+
+本轮仅实施现有 Monorepo 边界检查修正，提案为 `fix-monorepo-boundary-lint`，状态为 AG5-T1 已验证完成，AG.5 其余任务待实施。下方历史整套工具链规划不作为 AG5-T1 验收要求；不得因此宣称 AG.5 全部完成。现行架构以 AGENTS.md 为准，旧 `src/`、atoms/organisms 目录及旧 CLI 命令仅作为历史背景。
+
+
 **Story:** 自动化围栏（ESLint 边界 + dead-code 工具 + any 预算 + CI 接入）
 **Epic:** AG — 架构治理与围栏对齐
 **最后更新:** 2026-07-20
@@ -223,3 +228,7 @@ Week 3+
 - [CLAUDE.md §依赖验证 / §禁止事项](../../../../CLAUDE.md)
 - [knip 官方文档](https://knip.dev/)
 - [madge 官方仓库](https://github.com/pahen/madge)
+
+## AG5-T1 架构决策
+
+单一 `.eslintrc.cjs` 以自身目录确定根路径，现有 import 规则与包级 tsconfig resolver 负责检查，一个 Node 脚本负责扫描和断言。详细边界与覆盖限制见 `openspec/changes/fix-monorepo-boundary-lint/design.md`。本轮不创建业务 shared 工厂，不新增依赖，不改变运行时分层；旧的全工具链设计保留为后续规划。

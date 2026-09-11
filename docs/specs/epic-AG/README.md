@@ -3,7 +3,7 @@
 **Epic 编号:** AG（Architecture Governance）
 **Epic 名称:** OriginOS 架构治理与围栏对齐
 **优先级:** 🔴 Critical（阻塞 Epic 9 Phase 3 / Epic C 后续 Story 的强制门禁）
-**状态:** 📋 Planning
+**状态:** 🚧 In Progress（AG5-T1 检查器完成，存量治理与其他任务待实施）
 **创建日期:** 2026-05-31
 **源依据:**
 - `.understand-anything/intermediate/tour.json`（12 步导览，已验证当前分层）
@@ -97,7 +97,7 @@
 | **AG.2** | 模块边界修复（DI 接口扩展 + UI 下沉 + shared 层） | 🔴 Critical | 3–4 天 | 📋 Planning |
 | **AG.3** | `src/lib/` 业务目录回归 `features/` + 循环依赖拆解 | 🟠 High | 3–5 天 | 📋 Planning |
 | **AG.4** | 组件分层条款修订（CLAUDE.md + 现状对齐） | 🟠 High | 1 天 | 📋 Planning |
-| **AG.5** | 自动化围栏（ESLint 边界 + dead-code 工具 + any 预算 + CI 接入） | 🟡 Medium | 2 天 | 📋 Planning |
+| **AG.5** | 自动化围栏（ESLint 边界 + dead-code 工具 + any 预算 + CI 接入） | 🟡 Medium | 2 天 | 🚧 In Progress（AG5-T1 完成） |
 
 ### 可选追加（用户后续决策）
 
@@ -268,3 +268,7 @@ src/modules/** ≈ 102 处
 合计           ≈ 217 处
 ```
 
+
+## 2026-09-11 首轮治理
+
+AG.5 拆出 AG5-T1：修正现有 Monorepo 架构检查。提案 `fix-monorepo-boundary-lint` 已批准并完成检查器实现；新增 [34 条存量基线](story-AG.5/lint-baseline.md)。AG.1 历史目标多数已消失，本轮不重复删除；不以此声明 AG.1 全部验收通过。其他 Story 状态保持待重新核实。
