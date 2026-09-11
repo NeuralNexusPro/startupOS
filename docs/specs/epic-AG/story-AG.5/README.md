@@ -2,11 +2,11 @@
 
 ## 2026-09-11：首轮可执行任务 AG5-T1
 
-本轮仅实施现有 Monorepo 边界检查修正，提案为 `fix-monorepo-boundary-lint`，状态为待批准。下方历史整套工具链规划不作为 AG5-T1 验收要求；不得因此宣称 AG.5 全部完成。现行架构以 AGENTS.md 为准，旧 `src/`、atoms/organisms 目录及旧 CLI 命令仅作为历史背景。
+本轮仅实施现有 Monorepo 边界检查修正，提案为 `fix-monorepo-boundary-lint`，状态为 AG5-T1 已验证完成，AG.5 其余任务待实施。下方历史整套工具链规划不作为 AG5-T1 验收要求；不得因此宣称 AG.5 全部完成。现行架构以 AGENTS.md 为准，旧 `src/`、atoms/organisms 目录及旧 CLI 命令仅作为历史背景。
 
 
 **Epic:** AG — 架构治理与围栏对齐
-**状态:** 📋 Planning
+**状态:** 🚧 In Progress（AG5-T1 完成，后续工具链待实施）
 **优先级:** 🟡 Medium（治理「再发生」的护栏，需在 AG.1~AG.4 落地后再启用 error 级）
 **估计工时:** 2 天
 
@@ -78,13 +78,15 @@
 
 Owner：OriginOS 维护者 / Codex。作为维护者，我需要同一违规在根目录和包目录被一致检出，并获得真实存量基线。
 
-- [ ] 工作目录与导入写法不影响边界判定。
-- [ ] 合法 app → Core 公共 API 不误报。
-- [ ] 生产扫描、自测和失败退出码符合 testing.md 的 AG5-T1 用例。
-- [ ] 无新增工具依赖，默认 lint 兼容级别保留。
+- [x] 工作目录与导入写法不影响边界判定。
+- [x] 合法 app → Core 公共 API 不误报。
+- [x] 生产扫描、自测和失败退出码符合 testing.md 的 AG5-T1 用例。
+- [x] 无新增工具依赖，默认 lint 兼容级别保留。
 
 补充导航：[交互](interaction.md) · [实施](implementation.md)。
 
 ## 变更历史
 
 - 2026-09-11：核实旧围栏失效原因，建立 AG5-T1 提案与验收用例；未修改应用源码。
+
+- 2026-09-11：AG5-T1 实现及集成验证完成；[完整基线](lint-baseline.md)记录 34 条未解决存量，不代表整个 AG.5 完成。

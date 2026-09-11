@@ -6,7 +6,7 @@
 
 ## 开发目标
 
-AG5-T1 修复 Monorepo 边界检查，后续工具链另建 Task。提案：fix-monorepo-boundary-lint，当前待批准。
+AG5-T1 修复 Monorepo 边界检查，后续工具链另建 Task。提案：fix-monorepo-boundary-lint，AG5-T1 已验证完成；完整 AG.5 仍有后续任务。
 
 ## 实施步骤
 

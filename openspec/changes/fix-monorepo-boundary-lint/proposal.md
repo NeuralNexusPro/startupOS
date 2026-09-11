@@ -5,7 +5,7 @@
 - task-id: AG5-T1
 - owner: OriginOS 维护者 / Codex
 - 来源：`docs/specs/epic-AG/story-AG.5/README.md`
-- 状态：2026-09-11 已获用户显式批准；进入实施。
+- 状态：2026-09-11 已获用户显式批准；AG5-T1 实现与集成验证完成。
 
 ## Why
 

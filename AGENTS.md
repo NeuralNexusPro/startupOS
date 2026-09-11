@@ -1,7 +1,7 @@
 # OriginOS 架构规约 (AGENTS.md)
 
-**版本：** 2.5.2
-**日期：** 2026-07-29
+**版本：** 2.5.3
+**日期：** 2026-09-11
 **状态：** 强制执行
 
 ---
@@ -300,8 +300,14 @@ import { usePiAgent } from '@originos/core/lib/integrations/pi-agent/hooks';
 **在每次提交前必须运行：**
 
 ```bash
-pnpm lint  # 自动检查 Web lint / 依赖违规
+pnpm lint  # Web lint，架构规则保持 warning 级兼容
+pnpm lint:boundaries  # Web/Core/Desktop/感知插件生产源码架构扫描
+node scripts/check-architecture-boundaries.cjs --self-test  # 检查器正反例验收
 ```
+
+架构检查规则以仓库根目录定位，根目录或包目录运行必须得到一致结果。`lint:boundaries` 对违规、配置失败或空扫描集合非零退出；产物、测试与运行数据不属于生产扫描范围。动态计算 import、跨 feature 私有导入和循环依赖仍需其他检查或审查，不能将本命令通过等同于全部架构规约满足。
+
+AG5-T1 首轮以建立真实存量基线为验收目标，既有违规仍属待治理项；本次不将有存量失败的独立扫描接为全量 CI 合并门禁，不通过 allowlist 隐藏违规。该阶段说明不放宽依赖规约。
 
 ### 违规处理
 
