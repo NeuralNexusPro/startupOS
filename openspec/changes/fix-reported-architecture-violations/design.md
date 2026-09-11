@@ -60,3 +60,11 @@ ToolExecutionFrame 只有工具执行状态展示职责，移到 `web/src/compon
 ## Open Questions
 
 无需要用户选择的产品决策。实施时确定最终内部文件名和最小依赖参数，并将结果及公开 import 变化记录到 implementation.md；若需改变持久化、IPC 或运行时行为，停止该扩展并修订提案。
+
+## 用户追加的通知入口修复（2026-09-11）
+
+用户在本轮实施中报告：从通知进入技能或角色出现 CHANNEL_RUNTIME_FAILED。已确认通知携带中文 entryId，渠道层沿用仅ASCII的传输标识校验，导致 Agent 启动前被拒绝。本次作为会话入口兼容性修复纳入 AG2-T1；不变更数据格式或IPC字段。
+
+AG2-T1-TC11：中文技能、角色与继承角色所有权的技能，经真实渠道 ingress 和桌面通知会话流能够进入运行时并完成；空白、超长、控制字符、路径分隔符与穿越标识仍被拒绝；消息/connector/actor/replyHandle 的原传输标识校验保持不变。测试先复现原错误，再验证修复。
+
+独立通知Task仅修改channel-runtime的业务入口标识校验及对应Core/Desktop测试，Core组装Task不写这些文件。父代理负责集成，源码仍由subagent隔离实施。授权来源：用户本轮追加bug报告，延续已批准修复工作；不新增产品能力。

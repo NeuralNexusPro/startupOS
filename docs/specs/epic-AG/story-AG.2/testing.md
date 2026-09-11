@@ -39,3 +39,11 @@ Web类型检查退出0。Core明确清单47文件635用例，620通过，15既�
 ## P1完成证据
 
 提交55553c8：组件原样迁移，4调用方更新，14tests通过，Web类型检查通过，lint 0errors/2918warnings，自测43x2通过，扫描853文件剩Core33条。日志 /private/tmp/ag2-ui-{tests,lint,boundaries,selftest,typecheck}.log。
+
+## 用户追加的通知入口修复（2026-09-11）
+
+用户在本轮实施中报告：从通知进入技能或角色出现 CHANNEL_RUNTIME_FAILED。已确认通知携带中文 entryId，渠道层沿用仅ASCII的传输标识校验，导致 Agent 启动前被拒绝。本次作为会话入口兼容性修复纳入 AG2-T1；不变更数据格式或IPC字段。
+
+AG2-T1-TC11：中文技能、角色与继承角色所有权的技能，经真实渠道 ingress 和桌面通知会话流能够进入运行时并完成；空白、超长、控制字符、路径分隔符与穿越标识仍被拒绝；消息/connector/actor/replyHandle 的原传输标识校验保持不变。测试先复现原错误，再验证修复。
+
+独立通知Task仅修改channel-runtime的业务入口标识校验及对应Core/Desktop测试，Core组装Task不写这些文件。父代理负责集成，源码仍由subagent隔离实施。授权来源：用户本轮追加bug报告，延续已批准修复工作；不新增产品能力。
