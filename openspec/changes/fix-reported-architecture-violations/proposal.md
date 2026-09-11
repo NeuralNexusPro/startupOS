@@ -6,7 +6,7 @@
 - owner: 架构治理维护者（实施由隔离 Task worktree 的 subagents 承担）
 - 来源: docs/specs/epic-AG/story-AG.2/README.md
 - 基线: dev b2d6bdb；docs/specs/epic-AG/story-AG.5/lint-baseline.md
-- 状态: 待审查批准；用户已请求处理违规，本提案尚未获得专项批准。
+- 状态: 已批准实施（2026-09-11，用户回复“批准”）。
 
 ## Why
 
