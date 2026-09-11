@@ -1,4 +1,4 @@
-{
+module.exports = {
   "extends": [
     "next/core-web-vitals",
     "plugin:@typescript-eslint/recommended"
@@ -36,71 +36,48 @@
     // 目录结构规约 — 层级边界（AGENTS.md 第 3-4 章）
     // ========================================
     "import/no-restricted-paths": ["warn", {
+      "basePath": __dirname,
       "zones": [
-        // --- 组件内部层级 ---
         {
-          "target": "./src/components/atoms",
-          "from": "./src/components/molecules",
-          "message": "atoms 组件不能依赖 molecules 组件。"
+          "target": "./packages/core",
+          "from": ["./packages/web", "./packages/desktop", "./packages/service"],
+          "message": "Core 禁止依赖 Web、Desktop 或 Service 包。"
         },
         {
-          "target": "./src/components/atoms",
-          "from": "./src/components/organisms",
-          "message": "atoms 组件不能依赖 organisms 组件。"
+          "target": ["./packages/core/src/lib/storage", "./packages/core/src/lib/integrations", "./packages/core/src/lib/shared", "./packages/core/src/types"],
+          "from": ["./packages/core/src/lib/features", "./packages/core/src/modules"],
+          "message": "Core 基础设施层禁止依赖业务功能层或模块层。"
         },
         {
-          "target": "./src/components/molecules",
-          "from": "./src/components/organisms",
-          "message": "molecules 组件不能依赖 organisms 组件。"
-        },
-        // --- Layer 1 (storage/integrations/utils/shared) 禁止依赖 Layer 2 (features/modules) ---
-        {
-          "target": "./src/lib/storage",
-          "from": "./src/lib/features",
-          "message": "存储层（Layer 1）禁止依赖业务功能层（Layer 2）。"
+          "target": ["./packages/web/src/services", "./packages/web/src/store"],
+          "from": ["./packages/web/src/components", "./packages/web/src/app"],
+          "message": "Web 服务与状态层禁止依赖组件层或应用层。"
         },
         {
-          "target": "./src/lib/integrations",
-          "from": "./src/lib/features",
-          "message": "集成层（Layer 1）禁止依赖业务功能层（Layer 2）。"
+          "target": "./packages/web/src/components",
+          "from": "./packages/web/src/app",
+          "message": "Web 组件层禁止依赖应用层。"
         },
         {
-          "target": "./src/lib/shared",
-          "from": "./src/lib/features",
-          "message": "共享类型层（Layer 0）禁止依赖业务功能层（Layer 2）。"
-        },
-        // --- Layer 2 (features/modules) 禁止依赖 Layer 3-5 ---
-        {
-          "target": "./src/lib/features",
-          "from": "./src/services",
-          "message": "业务功能层（Layer 2）禁止依赖服务层（Layer 3）。"
+          "target": ["./packages/web/src/services", "./packages/web/src/store", "./packages/web/src/components"],
+          "from": "./packages/desktop/src/main",
+          "message": "Web 服务、状态与组件层禁止依赖 Electron 主进程。"
         },
         {
-          "target": "./src/lib/features",
-          "from": "./src/components",
-          "message": "业务功能层（Layer 2）禁止依赖组件层（Layer 4）。"
+          "target": ["./packages/web/src/components/ui", "./packages/web/src/components/molecules"],
+          "from": "./packages/web/src/components",
+          "except": ["ui", "molecules"],
+          "message": "基础 UI 与 molecules 禁止依赖业务组件。"
         },
         {
-          "target": "./src/lib/features",
-          "from": "./src/app",
-          "message": "业务功能层（Layer 2）禁止依赖应用层（Layer 5）。"
-        },
-        // --- Layer 3 (services) 禁止依赖 Layer 4-5 ---
-        {
-          "target": "./src/services",
-          "from": "./src/components",
-          "message": "服务层（Layer 3）禁止依赖组件层（Layer 4）。"
+          "target": "./packages/desktop/src/main",
+          "from": ["./packages/web/src/app", "./packages/web/src/components"],
+          "message": "Electron 主进程禁止依赖 Web 页面或 UI 实现。"
         },
         {
-          "target": "./src/services",
-          "from": "./src/app",
-          "message": "服务层（Layer 3）禁止依赖应用层（Layer 5）。"
-        },
-        // --- 禁止在 app/ 中放置业务逻辑 ---
-        {
-          "target": "./src/app",
-          "from": "./src/lib/features",
-          "message": "应用层禁止直接导入业务功能层。业务逻辑应通过 API 路由暴露。"
+          "target": "./packages/perception-plugins",
+          "from": ["./packages/web", "./packages/desktop"],
+          "message": "感知插件禁止依赖 Web 或 Desktop 包。"
         }
       ]
     }],
@@ -242,6 +219,16 @@
     "complexity": ["warn", 15]
   },
   "overrides": [
+    ...["web", "core", "desktop", "perception-plugins/email", "perception-plugins/wecom", "perception-plugins/feishu", "perception-plugins/dingtalk"].map((pkg) => ({
+      files: [`packages/${pkg}/**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}`],
+      settings: {
+        "import/resolver": {
+          [require.resolve("eslint-import-resolver-typescript", { paths: [require.resolve("eslint-config-next")] })]: {
+            project: require("node:path").join(__dirname, "packages", pkg, "tsconfig.json"),
+          },
+        },
+      },
+    })),
     {
       "files": ["*.d.ts", "**/*.d.ts"],
       "rules": {
@@ -265,17 +252,6 @@
       }
     },
     {
-      "files": ["src/modules/collaboration-runtime/**/*.ts", "src/modules/collaboration-runtime/**/*.tsx", "src/modules/collaboration-runtime/**/*.mts"],
-      "rules": {
-        "no-restricted-imports": ["error", {
-          "patterns": [
-            "@/lib/**",
-            "@/components/**"
-          ]
-        }]
-      }
-    },
-    {
       "files": ["*.test.ts", "*.test.tsx", "*.spec.ts", "*.spec.tsx"],
       "rules": {
         "@typescript-eslint/no-explicit-any": "off",
@@ -283,4 +259,4 @@
       }
     }
   ]
-}
+};

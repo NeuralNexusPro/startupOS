@@ -63,7 +63,8 @@
     "docs:index": "node scripts/update-docs-index.js",
     "deps:repair:native": "node scripts/repair-native-dependencies.js",
     "clean": "rm -rf dist-electron dist .tmp",
-    "clean:all": "rm -rf dist-electron dist .tmp release packages/desktop/dist-electron packages/web/.next"
+    "clean:all": "rm -rf dist-electron dist .tmp release packages/desktop/dist-electron packages/web/.next",
+    "lint:boundaries": "node scripts/check-architecture-boundaries.cjs"
   },
   "main": "dist-electron/desktop/src/main/main.js",
   "dependencies": {
