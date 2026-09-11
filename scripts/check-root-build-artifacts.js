@@ -15,7 +15,7 @@ const forbiddenFilePatterns = [
   /\.tsbuildinfo$/,
 ];
 
-const allowedRootFiles = new Set(["postcss.config.mjs"]);
+const allowedRootFiles = new Set(["postcss.config.mjs", ".eslintrc.cjs"]);
 
 const offenders = fs
   .readdirSync(repoRoot, { withFileTypes: true })
