@@ -9,4 +9,4 @@ active Set仅存pluginId:connectorId；已运行ID直接跳过。重新provision
 ## Migration Plan
 父代理文档/集成；runtime子代理只Desktop Host与测试；UI子代理只Web状态展示与测试，各自Task worktree。完整回归与本地应用包验证后合并、归档、清理。
 ## Open Questions
-用户首次新增还是重绑定场景已异步询问；两条已确认缺陷均在范围内。
+用户确认主场景为首次新增后启用：必须验证后台下一轮启动和UI健康自动更新；重新绑定缺陷是独立回归一并修复。
