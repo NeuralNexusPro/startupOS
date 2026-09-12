@@ -16,7 +16,7 @@ Web/Desktop/worker 边界 → Core features/modules 业务组装 → integration
 | 集成层业务工具直接引用文档、本体和 scheduler | 业务工具及组装上移，底层保留 registry 和通用执行 |
 | 通用聊天列表引用业务 UI | 将 ToolExecutionFrame 移到 ui/chat |
 
-详细调用路径、数据所有权、迁移、风险和 subagent 写入边界见 [Proposal 设计](../../../../openspec/changes/fix-reported-architecture-violations/design.md)。不得使用动态字符串导入、类型豁免或整体重新分类来绕过规则。
+详细调用路径、数据所有权、迁移、风险和 subagent 写入边界见 [Proposal 设计](../../../../openspec/changes/archive/2026-09-12-fix-reported-architecture-violations/design.md)。不得使用动态字符串导入、类型豁免或整体重新分类来绕过规则。
 
 ## 验证
 

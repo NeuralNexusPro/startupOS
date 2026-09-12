@@ -1,6 +1,6 @@
 # 开发文档 - Story AG.2
 
-**任务:** AG2-T1；**更新:** 2026-09-11；**状态:** 实现完成，交付验证收尾。
+**任务:** AG2-T1；**更新:** 2026-09-12；**状态:** 已合入 dev 并归档。
 
 ## 实际实现
 
@@ -36,3 +36,5 @@ IPC/Skill/UserRegistry契约移至types，配置读写移至storage，记忆解�
 ## 2026-09-12 最终交付验证
 
 追加提交 3b926df 将 React Store 保留在独立公共入口 features/agent/local-store，服务端业务入口不再加载 React。实际 Electron ASAR 中 skill/persistent 两类 worker 冷启动、业务工具注册、路径授权和关闭均通过；持久会话落盘通过。完整桌面重编译和 macOS arm64 本地打包通过。
+
+交付：dev 合并提交 7e652ea；Proposal 与四个 Task 工作树和分支均已清理。用户后续报告的“旧会话恢复后再次发送 channel 错误”另行排查，未将该未复现问题列为已解决。
