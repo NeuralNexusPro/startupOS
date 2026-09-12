@@ -52,3 +52,5 @@
 ## AG2-T2 / TC12 旧会话恢复后继续发送
 
 实现前验收：旧角色中文 ID、旧技能 skill-中文 ID、ASCII 助手均通过真实 ingress，保留 sessionId/sessionProjectId；显式元数据覆盖旧 agentType；真实项目行为不变，非法路径及项目 ID 仍被拒绝。先红后绿。随后运行 Desktop channel UI/compose、Core 渠道回归、lint、边界、自测、桌面构建及实际 ASAR worker 验证。人工步骤：退出旧版，打开新测试包，从定时任务通知打开旧角色/技能会话并发送；不自动调用真实 LLM。
+
+AG2-T2 结果：Task a2cf514，红测 5 失败，修复后 Desktop 18 / Core Channel 43 项通过；Web/Desktop 类型通过；Proposal Desktop 编译和集成测试通过，866 文件零违规、检查器 43×2 自测通过、lint 无错误。日志 /private/tmp/originos-restored-{integrated,build,lint,boundaries,selftest}.log。实际应用包与 SENSE12-T2 一起交付验证，不声称人工通知或真实 LLM 测试通过。

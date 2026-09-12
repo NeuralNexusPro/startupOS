@@ -1886,3 +1886,7 @@
 - 修复通知打开中文技能/角色的CHANNEL_RUNTIME_FAILED：业务目录标识支持Unicode，保留传输与路径安全限制。
 - 修复会话复用覆盖记忆快照；新增真实worker冷启动/工具执行与Role/Project恢复验证。
 - 完整桌面构建通过；保留15项既有协作测试失败，无本次新增失败。Story实现与验证详见docs/specs/epic-AG/story-AG.2/。
+
+### 2026-09-12：旧通知会话继续发送兼容修复
+
+AG2-T2 修复旧角色/Skill/助手会话缺入口元数据时被映射为项目，导致 CHANNEL_RUNTIME_FAILED；保留显式元数据优先与路径校验。Desktop 18、Core Channel 43 项回归通过。
