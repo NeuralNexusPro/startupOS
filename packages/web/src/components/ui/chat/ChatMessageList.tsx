@@ -4,7 +4,7 @@ import { useRef, useEffect } from 'react';
 import { Loader2, Wrench } from 'lucide-react';
 import { cn } from '@originos/core/lib/utils';
 import { sanitizeAgentDisplayContent } from '@originos/core/lib/integrations/pi-agent/display-content';
-import ToolExecutionFrame, { type ToolExecution } from '@/components/os/agent-dialog/ToolExecutionFrame';
+import ToolExecutionFrame, { type ToolExecution } from '@/components/ui/chat/ToolExecutionFrame';
 import { MarkdownContent, normalizeAskUserQuestion, parseAskUserQuestion, removeYamlBlock, AskUserQuestionComponent, type ChatMessageData } from '@/components/ui/chat-message';
 
 // ============================================================================

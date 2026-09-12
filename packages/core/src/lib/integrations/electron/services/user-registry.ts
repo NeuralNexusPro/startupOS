@@ -1,6 +1,6 @@
 import { getIpcRenderer, isElectron } from '../env';
 import { IPC_CHANNELS, type IpcResponse } from '../ipc-protocol';
-import type { UserAgent, UserSkill } from '../../../features/user-registry';
+import type { UserAgent, UserSkill } from '../../../../types/user-registry';
 
 async function readJsonResponse<T>(response: Response): Promise<T> {
   const payload = (await response.json()) as T;

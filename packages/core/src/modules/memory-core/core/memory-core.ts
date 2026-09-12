@@ -11,17 +11,9 @@ import { RecallMemory } from '../recall/recall-memory';
 import { CoreMemoryTools } from '../tools/core-memory-tools';
 import { ArchivalMemoryTools } from '../tools/archival-memory-tools';
 import { CognitionBank } from '../bank';
-import type { CognitionScope } from '../bank';
 
-export interface MemoryOwnershipContext {
-  ownerScope: Exclude<CognitionScope, 'user'>;
-  ownerId: string;
-  userId?: string;
-  dataRoot: string;
-  workingDirectory: string;
-  ownerDirectory?: string;
-  sessionId?: string;
-}
+import type { MemoryOwnershipContext } from '../../../lib/shared/cognitive/cognition-types';
+export type { MemoryOwnershipContext } from '../../../lib/shared/cognitive/cognition-types';
 
 export class MemoryCore {
   readonly agentDir: string;

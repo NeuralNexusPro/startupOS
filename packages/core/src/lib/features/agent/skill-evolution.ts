@@ -8,37 +8,13 @@
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join, dirname } from 'path';
-import { agentManager } from './agent-manager';
+import { agentManager } from './runtime';
 import type { ApiResponse } from '../../../types/api';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export interface EvolutionRun {
-  timestamp: string;
-  sessionId: string;
-  success: boolean;
-  turnCount: number;
-  duration: number; // ms
-  error?: string;
-}
-
-export interface EvolutionState {
-  runs: EvolutionRun[];
-  lastEvolution?: string; // ISO timestamp
-  version: number;
-}
-
-export interface EvolutionResult {
-  evolved: boolean;
-  changes?: string[];
-  error?: string;
-}
-
-export interface SkillEvolutionRequest {
-  skillDir?: string;
-  skillName?: string;
-  run?: EvolutionRun;
-}
+import type { EvolutionRun, EvolutionState, EvolutionResult, SkillEvolutionRequest } from '../../../types/skill-evolution';
+export type { EvolutionRun, EvolutionState, EvolutionResult, SkillEvolutionRequest } from '../../../types/skill-evolution';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 

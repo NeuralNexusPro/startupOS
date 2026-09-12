@@ -272,3 +272,11 @@ src/modules/** ≈ 102 处
 ## 2026-09-11 首轮治理
 
 AG.5 拆出 AG5-T1：修正现有 Monorepo 架构检查。提案 `fix-monorepo-boundary-lint` 已批准并完成检查器实现；新增 [34 条存量基线](story-AG.5/lint-baseline.md)。AG.1 历史目标多数已消失，本轮不重复删除；不以此声明 AG.1 全部验收通过。其他 Story 状态保持待重新核实。
+
+## 2026-09-11 存量违规修复提案
+
+[AG.2](story-AG.2/README.md) 的 AG2-T1 已按当前 Monorepo 规约更新范围和测试用例，提案 `fix-reported-architecture-violations` 待审查批准，尚未实施。当前仍有34处违规，不以文档更新视为修复完成。
+
+## 2026-09-12 AG2-T1交付验证
+
+AG2-T1当前34处存量边界已修复，通知中文入口及会话恢复快照回归已覆盖。其他Story状态不因此自动改变；准确证据见[AG.2](story-AG.2/README.md)。

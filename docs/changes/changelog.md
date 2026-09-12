@@ -1879,3 +1879,10 @@
 **类型**：fix
 **影响模块**：.eslintrc.cjs、scripts/check-architecture-boundaries.cjs、package.json、AGENTS.md、docs/specs/epic-AG
 **摘要**：使用固定仓库根与各包 resolver 修复随 CWD 漏报，复用现有 ESLint 新增 lint:boundaries 与真实导入自测，零新增依赖。43 × 2 用例通过，原 lint 非架构诊断零变化；扫描 853 个生产文件记录 34 条未解决存量，不掩盖违规。
+
+## 2026-09-12 架构治理与通知入口修复
+
+- AG2-T1 消除原34处边界违规：Core业务组装从基础设施上移，公共DTO/解析/配置下沉，通用聊天组件归位；原围栏下866生产文件0诊断。
+- 修复通知打开中文技能/角色的CHANNEL_RUNTIME_FAILED：业务目录标识支持Unicode，保留传输与路径安全限制。
+- 修复会话复用覆盖记忆快照；新增真实worker冷启动/工具执行与Role/Project恢复验证。
+- 完整桌面构建通过；保留15项既有协作测试失败，无本次新增失败。Story实现与验证详见docs/specs/epic-AG/story-AG.2/。

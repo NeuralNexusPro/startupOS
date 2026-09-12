@@ -1,4 +1,4 @@
-import { readUserConfig } from '../../features/user-config';
+import { readUserConfig } from '../../storage/user-config';
 
 export type GlobalUserLanguage = 'zh-CN' | 'en-US' | 'ja-JP';
 

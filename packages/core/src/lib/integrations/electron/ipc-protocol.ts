@@ -201,7 +201,7 @@ export interface EntryExportResponse {
 export type {
   SkillEvolutionRequest,
   EvolutionResult as SkillEvolutionResult,
-} from '../pi-agent/skill-evolution';
+} from '../../../types/skill-evolution';
 
 export type {
   SkillContentRequest,
@@ -220,7 +220,7 @@ export type {
   SkillListResponse,
   SkillSessionsRequest,
   SkillSessionsResponse,
-} from '../../features/skills/service';
+} from '../../../types/skill-service';
 
 export type {
   Project,
@@ -238,7 +238,7 @@ export type {
 export type {
   UserAgent,
   UserSkill,
-} from '../../features/user-registry';
+} from '../../../types/user-registry';
 
 // ── Project Agent IPC Types ──────────────────────────────────────────
 

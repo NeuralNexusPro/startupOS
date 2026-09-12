@@ -5,10 +5,10 @@
 
 import type { Static } from "@sinclair/typebox";
 import { Type } from "@sinclair/typebox";
-import type { ToolRegistration } from "../types";
+import type { ToolRegistration } from "../../../integrations/pi-agent/types";
 import type { AgentToolResult, AgentToolUpdateCallback } from "@originos/pi-agent-adapter";
 
-import * as ontologyOps from "../../../../lib/features/ontology-data-store/ontology-ops";
+import * as ontologyOps from '../../ontology-data-store';
 
 // ============================================================================
 // 工具执行辅助

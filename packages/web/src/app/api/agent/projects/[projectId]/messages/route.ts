@@ -7,7 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { persistentAgentManager } from '@originos/core/lib/integrations/pi-agent/persistent-agent-manager';
+import { persistentAgentManager } from '@originos/core/lib/features/agent/server';
 import { sanitizeAgentDisplayContent } from '@originos/core/lib/integrations/pi-agent/display-content';
 import { getVisibleStreamDelta, reconcileFinalStreamContent } from '@originos/core/lib/integrations/pi-agent/stream-dedupe';
 import { getRuntimeAgent, setRuntimeAgent, type ProjectRuntimeAgent } from '@/app/api/agent/_runtime-agent-registry';

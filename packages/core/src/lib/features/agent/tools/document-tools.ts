@@ -7,17 +7,17 @@
 import type { Static } from "@sinclair/typebox";
 import { Type } from "@sinclair/typebox";
 import type { AgentToolResult, AgentToolUpdateCallback } from "@originos/pi-agent-adapter";
-import type { ToolRegistration } from "../types";
+import type { ToolRegistration } from "../../../integrations/pi-agent/types";
 import path from "path";
 import { promises as fs } from "fs";
-import { resolveToolPath } from "./path-utils";
+import { resolveToolPath } from "../../../integrations/pi-agent/tools/path-utils";
 import {
 	parseDocument,
 	parseWorkbook,
 	sliceDocumentText,
 	type DocumentAst,
 	type WorkbookSheet,
-} from "../../../features/document";
+} from "../../document/index";
 
 const DEFAULT_TEXT_LIMIT = 12000;
 const DEFAULT_ROW_LIMIT = 200;

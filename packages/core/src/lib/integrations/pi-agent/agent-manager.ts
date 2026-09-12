@@ -7,14 +7,14 @@
 
 import { OriginOSAgent, createOriginOSAgent } from './core/agent';
 import type { AgentEvent, AgentTool } from '@originos/pi-agent-adapter';
-import { initializeBuiltInTools, getAgentToolsForScope } from './tools/index';
-import { createAutoModel, createRuntimeModel } from './server-config';
+import { getAgentToolsForScope } from './tools/index';
+import { createRuntimeModel } from './server-config';
 import { setToolContext, removeToolContext, getToolContextManager, type ToolExecutionContext } from './tools/context';
 import { bindToolsToSession } from './tools/bind-session';
 import { detectCorrections } from './cognitive/pattern/correction-detector';
 import type { RuntimeLLMConfig } from './llm-config';
 import type { AgentSession } from '../../../types/agent';
-import type { MemoryOwnershipContext, ObservationContext } from '../../../modules/memory-core';
+import type { MemoryOwnershipContext, ObservationContext } from '../../shared/cognitive/cognition-types';
 import {
   AgentTaskRuntimeCoordinator,
   type AgentTaskRuntimeSnapshotV1,
@@ -27,7 +27,7 @@ type CognitiveSessionEndManager = {
 
 export type AgentMemoryOwnership = Omit<MemoryOwnershipContext, 'workingDirectory' | 'sessionId'>;
 
-interface InProcessAgentOptions {
+export interface InProcessAgentOptions {
   systemPrompt?: string;
   agentType?: string;
   agentBaseDir?: string;
@@ -44,6 +44,7 @@ interface InProcessAgentOptions {
 interface AgentEntry {
   agent: OriginOSAgent;
   cognitiveManager?: CognitiveSessionEndManager;
+  baseSystemPrompt?: string;
   sessionId: string;
   projectId: string;
   createdAt: number;
@@ -54,6 +55,14 @@ interface AgentEntry {
 /**
  * Agent Manager configuration
  */
+export interface AgentManagerDependencies {
+  initializeTools(): void;
+  integrateMemory(agent: OriginOSAgent, sessionId: string, options: InProcessAgentOptions & { agentBaseDir: string }): Promise<{
+    cognitiveManager: import('./cognitive/manager').CognitiveManager;
+    memoryProvider: { system_prompt_block(): Promise<string> };
+  }>;
+}
+
 export interface AgentManagerConfig {
   /**
    * Maximum number of idle agents to keep in memory
@@ -111,7 +120,7 @@ export class AgentManager {
   private taskRuntimes = new Map<string, AgentTaskRuntimeCoordinator>();
   private config: Required<AgentManagerConfig>;
 
-  constructor(config?: AgentManagerConfig) {
+  constructor(config?: AgentManagerConfig, private readonly dependencies?: AgentManagerDependencies) {
     this.config = {
       maxIdleAgents: config?.maxIdleAgents ?? 50,
       idleTimeoutMs: config?.idleTimeoutMs ?? 30 * 60 * 1000, // 30 minutes
@@ -140,8 +149,9 @@ export class AgentManager {
       entry.lastAccessedAt = Date.now();
 
       // Update systemPrompt if provided and different
-      if (options?.systemPrompt && entry.agent.isInitialized()) {
+      if (options?.systemPrompt && options.systemPrompt !== entry.baseSystemPrompt && entry.agent.isInitialized()) {
         entry.agent.setSystemPrompt(options.systemPrompt);
+        entry.baseSystemPrompt = options.systemPrompt;
       }
 
       // Apply llmConfig if provided (launcher may have created agent without it)
@@ -179,7 +189,8 @@ export class AgentManager {
 
     // Ensure built-in tools are registered
     const toolsInitAt = Date.now();
-    initializeBuiltInTools();
+    if (!this.dependencies) throw new Error('Agent business dependencies are required');
+    this.dependencies.initializeTools();
     console.log(`[AgentManager] Built-in tools ready in ${Date.now() - toolsInitAt}ms`);
 
     // Set tool execution context so file tools resolve to the correct directory
@@ -205,6 +216,7 @@ export class AgentManager {
     this.agents.set(sessionId, {
       agent,
       cognitiveManager: this.getCognitiveManager(agent),
+      baseSystemPrompt: options?.systemPrompt,
       sessionId,
       projectId,
       createdAt: Date.now(),
@@ -355,116 +367,13 @@ export class AgentManager {
     const hasLegacyCognitiveOwner = Boolean(options?.agentBaseDir && options.agentType !== 'skill');
     const hasExplicitCognitiveOwner = Boolean(options?.memoryOwnership);
     if (hasLegacyCognitiveOwner || hasExplicitCognitiveOwner) {
-      try {
-        if (!options?.agentBaseDir) {
-          throw new Error('Cognitive integration requires agentBaseDir');
-        }
-        if (options.memoryOwnership && !options.observationContext) {
-          throw new Error('Explicit memory ownership requires observationContext');
-        }
-        const memoryStart = Date.now();
-        const { MemoryCore } = await import('../../../modules/memory-core');
-        const { MemoryProvider } = await import('../../../modules/memory-core/session/memory-provider');
-        const { CognitiveManager } = await import('./cognitive/manager');
-        const { ArchivalMemoryTools } = await import('../../../modules/memory-core/tools/archival-memory-tools');
-
-        const { PracticeLogger } = await import('./cognitive/practice-logger');
-        const { PatternProvider } = await import('./cognitive/pattern/index');
-        const { createOwnedCognitiveProviders } = await import('./cognitive/provider-factory');
-
-        const owned = options.memoryOwnership && options.observationContext
-          ? createOwnedCognitiveProviders({
-              ...options.memoryOwnership,
-              workingDirectory: options.agentBaseDir,
-              sessionId,
-            }, options.observationContext)
-          : null;
-        const memoryCore = owned?.memoryCore ?? new MemoryCore(options.agentBaseDir, sessionId);
-        const memoryProvider = owned?.memoryProvider ?? new MemoryProvider(
-          memoryCore,
-          sessionId,
-          undefined,
-          undefined,
-          { createAutoModel },
-        );
-        const cognitiveManager = new CognitiveManager(options.agentBaseDir);
-        cognitiveManager.register(new PracticeLogger(options.agentBaseDir));
-        cognitiveManager.register(memoryProvider);
-        if (owned) {
-          cognitiveManager.register(owned.knowledgeProvider);
-        }
-        const patternProvider = owned?.patternProvider ?? new PatternProvider(options.agentBaseDir, memoryCore.archival);
-        patternProvider.initialize()
-          .then(() => console.log(`[AgentManager] PatternProvider initialized in background for ${sessionId}`))
-          .catch((e: unknown) => console.warn('[AgentManager] PatternProvider init error:', e));
-        cognitiveManager.register(patternProvider);
-
-        const coreMemoryTools = memoryCore.coreTools;
-        const archivalMemoryTools = new ArchivalMemoryTools(memoryCore.archival);
-
-        const registerMemoryTool = (name: string, description: string, label: string, params: unknown, execute: (toolCallId: string, args: any) => Promise<{ content: { type: string; text: string }[]; details: {} }>) => {
-          agent.registerTool({ name, description, label, parameters: params, execute } as any);
-        };
-
-        registerMemoryTool('core_memory_append', 'Append content to a core memory block. Available blocks: human, persona, project, scratchpad, temporal.',
-          'core_memory_append',
-          { type: 'object', properties: { label: { type: 'string' }, content: { type: 'string' } }, required: ['label', 'content'] },
-          async (_toolCallId, args) => {
-            if (!args?.label) return { content: [{ type: 'text', text: "Error: 'label' parameter is required. Available blocks: human, persona, project, scratchpad, temporal." }], details: {} };
-            if (!args?.content) return { content: [{ type: 'text', text: "Error: 'content' parameter is required." }], details: {} };
-            const result = await coreMemoryTools.core_memory_append(args.label, args.content);
-            return { content: [{ type: 'text', text: result }], details: {} };
-          });
-        registerMemoryTool('core_memory_replace', 'Replace content in a core memory block. Available blocks: human, persona, project, scratchpad, temporal.',
-          'core_memory_replace',
-          { type: 'object', properties: { label: { type: 'string' }, old_content: { type: 'string' }, new_content: { type: 'string' } }, required: ['label', 'old_content', 'new_content'] },
-          async (_toolCallId, args) => {
-            if (!args?.label) return { content: [{ type: 'text', text: "Error: 'label' parameter is required. Available blocks: human, persona, project, scratchpad, temporal." }], details: {} };
-            if (!args?.old_content) return { content: [{ type: 'text', text: "Error: 'old_content' parameter is required." }], details: {} };
-            if (!args?.new_content) return { content: [{ type: 'text', text: "Error: 'new_content' parameter is required." }], details: {} };
-            const result = await coreMemoryTools.core_memory_replace(args.label, args.old_content, args.new_content);
-            return { content: [{ type: 'text', text: result }], details: {} };
-          });
-        registerMemoryTool('insert_memory_block', 'Create a new custom core memory block.',
-          'insert_memory_block',
-          { type: 'object', properties: { label: { type: 'string' }, value: { type: 'string' }, description: { type: 'string' } }, required: ['label', 'value'] },
-          async (_toolCallId, args) => {
-            const result = await coreMemoryTools.insert_memory_block(args.label, args.value, args.description);
-            return { content: [{ type: 'text', text: result }], details: {} };
-          });
-        registerMemoryTool('read_memory_block', 'Read a core memory block.',
-          'read_memory_block',
-          { type: 'object', properties: { label: { type: 'string' } }, required: ['label'] },
-          async (_toolCallId, args) => {
-            const result = await coreMemoryTools.read_memory_block(args.label);
-            return { content: [{ type: 'text', text: result }], details: {} };
-          });
-        registerMemoryTool('archival_memory_insert', 'Insert text into archival memory.',
-          'archival_memory_insert',
-          { type: 'object', properties: { text: { type: 'string' }, tags: { type: 'array', items: { type: 'string' } } }, required: ['text'] },
-          async (_toolCallId, args) => {
-            const result = await archivalMemoryTools.archival_memory_insert(args.text, args.tags);
-            return { content: [{ type: 'text', text: result }], details: {} };
-          });
-        registerMemoryTool('archival_memory_search', 'Semantically search archival memory.',
-          'archival_memory_search',
-          { type: 'object', properties: { query: { type: 'string' }, limit: { type: 'number' } }, required: ['query'] },
-          async (_toolCallId, args) => {
-            const result = await archivalMemoryTools.archival_memory_search(args.query, args.limit);
-            return { content: [{ type: 'text', text: result }], details: {} };
-          });
-
-        // 将 Memory 快照注入 system prompt
-        this.injectMemoryIntoSystemPrompt(agent, memoryProvider);
-
-        // 订阅 turn_end → cognitiveManager.on_turn_end
-        this.subscribeInProcessCognitive(agent, cognitiveManager, sessionId);
-        this.setCognitiveManager(agent, cognitiveManager);
-
-        console.log(`[AgentManager] Memory Core integrated for in-process agent session ${sessionId} in ${Date.now() - memoryStart}ms`);
-      } catch (err) {
-        console.warn('[AgentManager] Failed to integrate Memory Core for in-process agent:', err);
-      }
+      if (!options?.agentBaseDir) throw new Error('Cognitive integration requires agentBaseDir');
+      if (options.memoryOwnership && !options.observationContext) throw new Error('Explicit memory ownership requires observationContext');
+      if (!this.dependencies?.integrateMemory) throw new Error('Agent business memory integration is required');
+      const { cognitiveManager, memoryProvider } = await this.dependencies.integrateMemory(agent, sessionId, { ...options, agentBaseDir: options.agentBaseDir });
+      this.injectMemoryIntoSystemPrompt(agent, memoryProvider);
+      this.subscribeInProcessCognitive(agent, cognitiveManager, sessionId);
+      this.setCognitiveManager(agent, cognitiveManager);
     }
 
     return agent;
@@ -764,25 +673,3 @@ export class AgentManager {
     }
   }
 }
-
-/**
- * Global singleton instance — 挂载到 globalThis 避免 Next.js HMR 实例隔离。
- * AgentManager 持有 CollaborationAgentBridge 的引用，HMR 后必须复用已有 entry。
- */
-declare global {
-  // eslint-disable-next-line no-var
-  var __globalAgentManager: AgentManager | undefined;
-}
-
-function getGlobalAgentManager(): AgentManager {
-  if (!globalThis.__globalAgentManager) {
-    globalThis.__globalAgentManager = new AgentManager({
-      maxIdleAgents: 50,
-      idleTimeoutMs: 30 * 60 * 1000, // 30 minutes
-      debug: process.env['NODE_ENV'] === 'development',
-    });
-  }
-  return globalThis.__globalAgentManager;
-}
-
-export const agentManager = getGlobalAgentManager();

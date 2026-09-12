@@ -106,7 +106,8 @@ vi.mock("./core/agent.js", () => ({
 import "./__tests__/mocks";
 
 // Import after mocking
-import { usePiAgentStore } from "./store";
+import { createPiAgentStore } from "./store";
+const usePiAgentStore = createPiAgentStore(() => {});
 
 // ============================================================================
 // Test Data

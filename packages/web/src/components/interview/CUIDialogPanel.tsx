@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { ChatMessageList } from '@/components/ui/chat';
 import { ChatInputBar, type UploadedFileDisplay } from '@/components/ui/chat-input-bar';
 import { useFileUpload, type UploadedFile } from '@/lib/hooks/use-file-upload';
-import type { ToolExecution } from '@/components/os/agent-dialog/ToolExecutionFrame';
+import type { ToolExecution } from '@/components/ui/chat/ToolExecutionFrame';
 
 interface Message {
   role: 'user' | 'assistant';

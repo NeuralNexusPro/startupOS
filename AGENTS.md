@@ -1,7 +1,7 @@
 # OriginOS 架构规约 (AGENTS.md)
 
-**版本：** 2.5.3
-**日期：** 2026-09-11
+**版本：** 2.5.4
+**日期：** 2026-09-12
 **状态：** 强制执行
 
 ---
@@ -437,8 +437,8 @@ interface OntologySkill {
 - `core/agent.ts`：OriginOSAgent 主体，管理会话生命周期
 - `core/skills.ts`：技能多源加载（bundled / project / user）
 - `hooks/`：React 端 `usePiAgent` Hook
-- `tools/`：Agent 工具集（bash、file、skill、ontology、url）
-- `agent-manager.ts`：Agent 实例管理，按 scope 过滤工具
+- `tools/`：通用工具、registry 与执行协议（bash、file、skill、url）；文档、本体、定时任务等业务工具位于 `packages/core/src/lib/features/agent/tools/`。
+- `agent-manager.ts`：底层 Agent 实例管理，按 scope 过滤工具；业务工具与记忆能力由上层注入，组装单例从 `@originos/core/lib/features/agent/server` 获取。
 - `session-store.ts`：会话持久化
 
 ### 2. RoleAgent 架构
@@ -524,7 +524,7 @@ turn_end hook
 | `Knowledge.md` | 知识库索引快照 | 周期更新 |
 | `Patterns.md` | 经验模式索引快照 | 周期更新 |
 
-**Project Agent 通过 `persistent-agent-manager.ts` 启动，在 `startAgent()` 时加载 `ProjectContext`，构建 7 层 prompt，传入 `PersistentAgent`。**
+**Project Agent 通过 `packages/core/src/lib/features/agent/persistent-agent-manager.ts` 启动，在 `startAgent()` 时加载 `ProjectContext`，构建 7 层 prompt，传入 `PersistentAgent`。**
 
 **Frozen Snapshot 模式**：Knowledge.md 和 Patterns.md 在 Agent 启动时加载到 system prompt（Layer 2: StateMemory），中途生成的知识只写入磁盘，不修改内存中的快照，保持 LLM prefix cache 稳定。
 

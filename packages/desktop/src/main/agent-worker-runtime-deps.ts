@@ -9,7 +9,7 @@
 
 import '../../../core/src/lib/integrations/pi-agent/cognitive/knowledge-provider';
 import '../../../core/src/lib/integrations/pi-agent/cognitive/manager';
-import '../../../core/src/lib/integrations/pi-agent/cognitive/pattern/index';
+import '../../../core/src/lib/features/agent/cognitive/pattern/index';
 import '../../../core/src/lib/integrations/pi-agent/cognitive/practice-logger';
 import '../../../core/src/lib/integrations/pi-agent/cognitive/sleep-compute';
 import '../../../core/src/lib/integrations/pi-agent/core/agent';
@@ -27,3 +27,5 @@ import '../../../core/src/modules/memory-core/index';
 import '../../../core/src/modules/memory-core/session/memory-provider';
 import '../../../core/src/modules/memory-core/tools/archival-memory-tools';
 import '../../../core/src/modules/memory-core/tools/core-memory-tools';
+
+import '../../../core/src/lib/features/agent/server/index';

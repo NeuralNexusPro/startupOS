@@ -239,6 +239,15 @@ describe('Memory', () => {
   });
 
   describe('parseMemoryMd', () => {
+    it('preserves empty input, defaults, duplicate headings and invalid capacity', () => {
+      expect(parseBlocksFromMarkdown('')).toEqual(new Map());
+      const blocks = parseBlocksFromMarkdown('preamble\n## human\nfirst\n## human\n{limit: invalid}\n{readOnly: true}\n final  \n## persona\nplain');
+      expect(Array.from(blocks.values())).toEqual([
+        { label: 'human', value: 'final', limit: 2000, description: 'human', metadata: {}, readOnly: true },
+        { label: 'persona', value: 'plain', limit: 2000, description: 'persona', metadata: {}, readOnly: false },
+      ]);
+    });
+
     it('exposes the parser for context loaders', () => {
       const blocks = parseBlocksFromMarkdown(
         '# Memory\n\n## human\n{description: User facts}\n{limit: 42}\n{readOnly: false}\n\nPrefers concise answers\n',

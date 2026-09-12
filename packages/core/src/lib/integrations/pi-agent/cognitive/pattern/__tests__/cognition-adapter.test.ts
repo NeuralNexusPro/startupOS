@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ArchivalMemory } from '../../../../../../modules/memory-core/archival/archival-memory';
-import { PatternProvider } from '../index';
+import { PatternProvider } from '../../../../../features/agent/cognitive/pattern/index';
 import type { PatternEvidenceCandidate } from '../../../../../../modules/memory-core/bank';
 
 let directory: string;

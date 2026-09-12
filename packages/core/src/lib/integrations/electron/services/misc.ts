@@ -1,6 +1,6 @@
 import { getIpcRenderer, isElectron } from '../env';
 import { IPC_CHANNELS, type IpcResponse } from '../ipc-protocol';
-import type { EntryType } from '../../../features/services/launcher/base';
+import type { EntryType } from '../../../../types/agent-entry';
 import type { RuntimeLLMConfig } from '../../pi-agent/llm-config';
 
 async function readJsonResponse<T>(response: Response): Promise<T> {

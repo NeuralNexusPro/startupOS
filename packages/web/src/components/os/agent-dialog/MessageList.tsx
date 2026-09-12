@@ -7,7 +7,7 @@
 import type { ThinkingData } from '@originos/core/types';
 import type { ReactNode } from 'react';
 import type { ChatMessageItem } from '@/components/ui/chat';
-import type { ToolExecution } from '@/components/os/agent-dialog/ToolExecutionFrame';
+import type { ToolExecution } from '@/components/ui/chat/ToolExecutionFrame';
 import { ChatMessageList } from '@/components/ui/chat';
 
 export interface Message extends ChatMessageItem {

@@ -1,3 +1,4 @@
+import { createOwnedCognitiveProviders } from './cognitive/provider-factory';
 /**
  * Persistent Agent Manager - 管理多个项目的持久化 Agent
  *
@@ -17,17 +18,18 @@ import {
 	type AgentDefinition,
 	type ToolDefinition,
 	type AgentStatus,
-} from './persistent-agent';
-import { loadProjectContext } from './project-agent/project-context';
-import { buildProjectPromptLayers, assembleProjectPrompt } from './project-agent/project-prompt';
-import { provisionProjectSkills } from './project-agent/project-skill-provisioning';
-import { initializeBuiltInTools } from './tools/index';
-import { CognitiveManager, PracticeLogger, KnowledgeIngest, createOwnedCognitiveProviders } from './cognitive';
-import { ObservationPolicyResolver, type MemoryCore, ArchivalMemoryTools } from '../../../modules/memory-core';
+} from '../../integrations/pi-agent/persistent-agent';
+import { loadProjectContext } from '../../integrations/pi-agent/project-agent/project-context';
+import { buildProjectPromptLayers, assembleProjectPrompt } from '../../integrations/pi-agent/project-agent/project-prompt';
+import { provisionProjectSkills } from '../../integrations/pi-agent/project-agent/project-skill-provisioning';
+import { initializeBuiltInTools } from './tools';
+import { agentSessionService } from './session-service';
+import { CognitiveManager, PracticeLogger, KnowledgeIngest } from '../../integrations/pi-agent/cognitive/index';
+import { ObservationPolicyResolver, type MemoryCore, ArchivalMemoryTools } from '../../../modules/memory-core/index';
 import fs from 'fs/promises';
 import path from 'path';
 import { getDataRoot } from '../../paths';
-import type { RuntimeLLMConfig } from './llm-config';
+import type { RuntimeLLMConfig } from '../../integrations/pi-agent/llm-config';
 
 // ============================================================================
 // Persistent Agent Manager
@@ -45,7 +47,6 @@ export class PersistentAgentManager {
 	constructor(baseDir?: string) {
 		this.baseDir = baseDir || path.join(getDataRoot(), 'projects');
 		// 确保内置工具已注册
-		initializeBuiltInTools();
 	}
 
 	/**
@@ -53,6 +54,7 @@ export class PersistentAgentManager {
 	 */
 	async startAgent(projectId: string, llmConfig?: RuntimeLLMConfig): Promise<PersistentAgent> {
 		console.log(`[Manager] ========== START AGENT: ${projectId} ==========`);
+		initializeBuiltInTools();
 		const t0 = Date.now();
 		let lastStepAt = t0;
 		const logStep = (label: string): void => {
@@ -154,6 +156,8 @@ export class PersistentAgentManager {
 		// 5. 创建 Agent 实例
 		console.log(`[Manager] Step 5: Creating agent instance...`);
 		const agent = new PersistentAgent({
+            initializeTools: initializeBuiltInTools,
+            sessionPersistence: agentSessionService,
 			projectId,
 			workingDirectory: projectDir,
 			agentDefinition: agentDef,

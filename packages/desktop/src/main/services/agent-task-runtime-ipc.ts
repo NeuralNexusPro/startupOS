@@ -6,7 +6,7 @@ import { agentSessionService } from '../../../../core/src/lib/features/agent';
 import {
   agentManager,
   type AgentTaskRuntimeBindingOptions,
-} from '../../../../core/src/lib/integrations/pi-agent/agent-manager';
+} from '../../../../core/src/lib/features/agent/server/index';
 import type { AgentTaskRuntimeCoordinator } from '../../../../core/src/lib/integrations/pi-agent/task-runtime/coordinator';
 import {
   AGENT_TASK_RUNTIME_PROTOCOL_VERSION,
