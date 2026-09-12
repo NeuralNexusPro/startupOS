@@ -41,7 +41,9 @@ export function summarizePerceptionHealth(
   if (enabled.length === 0) return { state: 'unconfigured', enabled: 0, healthy: 0, unhealthy: 0 };
   const healthByConnector = new Map(health.map((item) => [item.connectorId, item.status]));
   const healthy = enabled.filter((connector) => healthByConnector.get(connector.id) === 'healthy').length;
-  const unhealthy = enabled.length - healthy;
+  const unknown = enabled.filter((connector) => !healthByConnector.has(connector.id)).length;
+  const unhealthy = enabled.length - healthy - unknown;
+  if (unknown > 0 && unhealthy === 0) return { state: 'unknown', enabled: enabled.length, healthy, unhealthy };
   if (unhealthy === 0) return { state: 'healthy', enabled: enabled.length, healthy, unhealthy };
   if (healthy === 0) return { state: 'disconnected', enabled: enabled.length, healthy, unhealthy };
   return { state: 'warning', enabled: enabled.length, healthy, unhealthy };
@@ -95,8 +97,9 @@ export function PerceptionStatusButton({ connectors, health, eventTraces, loadin
             {summary.enabled > 0 && (
               <ul className="max-h-40 space-y-2 overflow-y-auto" aria-label="连接列表">
                 {connectors.filter((connector) => connector.enabled).slice(0, 10).map((connector) => {
-                  const healthy = healthByConnector.get(connector.id) === 'healthy';
-                  return <li key={connector.id} className="flex items-center justify-between rounded-xl bg-white/5 px-3 py-2"><span className="truncate text-slate-200">{connector.id}</span><span className={healthy ? 'text-green-600' : 'text-yellow-600'}>{healthy ? '正常' : '需要处理'}</span></li>;
+                  const status = healthByConnector.get(connector.id);
+                  const healthy = status === 'healthy';
+                  return <li key={connector.id} className="flex items-center justify-between rounded-xl bg-white/5 px-3 py-2"><span className="truncate text-slate-200">{connector.id}</span><span className={healthy ? 'text-green-600' : 'text-yellow-600'}>{healthy ? '正常' : status ? '需要处理' : '等待连接状态'}</span></li>;
                 })}
                 {summary.enabled > 10 && <li className="px-3 text-xs text-slate-500">其余 {summary.enabled - 10} 个请在感知中心查看</li>}
               </ul>

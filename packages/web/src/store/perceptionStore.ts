@@ -23,7 +23,8 @@ interface DashboardData {
 interface PerceptionState extends DashboardData {
   loading: boolean;
   error?: string;
-  load(): Promise<void>;
+  load(options?: { silent?: boolean }): Promise<void>;
+  startRefreshing(): () => void;
   setConnectorEnabled(id: string, enabled: boolean): Promise<void>;
   replay(connectorId: string, id: string): Promise<void>;
   saveConnector(config: PerceptionConnectorConfig): Promise<void>;
@@ -42,16 +43,43 @@ async function request(input: RequestInfo, init?: RequestInit): Promise<Dashboar
   return payload.data;
 }
 
+let pendingLoad: Promise<void> | undefined;
+let refreshUsers = 0;
+let refreshTimer: ReturnType<typeof setInterval> | undefined;
+
 export const usePerceptionStore = create<PerceptionState>((set, get) => ({
   ...EMPTY,
   loading: false,
-  load: async () => {
-    set({ loading: true, error: undefined });
-    try {
-      set({ ...(await request('/api/perception/management') as DashboardData), loading: false });
-    } catch {
-      set({ loading: false, error: '无法加载感知中心，请稍后重试' });
+  load: ({ silent = false } = {}) => {
+    if (silent && pendingLoad) return pendingLoad;
+    const load = (pendingLoad ?? Promise.resolve()).then(async () => {
+      if (!silent) set({ loading: true, error: undefined });
+      try {
+        set(await request('/api/perception/management') as DashboardData);
+      } catch {
+        if (!silent) set({ error: '无法加载感知中心，请稍后重试' });
+      } finally {
+        if (!silent) set({ loading: false });
+      }
+    });
+    pendingLoad = load;
+    void load.finally(() => { if (pendingLoad === load) pendingLoad = undefined; });
+    return load;
+  },
+  startRefreshing: () => {
+    if (refreshUsers++ === 0) {
+      void get().load();
+      refreshTimer = setInterval(() => { void get().load({ silent: true }); }, 5000);
     }
+    let stopped = false;
+    return () => {
+      if (stopped) return;
+      stopped = true;
+      if (--refreshUsers === 0) {
+        clearInterval(refreshTimer);
+        refreshTimer = undefined;
+      }
+    };
   },
   setConnectorEnabled: async (id, enabled) => {
     try {
