@@ -27,3 +27,7 @@
 | 2026-09-07 | 飞书回复接入官方 Markdown CardKit 流式更新与纯文本失败降级 | Codex |
 | 2026-09-07 | Email 迁入独立 poll plugin，增加隔离 State Port 并清理 Desktop 重复轮询 | Codex |
 | 2026-09-07 | 完成声明式 Connector 表单与统一 Plugin provisioning，删除三套平台专用配置通道 | Codex |
+
+## SENSE12-T2 追加修复交付（2026-09-12）
+
+已合入 dev，联合26项回归、桌面构建与实际应用包验证通过。见 [归档提案](../../../../openspec/changes/archive/2026-09-12-fix-email-plugin-activation/proposal.md) 和 [测试证据](testing.md)。

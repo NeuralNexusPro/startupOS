@@ -59,4 +59,4 @@ AG2-T2 结果：Task a2cf514，红测 5 失败，修复后 Desktop 18 / Core Cha
 
 Desktop 3 个文件 26 项联合回归通过；完整 desktop:build、macOS arm64 本地打包成功。实际 app.asar 内旧角色/Skill/助手发送映射和真实 ingress 通过；skill/persistent worker 冷启动、业务工具和授权检查通过。架构扫描866文件0违规、自测43×2通过、lint0错误2917既有警告。日志 /private/tmp/originos-bugfix-{delivery-tests,desktop-build,mac-pack,asar-workers,asar-restored,lint,boundaries,selftest}.log。未调用真实LLM或自动触发用户规则。
 
-产物：[OriginOS CE.app](/Users/archersado/workspace/startupOS/release/mac-arm64/OriginOS%20CE.app)。退出旧安装版后打开此本地测试包。用户的 /Applications 安装版未自动替换。
+产物：[OriginOS CE.app](</Users/archersado/workspace/startupOS/release/mac-arm64/OriginOS CE.app>)。退出旧安装版后打开此本地测试包。用户的 /Applications 安装版未自动替换。

@@ -25,3 +25,7 @@ AG2-T1 修复现有围栏报告的 34 处违规：33 处 Core 基础设施反向
 - [x] 隔离 Task 实施与集成
 - [x] Story 测试 goal 通过
 - [x] 合并、归档和清理
+
+## AG2-T2 追加修复交付（2026-09-12）
+
+已合入 dev，联合26项回归、桌面构建与实际应用包验证通过。见 [归档提案](../../../../openspec/changes/archive/2026-09-12-fix-restored-channel-target/proposal.md) 和 [测试证据](testing.md)。
