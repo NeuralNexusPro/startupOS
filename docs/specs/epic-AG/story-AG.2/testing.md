@@ -61,6 +61,6 @@ Desktop 3 个文件 26 项联合回归通过；完整 desktop:build、macOS arm6
 
 产物：[OriginOS CE.app](</Users/archersado/workspace/startupOS/release/mac-arm64/OriginOS CE.app>)。退出旧安装版后打开此本地测试包。用户的 /Applications 安装版未自动替换。
 
-## AG2-T3 / TC13 实施前验收：历史会话无响应
+## AG2-T3 / TC13 实施前验收：历史会话模型错误
 
-旧prompt保持pending → 真实Desktop ABORT → 恢复同会话发送，验证旧Agent取消、渠道流终结、串行锁释放、新回复到达。重复取消/无活动会话安全，其他会话隔离，旧事件迟到不污染新回复。源代码回归及实际编译/包内验证；不使用真实用户内容或远程模型。
+复用既有真实OriginOSAgent失败用例：关闭空回复重试时，assistant stopReason=error应使prompt拒绝（修前resolve(undefined)）。参数化开关两态；验证正常回复不变；经过真实Channel adapter输出failed而非空completed。模型与历史配置保持，不调用真实远程模型。日志/private/tmp/originos-history-error-red.log。
