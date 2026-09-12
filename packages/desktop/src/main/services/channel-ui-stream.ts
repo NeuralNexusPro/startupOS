@@ -20,10 +20,14 @@ interface UiChannelStreamRequest {
 }
 
 export function toUiChannelTarget(session: AgentSession): ChannelRuntimeTarget {
-  const entryId = session.projectContext.entryId ?? session.projectContext.projectId;
-  if (session.projectContext.entryType === 'role-agent') return { kind: 'role-agent', id: entryId };
-  if (session.projectContext.entryType === 'agent') return { kind: 'agent', id: entryId };
-  if (session.projectContext.entryType === 'skill') {
+  const entryType = session.projectContext.entryType
+    ?? (session.agentType === 'assistant' ? 'agent' : session.agentType);
+  const projectId = session.projectContext.projectId;
+  const entryId = session.projectContext.entryId
+    ?? (entryType === 'skill' && projectId.startsWith('skill-') ? projectId.slice('skill-'.length) : projectId);
+  if (entryType === 'role-agent') return { kind: 'role-agent', id: entryId };
+  if (entryType === 'agent') return { kind: 'agent', id: entryId };
+  if (entryType === 'skill') {
     return { kind: 'skill', id: entryId, ownership: { mode: 'ephemeral' } };
   }
   return {
