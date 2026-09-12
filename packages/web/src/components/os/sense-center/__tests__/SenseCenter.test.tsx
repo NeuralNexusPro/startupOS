@@ -3,17 +3,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ExternalTriggerGrant, PerceptionAuditEntry, PerceptionDeadLetter, PerceptionEventTrace, PerceptionTriggerRule } from '@originos/core/types';
 
 const load = vi.fn(async () => undefined);
+const startRefreshing = vi.fn(() => { void load(); return vi.fn(); });
 const replay = vi.fn(async () => undefined);
 const state: {
   connectors: []; grants: ExternalTriggerGrant[]; rules: PerceptionTriggerRule[]; health: [];
   deadLetters: PerceptionDeadLetter[]; audit: PerceptionAuditEntry[];
   eventTraces: PerceptionEventTrace[];
-  loading: boolean; error: string | undefined; load: typeof load; replay: typeof replay;
+  loading: boolean; error: string | undefined; startRefreshing: typeof startRefreshing; load: typeof load; replay: typeof replay;
   setConnectorEnabled: ReturnType<typeof vi.fn>; saveConnector: ReturnType<typeof vi.fn>; saveRule: ReturnType<typeof vi.fn>;
   deleteRule: ReturnType<typeof vi.fn>; saveGrant: ReturnType<typeof vi.fn>; deleteGrant: ReturnType<typeof vi.fn>;
 } = {
   connectors: [], grants: [], rules: [], health: [], deadLetters: [], audit: [], eventTraces: [], loading: false,
-  error: undefined, load, replay, setConnectorEnabled: vi.fn(), saveConnector: vi.fn(), saveRule: vi.fn(), deleteRule: vi.fn(), saveGrant: vi.fn(), deleteGrant: vi.fn(),
+  error: undefined, load, startRefreshing, replay, setConnectorEnabled: vi.fn(), saveConnector: vi.fn(), saveRule: vi.fn(), deleteRule: vi.fn(), saveGrant: vi.fn(), deleteGrant: vi.fn(),
 };
 vi.mock('@/store/perceptionStore', () => ({ usePerceptionStore: () => state }));
 
