@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
 import { useEffect } from 'react';
 import { PerceptionStatusButton } from '@/components/os/sense-center/PerceptionStatusButton';
-import { usePerceptionStore } from '../perceptionStore';
+import { usePerceptionStore } from '@/store/perceptionStore';
 
 const data: Pick<ReturnType<typeof usePerceptionStore.getState>, 'connectors' | 'grants' | 'rules' | 'health' | 'audit' | 'eventTraces' | 'deadLetters'> = { connectors: [], grants: [], rules: [], health: [], audit: [], eventTraces: [], deadLetters: [] };
 const response = (value = data) => ({ ok: true, json: async () => ({ success: true, data: value }) });
@@ -80,7 +80,8 @@ it('automatically displays first-enable health in the real status component and 
   fetchMock.mockResolvedValue(response(enabled));
   function Status(): JSX.Element {
     const state = usePerceptionStore();
-    useEffect(() => state.startRefreshing(), [state.startRefreshing]);
+    const { startRefreshing } = state;
+    useEffect(() => startRefreshing(), [startRefreshing]);
     return <PerceptionStatusButton {...state} onManage={() => {}} />;
   }
   const view = render(<Status />);
