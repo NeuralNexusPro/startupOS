@@ -80,3 +80,46 @@ it('passes a Unicode inherited role owner through real ingress', async () => {
   });
   expect(invoke).toHaveBeenCalledWith(expect.objectContaining({ target }));
 });
+
+// TC12: historical sessions predate projectContext.entryType/entryId.
+it.each([
+  ['role-agent', '执行 助手🤖', { kind: 'role-agent', id: '执行 助手🤖' }],
+  ['skill', 'skill-每日高优先级待办', { kind: 'skill', id: '每日高优先级待办', ownership: { mode: 'ephemeral' } }],
+  ['assistant', 'assistant-1', { kind: 'agent', id: 'assistant-1' }],
+] as const)('continues restored legacy %s through real ingress with the same session', async (agentType, projectId, target) => {
+  const invoke = vi.fn(async function* () { yield { type: 'completed' as const, resultRef: 'session://session-1' }; });
+  const ingress = new DefaultChannelMessageIngress({ invoke });
+  const send = vi.fn();
+  const legacySession = { ...session, agentType, projectContext: { projectId, projectName: 'Legacy session' } };
+  await runUiChannelStream({ ingress, session: legacySession, content: '继续执行', send });
+  expect(invoke).toHaveBeenCalledWith(expect.objectContaining({ target, sessionId: 'session-1', sessionProjectId: projectId }));
+  expect(send).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
+  expect(send).toHaveBeenCalledWith(expect.objectContaining({ type: 'done', data: { content: '', failed: false } }));
+});
+
+it('keeps explicit entry metadata authoritative over legacy agentType', () => {
+  expect(toUiChannelTarget({ ...session, agentType: 'skill' })).toEqual({ kind: 'role-agent', id: 'role-1' });
+  expect(toUiChannelTarget({ ...session, agentType: 'skill', projectContext: { projectName: 'Legacy skill', projectId: 'skill-legacy', entryType: 'skill', entryId: 'explicit-skill' } }))
+    .toEqual({ kind: 'skill', id: 'explicit-skill', ownership: { mode: 'ephemeral' } });
+});
+
+it.each(['project', 'unknown-agent-type'])('retains the project fallback for %s', agentType => {
+  expect(toUiChannelTarget({ ...session, agentType, projectContext: { projectId: 'project-1', projectName: 'Project' } }))
+    .toEqual({ kind: 'project-agent', id: 'project-1', projectId: 'project-1' });
+});
+
+it.each([
+  ['role-agent', '../outside'],
+  ['skill', 'skill-../outside'],
+  ['skill', 'skill-'],
+  ['project', '非法项目名'],
+] as const)('still rejects invalid restored %s identity %s before invoking runtime', async (agentType, projectId) => {
+  const invoke = vi.fn(async function* () { yield { type: 'completed' as const, resultRef: 'session://session-1' }; });
+  const send = vi.fn();
+  await runUiChannelStream({
+    ingress: new DefaultChannelMessageIngress({ invoke }),
+    session: { ...session, agentType, projectContext: { projectId, projectName: 'Invalid fixture' } }, content: 'continue', send,
+  });
+  expect(invoke).not.toHaveBeenCalled();
+  expect(send).toHaveBeenCalledWith(expect.objectContaining({ type: 'error', data: { message: 'CHANNEL_RUNTIME_FAILED' } }));
+});
