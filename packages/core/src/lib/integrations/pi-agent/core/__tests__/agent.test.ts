@@ -442,9 +442,9 @@ describe("OriginOSAgent", () => {
 			expect(receivedEvents.filter((event) => event.type === "agent_end")).toHaveLength(1);
 		});
 
-		it("surfaces an assistant stream error instead of reporting prompt completion", async () => {
+		it.each([false, true])("surfaces an assistant stream error with empty-stop recovery %s", async (emptyStopRecoveryEnabled) => {
 			const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
-			agent = new OriginOSAgent(basicConfig);
+			agent = new OriginOSAgent({ ...basicConfig, emptyStopRecoveryEnabled });
 			const internalAgent = (agent as any).agent;
 			const receivedEvents: any[] = [];
 			agent.subscribe((event) => receivedEvents.push(event));

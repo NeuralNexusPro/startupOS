@@ -547,12 +547,20 @@ export class OriginOSAgent {
 		this.emitUiEvent(event);
 
 		if (
-			!this.isEmptyStopRecoveryEnabled() ||
 			eventType !== "message_end" ||
 			event.message.role !== "assistant"
 		) {
 			return;
 		}
+
+		if ((event.message as AssistantMessage).stopReason === "error") {
+			const errorMessage =
+				(event.message as AssistantMessage).errorMessage?.trim() ||
+				"Model stream ended with stopReason=error without an errorMessage";
+			this.lastModelError = new Error(errorMessage);
+			return;
+		}
+		if (!this.isEmptyStopRecoveryEnabled()) return;
 
 		const text = Array.isArray(event.message.content)
 			? event.message.content
@@ -563,13 +571,7 @@ export class OriginOSAgent {
 		const toolCallCount = Array.isArray(event.message.content)
 			? event.message.content.filter((block: any) => block.type === "toolCall").length
 			: 0;
-			if ((event.message as AssistantMessage).stopReason === "error") {
-				const errorMessage =
-					(event.message as AssistantMessage).errorMessage?.trim() ||
-					"Model stream ended with stopReason=error without an errorMessage";
-				this.lastModelError = new Error(errorMessage);
-				return;
-			}
+
 			if (
 				this.activeCompletionPolicy === "chat_guard" &&
 				(event.message as AssistantMessage).stopReason === "stop" &&
