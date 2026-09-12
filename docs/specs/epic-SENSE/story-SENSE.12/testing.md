@@ -58,3 +58,10 @@
 - Email 与 WeCom 插件测试覆盖凭据 Port；Email 在写入凭据前执行 IMAP 连接验证，WeCom 保存兼容运行时的 transport 配置。
 - 已删除 Email、WeCom、Feishu 的专用 provisioning IPC、Desktop service 与 Web service，静态扫描无旧通道引用。
 - Email 插件已内聚配置类型与校验，编译产物不再包含对 Core Email integration 源码的运行时导入；覆盖 Windows Electron `ERR_MODULE_NOT_FOUND` 回归。
+
+## SENSE12-T2 邮箱启用回归（实施前）
+
+1. 成功插件provision → 保存配置 → setEnabled通过。
+2. 认证/邮箱打开失败，不生成验证记录、不保存新配置。
+3. host/username改变后旧记录拒绝；缺记录旧配置拒绝，重新验证后通过。
+4. 非email插件行为不变；无凭据泄漏。运行相关Desktop/Core/Email测试、lint/边界/自测与包内加载验证。
