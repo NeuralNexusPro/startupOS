@@ -3,6 +3,7 @@ import { dingtalkPlugin } from '@originos/perception-plugin-dingtalk';
 import { emailPlugin } from '@originos/perception-plugin-email';
 import { feishuPlugin } from '@originos/perception-plugin-feishu';
 import { weComPlugin } from '@originos/perception-plugin-wecom';
+import { fingerprintMailProfile, validateMailConnectorSettings } from '../../../../../core/src/lib/integrations/perception/email';
 import { getDataRoot } from '../../../../../core/src/lib/paths';
 import { FileSystemPerceptionTargetRegistry } from '../../../../../core/src/lib/features/services/perception-target-registry';
 import {
@@ -133,6 +134,13 @@ export class PerceptionPluginHostService {
           );
           const secretRef = Object.values(result.secretRefs ?? {})[0];
           const now = new Date().toISOString();
+          const settings = { ...(result.settings ?? request.settings) };
+          if (entry.plugin.manifest.source === 'email') {
+            settings['testReceipt'] = {
+              profileFingerprint: fingerprintMailProfile(validateMailConnectorSettings(settings)),
+              verifiedAt: now,
+            };
+          }
           const existing = this.configs.get(request.connectorId);
           this.configs.save({
             id: request.connectorId,
@@ -145,7 +153,7 @@ export class PerceptionPluginHostService {
                 : entry.plugin.manifest.transport,
             enabled: false,
             ...(secretRef ? { secretRef } : {}),
-            settings: { ...(result.settings ?? request.settings) },
+            settings,
             createdAt: existing?.createdAt ?? now,
             updatedAt: now,
           });

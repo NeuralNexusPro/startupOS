@@ -9,3 +9,7 @@
 7. `S12-T7` 串行：全量回归、依赖检查、验证 Goal、Windows 打包。
 
 写入范围为新增 `packages/perception-plugins/**` 及 core Host、Desktop Host/IPC、Web 感知中心和打包脚本。禁止修改生成产物。审查要求：通用 Host 无平台分支；schema 无函数/HTML/组件/脚本；插件独立失败；跨 package 仅走公共 index.ts。
+
+## SENSE12-T2：邮箱插件启用验证记录
+
+新 Email 插件已经验证 connect/readOnly mailboxOpen，但未生成旧启用门禁要求的 testReceipt，导致保存成功、启用失败。Desktop 宿主仅在 email provision 成功后复用 validateMailConnectorSettings/fingerprintMailProfile，保存 profileFingerprint 与 verifiedAt。保留原验证门禁、失败不保存及凭据安全；无新增依赖或 SDK 入口。

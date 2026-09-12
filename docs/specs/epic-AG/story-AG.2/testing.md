@@ -54,3 +54,9 @@
 实现前验收：旧角色中文 ID、旧技能 skill-中文 ID、ASCII 助手均通过真实 ingress，保留 sessionId/sessionProjectId；显式元数据覆盖旧 agentType；真实项目行为不变，非法路径及项目 ID 仍被拒绝。先红后绿。随后运行 Desktop channel UI/compose、Core 渠道回归、lint、边界、自测、桌面构建及实际 ASAR worker 验证。人工步骤：退出旧版，打开新测试包，从定时任务通知打开旧角色/技能会话并发送；不自动调用真实 LLM。
 
 AG2-T2 结果：Task a2cf514，红测 5 失败，修复后 Desktop 18 / Core Channel 43 项通过；Web/Desktop 类型通过；Proposal Desktop 编译和集成测试通过，866 文件零违规、检查器 43×2 自测通过、lint 无错误。日志 /private/tmp/originos-restored-{integrated,build,lint,boundaries,selftest}.log。实际应用包与 SENSE12-T2 一起交付验证，不声称人工通知或真实 LLM 测试通过。
+
+## 联合交付验收（2026-09-12）
+
+Desktop 3 个文件 26 项联合回归通过；完整 desktop:build、macOS arm64 本地打包成功。实际 app.asar 内旧角色/Skill/助手发送映射和真实 ingress 通过；skill/persistent worker 冷启动、业务工具和授权检查通过。架构扫描866文件0违规、自测43×2通过、lint0错误2917既有警告。日志 /private/tmp/originos-bugfix-{delivery-tests,desktop-build,mac-pack,asar-workers,asar-restored,lint,boundaries,selftest}.log。未调用真实LLM或自动触发用户规则。
+
+产物：[OriginOS CE.app](/Users/archersado/workspace/startupOS/release/mac-arm64/OriginOS%20CE.app)。退出旧安装版后打开此本地测试包。用户的 /Applications 安装版未自动替换。
