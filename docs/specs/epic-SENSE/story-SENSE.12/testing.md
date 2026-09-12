@@ -65,3 +65,13 @@
 2. 认证/邮箱打开失败，不生成验证记录、不保存新配置。
 3. host/username改变后旧记录拒绝；缺记录旧配置拒绝，重新验证后通过。
 4. 非email插件行为不变；无凭据泄漏。运行相关Desktop/Core/Email测试、lint/边界/自测与包内加载验证。
+
+SENSE12-T2 结果（2026-09-12）：真实 Email plugin → Core Host → Desktop IPC → ConfigStore 启用链 8 项回归通过（修复前准确复现 2 失败）；Desktop 类型检查通过。认证/邮箱失败不保存，host/username变更拒绝旧记录，缺记录旧配置重验证后启用，失败重绑定不覆盖已有配置，非邮件插件保持行为。日志 /private/tmp/email-provision-{red,green,types,lint,boundaries,selftest}.log。
+
+本地 QQ 排查：TLS、IMAP login、只读 INBOX 打开实测成功；原配置缺 testReceipt。对 qq 连接重新真实验证且确认配置期间未变化后，经原子 ConfigStore 补验证记录并通过 validateMailActivation；保留原启用状态和凭据引用，不读取邮件正文，不在代码或文档保存授权码。另一条重复连接不修改。尚未声明实际轮询或自动触发已验收。
+
+## 联合交付验收（2026-09-12）
+
+Desktop 3 个文件 26 项联合回归通过；完整 desktop:build、macOS arm64 本地打包成功。实际 app.asar 内旧角色/Skill/助手发送映射和真实 ingress 通过；skill/persistent worker 冷启动、业务工具和授权检查通过。架构扫描866文件0违规、自测43×2通过、lint0错误2917既有警告。日志 /private/tmp/originos-bugfix-{delivery-tests,desktop-build,mac-pack,asar-workers,asar-restored,lint,boundaries,selftest}.log。未调用真实LLM或自动触发用户规则。
+
+产物：[OriginOS CE.app](/Users/archersado/workspace/startupOS/release/mac-arm64/OriginOS%20CE.app)。退出旧安装版后打开此本地测试包。用户的 /Applications 安装版未自动替换。
