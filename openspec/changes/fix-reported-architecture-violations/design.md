@@ -68,3 +68,12 @@ ToolExecutionFrame 只有工具执行状态展示职责，移到 `web/src/compon
 AG2-T1-TC11：中文技能、角色与继承角色所有权的技能，经真实渠道 ingress 和桌面通知会话流能够进入运行时并完成；空白、超长、控制字符、路径分隔符与穿越标识仍被拒绝；消息/connector/actor/replyHandle 的原传输标识校验保持不变。测试先复现原错误，再验证修复。
 
 独立通知Task仅修改channel-runtime的业务入口标识校验及对应Core/Desktop测试，Core组装Task不写这些文件。父代理负责集成，源码仍由subagent隔离实施。授权来源：用户本轮追加bug报告，延续已批准修复工作；不新增产品能力。
+
+## 集成验证发现的必要修复
+
+- AgentManager复用同一个base system prompt时不再覆盖已注入的记忆快照；entry记录base prompt用于比较，保持Frozen Snapshot，补恢复回归。
+- 根产物检查明确将真实配置.eslintrc.cjs识别为允许的源码配置文件；任意其他根JS产物仍被拒绝。架构检查器和其规则未修改。
+
+### 服务端入口不加载 React
+
+实际 ASAR 冷启动暴露 server → local-store → Zustand React 依赖。将 local-store 保留为独立公共子入口，server 不再重导出；无需给桌面 worker 添加 React。验收脚本检查冷启动后 require.cache 中没有 React，并保留 worker 失败输出。

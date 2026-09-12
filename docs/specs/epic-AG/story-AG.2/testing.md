@@ -1,49 +1,50 @@
 # 测试策略 - Story AG.2
 
-**任务:** AG2-T1；**最后更新:** 2026-09-11
-**状态:** 用例已定义，实施与验证待批准。
+**任务:** AG2-T1；**更新:** 2026-09-11
 
-## 基线与执行约束
+## 验收用例与证据
 
-基线 dev b2d6bdb，34 处违规清单见 AG.5/lint-baseline.md。所有持久化测试使用临时数据根；不修改真实用户数据。优先复用现有 Vitest/脚本，在缺少关键覆盖时补最小回归用例。实现完成后创建自动化测试验证 goal，目标明确为“通过 Story AG.2 AG2-T1 中定义的测试 case”。
+实现前已定义TC01–10；用户追加通知bug后先补TC11再实施。验证goal目标为通过Story AG.2 AG2-T1定义的case，包含测试限制、构建与交付闭环。所有持久化测试使用临时目录。
 
-## 验收用例
+| 用例 | 场景 | 结果与证据 |
+|---|---|---|
+| TC01 | 原范围与规则下清零34处依赖违规 | 集成扫描866生产文件、0诊断、退出0；final-boundaries.log |
+| TC02 | 原围栏允许/禁止导入、双CWD及失败退出 | 43案例×2CWD全部通过；final-selftest.log |
+| TC03 | Web lint、类型检查与完整桌面构建 | lint 0errors/2917warnings；Web类型检查通过；desktop:build退出0；desktop-build-final.log |
+| TC04 | Agent/Role/Project启动、保存、并发恢复及依赖缺失拒绝 | 新业务5例+Role/Project真实文件保存恢复2例通过；使用可控模型适配替身，未调用远端模型；真实skill/persistent worker冷启动补充验证 |
+| TC05 | owner并发写入、flush/reload、错配拒绝、临时会话与Frozen Snapshot | business-boundaries双owner用例、runtime-restore重启快照2例、既有provider/observation用例通过 |
+| TC06 | 旧记忆格式、空/元数据Markdown及配置缺失/损坏 | contracts74项及Core回归通过，格式保持兼容；配置损坏仍按原语义回退 |
+| TC07 | 工具完整注册、重复初始化、scope、非法参数和路径授权 | 新业务用例与原工具组通过；真实read_document成功和越界拒绝；本体/定时非法输入拒绝 |
+| TC08 | IPC类型兼容、编译worker真实加载/执行 | 完整Desktop编译通过；verify-agent-business-runtime脚本对skill/persistent均通过，先冷启动再检查registry，无预热掩盖 |
+| TC09 | 工具三状态、名称、运行提示、空列表及调用方 | UI任务14例通过；最终组件与生命周期Hook2例通过 |
+| TC10 | 既有记忆/认知/会话/工具/协作回归 | 扩展回归64文件723tests，708通过，15失败与修改前逐条一致、无新增；最后改动对应50用例全过 |
+| TC11 | 通知中文技能/Agent/角色及继承角色owner进入真实渠道；非法ID拒绝 | 修复前4例失败，修复后Desktop通知流7例通过；含桌面组装最终共8例通过；Core渠道13文件43例通过 |
 
-| ID | 场景与操作 | 通过条件 |
-|----|------------|----------|
-| AG2-T1-TC01 | 在仓库根运行 pnpm lint:boundaries | 原34处消除，退出0，无新增违规，无缩小扫描范围/白名单/规则放宽 |
-| AG2-T1-TC02 | node scripts/check-architecture-boundaries.cjs --self-test | 既有43案例在两个工作目录下全部符合预期；禁止导入仍失败 |
-| AG2-T1-TC03 | 运行 pnpm lint、受影响包类型检查和现有构建 | 无本次引入的类型/构建错误；Web lint 无新增边界或其他错误，保留前后证据 |
-| AG2-T1-TC04 | Web与Desktop普通Agent、Role/Project、协作入口创建会话，保存并恢复；对必需业务依赖缺失单独测试 | 标识和历史可恢复，事件/钩子不重复，缺依赖明确报错而非静默禁用持久化 |
-| AG2-T1-TC05 | 不同owner并发记录、flush、整理、重新加载；另测错配owner和session-only会话 | 独立目录无串写；错配被拒绝；临时会话不写持久owner；Frozen Snapshot仅重启更新 |
-| AG2-T1-TC06 | 用既有记忆JSON/JSONL、空Markdown、普通块、带容量元数据块测试共享解析；测试配置缺失、正常、损坏输入 | 数据与字段不变，解析结果与原实现一致，配置路径/优先级/错误行为不变 |
-| AG2-T1-TC07 | 多次初始化工具；不同scope查询；文档/本体/定时工具成功和非法参数/未授权调用 | 注册集合完整且无重复，schema、scope、错误返回与授权语义不变 |
-| AG2-T1-TC08 | 验证IPC契约类型；从桌面构建产物独立启动worker，加载并执行代表性业务工具 | 公共DTO兼容，无模块缺失，主进程/worker正确收发结果 |
-| AG2-T1-TC09 | 渲染ToolExecutionFrame运行中/完成/失败及空列表，验证现有状态、名称与运行提示展示；检查两类聊天调用方 | 状态正确，空列表无异常，原props和交互兼容，ui不引用业务组件 |
-| AG2-T1-TC10 | 运行受影响既有memory-core、认知provider、agent/session、工具和协作集成测试 | 无本次引入的回归；逐项记录实际测试文件与结果 |
+## 最终日志
 
-## 自动化与人工补充
+以下路径前缀均为 `/private/tmp/originos-ag2-`：
 
-TC04/TC08 使用项目已有会话/worker测试和本地可控模型替身覆盖，不依赖真实远端模型回复。若GUI冒烟或真实模型端到端无法自动化，必须在goal输出列出原因、未覆盖项、人工步骤及剩余风险，不能标记该项已通过。
+- `final-boundaries.log`、`final-selftest.log`、`final-lint.log`
+- `final-core-tests.log`：扩展回归，与`baseline-stable.log`的失败testname逐项比较，无新增。
+- `final-added-tests.log`：最终业务/恢复/渠道15文件50tests全过。
+- `final-web-tests.log`：最终Web2tests全过。
+- `final-desktop-channel.log`：最终Desktop2文件8tests全过。
+- `desktop-build-final.log`：完整桌面构建，包括18个worker运行时路径校验与根产物检查。
+- `final-worker-smoke.log`：编译skill/persistent真实worker冷启动、工具执行和持久会话。
+- 通知先红后绿证据另见 `/private/tmp/ag2-notification-red.log`、`ag2-notification-desktop.log`、`ag2-notification-core.log`。
 
-人工步骤：启动构建后的OriginOS；分别开启普通、Role和Project会话；发送消息并查看工具执行；退出重启恢复历史；核对测试账号独立目录的记忆和快照；检查失败操作的错误提示。人工检查仅补充自动化，不替代边界、持久化和打包检查。
+## 基线失败与验证限制
 
-## 完成证据
+修改前47文件635tests中620通过，15失败：capability-matcher评分12项、dag-executor HITL恢复3项。本次扩展回归保留相同失败，不宣称全仓测试全绿。
 
-待实施后补充命令、退出码、测试数量、日志路径及限制。当前所有执行项尚未验收，不声明Story完成。
+旧agent-spawner测试调用npx tsx及尝试下载Electron，当前本地环境不能完成；保存原日志，不以该测试证明worker成功。新增受控编译worker脚本覆盖实际启动、工具和关闭。Desktop组装测试原先因未mockElectron触发下载，已按既有测试方式隔离宿主后通过，业务组装保持真实。
 
-## 实施前基线（2026-09-11）
+未执行真实模型请求或人工GUI端到端通知点击。人工复核：退出旧应用，打开新构建；从通知分别打开中文技能与角色；确认初始消息正常、无CHANNEL_RUNTIME_FAILED；退出重开会话确认历史恢复。自动化已验证对应真实渠道和文件恢复链，但不覆盖远端模型服务可用性或所有操作系统；本轮只构建macOS arm64。
 
-Web类型检查退出0。Core明确清单47文件635用例，620通过，15既有失败集中于capability-matcher（12）与dag-executor HITL（3）；日志 /private/tmp/originos-ag2-baseline-stable.log。agent-spawner因本地tsx缺失及Electron下载无法完成，已中止，日志 /private/tmp/originos-ag2-baseline-tests-unsandboxed.log。沙箱外node-executor七例全部通过。
+本命令不覆盖所有动态计算import、跨feature私有路径和全仓循环；辅助审查的新Core静态运行时import/export图未发现环，结果仅限tsconfig扫描范围。
 
-## P1完成证据
+## 最终应用包验收（2026-09-12）
 
-提交55553c8：组件原样迁移，4调用方更新，14tests通过，Web类型检查通过，lint 0errors/2918warnings，自测43x2通过，扫描853文件剩Core33条。日志 /private/tmp/ag2-ui-{tests,lint,boundaries,selftest,typecheck}.log。
+实际产物：/Users/archersado/workspace/startupOS/release/mac-arm64/OriginOS CE.app。使用产物内 Electron 执行 verify-agent-business-runtime.js，读取 app.asar 中的真实 Core：skill/persistent 两类 worker 均通过冷启动、工具注册、路径授权、关闭，persistent 会话落盘通过，且服务端未加载 React。
 
-## 用户追加的通知入口修复（2026-09-11）
-
-用户在本轮实施中报告：从通知进入技能或角色出现 CHANNEL_RUNTIME_FAILED。已确认通知携带中文 entryId，渠道层沿用仅ASCII的传输标识校验，导致 Agent 启动前被拒绝。本次作为会话入口兼容性修复纳入 AG2-T1；不变更数据格式或IPC字段。
-
-AG2-T1-TC11：中文技能、角色与继承角色所有权的技能，经真实渠道 ingress 和桌面通知会话流能够进入运行时并完成；空白、超长、控制字符、路径分隔符与穿越标识仍被拒绝；消息/connector/actor/replyHandle 的原传输标识校验保持不变。测试先复现原错误，再验证修复。
-
-独立通知Task仅修改channel-runtime的业务入口标识校验及对应Core/Desktop测试，Core组装Task不写这些文件。父代理负责集成，源码仍由subagent隔离实施。授权来源：用户本轮追加bug报告，延续已批准修复工作；不新增产品能力。
+日志：/private/tmp/originos-ag2-desktop-build-delivery.log、/private/tmp/originos-ag2-mac-pack-delivery.log、/private/tmp/originos-ag2-packaged-worker-delivery.log。最终 lint/边界/自测日志为 /private/tmp/originos-ag2-delivery-{lint,boundaries,selftest}.log。React 隔离修复的 27 项回归通过；原有 15 项协作测试失败仍按前文记录，不声明全仓测试通过。未进行真实远程 LLM 或人工 GUI 验证。本地测试包未签名/公证，不用于正式发布。

@@ -276,3 +276,7 @@ AG.5 拆出 AG5-T1：修正现有 Monorepo 架构检查。提案 `fix-monorepo-b
 ## 2026-09-11 存量违规修复提案
 
 [AG.2](story-AG.2/README.md) 的 AG2-T1 已按当前 Monorepo 规约更新范围和测试用例，提案 `fix-reported-architecture-violations` 待审查批准，尚未实施。当前仍有34处违规，不以文档更新视为修复完成。
+
+## 2026-09-12 AG2-T1交付验证
+
+AG2-T1当前34处存量边界已修复，通知中文入口及会话恢复快照回归已覆盖。其他Story状态不因此自动改变；准确证据见[AG.2](story-AG.2/README.md)。
