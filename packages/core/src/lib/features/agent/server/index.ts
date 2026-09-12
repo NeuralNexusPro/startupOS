@@ -8,4 +8,3 @@ export type { OwnedCognitiveProviderBundle } from '../cognitive/provider-factory
 export type { AgentMemoryOwnership, AgentTaskRuntimeBindingOptions } from '../../../integrations/pi-agent/agent-manager';
 
 export { agentSessionService } from '../session-service';
-export { useLocalPiAgentStore } from '../local-store';

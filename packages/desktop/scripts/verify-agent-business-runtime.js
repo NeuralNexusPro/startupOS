@@ -11,6 +11,7 @@ async function verifyTools(coreRoot) {
   const directory = process.env.DATA_ROOT;
   const business = require(path.join(coreRoot, 'lib/features/agent/server/index.js'));
   // No initialization here until the cold worker's existing registry is checked.
+  assert(!Object.keys(require.cache).some(filename => filename.includes('/node_modules/react/')), 'headless worker must not load React');
   const names = business.getToolRegistry().getAll().map(tool => tool.name);
   for (const name of ['read_document', 'create_domain', 'create_instance', 'schedule_task']) assert(names.includes(name), name);
   business.initializeBuiltInTools();
@@ -31,6 +32,10 @@ async function child(coreRoot) {
   let checked = false;
   process.stdout.write = (chunk, ...rest) => {
     const result = write(chunk, ...rest);
+    try {
+      const message = JSON.parse(String(chunk));
+      if (message.type === 'error') { console.error(message.message); process.exit(1); }
+    } catch { /* Non-protocol output is diagnosed by the parent. */ }
     if (!checked && String(chunk).trim() === '{"type":"ready"}') {
       checked = true;
       verifyTools(coreRoot).then(() => {
@@ -71,7 +76,7 @@ if (process.argv[2] === '--child') {
       env: { ...process.env, DATA_ROOT: directory, ELECTRON_RUN_AS_NODE: '1', ANTHROPIC_API_KEY: 'local-smoke-only',
         ORIGINOS_CORE_SRC_DIR: coreRoot, ORIGINOS_AGENT_WORKER_DIR: workerDir },
     });
-    assert.equal(result.error, undefined, result.error?.message);
+    assert.equal(result.error, undefined, `${result.error?.message ?? ''}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
     assert.equal(result.status, 0, result.stderr);
     const messages = result.stdout.trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
     assert(messages.some(message => message.type === 'business-smoke'));
