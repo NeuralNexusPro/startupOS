@@ -82,7 +82,9 @@ export class PerceptionPluginHostService {
   private readonly configs: PerceptionConnectorConfigStore;
   private readonly replies: PluginReplyDeliveryService;
   private timer: NodeJS.Timeout | null = null;
-  private active = new Set<string>();
+  private active = new Map<string, string>();
+  private reconciling = false;
+  private generation = 0;
   constructor(
     private readonly channelIngress: ChannelMessageIngress,
     private readonly dataRoot = getDataRoot()
@@ -193,7 +195,8 @@ export class PerceptionPluginHostService {
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
-    for (const key of this.active) {
+    this.generation += 1;
+    for (const key of this.active.keys()) {
       const [pluginId, ...rest] = key.split(':');
       if (pluginId) void this.host.stop(pluginId, rest.join(':'));
     }
@@ -209,6 +212,15 @@ export class PerceptionPluginHostService {
     return this.host.handleWebhook(pluginId, connectorId, request);
   }
   private async reconcile(): Promise<void> {
+    if (this.reconciling) return;
+    this.reconciling = true;
+    try {
+      await this.reconcileConfigurations(this.generation);
+    } finally {
+      this.reconciling = false;
+    }
+  }
+  private async reconcileConfigurations(generation: number): Promise<void> {
     const configs = this.configs
       .list()
       .filter((item) => PLUGIN_IDS[item.source]);
@@ -217,23 +229,35 @@ export class PerceptionPluginHostService {
         .filter((item) => item.enabled)
         .map((item) => `${PLUGIN_IDS[item.source]}:${item.id}`)
     );
-    for (const key of this.active) {
+    for (const key of this.active.keys()) {
       if (!desired.has(key)) {
         const [pluginId, ...rest] = key.split(':');
-        if (pluginId) await this.host.stop(pluginId, rest.join(':'));
         this.active.delete(key);
+        if (pluginId) await this.host.stop(pluginId, rest.join(':'));
       }
     }
     for (const config of configs) {
       const pluginId = PLUGIN_IDS[config.source];
       if (!pluginId) continue;
       const key = `${pluginId}:${config.id}`;
-      if (!config.enabled || this.active.has(key)) continue;
+      if (generation !== this.generation) return;
+      if (!config.enabled) continue;
+      const version = JSON.stringify([config.updatedAt, config.settings, config.secretRef]);
+      if (this.active.get(key) === version) continue;
+      if (this.active.has(key)) {
+        this.active.delete(key);
+        await this.host.stop(pluginId, config.id);
+        if (generation !== this.generation) return;
+      }
       const status = await this.host.start(pluginId, config.id, {
         ...config.settings,
         secretRef: config.secretRef ?? '',
       });
-      if (status.state === 'running') this.active.add(key);
+      if (generation !== this.generation || !this.configs.get(config.id)?.enabled) {
+        await this.host.stop(pluginId, config.id);
+        continue;
+      }
+      if (status.state === 'running') this.active.set(key, version);
     }
   }
   private createPorts(): PerceptionPluginHostPorts {
