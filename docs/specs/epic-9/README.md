@@ -1050,3 +1050,9 @@ src/app/api/collaboration/sessions/[id]/execute/route.ts         # MODIFY: 接�
 - [AGENTS.md 架构规约](../../AGENTS.md) — 项目约束
 - [Solution Design Skill](../../skills/solution-design/SKILL.md) — Agent 拆分依据
 - [MAST 失败模式](../../learn/ai-engineering-from-scratch/phases/16-multi-agent-and-swarms/) — 多 Agent 失败模式参考
+
+## 9.41-T2 (2026-09-13)
+
+测试包：/Users/archersado/workspace/startupOS/release/session-fixes-20260913/mac-arm64/OriginOS CE.app。
+
+[Testing](./story-9.41/testing.md)
