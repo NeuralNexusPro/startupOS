@@ -1,2 +1,2 @@
 # Review
-父代理及两子代理审查：不能逐个GET探测任务（会启动），需既有列表摘要；复用现有restore和generation，不新建任务引擎。恢复不自动重试真实失败/暂停/等待任务。UI/runtime写入边界不重叠。
+按用户最终澄清收窄为原历史会话点击继续；自动入口bootstrap和session摘要不实施。复用原任务Hook/Card/控制，Core仅既有generation保护。两Task写入范围互不重叠。

@@ -452,12 +452,10 @@ Goal输出必须包含：
 | 2026-07-29 | 增加A-01契约、Evidence负向、policy入口、确定性竞态、崩溃窗口和量化性能测试 |
 | 2026-08-01 | A-02 公共边界回归通过，更新 verification goal 前置证据 |
 
-## 9.41-T2 实施前验收：关闭后继续长任务
+## 9.41-T2 实施前验收：原历史继续长任务
 
-1. 普通入口重开选择最近归属匹配的有效未完成任务，恢复原session和进度；无任务才新建。
-2. 显式新建/历史选择优先，列表迟到或卸载不抢回会话；列表失败可重试且不自动新建。
-3. 列表摘要不启动任何runtime；跨入口/无效schema不误恢复。
-4. Agent及Skill既有任务展示使用原hook/panel；暂停/等待/真实失败不自动执行。
-5. 挂起prompt遇destroy后reject，不误写failed；重建coordinator原running任务继续一次。
-6. 挂起task_next/持久化返回时已destroy，不派发新prompt；原暂停/等待/失败门禁保持。
-7. 相关Core/Web/Desktop回归、类型/lint/边界/自测、构建和实际包验证。
+1. 关闭窗口或退出app后回原历史会话，呈现未完成任务及原进度；点击继续保留taskId与已完成步骤。
+2. Skill复用原任务Hook/Card；暂停/等待/真实失败使用原控制，不自动绕过确认；显式新建/切换历史不展示其他会话任务。
+3. 挂起prompt遇destroy后reject，不误写failed；原running任务恢复仅继续一次。
+4. 挂起task_next/持久化返回时已destroy，不派发新prompt；暂停/等待/失败门禁保持。
+5. 相关Core/Web/Desktop回归、类型/lint/边界/自测、构建和实际包验证。不实施自动入口查找或session列表摘要。
