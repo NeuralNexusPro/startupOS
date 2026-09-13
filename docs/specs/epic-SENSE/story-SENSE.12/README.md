@@ -43,3 +43,5 @@
 ### SENSE12-T4 交付验收完成
 
 87项相关自动化与完整macOS包验收通过，支持当前企微/飞书/钉钉会话文件回传；真实平台权限和收件端仍需人工复核。完整证据及测试包见[testing.md](testing.md)。其他Story迁移和跨平台验收保持独立跟踪。
+
+已合入 dev（2e2319c），[提案已归档](../../../../openspec/changes/archive/2026-09-13-add-im-file-replies/proposal.md)，本轮临时工作区及分支已清理。
