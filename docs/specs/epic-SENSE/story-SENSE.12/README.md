@@ -31,3 +31,7 @@
 ## SENSE12-T2 追加修复交付（2026-09-12）
 
 已合入 dev，联合26项回归、桌面构建与实际应用包验证通过。见 [归档提案](../../../../openspec/changes/archive/2026-09-12-fix-email-plugin-activation/proposal.md) 和 [测试证据](testing.md)。
+
+## SENSE12-T3 交付（2026-09-13）
+
+配置与健康热更新修复已合入 dev，回归、构建和实际应用包验收通过。证据见 [testing.md](testing.md)。其余插件迁移工作保持原状态。

@@ -42,3 +42,7 @@ IPC/Skill/UserRegistry契约移至types，配置读写移至storage，记忆解�
 ## AG2-T2 旧会话通知继续发送
 
 缺少 entryType 的旧会话原被误判为项目，中文角色/技能 ID 触发 CHANNEL_RUNTIME_FAILED。提交 a2cf514 在显式元数据缺失时按持久 agentType 回退，标准 skill- 前缀还原入口 ID；保持原会话和项目存储位置，项目/路径安全校验不变。测试见 TC12。
+
+## AG2-T3 源码集成验收（2026-09-13）
+Task ecba231 已审查并集成：模型错误捕获独立于空回复重试开关，正常完成与模型选择不变。真实 Agent 参数化两态 2 项与 Channel 4 项通过，Desktop 编译、类型、lint、边界与自测通过。日志 /private/tmp/originos-model-error-integrated-{agent,channel,build,lint,boundaries,selftest}.log。
+扩展回归 111 项中 107 通过，4 项失败与基线一致；原既有模型错误用例由失败转通过，不声明全 Core 全绿。实际历史 Role 的 402 已对应；未知 Skill 案例没有足够信息关联。模型服务拒绝仍需用户处理上游配置，修复确保失败不被当作空成功。包内验证随最终交付补充。

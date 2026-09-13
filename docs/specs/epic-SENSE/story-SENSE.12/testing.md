@@ -75,3 +75,26 @@ SENSE12-T2 结果（2026-09-12）：真实 Email plugin → Core Host → Deskto
 Desktop 3 个文件 26 项联合回归通过；完整 desktop:build、macOS arm64 本地打包成功。实际 app.asar 内旧角色/Skill/助手发送映射和真实 ingress 通过；skill/persistent worker 冷启动、业务工具和授权检查通过。架构扫描866文件0违规、自测43×2通过、lint0错误2917既有警告。日志 /private/tmp/originos-bugfix-{delivery-tests,desktop-build,mac-pack,asar-workers,asar-restored,lint,boundaries,selftest}.log。未调用真实LLM或自动触发用户规则。
 
 产物：[OriginOS CE.app](</Users/archersado/workspace/startupOS/release/mac-arm64/OriginOS CE.app>)。退出旧安装版后打开此本地测试包。用户的 /Applications 安装版未自动替换。
+
+## SENSE12-T3 实施前验收：配置和健康热更新
+
+- 已启动连接重绑定后在5秒扫描前启用：下一轮stop旧、start新；同secretRef但updatedAt变化也生效。
+- 首次新增启用下一轮启动，未变配置不重复启动；停用停止；失败后可重试。
+- 慢启动跨多个扫描不重复启动，服务停止时未完成启动不得遗留实例。
+- 感知中心和顶部状态自动反映后台从未连接到健康；后台刷新不清空用户操作错误或闪烁加载；卸载清理。
+- 完成相关Desktop/Web回归、类型检查、lint、边界、自测，构建并验证真实应用包。
+
+## SENSE12-T3 集成结果（2026-09-12）
+
+首次新增启用在原ASAR下一轮扫描可正常启动，主要确定问题是UI健康快照不自动刷新；热重绑定和停止慢启动另有真实缺陷。runtime提交cd065cb，UI分支2f2a38b：运行时按版本停旧启新、销毁后不留实例；顶部与独立感知窗体共享刷新，等待首个健康报告不误判断开。Task Desktop13 / Web24项通过；父代理联合Desktop13 / Web23项通过、完整desktop:build通过、866文件零违规、43×2自测通过、lint0错误2935警告。日志 /private/tmp/originos-sense-live-{desktop-tests,web-tests,build,lint,boundaries,selftest}.log。实际包热更新验收随联合交付补齐。
+
+
+## SENSE12-T3 最终交付验收（2026-09-13）
+
+源码已合入 dev（e39dc62）。Desktop 13 项和 Web 23 项相关回归通过；最终完整 desktop:build 通过，架构扫描 866 个生产文件零违规，自测 43×2 通过，lint 为 0 错误、2935 个既有警告。
+
+实际 macOS arm64 包内验证通过：首次新增启用在下一轮扫描启动、同凭据引用的新版本重连、停用停止，全程无需重启；真实 skill/persistent worker 冷启动、工具授权和关闭通过。脚本使用临时数据和模拟平台启动，不连接真实邮箱或发送外部消息。UI 自动刷新由真实组件与 store 集成测试验证；慢启动跨扫描与停止交错由宿主回归验证。
+
+测试包：`/Users/archersado/workspace/startupOS/release/sense-live-config-20260913/mac-arm64/OriginOS CE.app`。构建与验证日志：`/private/tmp/originos-sense-final-{build,pack-clean,asar-live,asar-worker,lint,boundaries,selftest}.log`；相关回归见前述 sense-live 日志。
+
+本轮未进行人工 GUI 或真实平台联机验证；人工复核为打开本测试包，首次新增并启用连接，等待后台启动及下一次健康刷新，确认无需重启。Windows 和其他 Story Task 不属于本修复验收。该包为未签名、公证的本地测试包。

@@ -137,3 +137,5 @@ data/perception/
 | 重复/乱序事件 | sourceEventId + connectorId 幂等键，保留 occurredAt/receivedAt |
 | Next.js serverless 不适合长轮询 | 邮箱轮询由 Desktop/Service supervisor 托管 |
 | 敏感信息进入日志或记忆 | 入站防御、payload 引用、字段级脱敏，默认不进入长期认知 |
+
+SENSE.12 追加 Task SENSE12-T3（2026-09-13）：配置与健康热更新修复完成，实际 macOS 测试包验收通过；其余迁移和平台验收状态不变。
