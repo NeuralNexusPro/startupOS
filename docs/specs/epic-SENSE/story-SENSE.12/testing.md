@@ -127,3 +127,18 @@ TC13通过实际macOS arm64 ASAR验收：业务初始化注册send_file，真实
 测试包：`/Users/archersado/workspace/startupOS/release/im-file-replies-20260913/mac-arm64/OriginOS CE.app`。日志：`/private/tmp/im-file-final-{core,desktop,plugins,dingtalk,routing,build,pack,lint,boundaries,selftest,spec}.log`；包验收`/private/tmp/im-file-asar-{smoke,worker}.log`。可执行包验收脚本：`/private/tmp/originos-verify-im-file-package.cjs`、`/private/tmp/originos-verify-im-file-worker.cjs`，以本包Electron设置`ELECTRON_RUN_AS_NODE=1`运行，参数分别为本包app.asar及其dist-electron/core/src。
 
 限制：未对真实平台账号发送文件，模拟回执不代表真实收件人已收到；尚未人工验证平台权限、企业策略或收件端下载。人工复核：从本测试包启用已配置连接，在企微/飞书会话请求生成PDF并发回，下载确认内容；钉钉先配置Client ID、Client Secret、机器人编码、Stream模式与发送权限，分别从群聊和单聊请求同样操作，并验证不支持格式提示生成ZIP。单文件上限20_000_000字节；钉钉文件格式为xlsx/pdf/zip/rar/doc/docx。测试包未签名/公证；未验证Windows。本轮不会自动发送所有资产，也未修改独立待处理的企微流式排队算法。
+
+## SENSE12-T5 实施前验收：企微流式积压
+
+| 用例 | 预期 |
+|---|---|
+| TC1 | 首片不新增timer等待；ACK期间已积累的96片可合并，最终全文正确 |
+| TC2 | HITL/accepted/assistant_message/complete/error/不同flow-port-kind都是顺序屏障，不越过内部artifact |
+| TC3 | 合并后每个原packetId保留真实成功/失败/attempt；已成功包跳过，且不加入新组 |
+| TC4 | 重试组内容稳定、有最大次数；部分写盘失败不重发已确认网络请求 |
+| TC5 | 源yield后throw先处理已产出文本，再传播错误；提前结束触发源清理，无假completed |
+| TC6 | 最多32片一组、有界预取；被阻塞时不无限拉取，不声称整个fan-out严格32驻留 |
+| TC7 | 企微ACK失败重试无重复追加；覆盖式事件与终态正确；文件回复、飞书与钉钉回归 |
+| TC8 | 旧新实际ASAR相同96片+全文+完成、25ms模拟ACK：旧98请求/2633ms；新请求<=12且完成时间<旧50%，98真实回执/最终文字相同；完整构建/worker/文件回传包验收通过 |
+
+测试使用模拟ACK和临时回执，不发送真实IM；人工打开新包在企微请求较长回答，观察边生成边更新及模型结束后的尾延迟。真实网络/平台限流/模型首字时延不由该修复保证。测试命令为Core dispatcher与企微Vitest、三平台回归、Desktop类型、lint/boundaries/selftest、desktop:build及实际包/private/tmp/originos-stream-benchmark.cjs。
