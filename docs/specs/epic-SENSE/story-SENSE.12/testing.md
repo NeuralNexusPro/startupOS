@@ -128,6 +128,20 @@ TC13通过实际macOS arm64 ASAR验收：业务初始化注册send_file，真实
 
 限制：未对真实平台账号发送文件，模拟回执不代表真实收件人已收到；尚未人工验证平台权限、企业策略或收件端下载。人工复核：从本测试包启用已配置连接，在企微/飞书会话请求生成PDF并发回，下载确认内容；钉钉先配置Client ID、Client Secret、机器人编码、Stream模式与发送权限，分别从群聊和单聊请求同样操作，并验证不支持格式提示生成ZIP。单文件上限20_000_000字节；钉钉文件格式为xlsx/pdf/zip/rar/doc/docx。测试包未签名/公证；未验证Windows。本轮不会自动发送所有资产，也未修改独立待处理的企微流式排队算法。
 
+## SENSE12-T5 实施前验收：企微流式积压
+
+| 用例 | 预期 |
+|---|---|
+| TC1 | 首片不新增timer等待；ACK期间已积累的96片可合并，最终全文正确 |
+| TC2 | HITL/accepted/assistant_message/complete/error/不同flow-port-kind都是顺序屏障，不越过内部artifact |
+| TC3 | 合并后每个原packetId保留真实成功/失败/attempt；已成功包跳过，且不加入新组 |
+| TC4 | 重试组内容稳定、有最大次数；部分写盘失败不重发已确认网络请求 |
+| TC5 | 源yield后throw先处理已产出文本，再传播错误；提前结束触发源清理，无假completed |
+| TC6 | 最多32片一组、有界预取；被阻塞时不无限拉取，不声称整个fan-out严格32驻留 |
+| TC7 | 企微ACK失败重试无重复追加；覆盖式事件与终态正确；文件回复、飞书与钉钉回归 |
+| TC8 | 旧新实际ASAR相同96片+全文+完成、25ms模拟ACK：旧98请求/2633ms；新请求<=12且完成时间<旧50%，98真实回执/最终文字相同；完整构建/worker/文件回传包验收通过 |
+
+测试使用模拟ACK和临时回执，不发送真实IM；人工打开新包在企微请求较长回答，观察边生成边更新及模型结束后的尾延迟。真实网络/平台限流/模型首字时延不由该修复保证。测试命令为Core dispatcher与企微Vitest、三平台回归、Desktop类型、lint/boundaries/selftest、desktop:build及实际包/private/tmp/originos-stream-benchmark.cjs。
 ## SENSE12-T6 实施前验收：感知表单刷新重置
 
 - TC1：真实SenseCenter/ConnectorForm/store，选非email、填连接ID与账号/凭据、保持输入焦点，推进5秒后台刷新后选择、草稿、焦点和同一表单节点保留，插件目录不重复请求。
@@ -147,3 +161,11 @@ TC13通过实际macOS arm64 ASAR验收：业务初始化注册send_file，真实
 
 ## SENSE12-T6 最终验收（2026-09-13）
 32项感知中心回归通过：非事件页不轮询、事件页5秒刷新及离开/卸载清理、共享订阅隔离、必要store更新保留平台/草稿/焦点/DOM、取消重开。顶部菜单经调用点审查只首次load，唯一生产定时刷新订阅位于事件页。Web类型、Web生产构建、lint0错误2966既有警告、869文件零架构诊断及自测43×2、OpenSpec严格校验通过。日志/private/tmp/form-reset-final-{tests,build,lint,boundaries,selftest,spec}.log。构建已改用独立依赖，主工作区文件恢复后git状态干净。联合桌面测试包随SENSE12-T5验收记录。
+
+## SENSE12-T5/T6 联合桌面验收（2026-09-13）
+
+136项回归通过：Core41、Desktop5、Email3、企微20、飞书14、钉钉21、Web32。完整desktop:build和macOS arm64打包通过。实际包使用25ms模拟ACK、96文本片+正文/完成事件：旧包98请求2633ms，新包5请求167ms，首发5ms，98条原始回执均成功且正文一致；这是模拟确认延迟，不代表真实平台网络测速。实际ASAR的send_file注册/ALS/Host/重复及过期上下文、三平台SDK加载，skill/persistent worker冷启动/路径授权/关闭全部通过。147个打包Web静态文件与已验证构建哈希一致。
+
+lint0错误2966既有警告，架构869文件0诊断，自测43×2和OpenSpec strict通过。日志/private/tmp/perception-stream-final-{core,desktop,plugins,web,build,pack,lint,boundaries,selftest,spec}.log及/private/tmp/perception-stream-asar-{benchmark,file,worker}.log；旧对照/private/tmp/stream-baseline-asar.log。测试脚本/private/tmp/originos-stream-benchmark.cjs、originos-verify-im-file-package.cjs、originos-verify-im-file-worker.cjs。
+
+测试包：/Users/archersado/workspace/startupOS/release/perception-stream-fixes-20260913/mac-arm64/OriginOS CE.app。退出旧应用后打开此包；配置页等待10秒应保留平台与草稿，仅事件页自动刷新；企微发起长回复观察更新及结束速度。未发送真实IM消息/文件，真实平台收件、权限及网络仍需人工验证，Windows未验证。本地包未签名公证。其他Story未完成工作保持独立跟踪。

@@ -32,6 +32,9 @@ Manifest 声明 `id/version/hostApi/source/transport/capabilities/configurationS
 
 复用已授权的当前回复句柄。下层 Pi Agent AsyncLocalStorage 保存调用级 sender、可信会话目录与有效期；业务 send_file 工具检查文件后调用 sender。Perception 路由绑定句柄，Gateway 绑定持久化目录，Desktop Reply Service 保存无文件内容的投递回执，平台插件完成上传和发送。Plugin SDK 增加 outbound-files、文件回复事件和持久化后的 onAccepted；文件字节不进入 FlowPacket 或会话 JSON。详细契约见 OpenSpec add-im-file-replies/design.md。依赖保持业务层到集成层、Desktop 到 Core 公共 API，平台实现仅依赖 Plugin SDK。
 
+## SENSE12-T5 流式积压修复
+
+SENSE12-T5：共享派发器复用Node Readable进行有界预取，每组最多32个连续同flow/port/kind文本包。平台确认后逐原包保存回执，写盘异常不触发网络重发；企微确认后提交本地累积文本。无公共API/存储格式变化。
 ## SENSE12-T6 配置表单与事件刷新
 
 SENSE12-T6：SenseCenter复用store现有引用计数刷新订阅，仅事件tab持有。顶部菜单仅首次load。五个无Hook列表采用render辅助函数，保持React表单类型与实例稳定，不新增状态或接口。
