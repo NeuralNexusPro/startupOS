@@ -419,6 +419,7 @@ export class AgentTaskRuntimeCoordinator {
 	}
 
 	destroy(): void {
+		this.continuationGeneration += 1;
 		this.options.agent.abort();
 		this.unsubscribeHost?.();
 		this.unsubscribeHost = null;
@@ -570,10 +571,12 @@ export class AgentTaskRuntimeCoordinator {
 				},
 			};
 			await this.publishState();
+			if (generation !== this.continuationGeneration) return;
 			const nextAction = await this.invokeReadOnlyTaskTool(
 				"task_next",
 				`continuation-${generation}-${this.state.execution.continuationCount}`,
 			);
+			if (generation !== this.continuationGeneration) return;
 			await this.options.agent.prompt(
 				internalUserMessage([
 					this.buildContinuationPrompt(),
