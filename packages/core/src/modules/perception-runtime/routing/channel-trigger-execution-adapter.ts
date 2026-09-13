@@ -48,15 +48,17 @@ export class ChannelTriggerExecutionAdapter implements TriggerExecutionPort {
     } };
     const replyHandle = invocation.message.replyHandle;
     if (replyHandle && this.delivery?.canDeliver(replyHandle) && isFlowIngress(this.ingress)) {
+      const ingress = this.ingress;
+      const delivery = this.delivery;
       const run = async () => {
-        const fanOut = fanOutFlowPackets(this.ingress.sendPackets(invocation), { branches: 2 });
+        const fanOut = fanOutFlowPackets(ingress.sendPackets(invocation), { branches: 2 });
         await Promise.all([
           consume(unpack(fanOut.branches[0]!)),
-          this.delivery.dispatch({ connectorId: invocation.message.connectorId, replyHandle, packets: fanOut.branches[1]! }),
+          delivery.dispatch({ connectorId: invocation.message.connectorId, replyHandle, packets: fanOut.branches[1]! }),
           fanOut.completed,
         ]);
       };
-      const sender = this.delivery.captureFileSender?.(replyHandle);
+      const sender = delivery.captureFileSender?.(replyHandle);
       if (sender) await withChannelFileReply(sender, run);
       else await run();
     } else {
