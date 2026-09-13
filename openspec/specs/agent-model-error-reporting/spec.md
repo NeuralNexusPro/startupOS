@@ -1,0 +1,17 @@
+# agent-model-error-reporting Specification
+
+## Purpose
+TBD - created by archiving change fix-agent-model-error-reporting. Update Purpose after archive.
+## Requirements
+### Requirement: 模型错误不依赖空回复重试开关
+系统 SHALL 在模型返回失败时向调用方报告失败，无论是否启用空回复重试。
+#### Scenario: 重试关闭时模型失败
+- **WHEN** 历史Role或Agent会话的模型返回错误且空回复重试关闭
+- **THEN** prompt拒绝并经现有渠道失败事件返回，不以空回复成功结束
+#### Scenario: 重试开启时模型失败
+- **WHEN** Skill会话启用空回复重试且模型返回错误
+- **THEN** 仍报告模型失败，不将错误当普通空回复成功
+#### Scenario: 正常回复及配置保持
+- **WHEN** 模型正常返回文本
+- **THEN** 回复行为不变，恢复的模型配置不自动替换
+
