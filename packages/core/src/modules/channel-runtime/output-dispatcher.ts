@@ -1,3 +1,4 @@
+import { Readable } from 'node:stream';
 import { ChannelDeliveryStore } from './delivery-store';
 import type { AgentOutputEvent, ChannelDeliveryPort, DeliveryReceipt, FlowPacket } from './types';
 import { isExternallyVisibleOutput } from './validation';
@@ -34,54 +35,80 @@ export class ChannelOutputDispatcher {
 
   async dispatch(input: ChannelOutputDispatchInput): Promise<DeliveryReceipt[]> {
     const results: DeliveryReceipt[] = [];
-    for await (const packet of input.packets) {
+    let sourceFailure: { error: unknown } | undefined;
+    const buffered = Readable.from((async function* () {
+      try { yield* input.packets; }
+      catch (error) { sourceFailure = { error }; }
+    })(), { objectMode: true, highWaterMark: 32 });
+    const packets: AsyncIterable<FlowPacket<AgentOutputEvent>> = buffered;
+    for await (const packet of packets) {
       if (!isExternallyVisibleOutput(packet.payload)) continue;
       const existing = this.receipts.get(packet.packetId);
       if (existing?.status === 'delivered') {
         results.push(existing);
         continue;
       }
-      results.push(await this.deliverPacket(input, packet));
+      const group = [packet];
+      let payload = packet.payload;
+      if (payload.type === 'text_delta') {
+        let delta = payload.delta;
+        // Drain only what is ready now: no timer or wait for another token.
+        const available = Math.min(31, buffered.readableLength);
+        for (let index = 0; index < available; index += 1) {
+          const next: FlowPacket<AgentOutputEvent> | null = buffered.read();
+          if (!next) break;
+          if (next.payload.type !== 'text_delta' || next.flowId !== packet.flowId ||
+            next.port !== packet.port || next.kind !== packet.kind ||
+            group.some(member => member.packetId === next.packetId) ||
+            this.receipts.get(next.packetId)?.status === 'delivered') {
+            buffered.unshift(next);
+            break;
+          }
+          group.push(next);
+          delta += next.payload.delta;
+        }
+        payload = { type: 'text_delta', delta };
+      }
+      results.push(...await this.deliverGroup(input, group, payload));
     }
+    if (sourceFailure) throw sourceFailure.error;
     return results;
   }
 
-  private async deliverPacket(
+  private async deliverGroup(
     input: ChannelOutputDispatchInput,
-    packet: FlowPacket<AgentOutputEvent>,
-  ): Promise<DeliveryReceipt> {
+    packets: FlowPacket<AgentOutputEvent>[],
+    payload: AgentOutputEvent,
+  ): Promise<DeliveryReceipt[]> {
     for (let attempt = 1; attempt <= this.maxAttempts; attempt += 1) {
+      let receipt: DeliveryReceipt;
       try {
-        const delivered = 'replyHandle' in input && input.replyHandle
-          ? await this.delivery.deliver(input.replyHandle, packet.payload)
+        receipt = 'replyHandle' in input && input.replyHandle
+          ? await this.delivery.deliver(input.replyHandle, payload)
           : this.delivery.push && input.conversationId
-            ? await this.delivery.push(input.conversationId, packet.payload)
-            : { messageId: packet.packetId, connectorId: input.connectorId, status: 'expired' as const, attempt };
-        const receipt: DeliveryReceipt = {
-          ...delivered,
-          messageId: packet.packetId,
-          connectorId: input.connectorId,
-          attempt,
-        };
-        if (receipt.status === 'delivered') return this.receipts.save(receipt);
-        this.receipts.save({ ...receipt, status: attempt === this.maxAttempts ? 'failed' : 'retrying' });
+            ? await this.delivery.push(input.conversationId, payload)
+            : { messageId: packets[0]!.packetId, connectorId: input.connectorId, status: 'expired', attempt };
       } catch {
-        this.receipts.save({
-          messageId: packet.packetId,
+        receipt = {
+          messageId: packets[0]!.packetId,
           connectorId: input.connectorId,
-          status: attempt === this.maxAttempts ? 'failed' : 'retrying',
+          status: 'retrying',
           attempt,
-          safeCode: attempt === this.maxAttempts ? 'CHANNEL_DELIVERY_EXHAUSTED' : 'CHANNEL_DELIVERY_RETRY',
-        });
+          safeCode: 'CHANNEL_DELIVERY_RETRY',
+        };
       }
-      if (attempt < this.maxAttempts) await this.sleep(attempt);
+      // Storage failures must propagate, never resend an acknowledged group.
+      const saved = packets.map(packet => this.receipts.save({
+        ...receipt,
+        messageId: packet.packetId,
+        connectorId: input.connectorId,
+        attempt,
+        status: receipt.status === 'delivered' ? 'delivered' : attempt === this.maxAttempts ? 'failed' : 'retrying',
+        ...(receipt.status !== 'delivered' && attempt === this.maxAttempts ? { safeCode: 'CHANNEL_DELIVERY_EXHAUSTED' } : {}),
+      }));
+      if (receipt.status === 'delivered' || attempt === this.maxAttempts) return saved;
+      await this.sleep(attempt);
     }
-    return this.receipts.save({
-      messageId: packet.packetId,
-      connectorId: input.connectorId,
-      status: 'failed',
-      attempt: this.maxAttempts,
-      safeCode: 'CHANNEL_DELIVERY_EXHAUSTED',
-    });
+    return [];
   }
 }
