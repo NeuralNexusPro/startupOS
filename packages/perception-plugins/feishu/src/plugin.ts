@@ -8,7 +8,7 @@ import type { FeishuApiClient, FeishuMarkdownStreamController, FeishuSdkFactory,
 
 export const feishuManifest: PerceptionPluginManifest = {
   id: 'originos.feishu', name: '飞书机器人', version: '0.3.0', hostApi: '1.0', entry: '@originos/perception-plugin-feishu', source: 'feishu', transport: 'stream',
-  capabilities: ['inbound-events', 'outbound-reply', 'attachments'], permissions: ['credentials', 'events', 'health', 'replies'],
+  capabilities: ['inbound-events', 'outbound-reply', 'outbound-files', 'attachments'], permissions: ['credentials', 'events', 'health', 'replies'],
   configurationSchema: { version: '1.0', fields: [
     { key: 'appId', label: 'App ID', type: 'text', required: true, help: '飞书开放平台应用凭证中的 App ID' },
     { key: 'appSecret', label: 'App Secret', type: 'password', required: true, sensitive: true },
@@ -22,6 +22,7 @@ interface RunningClient extends FeishuSdkRuntime { reconnectCount: number }
 function defaultSdkFactory(options: FeishuSdkFactoryOptions): FeishuSdkRuntime {
   const domain = options.domain === 'lark' ? lark.Domain.Lark : lark.Domain.Feishu;
   const dispatcher = new lark.EventDispatcher({});
+  const client = new lark.Client({ appId: options.appId, appSecret: options.appSecret, domain });
   const ws = new lark.WSClient({
     appId: options.appId, appSecret: options.appSecret, domain, autoReconnect: true, source: 'originos',
     onReady: options.onReady, onError: options.onError, onReconnecting: options.onReconnecting, onReconnected: options.onReconnected,
@@ -34,6 +35,17 @@ function defaultSdkFactory(options: FeishuSdkFactoryOptions): FeishuSdkRuntime {
   return {
     ws, dispatcher,
     api: {
+      replyFile: async (messageId, _chatId, file, assertActive) => {
+        assertActive();
+        const uploaded = await client.im.v1.file.create({ data: { file_type: 'stream', file_name: file.fileName, file: Buffer.from(file.bytes) } });
+        assertActive();
+        const response = uploaded as { file_key?: string; data?: { file_key?: string } } | null;
+        const fileKey = response?.file_key ?? response?.data?.file_key;
+        if (!fileKey) throw new Error('IM_FILE_SEND_UNCONFIRMED');
+        const result = await client.im.v1.message.reply({ path: { message_id: messageId }, data: { msg_type: 'file', content: JSON.stringify({ file_key: fileKey }) } });
+        if ((result.code !== undefined && result.code !== 0) || !result.data?.message_id) throw new Error('IM_FILE_SEND_UNCONFIRMED');
+        return { messageId: result.data.message_id };
+      },
       replyText: async (messageId, chatId, content) => channel.send(chatId, { text: content }, { replyTo: messageId }),
       replyMarkdown: async (messageId, chatId, content) => channel.send(chatId, { markdown: content }, { replyTo: messageId }),
       streamReply: async (messageId, chatId, producer) => channel.stream(chatId, { markdown: producer }, { replyTo: messageId }),
@@ -85,7 +97,7 @@ export class FeishuPerceptionPlugin implements PerceptionPlugin {
   private async submit(context: PerceptionPluginRuntimeContext, api: FeishuApiClient, message: FeishuSdkMessageEvent): Promise<void> {
     if (!context.ports.events) return;
     const event = normalizeFeishuMessage({ connectorId: context.connectorId, message });
-    const unregister = context.ports.replies?.register(event.provenance.rawPayloadRef, this.replyDelivery(context.connectorId, api, message.message.message_id, message.message.chat_id));
+    const unregister = context.ports.replies?.register(event.provenance.rawPayloadRef, this.replyDelivery(context.connectorId, api, message.message.message_id, message.message.chat_id), { supportsFiles: true });
     try { await context.ports.events.submit(event); }
     catch { await context.ports.health?.report({ status: 'degraded', safeCode: 'FEISHU_EVENT_SUBMIT_FAILED' }); }
     finally { unregister?.(); }
@@ -107,6 +119,17 @@ export class FeishuPerceptionPlugin implements PerceptionPlugin {
       return receipt(connectorId, fallback.messageId);
     };
     return async (event) => {
+      if (event.type === 'file') {
+        const assertActive = () => {
+          event.signal?.throwIfAborted();
+          if (this.clients.get(connectorId)?.api !== api) throw new Error('IM_FILE_REPLY_UNAVAILABLE');
+        };
+        assertActive();
+        if (!event.file.bytes.byteLength) throw new Error('IM_FILE_NOT_NONEMPTY_REGULAR_FILE');
+        if (event.file.bytes.byteLength > 20_000_000) throw new Error('IM_FILE_TOO_LARGE');
+        const result = await api.replyFile(messageId, chatId, event.file, assertActive);
+        return receipt(connectorId, result.messageId);
+      }
       if (event.type === 'text_delta') {
         state.delta += event.delta;
         ensureStream();
