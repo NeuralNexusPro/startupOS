@@ -280,3 +280,9 @@ AG.5 拆出 AG5-T1：修正现有 Monorepo 架构检查。提案 `fix-monorepo-b
 ## 2026-09-12 AG2-T1交付验证
 
 AG2-T1当前34处存量边界已修复，通知中文入口及会话恢复快照回归已覆盖。其他Story状态不因此自动改变；准确证据见[AG.2](story-AG.2/README.md)。
+
+## AG2-T3 (2026-09-13)
+
+测试包：/Users/archersado/workspace/startupOS/release/session-fixes-20260913/mac-arm64/OriginOS CE.app。
+
+[Testing](./story-AG.2/testing.md)

@@ -221,7 +221,18 @@ export function assertSessionOwnership(
     'projectId',
     'Session project identity is missing.',
   );
-  const requiredProjectId = expectedProjectId(request);
+  const explicitEntryType = projectContext['entryType'];
+  const explicitEntryId = projectContext['entryId'];
+  // A project-scoped Skill must carry its exact persisted entry identity.
+  // Legacy sessions still use the original standalone owner derivation.
+  const hasExplicitSkillIdentity = request.entryType === 'skill'
+    && explicitEntryType === 'skill'
+    && typeof explicitEntryId === 'string'
+    && explicitEntryId.trim().length > 0
+    && explicitEntryId === request.entryId;
+  const requiredProjectId = hasExplicitSkillIdentity
+    ? sessionProjectId
+    : expectedProjectId(request);
   if (
     request.projectId !== requiredProjectId
     || sessionProjectId !== request.projectId
@@ -232,8 +243,6 @@ export function assertSessionOwnership(
     );
   }
 
-  const explicitEntryType = projectContext['entryType'];
-  const explicitEntryId = projectContext['entryId'];
   if (explicitEntryType !== undefined && explicitEntryType !== request.entryType) {
     throw new RestoreAgentSessionError(
       'OWNERSHIP_MISMATCH',

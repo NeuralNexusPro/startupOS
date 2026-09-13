@@ -160,3 +160,9 @@ data/projects/{projectId}/
 |------|---------|--------|
 | 2026-04-22 | Epic P2 初始化，梳理现有实现状态 | archersado |
 | 2026-07-28 | 增加 P2.7 与 P2.8，明确 Workflow 只在设计阶段并发布执行契约 | Codex |
+
+## P21-T2 (2026-09-13)
+
+测试包：/Users/archersado/workspace/startupOS/release/session-fixes-20260913/mac-arm64/OriginOS CE.app。
+
+[Testing](./story-P2.1/testing.md)

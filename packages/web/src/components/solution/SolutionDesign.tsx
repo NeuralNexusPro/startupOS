@@ -63,21 +63,13 @@ interface SolutionDesignProps {
   onCancel?: () => void;
 }
 
-// Prevent concurrent initializations within the same module lifecycle
-const initializingSessions = new Set<string>();
-
 export function SolutionDesign({
   projectId,
   projectName,
   onCancel,
 }: SolutionDesignProps) {
-  const storageKey = `solution-session-${projectId}`;
-  const [sessionId, setSessionId] = useState<string | null>(() => {
-    if (typeof window !== 'undefined') {
-      return sessionStorage.getItem(storageKey);
-    }
-    return null;
-  });
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const initializationRef = useRef<{ projectId: string; request: ReturnType<typeof initializeSolution> } | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
   const [manifest, setManifest] = useState<SolutionManifest | null>(null);
   const [activeTab, setActiveTab] = useState<'chat' | 'topology'>('chat');
@@ -101,7 +93,8 @@ export function SolutionDesign({
     messages: piMessages,
     artifactVersion,
     initialize,
-    sendMessage: sendMessageStream,
+    sendMessageStream,
+    uiState,
     abort,
   } = usePiAgent();
 
@@ -131,28 +124,17 @@ export function SolutionDesign({
   useEffect(() => {
     let cancelled = false;
 
-    if (initializingSessions.has(projectId)) {
-      // Another instance is already initializing — do nothing.
-      // When the other instance completes it will clean up the flag,
-      // and a re-render will re-enter this effect.
-      // Set a safety timeout so we never stay stuck in initializing state
-      const timer = setTimeout(() => {
-        if (!cancelled && !initializingSessions.has(projectId)) {
-          setIsInitializing(false);
-        }
-      }, 15000);
-      return () => { cancelled = true; clearTimeout(timer); };
+    setIsInitializing(true);
+    setSessionId(null);
+    if (initializationRef.current?.projectId !== projectId) {
+      initializationRef.current = { projectId, request: initializeSolution(projectId) };
     }
-
-    // Clear any previous session to avoid loading history
-    sessionStorage.removeItem(storageKey);
-
-    // Fresh initialization — always create a new session via API
-    initializingSessions.add(projectId);
+    const request = initializationRef.current.request;
 
     const doInit = async () => {
       try {
-        const result = await initializeSolution(projectId);
+        const result = await request;
+        if (cancelled) return;
 
         if (!result.success || !result.data) {
           throw new Error((result as any).error?.message || 'Failed to initialize solution session');
@@ -170,6 +152,8 @@ export function SolutionDesign({
           {
             projectId,
             projectName,
+            entryType: 'skill',
+            entryId: 'solution-design',
             ...(baseDir ? { currentPath: baseDir } : {}),
             ...(solutionOutputDir ? { outputDir: solutionOutputDir } : {}),
           },
@@ -181,7 +165,7 @@ export function SolutionDesign({
           llmConfig,
         );
 
-        sessionStorage.setItem(storageKey, sid);
+        if (cancelled) return;
         setSessionId(sid);
 
         // End loading only after agent initialization, so auto-start cannot race
@@ -206,12 +190,10 @@ export function SolutionDesign({
       }
     };
 
-    doInit().finally(() => {
-      initializingSessions.delete(projectId);
-    });
+    void doInit();
 
     return () => { cancelled = true; };
-  }, [projectId, projectName, llmConfig, initialize, storageKey]);
+  }, [projectId, projectName, llmConfig, initialize]);
 
   // Send initial message once after initialization completes (fires on every mount)
   const autoStartSentRef = useRef(false);
@@ -299,6 +281,8 @@ export function SolutionDesign({
       await sendMessageStream(content);
     } catch (error) {
       console.error('Failed to send message:', error);
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      setLocalMessages(prev => [...prev, { role: 'assistant', content: `消息发送失败：${message}`, timestamp: Date.now() }]);
     }
   };
 
@@ -472,6 +456,7 @@ export function SolutionDesign({
                 />
               </div>
 
+              {uiState.errorMessage && <div role="alert" className="px-4 py-2 text-sm text-red-600">{uiState.errorMessage}</div>}
               {onCancel && (
                 <div className="px-4 pb-3">
                   <button

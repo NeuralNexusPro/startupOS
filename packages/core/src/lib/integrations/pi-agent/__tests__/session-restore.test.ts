@@ -338,3 +338,39 @@ describe('Session restore contract', () => {
     expect(elapsedMs).toBeLessThan(500);
   });
 });
+
+
+describe('P21-T2 project-scoped Skill ownership', () => {
+  const request = { ...restoreRequest, projectId: 'proj-solution', entryId: 'solution-design' };
+  const projectContext = { projectId: request.projectId, entryType: 'skill', entryId: request.entryId };
+  const session = () => createStoredSession({ projectContext });
+
+  it('TC1 accepts explicit matching project Skill identity for send and restore', async () => {
+    expect(() => assertSessionMessageOwnership(session(), request)).not.toThrow();
+    const hydrateRuntime = vi.fn().mockResolvedValue(undefined);
+    await restoreSessionAtBoundary(request, {
+      getSession: vi.fn().mockResolvedValue(session()), hydrateRuntime,
+    });
+    expect(hydrateRuntime).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    { projectId: 'proj-other' }, { entryId: 'other-skill' },
+    { entryType: 'role-agent' as const }, { sessionId: 'other-session' },
+  ])('TC2 rejects a mismatched message scope %j', (override) => {
+    expectRestoreError(() => assertSessionMessageOwnership(session(), { ...request, ...override }), 'OWNERSHIP_MISMATCH');
+  });
+
+  it.each([
+    {}, { entryType: 'skill' }, { entryId: 'solution-design' },
+  ])('TC3 does not infer project Skill authority from incomplete persisted identity %j', (identity) => {
+    const stored = createStoredSession({ projectContext: { projectId: request.projectId, ...identity } });
+    expectRestoreError(() => assertSessionMessageOwnership(stored, request), 'OWNERSHIP_MISMATCH');
+  });
+
+  it('TC3 retains standalone legacy Skill identity and rejects moving it to a project', () => {
+    const stored = createStoredSession({ projectContext: { projectId: restoreRequest.projectId } });
+    expect(() => assertSessionMessageOwnership(stored, restoreRequest)).not.toThrow();
+    expectRestoreError(() => assertSessionMessageOwnership(stored, request), 'OWNERSHIP_MISMATCH');
+  });
+});
