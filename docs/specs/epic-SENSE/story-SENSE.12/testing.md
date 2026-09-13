@@ -161,3 +161,11 @@ TC13通过实际macOS arm64 ASAR验收：业务初始化注册send_file，真实
 
 ## SENSE12-T6 最终验收（2026-09-13）
 32项感知中心回归通过：非事件页不轮询、事件页5秒刷新及离开/卸载清理、共享订阅隔离、必要store更新保留平台/草稿/焦点/DOM、取消重开。顶部菜单经调用点审查只首次load，唯一生产定时刷新订阅位于事件页。Web类型、Web生产构建、lint0错误2966既有警告、869文件零架构诊断及自测43×2、OpenSpec严格校验通过。日志/private/tmp/form-reset-final-{tests,build,lint,boundaries,selftest,spec}.log。构建已改用独立依赖，主工作区文件恢复后git状态干净。联合桌面测试包随SENSE12-T5验收记录。
+
+## SENSE12-T5/T6 联合桌面验收（2026-09-13）
+
+136项回归通过：Core41、Desktop5、Email3、企微20、飞书14、钉钉21、Web32。完整desktop:build和macOS arm64打包通过。实际包使用25ms模拟ACK、96文本片+正文/完成事件：旧包98请求2633ms，新包5请求167ms，首发5ms，98条原始回执均成功且正文一致；这是模拟确认延迟，不代表真实平台网络测速。实际ASAR的send_file注册/ALS/Host/重复及过期上下文、三平台SDK加载，skill/persistent worker冷启动/路径授权/关闭全部通过。147个打包Web静态文件与已验证构建哈希一致。
+
+lint0错误2966既有警告，架构869文件0诊断，自测43×2和OpenSpec strict通过。日志/private/tmp/perception-stream-final-{core,desktop,plugins,web,build,pack,lint,boundaries,selftest,spec}.log及/private/tmp/perception-stream-asar-{benchmark,file,worker}.log；旧对照/private/tmp/stream-baseline-asar.log。测试脚本/private/tmp/originos-stream-benchmark.cjs、originos-verify-im-file-package.cjs、originos-verify-im-file-worker.cjs。
+
+测试包：/Users/archersado/workspace/startupOS/release/perception-stream-fixes-20260913/mac-arm64/OriginOS CE.app。退出旧应用后打开此包；配置页等待10秒应保留平台与草稿，仅事件页自动刷新；企微发起长回复观察更新及结束速度。未发送真实IM消息/文件，真实平台收件、权限及网络仍需人工验证，Windows未验证。本地包未签名公证。其他Story未完成工作保持独立跟踪。
