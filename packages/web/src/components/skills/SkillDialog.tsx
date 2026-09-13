@@ -968,7 +968,7 @@ export function SkillDialog({
         uploadError={skillUploadError}
         uploading={skillUploading}
       />
-      {taskRuntime.error && <div role="alert" className="px-4 py-2 text-sm text-red-500">任务功能暂不可用：{taskRuntime.error}</div>}
+      {taskRuntime.error && <div role="alert" className="px-4 py-2 text-sm text-red-600">任务功能暂不可用：{taskRuntime.error}</div>}
       {uiState.errorMessage && (
         <div className="px-4 py-2 text-sm text-red-500 bg-red-50">
           {uiState.errorMessage}
