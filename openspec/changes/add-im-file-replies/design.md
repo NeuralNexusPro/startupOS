@@ -13,7 +13,7 @@ PluginReplyEvent 新增 {type:'file';file:ChannelReplyFile}，从 Plugin SDK 导
 PluginReplyPort.register 第三个可选参数 {supportsFiles?:boolean}，旧调用默认不支持文件。Desktop 回复服务提供 canSendFile 与 sendFile，复用原注册表。以 replyHandle 与 toolCallId 的哈希作为文件投递 ID，复用 ChannelDeliveryStore 保存无内容回执，成功重入跳过；未确认的发送不自动重试并明确失败，不能宣称 exactly-once。插件能力新增 outbound-files，Host 限制只有声明该能力的注册能启用文件。
 ### 三平台
 企微：uploadMedia(Buffer,{type:'file',filename}) 后 replyMedia(frame,'file',media_id)，等待 ACK。
-飞书：LarkChannel.send(chatId,{file:{source:Buffer,fileName}},{replyTo:messageId})。
+飞书：复用已安装官方 lark.Client.im.v1.file.create 上传，检查调用中止与当前连接实例后调用 im.v1.message.reply 回复原消息。LarkChannel.send(file) 不暴露上传后取消点，因此文件分两步；文本保持现有 LarkChannel。
 钉钉：固定官方 dingtalk-stream@2.1.7-beta.1，凭据 appId/appSecret，robotCode 配置与回调匹配；debug:false、subscriptions:[]，SDK 管理 WS 心跳重连。健康检查 connected && registered，停止清理注册、调度和客户端。
 钉钉文件使用应用 token、media/upload、群 groupMessages/send 或单聊 oToMessages/batchSend，msgKey sampleFile；单聊只使用 senderStaffId，检查 invalidStaffIdList/flowControlledStaffIdList。格式 xlsx/pdf/zip/rar/doc/docx，其他格式明确提示先生成 ZIP；不偷偷改文件格式。文本使用官方 sampleText，增量本地累积后按已有终态发出，避免逐字请求。
 ### 钉钉接纳确认

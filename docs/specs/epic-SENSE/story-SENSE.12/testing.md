@@ -117,3 +117,13 @@ Desktop 3 个文件 26 项联合回归通过；完整 desktop:build、macOS arm6
 | TC13 | 打包内新工具注册、共享链路、三插件文件能力可载入；相关既有业务worker/文本回归 | 实际ASAR脚本+构建 |
 测试命令：对应 Core/Desktop/三个插件 Vitest、类型检查；pnpm lint、pnpm lint:boundaries、node scripts/check-architecture-boundaries.cjs --self-test；pnpm desktop:build 与 macOS arm64 本地包。
 测试使用临时文件和模拟平台，不发真实消息或文件。人工：配置平台凭据及机器人权限，在三平台分别请求生成PDF并发回，检查附件可下载且内容一致；钉钉分别测群与单聊、未授权和格式拒绝。未联机项记录限制，不将模拟成功宣称真实收件人已收到。
+
+## SENSE12-T4 最终验收（2026-09-13）
+
+相关自动化87项通过：Core29、Desktop5、Email3、企微15、飞书14、钉钉21。TC1–7/10由工具、真实串行渠道与fan-out、Host回执/能力测试覆盖；TC8由两平台官方SDK参数与中止测试覆盖；TC9/11/12由钉钉HTTP、接纳回调、终态及真实发布SDK受控传输测试覆盖。上传后中止、旧注册替换、并发重入、部分正文后的失败/取消提示均包含在回归中。
+
+TC13通过实际macOS arm64 ASAR验收：业务初始化注册send_file，真实编译工具→共享ALS→Desktop回复服务→模拟平台确认，重复调用只投递一次，过期上下文拒绝；三平台文件能力和SDK均从包内加载，钉钉CJS与ESM入口都通过。真实skill/persistent worker冷启动、send_file工具注册、路径授权和关闭通过。完整desktop:build及electron-builder本地打包退出0；lint0错误2966个既有警告，869生产文件架构扫描零违规，自测43×2通过，OpenSpec严格校验通过。Next构建中的既有node:os/node:path诊断与上一测试包一致，未阻断构建。
+
+测试包：`/Users/archersado/workspace/startupOS/release/im-file-replies-20260913/mac-arm64/OriginOS CE.app`。日志：`/private/tmp/im-file-final-{core,desktop,plugins,dingtalk,routing,build,pack,lint,boundaries,selftest,spec}.log`；包验收`/private/tmp/im-file-asar-{smoke,worker}.log`。可执行包验收脚本：`/private/tmp/originos-verify-im-file-package.cjs`、`/private/tmp/originos-verify-im-file-worker.cjs`，以本包Electron设置`ELECTRON_RUN_AS_NODE=1`运行，参数分别为本包app.asar及其dist-electron/core/src。
+
+限制：未对真实平台账号发送文件，模拟回执不代表真实收件人已收到；尚未人工验证平台权限、企业策略或收件端下载。人工复核：从本测试包启用已配置连接，在企微/飞书会话请求生成PDF并发回，下载确认内容；钉钉先配置Client ID、Client Secret、机器人编码、Stream模式与发送权限，分别从群聊和单聊请求同样操作，并验证不支持格式提示生成ZIP。单文件上限20_000_000字节；钉钉文件格式为xlsx/pdf/zip/rar/doc/docx。测试包未签名/公证；未验证Windows。本轮不会自动发送所有资产，也未修改独立待处理的企微流式排队算法。

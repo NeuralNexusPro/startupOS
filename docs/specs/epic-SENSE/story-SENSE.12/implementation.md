@@ -32,3 +32,7 @@
 ## SENSE12-T4：IM 文件回复实施
 
 状态：实施中。对应 Proposal add-im-file-replies。先在独立 Core Task worktree 实施调用上下文、send_file、Plugin SDK 与 Desktop 回复及接纳确认；合入 Proposal 后，两个独立 Task 并行实现企微/飞书和钉钉插件。钉钉固定官方 dingtalk-stream@2.1.7-beta.1，复用 Node fetch/FormData；旧缺凭据配置提示重新绑定。完成后执行 TC1–13、架构检查、桌面构建及实际 ASAR 本地验证。回滚恢复原接口与插件，不迁移或删除用户资产。
+
+### SENSE12-T4 集成证据
+
+Core 基础 eaca581、企微/飞书 6f93070、钉钉 ae509e7 已在独立 Task 完成并合入 Proposal。Core 29、Desktop 5、企微15、飞书14、钉钉21项相关测试通过；钉钉发布 SDK 的握手停止和旧连接 ACK 由仓库测试验证。飞书使用官方 Client 分步上传和回复，以便上传后检查中止；钉钉使用官方 SDK 动态加载兼容 CJS 构建。实际包验收结果在 testing.md 最终记录。
