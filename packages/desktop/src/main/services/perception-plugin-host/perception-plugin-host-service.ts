@@ -66,7 +66,7 @@ const BUNDLED_CATALOG = [
   },
   {
     plugin: dingtalkPlugin,
-    approvedPermissions: ['events', 'health'] as const,
+    approvedPermissions: ['credentials', 'events', 'health', 'replies', 'schedule'] as const,
   },
 ];
 const PLUGIN_IDS = Object.fromEntries(
