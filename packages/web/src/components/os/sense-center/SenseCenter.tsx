@@ -41,21 +41,21 @@ export function SenseCenter(): JSX.Element {
       <section className="min-h-0 flex-1 overflow-auto p-4">
         {loading && <p role="status" className="text-sm text-slate-400">正在加载…</p>}
         {error && <div role="alert" className="rounded border border-red-600 bg-red-950 p-3 text-sm text-red-100">{error}</div>}
-        {!loading && !error && tab === 'sources' && <SourceList />}
-        {!loading && !error && tab === 'targets' && <TargetList />}
-        {!loading && !error && tab === 'rules' && <RuleList />}
-        {!loading && !error && tab === 'events' && <EventList />}
-        {!loading && !error && tab === 'health' && <HealthList />}
+        {!loading && !error && tab === 'sources' && renderSourceList()}
+        {!loading && !error && tab === 'targets' && renderTargetList()}
+        {!loading && !error && tab === 'rules' && renderRuleList()}
+        {!loading && !error && tab === 'events' && renderEventList()}
+        {!loading && !error && tab === 'health' && renderHealthList()}
       </section>
       {deadLetters.length > 0 && <aside className="border-t border-yellow-600 bg-yellow-950 p-3 text-sm"><AlertTriangle className="mr-2 inline h-4 w-4" />{deadLetters.length} 个失败事件待处理 <Button size="sm" className="ml-3" onClick={() => { const item = deadLetters[0]; if (item && window.confirm('重放会重新检查目标授权与 HITL，确认继续？')) void replay(item.connectorId, item.id); }}>重放最早一条</Button></aside>}
     </main>
   );
 
-  function SourceList(): JSX.Element {
+  function renderSourceList(): JSX.Element {
     return <><div className="mb-4 flex justify-end"><Button onClick={() => { setEditingConnector(undefined); setShowConnectorForm((value) => !value); }}>{showConnectorForm ? '收起表单' : '添加感知源'}</Button></div>{showConnectorForm && <ConnectorForm key={editingConnector?.id ?? 'new'} initial={editingConnector} onSave={saveConnector} onProvisioned={load} onCancel={() => { setShowConnectorForm(false); setEditingConnector(undefined); }} />}{connectors.length === 0 ? <Empty icon={<Cable className="h-8 w-8" />} text="尚未配置感知源" /> : <div className="grid gap-3 md:grid-cols-2">{connectors.map((item) => <article key={item.id} className="rounded border border-slate-700 bg-slate-900 p-4"><div className="flex items-start justify-between"><div><h2 className="font-bold">{item.id}</h2><p className="text-sm text-slate-400">{item.source} · {item.mode}</p></div><span className={`rounded px-2 py-1 text-xs ${item.enabled ? 'bg-green-600' : 'bg-slate-700'}`}>{item.enabled ? '已启用' : '已停用'}</span></div><p className="mt-3 text-xs text-slate-400">凭据：{item.secretConfigured ? '已安全绑定' : '未绑定'}</p><div className="mt-3 flex gap-2"><Button variant="outline" size="sm" onClick={() => void setConnectorEnabled(item.id, !item.enabled)}>{item.enabled ? '停用' : '启用'}</Button><Button variant="outline" size="sm" onClick={() => { setEditingConnector(item); setShowConnectorForm(true); }}>重新绑定</Button></div></article>)}</div>}</>;
   }
 
-  function RuleList(): JSX.Element {
+  function renderRuleList(): JSX.Element {
     const closeWizard = (): void => { setShowRuleWizard(false); setEditingRule(undefined); };
     const persistRule = async (rule: PerceptionTriggerRule): Promise<void> => {
       setRuleActionError(undefined);
@@ -68,7 +68,7 @@ export function SenseCenter(): JSX.Element {
     return <><div className="mb-4 flex justify-end"><Button onClick={() => { if (showRuleWizard) closeWizard(); else { setEditingRule(undefined); setShowRuleWizard(true); } }}>{showRuleWizard ? '收起向导' : '创建规则'}</Button></div>{ruleActionError && <p role="alert" className="mb-3 text-sm text-red-400">{ruleActionError}</p>}{showRuleWizard && <RuleWizard key={editingRule?.id ?? 'new'} connectors={connectors} grants={grants} initial={editingRule} onSave={persistRule} onCancel={closeWizard} />}{rules.length === 0 ? <Empty icon={<Router className="h-8 w-8" />} text="尚未创建触发规则" /> : <div className="space-y-3">{rules.map((item) => <article key={item.id} className="rounded border border-slate-700 bg-slate-900 p-4"><div className="flex justify-between"><h2 className="font-bold">{item.id}</h2><span className={`rounded px-2 py-1 text-xs ${item.enabled ? 'bg-green-600 text-white' : 'bg-slate-700 text-slate-300'}`}>{item.enabled ? '生效中' : '已停用'}</span></div><p className="mt-2 text-sm text-slate-300">{item.sources.join('、')} → {item.target.kind}/{item.target.id}</p><p className="mt-1 text-xs text-slate-400">{item.conditions.length} 个白名单条件 · 最大 {item.execution.maxAttempts} 次尝试 · HITL {item.execution.requireHitl ? '开启' : '关闭'}</p><div className="mt-3 flex flex-wrap gap-2"><Button variant="outline" size="sm" onClick={() => void persistRule({ ...item, enabled: !item.enabled, updatedAt: new Date().toISOString() }).catch(() => undefined)}>{item.enabled ? '停用' : '启用'}</Button><Button variant="outline" size="sm" onClick={() => { setEditingRule(item); setShowRuleWizard(true); }}>编辑</Button><Button variant="outline" size="sm" onClick={() => { if (window.confirm(`删除触发规则 ${item.id}？`)) void removeRule(item.id); }}>删除</Button></div></article>)}</div>}</>;
   }
 
-  function TargetList(): JSX.Element {
+  function renderTargetList(): JSX.Element {
     return <>
       <div className="mb-4 flex items-center justify-between gap-3">
         <p className="text-sm text-slate-400">只有这里明确授权的目标才能接收外部事件。</p>
@@ -86,7 +86,7 @@ export function SenseCenter(): JSX.Element {
     </>;
   }
 
-  function EventList(): JSX.Element {
+  function renderEventList(): JSX.Element {
     if (eventTraces.length === 0) return <Empty icon={<Activity className="h-8 w-8" />} text="尚无感知事件" />;
     const pageSize = 50;
     const pageCount = Math.ceil(eventTraces.length / pageSize);
@@ -117,7 +117,7 @@ export function SenseCenter(): JSX.Element {
     </details>)}</div>{pageCount > 1 && <div className="mt-4 flex items-center justify-between"><Button variant="outline" size="sm" disabled={eventPage === 0} onClick={() => setEventPage((page) => Math.max(0, page - 1))}>上一页</Button><span className="text-xs text-slate-400">{eventPage + 1} / {pageCount}</span><Button variant="outline" size="sm" disabled={eventPage + 1 >= pageCount} onClick={() => setEventPage((page) => Math.min(pageCount - 1, page + 1))}>下一页</Button></div>}</>;
   }
 
-  function HealthList(): JSX.Element {
+  function renderHealthList(): JSX.Element {
     if (health.length === 0) return <Empty icon={<Activity className="h-8 w-8" />} text="尚无健康状态" />;
     return <div className="grid gap-3 md:grid-cols-2">{health.map((item) => <article key={item.connectorId} className="rounded border border-slate-700 bg-slate-900 p-4"><div className="flex justify-between"><h2 className="font-bold">{item.connectorId}</h2><span className="text-sm text-green-500">{item.status}</span></div><p className="mt-2 text-sm text-slate-400">模式：{item.mode}</p><pre className="mt-2 overflow-auto text-xs text-slate-500">{JSON.stringify(item, null, 2)}</pre></article>)}</div>;
   }
