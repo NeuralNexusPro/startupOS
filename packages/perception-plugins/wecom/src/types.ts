@@ -20,6 +20,8 @@ export interface WeComSettings {
 }
 
 export interface WeComBotClient {
+  uploadMedia(bytes: Buffer, options: { type: 'file'; filename: string }): Promise<{ media_id: string }>;
+  replyMedia(frame: WeComFrame, mediaType: 'file', mediaId: string): Promise<unknown>;
   connect(): unknown;
   disconnect(): void;
   replyStream(frame: WeComFrame, streamId: string, content: string, finish: boolean): Promise<unknown>;

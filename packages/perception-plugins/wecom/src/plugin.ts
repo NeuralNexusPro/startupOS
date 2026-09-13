@@ -180,7 +180,8 @@ export class WeComPerceptionPlugin implements PerceptionPlugin {
               streamId,
               replyState,
               output
-            )
+            ),
+          { supportsFiles: true }
         );
       }
       const results = await context.ports.events.submit(event);
@@ -222,7 +223,19 @@ export class WeComPerceptionPlugin implements PerceptionPlugin {
     state: { content: string },
     output: PluginReplyEvent
   ): Promise<PluginReplyReceipt> {
-    if (output.type === 'text_delta') {
+    if (output.type === 'file') {
+      const assertActive = () => {
+        output.signal?.throwIfAborted();
+        if (this.clients.get(connectorId) !== client) throw new Error('IM_FILE_REPLY_UNAVAILABLE');
+      };
+      assertActive();
+      if (!output.file.bytes.byteLength) throw new Error('IM_FILE_NOT_NONEMPTY_REGULAR_FILE');
+      if (output.file.bytes.byteLength > 20_000_000) throw new Error('IM_FILE_TOO_LARGE');
+      const uploaded = await client.uploadMedia(Buffer.from(output.file.bytes), { type: 'file', filename: output.file.fileName });
+      assertActive();
+      if (!uploaded.media_id) throw new Error('IM_FILE_SEND_UNCONFIRMED');
+      await client.replyMedia(frame, 'file', uploaded.media_id);
+    } else if (output.type === 'text_delta') {
       state.content = limitReply(`${state.content}${output.delta}`);
       await client.replyStream(frame, streamId, state.content, false);
     } else if (output.type === 'assistant_message') {

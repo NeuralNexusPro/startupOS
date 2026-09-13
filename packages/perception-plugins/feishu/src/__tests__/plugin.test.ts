@@ -26,6 +26,7 @@ function sdk() {
   const dispatcher: FeishuEventDispatcher = { register: vi.fn((handlers: { 'im.message.receive_v1'?: typeof receive }): FeishuEventDispatcher => { receive = handlers['im.message.receive_v1']; return dispatcher; }) };
   const streamed: string[] = [];
   const api = {
+    replyFile: vi.fn(async (_messageId: string, _chatId: string, _file: import('@originos/core/modules/perception-runtime/plugins').ChannelReplyFile, assertActive: () => void) => { assertActive(); return { messageId: 'file-reply' }; }),
     replyText: vi.fn(async () => ({ messageId: 'text-reply-1' })),
     replyMarkdown: vi.fn(async () => ({ messageId: 'markdown-reply-1' })),
     streamReply: vi.fn(async (_messageId: string, _chatId: string, producer: Parameters<import('../types').FeishuApiClient['streamReply']>[2]) => {
@@ -86,7 +87,7 @@ describe('FeishuPerceptionPlugin WebSocket channel', () => {
     const submit = vi.fn(async () => { await deliver?.({ type: 'assistant_message', content: '**完成**\n- 第一条' }); return [{ status: 'dispatched' as const }]; });
     const host = context({ ports: { ...base.ports, events: { submit }, replies: { register } } });
     const plugin = new FeishuPerceptionPlugin(fake.factory); await plugin.start(host); await fake.emit();
-    expect(register).toHaveBeenCalledWith('feishu-ws://feishu-main/om-message-1', expect.any(Function));
+    expect(register).toHaveBeenCalledWith('feishu-ws://feishu-main/om-message-1', expect.any(Function), { supportsFiles: true });
     expect(fake.api.replyMarkdown).toHaveBeenCalledWith('om-message-1', 'oc-chat-1', '**完成**\n- 第一条');
   });
 

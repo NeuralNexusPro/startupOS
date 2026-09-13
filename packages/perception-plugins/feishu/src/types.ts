@@ -1,3 +1,4 @@
+import type { ChannelReplyFile } from '@originos/core/modules/perception-runtime/plugins';
 export interface FeishuSdkMessageEvent {
   event_id?: string;
   create_time?: string;
@@ -18,6 +19,7 @@ export interface FeishuMarkdownStreamController {
   setContent(content: string): Promise<void>;
 }
 export interface FeishuApiClient {
+  replyFile(messageId: string, chatId: string, file: ChannelReplyFile, assertActive: () => void): Promise<{ messageId: string }>;
   replyText(messageId: string, chatId: string, content: string): Promise<{ messageId: string }>;
   replyMarkdown(messageId: string, chatId: string, content: string): Promise<{ messageId: string }>;
   streamReply(messageId: string, chatId: string, producer: (controller: FeishuMarkdownStreamController) => Promise<void>): Promise<{ messageId: string }>;

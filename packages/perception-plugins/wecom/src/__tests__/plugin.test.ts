@@ -7,6 +7,8 @@ class FakeClient implements WeComBotClient {
   readonly listeners = new Map<string, (payload?: unknown) => void>();
   readonly connect = vi.fn();
   readonly disconnect = vi.fn();
+  readonly uploadMedia = vi.fn(async () => ({ media_id: 'media-test' }));
+  readonly replyMedia = vi.fn(async () => ({}));
   readonly replyStream = vi.fn(async () => undefined);
   on(event: string, listener: (payload?: unknown) => void): void {
     this.listeners.set(event, listener);
@@ -132,7 +134,7 @@ describe('WeComPerceptionPlugin', () => {
     const frame: WeComFrame = { headers: { req_id: 'request-2' }, body: { msgid: 'message-2', text: { content: '你好' } } };
     client.emit('message.text', frame);
     await vi.waitFor(() => expect(unregister).toHaveBeenCalledOnce());
-    expect(register).toHaveBeenCalledWith('wecom-ws://connector-1/request-2', expect.any(Function));
+    expect(register).toHaveBeenCalledWith('wecom-ws://connector-1/request-2', expect.any(Function), { supportsFiles: true });
     expect(client.replyStream).toHaveBeenNthCalledWith(1, frame, expect.any(String), '真实回复', false);
     expect(client.replyStream).toHaveBeenNthCalledWith(2, frame, expect.any(String), '真实回复', true);
   });
@@ -163,4 +165,28 @@ describe('WeComPerceptionPlugin', () => {
     expect(client.replyStream).toHaveBeenNthCalledWith(2, frame, expect.any(String), '你好', false);
     expect(client.replyStream).toHaveBeenNthCalledWith(3, frame, expect.any(String), '你好', true);
   });
+});
+
+it.each(['success', 'upload-failure', 'send-failure', 'stop', 'cancel'])('files await upload and ACK safely (%s)', async (mode) => {
+ const client = new FakeClient(); const plugin = new WeComPerceptionPlugin(() => client); const base = context();
+ const signal = new AbortController(); const bytes = new Uint8Array([1,2,3]);
+ let delivery: ((event: import('@originos/core/modules/perception-runtime/plugins').PluginReplyEvent) => Promise<unknown>) | undefined;
+ let finish!: () => void;
+ const pending = new Promise<void>((resolve) => { finish = resolve; });
+ const host = context({ ports: { ...base.ports, events:{submit:async()=>{await pending;return[];}},replies:{register:vi.fn((_handle,next)=>{delivery=next;return vi.fn();})} } });
+ await plugin.start(host); client.emit('message.text',{headers:{req_id:'file-request'},body:{msgid:'file-message',text:{content:'file'}}});
+ await vi.waitFor(()=>expect(delivery).toBeDefined());
+ client.uploadMedia.mockImplementationOnce(async()=>{
+   if(mode==='upload-failure')throw new Error('failed');
+   if(mode==='stop')await plugin.stop(host);
+   if(mode==='cancel')signal.abort();
+   return {media_id:'media-test'};
+ });
+ if(mode==='send-failure')client.replyMedia.mockRejectedValueOnce(new Error('failed'));
+ const result=delivery!({type:'file',file:{fileName:'report.pdf',bytes},signal:signal.signal});
+ if(mode==='success')await expect(result).resolves.toMatchObject({status:'delivered'});else await expect(result).rejects.toBeDefined();
+ expect(client.uploadMedia).toHaveBeenCalledWith(Buffer.from(bytes),{type:'file',filename:'report.pdf'});
+ expect(client.replyMedia).toHaveBeenCalledTimes(['success','send-failure'].includes(mode)?1:0);
+ if(mode==='success')expect(client.replyMedia).toHaveBeenCalledWith(expect.objectContaining({headers:{req_id:'file-request'}}),'file','media-test');
+ finish(); await plugin.stop(host);
 });
