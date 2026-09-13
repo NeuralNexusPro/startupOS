@@ -414,14 +414,14 @@ function TopMenuBar({ onOpenGuide, onOpenSettings }: { onOpenGuide: () => void; 
   const eventTraces = usePerceptionStore((state) => state.eventTraces);
   const perceptionLoading = usePerceptionStore((state) => state.loading);
   const perceptionError = usePerceptionStore((state) => state.error);
-  const startPerceptionRefresh = usePerceptionStore((state) => state.startRefreshing);
+  const loadPerception = usePerceptionStore((state) => state.load);
 
   React.useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  React.useEffect(() => startPerceptionRefresh(), [startPerceptionRefresh]);
+  React.useEffect(() => { void loadPerception(); }, [loadPerception]);
 
   return (
     <>

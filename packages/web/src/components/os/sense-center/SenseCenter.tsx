@@ -27,7 +27,8 @@ export function SenseCenter(): JSX.Element {
   const [showGrantForm, setShowGrantForm] = useState(false);
   const [eventPage, setEventPage] = useState(0);
   const { connectors, grants, rules, eventTraces, health, deadLetters, loading, error, load, startRefreshing, setConnectorEnabled, replay, saveConnector, saveRule, deleteRule, saveGrant, deleteGrant } = usePerceptionStore();
-  useEffect(() => startRefreshing(), [startRefreshing]);
+  useEffect(() => { void load(); }, [load]);
+  useEffect(() => tab === 'events' ? startRefreshing() : undefined, [tab, startRefreshing]);
 
   return (
     <main className="flex h-full min-h-0 flex-col bg-slate-950 text-slate-100" aria-label="感知中心">
