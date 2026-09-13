@@ -236,19 +236,23 @@ export class WeComPerceptionPlugin implements PerceptionPlugin {
       if (!uploaded.media_id) throw new Error('IM_FILE_SEND_UNCONFIRMED');
       await client.replyMedia(frame, 'file', uploaded.media_id);
     } else if (output.type === 'text_delta') {
-      state.content = limitReply(`${state.content}${output.delta}`);
-      await client.replyStream(frame, streamId, state.content, false);
+      const content = limitReply(`${state.content}${output.delta}`);
+      await client.replyStream(frame, streamId, content, false);
+      state.content = content;
     } else if (output.type === 'assistant_message') {
-      state.content = limitReply(output.content);
-      await client.replyStream(frame, streamId, state.content, false);
+      const content = limitReply(output.content);
+      await client.replyStream(frame, streamId, content, false);
+      state.content = content;
     } else if (output.type === 'hitl_request') {
-      state.content = limitReply(`需要人工确认：${output.summary}`);
-      await client.replyStream(frame, streamId, state.content, false);
+      const content = limitReply(`需要人工确认：${output.summary}`);
+      await client.replyStream(frame, streamId, content, false);
+      state.content = content;
     } else if (output.type === 'completed') {
       await client.replyStream(frame, streamId, state.content, true);
     } else if (output.type === 'failed' || output.type === 'cancelled') {
-      state.content = output.type === 'failed' ? output.safeCode : '任务已取消';
-      await client.replyStream(frame, streamId, state.content, true);
+      const content = output.type === 'failed' ? output.safeCode : '任务已取消';
+      await client.replyStream(frame, streamId, content, true);
+      state.content = content;
     }
     return {
       messageId: 'pending',
