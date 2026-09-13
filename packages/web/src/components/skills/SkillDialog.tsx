@@ -1,4 +1,7 @@
 'use client';
+import { useAgentTaskRuntime } from '@/components/os/agent-dialog/use-agent-task-runtime';
+import { AgentTaskCard } from '@/components/os/agent-dialog/AgentTaskCard';
+import { shouldShowAgentTaskPanel } from '@/components/os/agent-dialog/agent-task-panel-visibility';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Loader2, Info, Play, X, Clock, Plus, FolderOpen } from 'lucide-react';
@@ -298,6 +301,8 @@ export function SkillDialog({
     sendMessageStream,
     abort,
   } = usePiAgent();
+
+  const taskRuntime = useAgentTaskRuntime({ sessionId: runtimeSessionId || '', enabled: isInitialized && !isRestoring && !switchingSessionId });
 
   const getEffectiveConfig = useSettingsStore((s) => s.getEffectiveConfig);
 
@@ -924,6 +929,9 @@ export function SkillDialog({
           </div>
         ) : (
           <ChatMessageList
+            footerContent={shouldShowAgentTaskPanel(taskRuntime.snapshot, taskRuntime.hasActiveTask) ? (
+              <AgentTaskCard snapshot={taskRuntime.snapshot!} error={taskRuntime.error} pendingAction={taskRuntime.pendingAction} onControl={(action) => void taskRuntime.control(action)} />
+            ) : undefined}
             messages={skillMessages.filter(m => m.role !== 'system') as import('@/components/ui/chat').ChatMessageItem[]}
             isLoading={!isInitialized}
             isThinking={isThinking}
@@ -948,10 +956,10 @@ export function SkillDialog({
       {/* Input Area */}
       <ChatInputBar
         onSubmit={wrappedSendMessage}
-        disabled={!isInitialized || isThinking || isRestoring || Boolean(switchingSessionId)}
+        disabled={!isInitialized || isThinking || isRestoring || Boolean(switchingSessionId) || taskRuntime.blocksChat}
         placeholder="输入你的指令..."
         onUpload={handleUpload}
-        onStop={isThinking ? handleStop : undefined}
+        onStop={isThinking && !taskRuntime.blocksChat ? handleStop : undefined}
         isGenerating={isThinking}
         lightBg
         className="bg-transparent"
@@ -960,6 +968,7 @@ export function SkillDialog({
         uploadError={skillUploadError}
         uploading={skillUploading}
       />
+      {taskRuntime.error && <div role="alert" className="px-4 py-2 text-sm text-red-600">任务功能暂不可用：{taskRuntime.error}</div>}
       {uiState.errorMessage && (
         <div className="px-4 py-2 text-sm text-red-500 bg-red-50">
           {uiState.errorMessage}

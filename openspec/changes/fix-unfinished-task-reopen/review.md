@@ -1,0 +1,2 @@
+# Review
+按用户最终澄清收窄为原历史会话点击继续；自动入口bootstrap和session摘要不实施。复用原任务Hook/Card/控制，Core仅既有generation保护。两Task写入范围互不重叠。
