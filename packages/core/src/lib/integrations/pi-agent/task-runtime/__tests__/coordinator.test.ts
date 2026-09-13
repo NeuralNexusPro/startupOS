@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { OriginOSAgent } from "../../core/agent";
+import type { AgentTaskRuntimePersistenceV1 } from "../types";
 import { AgentTaskRuntimeCoordinator } from "../coordinator";
 
 function canonicalSnapshot(status: "active" | "blocked" | "done" = "active") {
@@ -52,8 +53,9 @@ function createHarness(options: { createTaskOnPrompt?: boolean; status?: "active
 	};
 	let listener: ((state: { scope: { sessionId: string; cursor: string | null; revision: number; bridgeEpoch: number }; snapshot: typeof hostSnapshot }) => void) | null = null;
 	let tools: unknown[] = [{ name: "read_file" }];
-	const persist = vi.fn(async () => undefined);
+	const persist = vi.fn(async (_state: AgentTaskRuntimePersistenceV1) => undefined);
 	const onState = vi.fn();
+	const next = vi.fn(async () => ({ content: [{ type: "text", text: "Continue active step" }] }));
 
 	const host = {
 		restore: vi.fn(async () => ({
@@ -73,7 +75,7 @@ function createHarness(options: { createTaskOnPrompt?: boolean; status?: "active
 			description: "Create task",
 			parameters: {},
 			execute: vi.fn(),
-		}],
+		}, { name: "task_next", label: "Next", description: "Read next action", parameters: {}, execute: next }],
 		invoke: vi.fn(async (command: { toolName?: string }) => {
 			if (command.toolName === "task_plan" && options.createTaskOnPrompt !== false) {
 				hostSnapshot = canonicalSnapshot(options.status ?? "blocked");
@@ -133,7 +135,7 @@ function createHarness(options: { createTaskOnPrompt?: boolean; status?: "active
 		hostFactory: async () => host,
 	});
 
-	return { coordinator, agent, host, persist, onState, getTools: () => tools };
+	return { coordinator, agent, host, persist, onState, next, getTools: () => tools };
 }
 
 describe("AgentTaskRuntimeCoordinator", () => {
@@ -314,4 +316,63 @@ describe("AgentTaskRuntimeCoordinator", () => {
 			bridgeEpoch: 3,
 		})).rejects.toThrow("只有暂停或等待用户的任务可以恢复");
 	});
+});
+
+
+describe("Task runtime shutdown and restore", () => {
+  const create = (harness: ReturnType<typeof createHarness>) => harness.coordinator.createTask({ version: 1, requestId: "shutdown-task", sessionId: "session-1", objective: "Keep task progress" });
+  const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+  it("does not persist a late abort as failure, and restores the same running task once", async () => {
+    const harness = createHarness({ status: "active" });
+    let rejectPrompt!: (error: Error) => void;
+    harness.agent.prompt.mockImplementationOnce(() => new Promise((_, reject) => { rejectPrompt = reject; }));
+    await create(harness);
+    await vi.waitFor(() => expect(harness.agent.prompt).toHaveBeenCalledTimes(1));
+    harness.coordinator.destroy();
+    rejectPrompt(new Error("aborted during shutdown"));
+    await settle();
+    const persisted = harness.persist.mock.calls.at(-1)![0];
+    expect(persisted.execution.status).toBe("running");
+    expect(persisted.execution.lastError).toBeUndefined();
+    harness.agent.prompt.mockClear();
+    let finish!: () => void;
+    harness.agent.prompt.mockImplementationOnce(() => new Promise((resolve) => { finish = () => resolve(undefined); }));
+    const restored = new AgentTaskRuntimeCoordinator({ sessionId: "session-1", agent: harness.agent as unknown as OriginOSAgent, initialState: structuredClone(persisted), persist: harness.persist, hostFactory: async () => harness.host });
+    await restored.resumeAfterRestore();
+    await restored.resumeAfterRestore();
+    await vi.waitFor(() => expect(harness.agent.prompt).toHaveBeenCalledTimes(1));
+    expect(restored.getSnapshot().projection?.taskId).toBe("T1");
+    restored.destroy(); finish(); await settle();
+  });
+
+  it.each(["persist", "task_next"] as const)("does not dispatch another prompt after shutdown during %s", async (stage) => {
+    const harness = createHarness({ status: "active" });
+    let release!: () => void;
+    let entered = false;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    if (stage === "persist") {
+      harness.persist.mockImplementation(async (state) => { if (state.execution.continuationCount > 0) { entered = true; await gate; } });
+    } else {
+      harness.next.mockImplementation(async () => { entered = true; await gate; return { content: [{ type: "text", text: "Continue active step" }] }; });
+    }
+    await create(harness);
+    await vi.waitFor(() => expect(entered).toBe(true));
+    harness.coordinator.destroy(); release(); await settle();
+    expect(harness.agent.prompt).not.toHaveBeenCalled();
+    expect(harness.coordinator.getSnapshot().execution.status).toBe("running");
+  });
+
+  it.each(["paused", "failed", "waiting_user"] as const)("does not automatically execute a restored %s task", async (status) => {
+    const harness = createHarness({ status: "blocked" });
+    await create(harness);
+    const state = harness.coordinator.getPersistenceState();
+    state.execution.status = status;
+    harness.coordinator.destroy();
+    const restored = new AgentTaskRuntimeCoordinator({ sessionId: "session-1", agent: harness.agent as unknown as OriginOSAgent, initialState: state, persist: harness.persist, hostFactory: async () => harness.host });
+    await restored.resumeAfterRestore(); await settle();
+    expect(restored.getSnapshot().execution.status).toBe(status);
+    expect(harness.agent.prompt).not.toHaveBeenCalled();
+    restored.destroy();
+  });
 });
