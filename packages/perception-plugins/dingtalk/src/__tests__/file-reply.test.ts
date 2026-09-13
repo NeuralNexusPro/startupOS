@@ -92,6 +92,17 @@ describe('DingTalk file replies', () => {
     expect(JSON.parse(x.fetcher.mock.calls[1][1]?.body as string)).toMatchObject({ msgKey: 'sampleText', msgParam: JSON.stringify({ content: 'hello world' }) });
     await x.plugin.stop(x.context);
   });
+  it.each(['failed', 'cancelled'] as const)('includes a safe %s notice after partial text', async type => {
+    const x = await ready();
+    x.fetcher.mockResolvedValueOnce(Response.json({ accessToken: 'token', expireIn: 7200 })).mockResolvedValueOnce(Response.json({ processQueryKey: 'terminal' }));
+    await x.deliver({ type: 'text_delta', delta: '部分结果' });
+    const terminal = type === 'failed' ? { type, safeCode: 'PRIVATE_DETAIL' } as const : { type } as const;
+    await x.deliver(terminal); await x.deliver(terminal);
+    const payload = JSON.parse(x.fetcher.mock.calls[1][1]?.body as string);
+    expect(JSON.parse(payload.msgParam).content).toBe(type === 'failed' ? '部分结果\n\n任务处理失败，请稍后重试。' : '部分结果\n\n任务已取消。');
+    expect(payload.msgParam).not.toContain('PRIVATE_DETAIL');
+    expect(x.fetcher).toHaveBeenCalledTimes(2); await x.plugin.stop(x.context);
+  });
   it('keeps final-send failure visible on reentry without blindly resending', async () => {
     const x = await ready(); x.fetcher.mockResolvedValueOnce(Response.json({ accessToken: 'token', expireIn: 7200 })).mockRejectedValueOnce(new Error('private backend detail'));
     await expect(x.deliver({ type: 'completed', resultRef: 'result' })).rejects.toThrow('DINGTALK_SEND_FAILED');

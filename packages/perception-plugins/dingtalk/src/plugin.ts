@@ -118,7 +118,8 @@ export class DingTalkPerceptionPlugin implements PerceptionPlugin {
       else if (event.type === 'text_delta') content += event.delta;
       else if (event.type === 'assistant_message') content = event.content;
       else if (['completed', 'failed', 'cancelled'].includes(event.type)) {
-        const text = content || (event.type === 'failed' ? '任务处理失败，请稍后重试。' : event.type === 'cancelled' ? '任务已取消。' : '任务已完成。');
+        const notice = event.type === 'failed' ? '任务处理失败，请稍后重试。' : event.type === 'cancelled' ? '任务已取消。' : '';
+        const text = notice ? [content, notice].filter(Boolean).join('\n\n') : content || '任务已完成。';
         finalSend ??= runtime.api.sendText(recipient, text);
         messageId = await finalSend;
       }
