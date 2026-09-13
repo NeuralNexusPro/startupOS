@@ -9,7 +9,7 @@
 ## 简要验收标准
 
 - [x] Core 已提供平台无关的 Plugin Contract、Registry、Host 与感知运行时。
-- [ ] 四个渠道迁入独立 bundled perception plugins（当前 Email、WeCom、Feishu 已迁移；DingTalk 尚待完整迁移）。
+- [x] 四个渠道接入独立 bundled perception plugins；钉钉已补齐真实 Stream、凭据及回复，真实平台权限与收件验收按测试文档跟踪。
 - [x] 感知中心由声明式 schema 渲染配置，不再包含平台条件分支。
 - [x] Plugin SDK 限定权限、凭据、生命周期和事件输出边界，并支持 webhook dispatch。
 - [ ] 旧 Connector 配置可自动迁移或得到明确提示。
@@ -36,9 +36,9 @@
 
 配置与健康热更新修复已合入 dev，回归、构建和实际应用包验收通过。证据见 [testing.md](testing.md)。其余插件迁移工作保持原状态。
 
-## SENSE12-T4 实施中（2026-09-13）
+## SENSE12-T4 本地验收完成（2026-09-13）
 
-按用户确认，支持在当前企微／飞书／钉钉对话中由 Agent/Skill 发回工作目录文件。验收用例已补齐，实施入口为 add-im-file-replies Proposal；完成状态以测试证据为准。
+按用户确认，支持在当前企微／飞书／钉钉对话中由 Agent/Skill 发回工作目录文件。实施入口为 add-im-file-replies Proposal；功能与本地包验收已完成，证据见测试文档。
 
 ### SENSE12-T4 交付验收完成
 
