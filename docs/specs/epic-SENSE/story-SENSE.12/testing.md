@@ -127,3 +127,12 @@ TC13通过实际macOS arm64 ASAR验收：业务初始化注册send_file，真实
 测试包：`/Users/archersado/workspace/startupOS/release/im-file-replies-20260913/mac-arm64/OriginOS CE.app`。日志：`/private/tmp/im-file-final-{core,desktop,plugins,dingtalk,routing,build,pack,lint,boundaries,selftest,spec}.log`；包验收`/private/tmp/im-file-asar-{smoke,worker}.log`。可执行包验收脚本：`/private/tmp/originos-verify-im-file-package.cjs`、`/private/tmp/originos-verify-im-file-worker.cjs`，以本包Electron设置`ELECTRON_RUN_AS_NODE=1`运行，参数分别为本包app.asar及其dist-electron/core/src。
 
 限制：未对真实平台账号发送文件，模拟回执不代表真实收件人已收到；尚未人工验证平台权限、企业策略或收件端下载。人工复核：从本测试包启用已配置连接，在企微/飞书会话请求生成PDF并发回，下载确认内容；钉钉先配置Client ID、Client Secret、机器人编码、Stream模式与发送权限，分别从群聊和单聊请求同样操作，并验证不支持格式提示生成ZIP。单文件上限20_000_000字节；钉钉文件格式为xlsx/pdf/zip/rar/doc/docx。测试包未签名/公证；未验证Windows。本轮不会自动发送所有资产，也未修改独立待处理的企微流式排队算法。
+
+## SENSE12-T6 实施前验收：感知表单刷新重置
+
+- TC1：真实SenseCenter/ConnectorForm/store，选非email、填连接ID与账号/凭据、保持输入焦点，推进5秒后台刷新后选择、草稿、焦点和同一表单节点保留，插件目录不重复请求。
+- TC2：后台刷新仍更新健康/连接数据，未停止轮询；独立窗体和顶部管理入口共用修复。
+- TC3：目标权限和规则编辑中的草稿/步骤在后台刷新后保留；同根列表不重建。
+- TC4：显式取消/重开按原默认值初始化；既有sense-center与perceptionStore回归通过，Web类型/lint/边界/自测和Web构建通过。
+
+红证据/private/tmp/perception-selection-red.log：5秒后dingtalk→email、草稿清空、catalog调用2次。回归使用模拟API和真实store，不写用户配置或发真实消息。人工在新包配置窗体选择企微/飞书/钉钉并输入未保存字段，等待10秒验证选择和输入仍在。新包资源验收随流式修复的联合桌面构建记录。
