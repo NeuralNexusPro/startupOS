@@ -1,4 +1,5 @@
 import { initializeGenericTools, registerTool } from '../../../integrations/pi-agent/tools';
+import { sendFileTool } from './send-file';
 import { documentTools } from './document-tools';
 import { ontologyTools } from './ontology-tools';
 import { ontologyDataTools } from './ontology-data-tools';
@@ -12,6 +13,6 @@ let initialized = false;
 export function initializeBuiltInTools(): void {
   initializeGenericTools();
   if (initialized) return;
-  [...documentTools, ...ontologyTools, ...ontologyDataTools, ...scheduleTools].forEach(registerTool);
+  [sendFileTool, ...documentTools, ...ontologyTools, ...ontologyDataTools, ...scheduleTools].forEach(registerTool);
   initialized = true;
 }

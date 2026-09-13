@@ -193,3 +193,14 @@ describe('Perception Plugin Host', () => {
     expect(handleWebhook).toHaveBeenCalledTimes(1);
   });
 });
+
+it.each([false, true])('gates file registration with declared capability (%s) and revokes on stop', async (supported) => {
+  const hostPorts = ports(); const remove = vi.fn(); const register = vi.fn(() => remove); hostPorts.replies = { register };
+  const definition = manifest({ permissions: ['replies'], capabilities: supported ? ['inbound-events', 'outbound-files'] : ['inbound-events'] });
+  const registry = new PerceptionPluginRegistry();
+  registry.registerCatalog([{ plugin: plugin(definition, { start: async (ctx) => { ctx.ports.replies!.register('handle', vi.fn(), { supportsFiles: true }); } }), approvedPermissions: ['replies'] }]);
+  const host = new PerceptionPluginHost(registry, hostPorts);
+  await host.start(definition.id, 'wecom-main');
+  expect(register).toHaveBeenCalledWith('handle', expect.any(Function), { supportsFiles: supported });
+  await host.stop(definition.id, 'wecom-main'); expect(remove).toHaveBeenCalledOnce();
+});

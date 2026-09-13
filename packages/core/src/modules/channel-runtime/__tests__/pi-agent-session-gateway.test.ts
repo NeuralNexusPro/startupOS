@@ -1,3 +1,5 @@
+// @vitest-environment node
+import { withChannelFileReply, requireChannelFileReply } from "../../../lib/integrations/pi-agent/channel-file-reply";
 import { describe, expect, it, vi } from 'vitest';
 import {
   PiAgentChannelSessionGateway,
@@ -96,4 +98,17 @@ describe('PiAgentChannelSessionGateway', () => {
     });
     expect(getSession).toHaveBeenCalledWith('session-1', 'stored-project');
   });
+});
+
+it.each([false, true])('binds saved cwd for complete gateway execution (task=%s)', async (task) => {
+ const checked = vi.fn(async () => { expect(requireChannelFileReply().workingDirectory).toBe('/trusted/saved'); });
+ const session = { sessionId: 'session-1', projectContext: { projectId:'agent-1', currentPath:'/trusted/saved' } };
+ const gateway = new PiAgentChannelSessionGateway({
+  launch: vi.fn(), getSession: async () => session, addMessage: async () => session,
+  getOrRestoreRuntime: async () => ({ prompt:checked, subscribe:()=>vi.fn() }),
+  ...(task ? { executeMessage:checked } : {}),
+ });
+ const resolved = await gateway.resolve(invocation({kind:'agent',id:'agent-1'},'session-1'));
+ await withChannelFileReply(async () => undefined, () => resolved.runtime.prompt('x'));
+ expect(checked).toHaveBeenCalledOnce();
 });

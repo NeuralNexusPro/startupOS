@@ -21,6 +21,7 @@ function instanceKey(pluginId: string, connectorId: string): string { return `${
 
 export class PerceptionPluginHost {
   private readonly instances = new Map<string, PluginInstance>();
+  private readonly replyRegistrations = new Map<string, Set<() => void>>();
   private readonly scheduledKeys = new Map<string, Set<string>>();
 
   constructor(private readonly registry: PerceptionPluginRegistry, private readonly ports: PerceptionPluginHostPorts) {}
@@ -74,13 +75,26 @@ export class PerceptionPluginHost {
     }
     if (approved.has('health')) exposed.health = { report: (health) => this.ports.health.report({ ...health, pluginId, connectorId }) };
     if (approved.has('audit')) exposed.audit = this.ports.audit;
-    if (approved.has('replies') && this.ports.replies) exposed.replies = this.ports.replies;
+    if (approved.has('replies') && this.ports.replies) {
+      const key = instanceKey(pluginId, connectorId);
+      const registrations = this.replyRegistrations.get(key) ?? new Set<() => void>();
+      this.replyRegistrations.set(key, registrations);
+      exposed.replies = { register: (handle, deliver, options) => {
+        if (this.replyRegistrations.get(key) !== registrations) throw new Error('IM_FILE_REPLY_UNAVAILABLE');
+        const unregister = this.ports.replies!.register(handle, deliver, {
+          supportsFiles: options?.supportsFiles === true && entry.plugin.manifest.capabilities.includes('outbound-files'),
+        });
+        const remove = () => { registrations.delete(remove); unregister(); };
+        registrations.add(remove);
+        return remove;
+      } };
+    }
     if (approved.has('events')) {
       exposed.events = {
-        submit: async (event) => {
+        submit: async (event, options) => {
           try {
             assertPluginEvent(event, entry.plugin.manifest, connectorId);
-            return await this.ports.events.submit(event);
+            return await this.ports.events.submit(event, options);
           } catch (error) {
             await this.safeAudit(pluginId, connectorId, 'plugin.event.rejected', { safeCode: 'PLUGIN_EVENT_REJECTED' });
             throw error;
@@ -124,6 +138,8 @@ export class PerceptionPluginHost {
     if (!instance || instance.status.state === 'stopped') return { pluginId, connectorId, state: 'stopped' };
     const entry = this.registry.get(pluginId);
     if (!entry) throw new Error(`Plugin not registered: ${pluginId}`);
+    for (const remove of this.replyRegistrations.get(key) ?? []) remove();
+    this.replyRegistrations.delete(key);
     instance.status = { pluginId, connectorId, state: 'stopping' };
     try {
       await entry.plugin.stop(instance.context);
