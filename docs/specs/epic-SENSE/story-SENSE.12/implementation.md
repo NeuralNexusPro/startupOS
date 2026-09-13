@@ -36,3 +36,7 @@
 ### SENSE12-T4 集成证据
 
 Core 基础 eaca581、企微/飞书 6f93070、钉钉 ae509e7 已在独立 Task 完成并合入 Proposal。Core 29、Desktop 5、企微15、飞书14、钉钉21项相关测试通过；钉钉发布 SDK 的握手停止和旧连接 ACK 由仓库测试验证。飞书使用官方 Client 分步上传和回复，以便上传后检查中止；钉钉使用官方 SDK 动态加载兼容 CJS 构建。实际包验收结果在 testing.md 最终记录。
+
+## SENSE12-T5 流式积压修复
+
+SENSE12-T5：Core Task7576e34、WeCom Taskda07025已审查合入Proposal。源异常排空、固定组重试、屏障、重复包ID及写盘失败已覆盖。
