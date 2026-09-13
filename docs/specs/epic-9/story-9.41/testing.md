@@ -459,3 +459,6 @@ Goal输出必须包含：
 3. 挂起prompt遇destroy后reject，不误写failed；原running任务恢复仅继续一次。
 4. 挂起task_next/持久化返回时已destroy，不派发新prompt；暂停/等待/失败门禁保持。
 5. 相关Core/Web/Desktop回归、类型/lint/边界/自测、构建和实际包验证。不实施自动入口查找或session列表摘要。
+
+## 9.41-T2 集成验收（2026-09-13）
+运行时 040c3a0、UI 23e36e7/1091957 已审查：销毁使旧续跑失效，Skill 原历史会话复用任务卡及控制，保持 taskId、cursor、revision、进度和等待输入门禁；不自动选择其他历史。Task Core 22 / Web 24 项通过；父代理 Core 22 项及选定 Web 回归、Desktop 编译、lint、边界和自测通过。日志 /private/tmp/task-reopen-integrated-{core,web,build,lint,boundaries,selftest}.log。包内验证随最终交付补齐。

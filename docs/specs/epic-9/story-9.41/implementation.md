@@ -191,3 +191,6 @@ Windows/macOS 真包结果仍需在 A-02 verification goal 中记录，不能以
 | 2026-07-29 | 增加A-01集成门、planning reservation、policy入口隔离、EvidenceVerifier和持久恢复步骤 |
 | 2026-07-29 | 完成A-01审计并判定stock边界Rejected，阻止后续产品实施 |
 | 2026-08-01 | A-02 建立受控公共边界并通过完整回归，Story 产品实施解阻 |
+
+## 9.41-T2 集成验收（2026-09-13）
+运行时 040c3a0、UI 23e36e7/1091957 已审查：销毁使旧续跑失效，Skill 原历史会话复用任务卡及控制，保持 taskId、cursor、revision、进度和等待输入门禁；不自动选择其他历史。Task Core 22 / Web 24 项通过；父代理 Core 22 项及选定 Web 回归、Desktop 编译、lint、边界和自测通过。日志 /private/tmp/task-reopen-integrated-{core,web,build,lint,boundaries,selftest}.log。包内验证随最终交付补齐。
