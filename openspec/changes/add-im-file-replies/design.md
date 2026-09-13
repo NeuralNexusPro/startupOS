@@ -14,7 +14,7 @@ PluginReplyPort.register 第三个可选参数 {supportsFiles?:boolean}，旧调
 ### 三平台
 企微：uploadMedia(Buffer,{type:'file',filename}) 后 replyMedia(frame,'file',media_id)，等待 ACK。
 飞书：LarkChannel.send(chatId,{file:{source:Buffer,fileName}},{replyTo:messageId})。
-钉钉：固定官方 dingtalk-stream（版本需通过发布包握手中停止测试后锁定，不把未发布 main 当作依赖），凭据 appId/appSecret，robotCode 配置与回调匹配；debug:false、subscriptions:[]，SDK 管理 WS 心跳重连。健康检查 connected && registered，停止清理注册、调度和客户端。
+钉钉：固定官方 dingtalk-stream@2.1.7-beta.1，凭据 appId/appSecret，robotCode 配置与回调匹配；debug:false、subscriptions:[]，SDK 管理 WS 心跳重连。健康检查 connected && registered，停止清理注册、调度和客户端。
 钉钉文件使用应用 token、media/upload、群 groupMessages/send 或单聊 oToMessages/batchSend，msgKey sampleFile；单聊只使用 senderStaffId，检查 invalidStaffIdList/flowControlledStaffIdList。格式 xlsx/pdf/zip/rar/doc/docx，其他格式明确提示先生成 ZIP；不偷偷改文件格式。文本使用官方 sampleText，增量本地累积后按已有终态发出，避免逐字请求。
 ### 钉钉接纳确认
 PluginEventPort.submit 的可选第二参数包含 onAccepted 回调；Host 完成事件落盘后调用，再执行耗时路由。钉钉据此及时 SDK ACK，不等 Agent 完成，不在落盘前确认。其余调用无需变更。连接失败不得显示 healthy。
@@ -25,4 +25,4 @@ ACK/HTTP 超时可能已被平台接受，避免应用层盲重试，报告未�
 ## Migration Plan
 旧 Connector 保持可读；钉钉缺凭据应引导重新绑定而非假健康。无数据库或文件资产迁移。回滚提交恢复旧能力。
 
-审查补充：宿主以在途Promise合并相同投递ID并发；读取过程硬限limit+1；lease使用共享AbortController，字节file事件可附短期AbortSignal，插件上传后发送前检查中止和连接实例仍有效。重复落盘也调用onAccepted；ACK异常安全记录后继续路由，落盘失败不ACK。铉钉旧连接的延迟ACK不得发到新连接。
+审查补充：宿主以在途Promise合并相同投递ID并发；读取过程硬限limit+1；lease使用共享AbortController，字节file事件可附短期AbortSignal，插件上传后发送前检查中止和连接实例仍有效。重复落盘也调用onAccepted；ACK异常安全记录后继续路由，落盘失败不ACK。钉钉旧连接的延迟ACK不得发到新连接。

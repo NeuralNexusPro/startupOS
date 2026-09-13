@@ -27,3 +27,7 @@ Manifest 声明 `id/version/hostApi/source/transport/capabilities/configurationS
 首期使用编译期白名单 catalog，不执行 data 目录任意 JS。Credential 按 plugin/connector 隔离；Host 校验事件和 capability。迁移采用双读旧/新、写新格式，回滚继续读旧字段且不删除凭据/游标。
 
 依赖保持 `desktop/web → core modules → storage/shared/types`；插件只依赖 core 公共 SDK。无数据库、Express、Redux、CSS Modules 或 any，符合 AGENTS.md。
+
+## SENSE12-T4：IM 文件回复
+
+复用已授权的当前回复句柄。下层 Pi Agent AsyncLocalStorage 保存调用级 sender、可信会话目录与有效期；业务 send_file 工具检查文件后调用 sender。Perception 路由绑定句柄，Gateway 绑定持久化目录，Desktop Reply Service 保存无文件内容的投递回执，平台插件完成上传和发送。Plugin SDK 增加 outbound-files、文件回复事件和持久化后的 onAccepted；文件字节不进入 FlowPacket 或会话 JSON。详细契约见 OpenSpec add-im-file-replies/design.md。依赖保持业务层到集成层、Desktop 到 Core 公共 API，平台实现仅依赖 Plugin SDK。
