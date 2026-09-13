@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { PerceptionPluginRuntimeContext } from '@originos/core/modules/perception-runtime/plugins';
+import type { PerceptionPluginRuntimeContext, PluginReplyEvent } from '@originos/core/modules/perception-runtime/plugins';
 import { WeComPerceptionPlugin } from '../plugin';
 import type { WeComBotClient, WeComFrame } from '../types';
 
@@ -190,3 +190,47 @@ it.each(['success', 'upload-failure', 'send-failure', 'stop', 'cancel'])('files 
  if(mode==='success')expect(client.replyMedia).toHaveBeenCalledWith(expect.objectContaining({headers:{req_id:'file-request'}}),'file','media-test');
  finish(); await plugin.stop(host);
 });
+
+
+it.each([
+  { event: { type: 'text_delta', delta: '-next' }, expected: 'base-next', finish: false },
+  { event: { type: 'assistant_message', content: 'replacement' }, expected: 'replacement', finish: false },
+  { event: { type: 'hitl_request', summary: 'confirm', requestId: 'request-1' }, expected: '需要人工确认：confirm', finish: false },
+  { event: { type: 'failed', safeCode: 'FAILED' }, expected: 'FAILED', finish: true },
+  { event: { type: 'cancelled' }, expected: '任务已取消', finish: true },
+] satisfies { event: PluginReplyEvent; expected: string; finish: boolean }[])(
+  'commits $event.type content only after ACK and retries identical text',
+  async ({ event, expected, finish }) => {
+    const client = new FakeClient();
+    const plugin = new WeComPerceptionPlugin(() => client);
+    const base = context();
+    let deliver!: (event: PluginReplyEvent) => Promise<unknown>;
+    let finishSubmit!: () => void;
+    const pending = new Promise<void>((resolve) => { finishSubmit = resolve; });
+    const host = context({ ports: {
+      ...base.ports,
+      events: { submit: async () => { await pending; return []; } },
+      replies: { register: (_handle, next) => { deliver = next; return vi.fn(); } },
+    } });
+    await plugin.start(host);
+    const frame: WeComFrame = { headers: { req_id: 'retry-request' }, body: { msgid: 'retry-message', text: { content: 'hi' } } };
+    client.emit('message.text', frame);
+    try {
+      await vi.waitFor(() => expect(deliver).toBeDefined());
+      await deliver({ type: 'text_delta', delta: 'base' });
+      client.replyStream.mockRejectedValueOnce(new Error('ACK_TIMEOUT'));
+      await expect(deliver(event)).rejects.toThrow('ACK_TIMEOUT');
+      await deliver({ type: 'completed', resultRef: 'session://retry' });
+      expect(client.replyStream).toHaveBeenNthCalledWith(3, frame, expect.any(String), 'base', true);
+      await expect(deliver(event)).resolves.toMatchObject({ status: 'delivered' });
+      expect(client.replyStream).toHaveBeenNthCalledWith(2, frame, expect.any(String), expected, finish);
+      expect(client.replyStream).toHaveBeenNthCalledWith(4, frame, expect.any(String), expected, finish);
+      await deliver({ type: 'text_delta', delta: '-tail' });
+      await deliver({ type: 'completed', resultRef: 'session://retry' });
+      expect(client.replyStream).toHaveBeenLastCalledWith(frame, expect.any(String), `${expected}-tail`, true);
+    } finally {
+      finishSubmit();
+      await plugin.stop(host);
+    }
+  },
+);
