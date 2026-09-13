@@ -4,7 +4,7 @@
 2. `S12-T2` 串行：实现 Registry/Host、故障隔离、生命周期、健康。**完成**：Host 对端口、事件、调度键和故障进行隔离；新增 webhook dispatch 边界。
 3. `S12-T3` 串行：实现声明式表单与统一 provisioning IPC/API。**完成**：感知中心从 bundled plugin catalog 获取受控 schema，以同一表单渲染 text/password/number/boolean/select；Desktop Host 统一执行 plugin provision、safeStorage 凭据绑定和 Connector 配置落盘，旧 Email/WeCom/Feishu 专用 provisioning IPC 与 Web service 已删除。
 4. `S12-T4` 可并行：迁移 WeCom、Email 及凭据/游标。**完成**：Email 已迁入独立 poll plugin，经隔离 State Port 保存游标，兼容旧 safeStorage 凭据和旧游标；Desktop mail supervisor 已删除。
-5. `S12-T5` 可并行：迁移 Feishu、DingTalk 及 webhook/stream。**进行中**：Feishu 已使用官方 `@larksuiteoapi/node-sdk` WSClient 完成长连接、自动重连、事件归一化、Desktop safeStorage provisioning，以及 `LarkChannel` Markdown CardKit 流式双工回复与纯文本降级，无需公网回调；DingTalk 仍待完整迁移。
+5. `S12-T5` 可并行：迁移 Feishu、DingTalk 及 webhook/stream。**源码和本地验收完成**：Feishu 已使用官方 `@larksuiteoapi/node-sdk` WSClient 完成长连接、自动重连、事件归一化、Desktop safeStorage provisioning，以及 `LarkChannel` Markdown CardKit 流式双工回复与纯文本降级，无需公网回调；DingTalk 已于 SENSE12-T4 接入官方 Stream SDK、安全凭据、群/单聊回复与文件发送，真实平台权限和收件仍按人工步骤验证。
 6. `S12-T6` 串行：旧配置迁移、打包清单、删除平台硬编码。
 7. `S12-T7` 串行：全量回归、依赖检查、验证 Goal、Windows 打包。
 
@@ -28,3 +28,11 @@
 测试包：`/Users/archersado/workspace/startupOS/release/sense-live-config-20260913/mac-arm64/OriginOS CE.app`。构建与验证日志：`/private/tmp/originos-sense-final-{build,pack-clean,asar-live,asar-worker,lint,boundaries,selftest}.log`；相关回归见前述 sense-live 日志。
 
 本轮未进行人工 GUI 或真实平台联机验证；人工复核为打开本测试包，首次新增并启用连接，等待后台启动及下一次健康刷新，确认无需重启。Windows 和其他 Story Task 不属于本修复验收。该包为未签名、公证的本地测试包。
+
+## SENSE12-T4：IM 文件回复实施
+
+状态：本地验收完成。对应 Proposal add-im-file-replies。先在独立 Core Task worktree 实施调用上下文、send_file、Plugin SDK 与 Desktop 回复及接纳确认；合入 Proposal 后，两个独立 Task 并行实现企微/飞书和钉钉插件。钉钉固定官方 dingtalk-stream@2.1.7-beta.1，复用 Node fetch/FormData；旧缺凭据配置提示重新绑定。完成后执行 TC1–13、架构检查、桌面构建及实际 ASAR 本地验证。回滚恢复原接口与插件，不迁移或删除用户资产。
+
+### SENSE12-T4 集成证据
+
+Core 基础 eaca581、企微/飞书 6f93070、钉钉 ae509e7 已在独立 Task 完成并合入 Proposal。Core 29、Desktop 5、企微15、飞书14、钉钉21项相关测试通过；钉钉发布 SDK 的握手停止和旧连接 ACK 由仓库测试验证。飞书使用官方 Client 分步上传和回复，以便上传后检查中止；钉钉使用官方 SDK 动态加载兼容 CJS 构建。实际包验收结果在 testing.md 最终记录。

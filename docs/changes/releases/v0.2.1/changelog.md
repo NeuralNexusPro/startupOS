@@ -76,3 +76,9 @@ SENSE12-T3：首次启用后台本可启动，但UI快照不自动刷新；增�
 联合 Core 47 项、Web 7 项通过；各 Task 与此前集成测试见前文。完整 desktop:build、macOS arm64 打包通过，架构扫描866文件0违规，自测43×2通过，lint0错误2966警告。日志 /private/tmp/solution-integrated-{core,web,build,pack,lint,boundaries,selftest}.log。
 实际 ASAR：合法项目内 solution-design Skill 可发送，跨项目/入口拒绝；模型拒绝在关闭空回复重试时仍抛出；任务协调器与通过回归的编译文件哈希一致；skill/persistent worker 冷启动、工具授权和关闭通过；感知首次启用、版本重连、停用通过。日志 /private/tmp/solution-asar-{session,worker,perception}-check.log。
 使用临时数据和本地模拟，不调用远程模型或发送外部消息。UI由组件集成测试覆盖，未声称人工GUI/真实平台联机通过。人工：打开此包，进入解决方案查看开场并继续发送；返回原Agent/Skill历史点击任务恢复/重试；模型拒绝应显示失败。远程402等拒绝仍需处理上游配置，未知Skill无回复案例未关联。本地包未签名、公证，未替换/Applications安装版；其他Epic/Story未完成工作保持原状态。
+
+## 2026-09-13 — feat：IM 对话文件回传
+
+**类型**：feat
+**影响模块**：Core Agent工具/Channel/Perception Plugin SDK、Desktop回复宿主、企微/飞书/钉钉插件、AGENTS.md
+**摘要**：Agent/Skill可通过send_file将当前工作目录文件发回触发本轮的IM会话，加入路径与大小校验、调用隔离、中止、平台确认和重复投递抑制。企微/飞书复用官方SDK；钉钉补齐真实Stream、凭据、落盘后ACK及群/单聊文件与文本回复。87项自动化、完整构建和实际macOS包工具/SDK/worker验收通过；真实账号收件与Windows仍需人工验证，详见SENSE.12 testing.md。

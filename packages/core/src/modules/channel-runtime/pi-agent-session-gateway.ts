@@ -1,3 +1,4 @@
+import { withChannelFileWorkingDirectory } from '../../lib/integrations/pi-agent/channel-file-reply';
 import path from 'node:path';
 import type { LaunchContext, LaunchResult } from '../../lib/features/services/launcher';
 import { getDataRoot } from '../../lib/paths';
@@ -55,7 +56,7 @@ export class PiAgentChannelSessionGateway implements ChannelSessionProvisionerPo
       sessionId: session.sessionId,
       resultRef: `session://${session.sessionId}`,
       runtime: {
-        prompt: async (message) => {
+        prompt: (message) => withChannelFileWorkingDirectory(session.projectContext.currentPath, async () => {
           const promptChat = () => runtime.prompt(message);
           if (this.dependencies.executeMessage) {
             await this.dependencies.executeMessage(
@@ -66,7 +67,7 @@ export class PiAgentChannelSessionGateway implements ChannelSessionProvisionerPo
           } else {
             await promptChat();
           }
-        },
+        }),
         subscribe: (listener) => runtime.subscribe((event) => { void listener(event as RuntimeSourceEvent); }),
         abort: () => runtime.abort(),
       },

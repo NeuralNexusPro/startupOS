@@ -8,7 +8,7 @@ export const weComManifest: PerceptionPluginManifest = {
   entry: '@originos/perception-plugin-wecom',
   source: 'wecom',
   transport: 'stream',
-  capabilities: ['inbound-events', 'outbound-reply'],
+  capabilities: ['inbound-events', 'outbound-reply', 'outbound-files'],
   permissions: ['credentials', 'events', 'network', 'health', 'replies'],
   configurationSchema: {
     version: '1.0',

@@ -1,3 +1,6 @@
+// @vitest-environment node
+import { SessionSerializingChannelRuntime } from '../../channel-runtime/session-coordinator';
+import { requireChannelFileReply, withChannelFileWorkingDirectory } from '../../../lib/integrations/pi-agent/channel-file-reply';
 import { describe, expect, it, vi } from 'vitest';
 import { ChannelTriggerExecutionAdapter } from '../routing/channel-trigger-execution-adapter';
 import type { ChannelFlowMessageIngress, ChannelInvocation, ChannelMessageIngress } from '../../channel-runtime';
@@ -95,4 +98,34 @@ describe('ChannelTriggerExecutionAdapter', () => {
     await expect(adapter.dispatch({ event, target: { kind: 'project', id: 'project-1' }, context })).resolves.toMatchObject({ responseText: 'Delivered response' });
     expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ connectorId: 'email-main', replyHandle: 'perception://raw/one' }));
   });
+});
+
+it.each([false, true])('keeps file sender and cwd isolated through fan-out and session queue (shared=%s)', async (shared) => {
+  const received: string[] = [];
+  const runtime = new SessionSerializingChannelRuntime({
+    invoke: async function* () {},
+    invokePackets: async function* (input) {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      await withChannelFileWorkingDirectory(input.target.id, async () => {
+        const reply = requireChannelFileReply();
+        await reply.sendFile({ fileName: reply.workingDirectory, bytes: new Uint8Array([1]) }, input.message.id);
+      });
+      yield { protocolVersion: '1.0', flowId: input.message.id, packetId: input.message.id, sequence: 0,
+        port: 'runtime.output', kind: 'complete', emittedAt: new Date().toISOString(), payload: { type: 'completed', resultRef: 'done' } };
+    },
+  });
+  const adapter = new ChannelTriggerExecutionAdapter({
+    send: async function* () {},
+    sendPackets: (input: ChannelInvocation) => runtime.invokePackets({ ...input, sessionId: shared ? 'same' : input.message.id }),
+  }, undefined, {
+    canDeliver: () => true,
+    captureFileSender: (handle) => async (file) => { received.push(`${handle}:${file.fileName}`); },
+    dispatch: async ({ packets }) => { for await (const packet of packets) expect(JSON.stringify(packet)).not.toContain('bytes'); return []; },
+  });
+  await Promise.all(['a', 'b'].map((id) => adapter.dispatch({
+    event: { ...event, id, provenance: { rawPayloadRef: id } }, context,
+    target: { kind: 'skill', id },
+  })));
+  expect(received.sort()).toEqual(['a:a', 'b:b']);
+  expect(() => requireChannelFileReply()).toThrow('UNAVAILABLE');
 });

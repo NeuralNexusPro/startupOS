@@ -98,3 +98,32 @@ Desktop 3 个文件 26 项联合回归通过；完整 desktop:build、macOS arm6
 测试包：`/Users/archersado/workspace/startupOS/release/sense-live-config-20260913/mac-arm64/OriginOS CE.app`。构建与验证日志：`/private/tmp/originos-sense-final-{build,pack-clean,asar-live,asar-worker,lint,boundaries,selftest}.log`；相关回归见前述 sense-live 日志。
 
 本轮未进行人工 GUI 或真实平台联机验证；人工复核为打开本测试包，首次新增并启用连接，等待后台启动及下一次健康刷新，确认无需重启。Windows 和其他 Story Task 不属于本修复验收。该包为未签名、公证的本地测试包。
+
+## SENSE12-T4 实施前验收：当前 IM 会话文件回传
+| 用例 | 条件与预期 | 自动化证据 |
+|---|---|---|
+| TC1 | 可信工作目录普通文件发送；真实确认后工具成功 | 工具+Host模拟回执 |
+| TC2 | 越界/符号链接逃逸/目录/空文件拒绝 | 文件系统临时目录 |
+| TC3 | 大于20_000_000字节、读取时增长仍硬限 | 受限读取测试 |
+| TC4 | 无IM上下文/缺目录/已结束/取消拒绝；不接受收件人参数 | 工具输入与lease测试 |
+| TC5 | 并发不同session、同session排队仍目录/收件人隔离 | 真实串行渠道及fan-out集成 |
+| TC6 | 上传/发送失败与超时不假报成功，不自动盲重发 | Host+SDK失败模拟 |
+| TC7 | 同replyHandle/toolCallId已成功或并发重复只发送一次 | 真实回执存储+in-flight测试 |
+| TC8 | 企微uploadMedia/replyMedia、飞书file SDK参数正确；旧文本保留；停止期间上传完不继续发 | 各插件SDK模拟 |
+| TC9 | 钉钉token+multipart+群/单聊sampleFile，staffId正确；失败名单/格式限制/20MB生效 | 固定官方接口HTTP模拟 |
+| TC10 | 文件字节不进入Flow、聊天历史、持久化回执；未声明outbound-files不接受文件注册 | SDK Host协议测试 |
+| TC11 | 事件落盘后ACK；重复落盘也ACK不再路由；落盘失败不ACK，ACK异常不丢路由 | Host+钉钉接纳集成 |
+| TC12 | 钉钉真实SDK握手中停止无未处理error/挂起；注册后才healthy，断开重连/停止清理句柄 | 发布SDK与受控WS测试 |
+| TC13 | 打包内新工具注册、共享链路、三插件文件能力可载入；相关既有业务worker/文本回归 | 实际ASAR脚本+构建 |
+测试命令：对应 Core/Desktop/三个插件 Vitest、类型检查；pnpm lint、pnpm lint:boundaries、node scripts/check-architecture-boundaries.cjs --self-test；pnpm desktop:build 与 macOS arm64 本地包。
+测试使用临时文件和模拟平台，不发真实消息或文件。人工：配置平台凭据及机器人权限，在三平台分别请求生成PDF并发回，检查附件可下载且内容一致；钉钉分别测群与单聊、未授权和格式拒绝。未联机项记录限制，不将模拟成功宣称真实收件人已收到。
+
+## SENSE12-T4 最终验收（2026-09-13）
+
+相关自动化87项通过：Core29、Desktop5、Email3、企微15、飞书14、钉钉21。TC1–7/10由工具、真实串行渠道与fan-out、Host回执/能力测试覆盖；TC8由两平台官方SDK参数与中止测试覆盖；TC9/11/12由钉钉HTTP、接纳回调、终态及真实发布SDK受控传输测试覆盖。上传后中止、旧注册替换、并发重入、部分正文后的失败/取消提示均包含在回归中。
+
+TC13通过实际macOS arm64 ASAR验收：业务初始化注册send_file，真实编译工具→共享ALS→Desktop回复服务→模拟平台确认，重复调用只投递一次，过期上下文拒绝；三平台文件能力和SDK均从包内加载，钉钉CJS与ESM入口都通过。真实skill/persistent worker冷启动、send_file工具注册、路径授权和关闭通过。完整desktop:build及electron-builder本地打包退出0；lint0错误2966个既有警告，869生产文件架构扫描零违规，自测43×2通过，OpenSpec严格校验通过。Next构建中的既有node:os/node:path诊断与上一测试包一致，未阻断构建。
+
+测试包：`/Users/archersado/workspace/startupOS/release/im-file-replies-20260913/mac-arm64/OriginOS CE.app`。日志：`/private/tmp/im-file-final-{core,desktop,plugins,dingtalk,routing,build,pack,lint,boundaries,selftest,spec}.log`；包验收`/private/tmp/im-file-asar-{smoke,worker}.log`。可执行包验收脚本：`/private/tmp/originos-verify-im-file-package.cjs`、`/private/tmp/originos-verify-im-file-worker.cjs`，以本包Electron设置`ELECTRON_RUN_AS_NODE=1`运行，参数分别为本包app.asar及其dist-electron/core/src。
+
+限制：未对真实平台账号发送文件，模拟回执不代表真实收件人已收到；尚未人工验证平台权限、企业策略或收件端下载。人工复核：从本测试包启用已配置连接，在企微/飞书会话请求生成PDF并发回，下载确认内容；钉钉先配置Client ID、Client Secret、机器人编码、Stream模式与发送权限，分别从群聊和单聊请求同样操作，并验证不支持格式提示生成ZIP。单文件上限20_000_000字节；钉钉文件格式为xlsx/pdf/zip/rar/doc/docx。测试包未签名/公证；未验证Windows。本轮不会自动发送所有资产，也未修改独立待处理的企微流式排队算法。

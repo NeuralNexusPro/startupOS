@@ -1,3 +1,5 @@
+import type { ChannelReplyFile } from '../../../lib/integrations/pi-agent/channel-file-reply';
+export type { ChannelReplyFile } from '../../../lib/integrations/pi-agent/channel-file-reply';
 import type { JsonValue, PerceptionEventV1, PerceptionSource } from '../protocol/types';
 
 export const PERCEPTION_PLUGIN_HOST_API_VERSION = '1.0' as const;
@@ -6,6 +8,7 @@ export type PerceptionPluginTransport = 'poll' | 'webhook' | 'stream';
 export type PerceptionPluginCapability =
   | 'inbound-events'
   | 'outbound-reply'
+  | 'outbound-files'
   | 'callback-handshake'
   | 'encrypted-payload'
   | 'attachments';
@@ -64,7 +67,7 @@ export interface PluginCredentialPort {
 }
 
 export interface PluginEventPort {
-  submit(event: PerceptionEventV1): Promise<PluginEventDispatchResult[]>;
+  submit(event: PerceptionEventV1, options?: { onAccepted?: () => void | Promise<void> }): Promise<PluginEventDispatchResult[]>;
 }
 
 export interface PluginEventDispatchResult {
@@ -119,10 +122,11 @@ export interface PluginAuditPort {
 }
 
 export interface PluginReplyPort {
-  register(replyHandle: string, deliver: (event: PluginReplyEvent) => Promise<PluginReplyReceipt>): () => void;
+  register(replyHandle: string, deliver: (event: PluginReplyEvent) => Promise<PluginReplyReceipt>, options?: { supportsFiles?: boolean }): () => void;
 }
 
 export type PluginReplyEvent =
+  | { type: 'file'; file: ChannelReplyFile; signal?: AbortSignal }
   | { type: 'accepted'; sessionId: string }
   | { type: 'text_delta'; delta: string }
   | { type: 'assistant_message'; content: string }

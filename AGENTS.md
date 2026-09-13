@@ -1,7 +1,7 @@
 # OriginOS 架构规约 (AGENTS.md)
 
-**版本：** 2.5.4
-**日期：** 2026-09-12
+**版本：** 2.5.5
+**日期：** 2026-09-13
 **状态：** 强制执行
 
 ---
@@ -613,6 +613,16 @@ CognitiveManager
 
 ---
 
+
+### IM 文件回复边界（SENSE12-T4）
+
+- Agent 业务工具 `send_file` 仅把可信会话工作目录内的文件发回触发本轮调用的 IM 会话，不接受收件人或连接 ID。
+- 下层 `integrations/pi-agent/channel-file-reply.ts` 维护调用级异步上下文和有效期；Perception 路由注入回复能力，Channel Gateway 注入持久化工作目录。禁止使用全局工具上下文选择文件接收方。
+- 文件字节仅通过 Plugin SDK 文件事件传递，不进入 `AgentOutputEvent`、聊天 JSON 或投递回执。Host 校验 `outbound-files` 能力，插件持有平台 SDK、上传协议和生命周期。
+- `PluginEventPort.submit` 的接纳回调在入站事件持久化后执行；不得等待 Agent 完成才确认入站，也不得在保存失败时确认。
+
+---
+
 ## 📊 性能约束
 
 ### 强制性能指标
@@ -1135,5 +1145,5 @@ git worktree add ../startupos-add-agent-task-runtime-task-2 \
 
 ---
 
-**最后更新：** 2026-07-29（v2.5.2：要求 OpenSpec 文档除规范关键字、代码标识和专有名词外统一使用中文）
+**最后更新：** 2026-09-13（v2.5.5：IM 文件回复的调用隔离、插件能力与持久化后接纳确认规约）
 **下次审查：** 实施完成后

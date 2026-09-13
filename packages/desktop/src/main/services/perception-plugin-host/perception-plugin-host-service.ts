@@ -66,7 +66,7 @@ const BUNDLED_CATALOG = [
   },
   {
     plugin: dingtalkPlugin,
-    approvedPermissions: ['events', 'health'] as const,
+    approvedPermissions: ['credentials', 'events', 'health', 'replies', 'schedule'] as const,
   },
 ];
 const PLUGIN_IDS = Object.fromEntries(
@@ -310,8 +310,10 @@ export class PerceptionPluginHostService {
               : pluginCredentials.remove(id, ref),
       },
       events: {
-        submit: async (event) => {
+        submit: async (event, options) => {
           const saved = events.save(event);
+          try { await options?.onAccepted?.(); }
+          catch { console.warn('[PerceptionPluginHost] EVENT_ACK_FAILED'); }
           if (saved.duplicate) return [{ status: 'duplicate' as const }];
           return router.route(saved.event);
         },
