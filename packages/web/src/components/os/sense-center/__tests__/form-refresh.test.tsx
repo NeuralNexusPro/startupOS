@@ -27,6 +27,25 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe('SenseCenter drafts during live refresh', () => {
+  it('polls only while the events tab is visible and stops on exit/unmount', async () => {
+    let view: ReturnType<typeof render> | undefined;
+    await act(async () => { view = render(<SenseCenter />); });
+    expect(fetchMock).toHaveBeenCalledTimes(1); await tick(); expect(fetchMock).toHaveBeenCalledTimes(1);
+    await click('事件记录'); expect(fetchMock).toHaveBeenCalledTimes(2);
+    await tick(); expect(fetchMock).toHaveBeenCalledTimes(3);
+    await click('感知源'); await tick(); expect(fetchMock).toHaveBeenCalledTimes(3);
+    await click('事件记录'); expect(fetchMock).toHaveBeenCalledTimes(4);
+    view?.unmount(); await tick(); expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+  it('does not stop another consumer when leaving events', async () => {
+    let stopOther: (() => void) | undefined;
+    await act(async () => { stopOther = usePerceptionStore.getState().startRefreshing(); });
+    try {
+      await act(async () => { render(<SenseCenter />); }); await click('事件记录'); await click('感知源');
+      const before = fetchMock.mock.calls.length; await tick(); expect(fetchMock).toHaveBeenCalledTimes(before + 1);
+    } finally { stopOther?.(); }
+  });
+
   it.each(['wecom', 'feishu', 'dingtalk'])('retains %s selection, draft, focus and DOM while refreshing', async source => {
     await act(async () => { render(<SenseCenter />); }); await click('添加感知源');
     fireEvent.change(screen.getByLabelText('感知插件'), { target: { value: `originos.${source}` } });
@@ -35,7 +54,7 @@ describe('SenseCenter drafts during live refresh', () => {
     const secret = screen.getByLabelText('凭据'); fireEvent.change(secret, { target: { value: 'unsaved-secret' } }); secret.focus();
     const form = screen.getByRole('form', { name: '添加感知源' });
     fetchMock.mockResolvedValue({ ok: true, json: async () => ({ success: true, data: { ...structuredClone(data), health: [{ connectorId: 'email-main', mode: 'email-poll', status: 'healthy', updatedAt: now }], connectors: [{ ...data.connectors[0], enabled: false }] } }) });
-    await tick();
+    await act(async () => { await usePerceptionStore.getState().load({ silent: true }); });
     expect(screen.getByLabelText('感知插件')).toHaveValue(`originos.${source}`);
     expect(screen.getByLabelText('连接 ID')).toHaveValue('draft-connector'); expect(screen.getByLabelText('账号')).toHaveValue('draft-account'); expect(secret).toHaveValue('unsaved-secret');
     expect(screen.getByLabelText('凭据')).toBe(secret); expect(secret).toHaveFocus(); expect(screen.getByRole('form', { name: '添加感知源' })).toBe(form);
@@ -47,7 +66,7 @@ describe('SenseCenter drafts during live refresh', () => {
     await act(async () => { render(<SenseCenter />); }); await click('目标权限'); await click('添加目标权限');
     await act(async () => { fireEvent.change(screen.getByLabelText('目标类型'), { target: { value: 'role-agent' } }); });
     fireEvent.change(screen.getByLabelText('目标资产'), { target: { value: 'assistant' } }); fireEvent.change(screen.getByLabelText('限制感知源（可选）'), { target: { value: 'email-main' } });
-    const form = screen.getByRole('form', { name: '添加目标权限' }); await tick();
+    const form = screen.getByRole('form', { name: '添加目标权限' }); await act(async () => { await usePerceptionStore.getState().load({ silent: true }); });
     expect(screen.getByRole('form', { name: '添加目标权限' })).toBe(form); expect(screen.getByLabelText('目标类型')).toHaveValue('role-agent'); expect(screen.getByLabelText('目标资产')).toHaveValue('assistant'); expect(screen.getByLabelText('限制感知源（可选）')).toHaveValue('email-main');
     expect(services.assets).toHaveBeenCalledTimes(2);
   });
@@ -56,7 +75,7 @@ describe('SenseCenter drafts during live refresh', () => {
     fireEvent.change(screen.getByLabelText('规则 ID'), { target: { value: 'draft-rule' } });
     fireEvent.change(screen.getByLabelText('白名单字段'), { target: { value: 'content.subject' } });
     fireEvent.click(screen.getByLabelText('高风险动作要求人工确认（HITL）'));
-    const form = screen.getByRole('form', { name: '创建触发规则' }); await tick();
+    const form = screen.getByRole('form', { name: '创建触发规则' }); await act(async () => { await usePerceptionStore.getState().load({ silent: true }); });
     expect(screen.getByRole('form', { name: '创建触发规则' })).toBe(form); expect(screen.getByLabelText('规则 ID')).toHaveValue('draft-rule'); expect(screen.getByLabelText('白名单字段')).toHaveValue('content.subject'); expect(screen.getByLabelText('高风险动作要求人工确认（HITL）')).not.toBeChecked();
   });
   it('resets a draft when explicitly cancelled and reopened', async () => {
