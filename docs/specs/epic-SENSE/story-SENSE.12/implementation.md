@@ -40,3 +40,6 @@ Core 基础 eaca581、企微/飞书 6f93070、钉钉 ae509e7 已在独立 Task �
 ## SENSE12-T5 流式积压修复
 
 SENSE12-T5：Core Task7576e34、WeCom Taskda07025已审查合入Proposal。源异常排空、固定组重试、屏障、重复包ID及写盘失败已覆盖。
+## SENSE12-T6 配置表单与事件刷新
+
+SENSE12-T6：UI Task独立修复SenseCenter与顶部菜单刷新生命周期，覆盖真实store刷新时表单草稿、焦点和DOM保留。原始重建问题已红测复现；新增事件页专用轮询要求同步纳入测试。
