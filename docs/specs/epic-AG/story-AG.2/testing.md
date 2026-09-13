@@ -64,3 +64,7 @@ Desktop 3 个文件 26 项联合回归通过；完整 desktop:build、macOS arm6
 ## AG2-T3 / TC13 实施前验收：历史会话模型错误
 
 复用既有真实OriginOSAgent失败用例：关闭空回复重试时，assistant stopReason=error应使prompt拒绝（修前resolve(undefined)）。参数化开关两态；验证正常回复不变；经过真实Channel adapter输出failed而非空completed。模型与历史配置保持，不调用真实远程模型。日志/private/tmp/originos-history-error-red.log。
+
+## AG2-T3 源码集成验收（2026-09-13）
+Task ecba231 已审查并集成：模型错误捕获独立于空回复重试开关，正常完成与模型选择不变。真实 Agent 参数化两态 2 项与 Channel 4 项通过，Desktop 编译、类型、lint、边界与自测通过。日志 /private/tmp/originos-model-error-integrated-{agent,channel,build,lint,boundaries,selftest}.log。
+扩展回归 111 项中 107 通过，4 项失败与基线一致；原既有模型错误用例由失败转通过，不声明全 Core 全绿。实际历史 Role 的 402 已对应；未知 Skill 案例没有足够信息关联。模型服务拒绝仍需用户处理上游配置，修复确保失败不被当作空成功。包内验证随最终交付补充。
