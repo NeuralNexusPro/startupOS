@@ -21,14 +21,14 @@ export class DingTalkApi {
     this.assertActive(signal);
     try {
       const response = await fetch(url, { ...init, signal: AbortSignal.any([this.stopped, ...(signal ? [signal] : []), AbortSignal.timeout(15_000)]) });
-      if (!response.ok) throw new Error('DINGTALK_SEND_FAILED');
+      if (!response.ok) throw Object.assign(new Error('DINGTALK_SEND_FAILED'), { status: response.status });
       const body: unknown = await response.json();
       if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('DINGTALK_SEND_FAILED');
       this.assertActive(signal);
       return body as Record<string, unknown>;
-    } catch {
+    } catch (error) {
       this.assertActive(signal);
-      throw new Error('DINGTALK_SEND_FAILED');
+      throw Object.assign(new Error('DINGTALK_SEND_FAILED'), { cause: error });
     }
   }
 

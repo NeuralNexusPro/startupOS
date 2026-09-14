@@ -1,4 +1,5 @@
 import { ipcMain, safeStorage } from 'electron';
+import type { PluginLogSink } from '../../../../../core/src/modules/perception-runtime/plugins';
 import { dingtalkPlugin } from '@originos/perception-plugin-dingtalk';
 import { emailPlugin } from '@originos/perception-plugin-email';
 import { feishuPlugin } from '@originos/perception-plugin-feishu';
@@ -87,7 +88,8 @@ export class PerceptionPluginHostService {
   private generation = 0;
   constructor(
     private readonly channelIngress: ChannelMessageIngress,
-    private readonly dataRoot = getDataRoot()
+    private readonly dataRoot = getDataRoot(),
+    private readonly logs?: PluginLogSink
   ) {
     this.configs = new PerceptionConnectorConfigStore(dataRoot);
     this.replies = new PluginReplyDeliveryService(dataRoot);
@@ -172,9 +174,7 @@ export class PerceptionPluginHostService {
             success: false,
             error: {
               code:
-                error instanceof Error
-                  ? error.message
-                  : 'PLUGIN_PROVISION_FAILED',
+                'PLUGIN_PROVISION_FAILED',
               message: 'Plugin provisioning failed',
             },
             timestamp: new Date().toISOString(),
@@ -192,17 +192,18 @@ export class PerceptionPluginHostService {
       this.timer.unref();
     }
   }
-  stop(): void {
+  async stop(): Promise<void> {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     this.generation += 1;
-    for (const key of this.active.keys()) {
+    const stopping = [...this.active.keys()].map(key => {
       const [pluginId, ...rest] = key.split(':');
-      if (pluginId) void this.host.stop(pluginId, rest.join(':'));
-    }
+      return pluginId ? this.host.stop(pluginId, rest.join(':')) : Promise.resolve();
+    });
     this.active.clear();
     for (const timer of this.timers.values()) clearInterval(timer);
     this.timers.clear();
+    await Promise.allSettled(stopping);
   }
   async handleWebhook(
     pluginId: string,
@@ -278,7 +279,8 @@ export class PerceptionPluginHostService {
     const execution = new ChannelTriggerExecutionAdapter(
       this.channelIngress,
       undefined,
-      this.replies
+      this.replies,
+      (source, connectorId) => ({ write: record => this.logs?.write(PLUGIN_IDS[source] ?? source, connectorId, record) })
     );
     const router = new PerceptionRouter(
       this.dataRoot,
@@ -291,6 +293,7 @@ export class PerceptionPluginHostService {
     );
     const state = new FilePluginStateAdapter(this.dataRoot);
     return {
+      log: this.logs,
       credentials: {
         bind: async (id, name, secret) =>
           name === 'wecom'
@@ -313,7 +316,7 @@ export class PerceptionPluginHostService {
         submit: async (event, options) => {
           const saved = events.save(event);
           try { await options?.onAccepted?.(); }
-          catch { console.warn('[PerceptionPluginHost] EVENT_ACK_FAILED'); }
+          catch (error) { this.logs?.write(PLUGIN_IDS[event.source] ?? event.source, event.connectorId, { level: 'error', stage: 'event.ack', eventId: event.id, safeCode: 'EVENT_ACK_FAILED', error }); }
           if (saved.duplicate) return [{ status: 'duplicate' as const }];
           return router.route(saved.event);
         },

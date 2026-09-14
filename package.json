@@ -30,7 +30,8 @@
   "pnpm": {
     "patchedDependencies": {
       "@earendil-works/pi-agent-core@0.80.10": "patches/@earendil-works__pi-agent-core@0.80.10.patch",
-      "@earendil-works/pi-coding-agent@0.80.10": "patches/@earendil-works__pi-coding-agent@0.80.10.patch"
+      "@earendil-works/pi-coding-agent@0.80.10": "patches/@earendil-works__pi-coding-agent@0.80.10.patch",
+      "dingtalk-stream@2.1.7-beta.1": "patches/dingtalk-stream@2.1.7-beta.1.patch"
     }
   },
   "scripts": {

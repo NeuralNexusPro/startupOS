@@ -54,3 +54,7 @@ SENSE12-T5：企微流式积压修复已实施，12项共享派发器与58项插
 SENSE12-T6：修复感知配置跳回Email和草稿丢失，并按用户要求仅事件页保留定时刷新。
 
 SENSE12-T5/T6联合交付：136项回归、完整桌面构建及实际包验收通过；测试包与模拟性能证据见Story testing.md。
+
+## SENSE12-T7：插件独立日志（已实施，2026-09-14）
+
+邮箱、企微、飞书、钉钉已按插件每日独立记录SDK及宿主诊断；渠道失败保留安全原因并关联事件、会话和审计。232项集成回归、真实SDK检查及macOS包内Host/Worker落盘验收通过。Windows安装运行仍需对应环境验证；本次为本地测试包，未发布远端。见[Proposal](../../../../openspec/changes/isolate-perception-plugin-logs/proposal.md)与testing.md PL01–PL08；不改变Story其他任务状态。

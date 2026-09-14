@@ -43,3 +43,9 @@ SENSE12-T5：Core Task7576e34、WeCom Taskda07025已审查合入Proposal。源�
 ## SENSE12-T6 配置表单与事件刷新
 
 SENSE12-T6：UI Task独立修复SenseCenter与顶部菜单刷新生命周期，覆盖真实store刷新时表单草稿、焦点和DOM保留。原始重建问题已红测复现；新增事件页专用轮询要求同步纳入测试。
+
+## SENSE12-T7：独立日志交付任务
+
+Proposal isolate-perception-plugin-logs已获批准并实施。Core/Desktop先冻结日志与诊断接口，再由两个独立子代理工作区并行适配企微/飞书与邮箱/钉钉。文件范围、依赖、验收及回滚见Proposal design/tasks；父代理只集成与验证。回滚整组SDK/宿主接线，保留既有日志和配置；审查默认SDK工厂、异常传播、脱敏、跨进程出口和写入失败，不能只覆盖模拟插件。
+
+实施提交：Core/Desktop `34717f8`、路由验收 `2b75668`、Lark数组参数兼容 `9c12153`；企微/飞书 `2ec768e`、真实SDK脚本 `38ae3d7`；邮箱/钉钉及锁定SDK补丁 `8b46c5d`。Host注入sdkLogger，插件只保留Core类型导入；钉钉HTTP失败保留status/cause。验收记录见testing.md。

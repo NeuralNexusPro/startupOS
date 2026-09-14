@@ -16,11 +16,7 @@ import type {
   WeComSettings,
 } from './types';
 
-function defaultClientFactory(options: {
-  botId: string;
-  secret: string;
-  wsUrl?: string;
-}): WeComBotClient {
+function defaultClientFactory(options: Parameters<WeComBotClientFactory>[0]): WeComBotClient {
   return new AiBot.WSClient(options) as WeComBotClient;
 }
 
@@ -83,6 +79,7 @@ export class WeComPerceptionPlugin implements PerceptionPlugin {
       const client = this.createClient({
         botId: settings.botId,
         secret,
+        ...(context.ports.log?.sdkLogger ? { logger: context.ports.log.sdkLogger } : {}),
         ...(settings.websocketUrl ? { wsUrl: settings.websocketUrl } : {}),
       });
       this.bind(context, client);
@@ -109,6 +106,7 @@ export class WeComPerceptionPlugin implements PerceptionPlugin {
     client: WeComBotClient
   ): void {
     client.on('authenticated', () => {
+      context.ports.log?.write({ level: 'info', stage: 'connection.authenticated' });
       void context.ports.health?.report({
         status: 'healthy',
         detail: {
@@ -119,6 +117,7 @@ export class WeComPerceptionPlugin implements PerceptionPlugin {
       });
     });
     client.on('reconnecting', () => {
+      context.ports.log?.write({ level: 'warn', stage: 'connection.reconnecting' });
       const reconnectCount =
         (this.reconnectCounts.get(context.connectorId) ?? 0) + 1;
       this.reconnectCounts.set(context.connectorId, reconnectCount);
@@ -128,6 +127,7 @@ export class WeComPerceptionPlugin implements PerceptionPlugin {
       });
     });
     client.on('disconnected', () => {
+      context.ports.log?.write({ level: 'warn', stage: 'connection.disconnected' });
       void context.ports.health?.report({
         status: 'degraded',
         safeCode: 'WECOM_DISCONNECTED',
@@ -138,6 +138,7 @@ export class WeComPerceptionPlugin implements PerceptionPlugin {
       });
     });
     client.on('error', (error) => {
+      context.ports.log?.write({ level: 'error', stage: 'connection.error', safeCode: connectionSafeCode(error), error });
       void context.ports.health?.report({
         status: 'degraded',
         safeCode: connectionSafeCode(error),
@@ -160,30 +161,40 @@ export class WeComPerceptionPlugin implements PerceptionPlugin {
     frame: WeComFrame
   ): Promise<void> {
     let unregisterReply: (() => void) | undefined;
+    let eventId: string | undefined;
+    let sessionId: string | undefined;
+    let stage = 'receive';
     try {
       if (!context.ports.events) throw new Error('WECOM_EVENT_PORT_MISSING');
       const event = normalizeWeComFrame({
         connectorId: context.connectorId,
         frame,
       });
+      eventId = event.id;
       const replyHandle = event.provenance.rawPayloadRef;
       if (context.ports.replies) {
         const streamId = `perception-${event.id}`;
         const replyState = { content: '' };
         unregisterReply = context.ports.replies.register(
           replyHandle,
-          (output) =>
-            this.deliverOutput(
+          async (output) => {
+            if (output.type === 'accepted') sessionId = output.sessionId;
+            try { return await this.deliverOutput(
               context.connectorId,
               client,
               frame,
               streamId,
               replyState,
               output
-            ),
+            ); } catch (error) {
+              context.ports.log?.write({ level: 'error', stage: 'reply', safeCode: 'WECOM_REPLY_FAILED', eventId, sessionId, error });
+              throw error;
+            }
+          },
           { supportsFiles: true }
         );
       }
+      stage = 'event.submit';
       const results = await context.ports.events.submit(event);
       if (context.ports.replies) return;
       const dispatched = results.find(
@@ -197,6 +208,7 @@ export class WeComPerceptionPlugin implements PerceptionPlugin {
           ? [dispatched.responseText]
           : [];
       const streamId = `perception-${event.id}`;
+      stage = 'reply';
       for (let index = 0; index < responses.length; index += 1) {
         await client.replyStream(
           frame,
@@ -205,7 +217,8 @@ export class WeComPerceptionPlugin implements PerceptionPlugin {
           index === responses.length - 1
         );
       }
-    } catch {
+    } catch (error) {
+      if (stage !== 'event.submit') context.ports.log?.write({ level: 'error', stage, safeCode: stage === 'reply' ? 'WECOM_REPLY_FAILED' : 'WECOM_RECEIVE_FAILED', eventId, sessionId, error });
       await context.ports.health?.report({
         status: 'degraded',
         safeCode: 'WECOM_EVENT_SUBMIT_FAILED',

@@ -176,7 +176,7 @@ describe('DailyLogWriter', () => {
     writer.append('llm', 'llm\n');
 
     await expect(writer.flush()).resolves.toBeUndefined();
-    expect(appendFile).toHaveBeenCalledTimes(1);
+    expect(appendFile).toHaveBeenCalledTimes(2);
     expect(writer.append('desktop', 'after failure\n')).toBe(true);
     await expect(writer.flush()).resolves.toBeUndefined();
   });

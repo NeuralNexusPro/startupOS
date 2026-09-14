@@ -104,8 +104,8 @@ describe('DingTalk file replies', () => {
     expect(x.fetcher).toHaveBeenCalledTimes(2); await x.plugin.stop(x.context);
   });
   it('keeps final-send failure visible on reentry without blindly resending', async () => {
-    const x = await ready(); x.fetcher.mockResolvedValueOnce(Response.json({ accessToken: 'token', expireIn: 7200 })).mockRejectedValueOnce(new Error('private backend detail'));
-    await expect(x.deliver({ type: 'completed', resultRef: 'result' })).rejects.toThrow('DINGTALK_SEND_FAILED');
+    const x = await ready(); x.fetcher.mockResolvedValueOnce(Response.json({ accessToken: 'token', expireIn: 7200 })).mockRejectedValueOnce(Object.assign(new Error('ECONNRESET private backend detail'), { code: 'ECONNRESET' }));
+    await expect(x.deliver({ type: 'completed', resultRef: 'result' })).rejects.toMatchObject({ message: 'DINGTALK_SEND_FAILED', cause: { code: 'ECONNRESET' } });
     await expect(x.deliver({ type: 'completed', resultRef: 'result' })).rejects.toThrow('DINGTALK_SEND_FAILED');
     expect(x.fetcher).toHaveBeenCalledTimes(2); await x.plugin.stop(x.context);
   });
@@ -127,4 +127,11 @@ describe('DingTalk file replies', () => {
     x.fetcher.mockResolvedValueOnce(Response.json({ accessToken: 'token', expireIn: 7200 })).mockImplementationOnce(async () => { if (action === 'stop') await x.plugin.stop(x.context); else abort.abort(); return Response.json({ errcode: 0, media_id: 'media' }); });
     await expect(x.deliver({ ...x.file, signal: abort.signal })).rejects.toThrow(); expect(x.fetcher).toHaveBeenCalledTimes(2); await x.plugin.stop(x.context);
   });
+  it.each([401, 429])('preserves HTTP %s without response body in delivery diagnostics', async status => {
+    const x = await ready();
+    x.fetcher.mockResolvedValueOnce(new Response('PRIVATE_RESPONSE_BODY', { status }));
+    await expect(x.deliver({ type: 'completed', resultRef: 'result' })).rejects.toMatchObject({ message: 'DINGTALK_SEND_FAILED', cause: { status } });
+    await x.plugin.stop(x.context);
+  });
+
 });

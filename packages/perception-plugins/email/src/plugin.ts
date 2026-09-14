@@ -2,6 +2,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
 import type {
+  PluginLogPort,
   PerceptionPlugin,
   PerceptionPluginManifest,
   PerceptionPluginProvisionContext,
@@ -89,7 +90,7 @@ export class EmailPerceptionPlugin implements PerceptionPlugin {
     const profile = validateMailConnectorSettings(context.settings);
     const value = context.secrets.secret;
     if (!value) throw new Error('EMAIL_SECRET_MISSING');
-    await verifyConnection(profile, { kind: profile.authMode, value });
+    await verifyConnection(profile, { kind: profile.authMode, value }, context.ports.log);
     const secretRef = await context.ports.credentials.bind(
       context.connectorId,
       'email',
@@ -114,6 +115,7 @@ export class EmailPerceptionPlugin implements PerceptionPlugin {
       try {
         await this.poll(context, profile);
       } catch (error) {
+        logMailError(context.ports.log, 'mail.poll', error);
         await context.ports.health?.report({
           status: 'degraded',
           safeCode: safeCode(error),
@@ -142,16 +144,7 @@ export class EmailPerceptionPlugin implements PerceptionPlugin {
     ) as MailSecret;
     const cursor = (await context.ports.state!.read('cursor')) as
       Cursor | undefined;
-    const client = new ImapFlow({
-      host: profile.host,
-      port: profile.port,
-      secure: profile.secure,
-      auth:
-        secret.kind === 'oauth2-token'
-          ? { user: profile.username, accessToken: secret.value }
-          : { user: profile.username, pass: secret.value },
-      logger: false,
-    });
+    const client = createMailClient(profile, secret, context.ports.log);
     try {
       await client.connect();
       const box = await client.mailboxOpen(profile.mailbox, { readOnly: true });
@@ -217,7 +210,8 @@ export class EmailPerceptionPlugin implements PerceptionPlugin {
       try {
         if (client.usable) await client.logout();
         else client.close();
-      } catch {
+      } catch (error) {
+        logMailError(context.ports.log, 'mail.disconnect', error);
         client.close();
       }
     }
@@ -231,9 +225,18 @@ function safeCode(error: unknown): string {
       ? 'MAIL_TIMEOUT'
       : 'MAIL_CONNECTION_FAILED';
 }
-async function verifyConnection(profile: MailConnectorSettings, secret: MailSecret): Promise<void> {
+function logMailError(log: PluginLogPort | undefined, stage: string, error: unknown): void {
+  try { log?.write({ level: 'error', stage, safeCode: safeCode(error), error }); }
+  catch { /* Diagnostics must not interrupt polling or cleanup. */ }
+}
+function createMailClient(profile: MailConnectorSettings, secret: MailSecret, log?: PluginLogPort): ImapFlow {
   const client = new ImapFlow({ host: profile.host, port: profile.port, secure: profile.secure, auth: secret.kind === 'oauth2-token' ? { user: profile.username, accessToken: secret.value } : { user: profile.username, pass: secret.value }, logger: false });
+  client.on('error', error => logMailError(log, 'mail.connection', error));
+  return client;
+}
+async function verifyConnection(profile: MailConnectorSettings, secret: MailSecret, log?: PluginLogPort): Promise<void> {
+  const client = createMailClient(profile, secret, log);
   try { await client.connect(); await client.mailboxOpen(profile.mailbox, { readOnly: true }); }
-  finally { try { if (client.usable) await client.logout(); else client.close(); } catch { client.close(); } }
+  finally { try { if (client.usable) await client.logout(); else client.close(); } catch (error) { logMailError(log, 'mail.disconnect', error); client.close(); } }
 }
 export const emailPlugin = new EmailPerceptionPlugin();

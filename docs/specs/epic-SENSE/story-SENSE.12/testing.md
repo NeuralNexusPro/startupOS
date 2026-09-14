@@ -169,3 +169,48 @@ TC13通过实际macOS arm64 ASAR验收：业务初始化注册send_file，真实
 lint0错误2966既有警告，架构869文件0诊断，自测43×2和OpenSpec strict通过。日志/private/tmp/perception-stream-final-{core,desktop,plugins,web,build,pack,lint,boundaries,selftest,spec}.log及/private/tmp/perception-stream-asar-{benchmark,file,worker}.log；旧对照/private/tmp/stream-baseline-asar.log。测试脚本/private/tmp/originos-stream-benchmark.cjs、originos-verify-im-file-package.cjs、originos-verify-im-file-worker.cjs。
 
 测试包：/Users/archersado/workspace/startupOS/release/perception-stream-fixes-20260913/mac-arm64/OriginOS CE.app。退出旧应用后打开此包；配置页等待10秒应保留平台与草稿，仅事件页自动刷新；企微发起长回复观察更新及结束速度。未发送真实IM消息/文件，真实平台收件、权限及网络仍需人工验证，Windows未验证。本地包未签名公证。其他Story未完成工作保持独立跟踪。
+
+## SENSE12-T7：插件独立日志（2026-09-14，已执行）
+
+| Case / AC | Given / When | Then |
+|---|---|---|
+| PL01 / AC1 | 四插件、同插件多连接并发记录 | 仅写各自plugins目录的每日日志，归属正确且desktop/llm无重复插件诊断 |
+| PL02 / AC1 | 默认SDK工厂鉴权、DNS、重连或回复失败 | 独立日志有安全原因，默认console不再泄漏；不能只mock工厂 |
+| PL03 / AC2 | prompt或回复投递失败 | 可区分执行/投递阶段，关联event/session/diagnosticId；IM仍安全，终态不重复 |
+| PL04 / AC2 | resolve、用户/助手消息持久化失败 | 会话缺失也能定位；失败清理资源，无假成功或未处理拒绝 |
+| PL05 / AC3 | 错误含嵌套凭据、URL、正文、大对象或伪造路径 | 秘密/正文不落盘，长度有界，拒绝越界和跨插件归属 |
+| PL06 / AC4 | 写盘不可用、SDK日志风暴 | 消息不受影响，缓冲有界且失败/丢弃可观测，无递归日志 |
+| PL07 / AC4 | 跨午夜、正常退出和重启 | 正确日期追加，退出flush；强退缓冲损失明确 |
+| PL08 / AC2/4 | 实际桌面包运行临时插件并触发Worker错误 | 日志端口/模块存在，错误传回宿主并落入插件日志；原desktop/llm功能仍可用 |
+
+自动化：各包现有vitest运行受影响日志writer/Host/channel-runtime/路由/四插件测试；pnpm lint、pnpm lint:boundaries、node scripts/check-architecture-boundaries.cjs --self-test，以及core/desktop类型检查。临时目录和伪凭据覆盖安全负例，不发送真实IM消息。实际macOS包做PL08；Windows需对应runner/本机验证，无法执行须记录明确人工步骤和未验证风险。应用实现后建立Story验证goal，逐case附命令和结果。
+
+### 执行结果与复现
+
+- PL01/05/06/07：真实临时目录验证四插件、多连接隔离、脱敏、日期轮转、重启追加、退出flush、写盘失败和缓冲上限；`plugin-log-service.test.ts`、`daily-log-writer.test.ts`、Core `plugin-logging.test.ts`和Host测试通过。
+- PL02：企微、飞书使用编译后的默认工厂及真实SDK；仅用本地无效URL或HTTP transport stub触发错误。钉钉运行真实CJS/ESM子进程及默认DWClient，验证无默认console泄漏、debug关闭、SDK错误被接收；邮箱保持ImapFlow协议日志关闭并记录受控连接/poll错误。没有发送真实IM消息。
+- PL03/04：真实BindingIngress、RuntimeAdapter、Trigger、ReplyDispatcher和文件审计覆盖入口、prompt、投递以及消息持久化失败；同一diagnosticId关联安全原因和event/session，失败不会记作完成。
+- PL08：完整`build:app`、macOS ARM64实际app.asar验证通过；包内Electron启动真实Worker，在初始化前发送prompt产生错误，再由包内Host临时插件、Runtime、路由和文件审计验证四插件落盘与诊断关联。包内四插件可加载，原desktop/llm日志回归通过。
+
+集成测试共232项：四插件73、Core渠道与感知133、Desktop日志/回复/Windows打包检查脚本26。关键Core改动（runtime-adapter、plugin logging、trigger adapter）覆盖率：行/语句95.52%，分支80.26%，函数85.71%；不代表全仓覆盖率。类型检查和完整构建通过；lint为0 errors / 2968既有warnings；架构扫描871生产文件零诊断，自测43用例×2工作目录通过。
+
+复现命令（仓库根目录，先按锁文件安装依赖）：
+
+```bash
+pnpm --filter @originos/perception-plugin-email --filter @originos/perception-plugin-wecom --filter @originos/perception-plugin-feishu --filter @originos/perception-plugin-dingtalk test
+pnpm exec vitest run src/modules/channel-runtime/__tests__ src/modules/perception-runtime/__tests__ --root packages/core
+pnpm exec vitest run src/main/services/__tests__/daily-log-writer.test.ts src/main/services/__tests__/plugin-log-service.test.ts src/main/services/__tests__/plugin-diagnostic-routing.test.ts src/main/services/__tests__/plugin-reply-delivery-service.test.ts src/main/services/__tests__/console-log-capture.test.ts scripts/__tests__/verify-windows-package.test.mjs --root packages/desktop
+pnpm --filter @originos/desktop build:app
+node packages/perception-plugins/wecom/scripts/check-sdk-logging.cjs
+node packages/perception-plugins/feishu/scripts/check-sdk-logging.cjs
+node packages/perception-plugins/dingtalk/src/__tests__/sdk-logging.cjs
+pnpm lint
+pnpm lint:boundaries
+node scripts/check-architecture-boundaries.cjs --self-test
+```
+
+本地未签名包使用`CSC_IDENTITY_AUTO_DISCOVERY=false ORIGINOS_SKIP_MAC_NOTARIZE=1 pnpm exec electron-builder --config electron-builder.yml --config.mac.forceCodeSigning=false --mac --arm64 --dir --publish never`（desktop目录），随后执行`pnpm --filter @originos/desktop verify:mac-package`。仅命令行覆盖本地签名要求，仓库发布配置不变。
+
+产物及证据保存在仓库根`release/plugin-logs-20260914/`：`OriginOS CE.app`和`evidence/`。证据包含final-plugins/core/desktop、coverage、real-sdk、types、lint、boundaries/selftest、build、pack、package-verify、package-smoke日志及`originos-verify-plugin-logs-package.cjs`。可用包内可执行文件配合`ELECTRON_RUN_AS_NODE=1`运行该脚本，唯一参数为包内app.asar路径。
+
+剩余人工验证：本机为macOS，不能验证Windows安装、真实平台鉴权/网络和远端IM展示。在Windows runner构建后运行`pnpm --filter @originos/desktop verify:win-package`；安装后分别启用四插件、触发一次受控连接或执行失败，检查应用日志目录`plugins/{source}/plugin-日期.log`及感知审计的diagnosticId，再正常退出、重启确认同日追加。不要把脚本级Windows检查通过等同于Windows运行验证。正常退出已测flush，强退可能损失未落盘缓冲；不记录正文和任意供应商错误文本，未知错误只保留受限堆栈/类别。本次未发布远端。
