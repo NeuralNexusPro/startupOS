@@ -1,7 +1,7 @@
 # OriginOS 架构规约 (AGENTS.md)
 
-**版本：** 2.5.5
-**日期：** 2026-09-13
+**版本：** 2.5.6
+**日期：** 2026-09-14
 **状态：** 强制执行
 
 ---
@@ -623,6 +623,15 @@ CognitiveManager
 
 ---
 
+### 感知插件诊断日志
+
+- 插件与SDK诊断由Host通过Plugin SDK日志端口注入，宿主绑定pluginId/connectorId；插件不得直接选择日志路径、导入Desktop实现或切换全局console。
+- Desktop独立写入应用日志目录`plugins/{email|wecom|feishu|dingtalk}/plugin-YYYY-MM-DD.log`；插件诊断不重复进入desktop/llm日志，使用独立有界异步缓冲与退出flush。
+- 渠道失败按调用关联eventId/sessionId/diagnosticId，感知审计保存诊断引用；日志不得成为业务状态事实源，日志故障不得触发业务重试。
+- 不记录消息正文、附件字节或凭据；错误按安全类别、HTTP状态、受限源码位置摘要，未知SDK文本不直接落盘。SDK默认日志必须接入实例级受控出口。
+
+---
+
 ## 📊 性能约束
 
 ### 强制性能指标
@@ -1145,5 +1154,5 @@ git worktree add ../startupos-add-agent-task-runtime-task-2 \
 
 ---
 
-**最后更新：** 2026-09-13（v2.5.5：IM 文件回复的调用隔离、插件能力与持久化后接纳确认规约）
+**最后更新：** 2026-09-14（v2.5.6：感知插件独立诊断日志与调用关联边界）
 **下次审查：** 实施完成后

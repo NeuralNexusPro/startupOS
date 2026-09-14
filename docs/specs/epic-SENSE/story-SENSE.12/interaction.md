@@ -30,3 +30,5 @@ SENSE12-T6：停留在配置页时所选平台及草稿保持，事件页每5秒
 ## SENSE12-T7：诊断日志
 
 无新增UI。用户在应用日志目录的plugins/wecom、plugins/feishu、plugins/dingtalk、plugins/email查看每日plugin-YYYY-MM-DD.log。IM继续安全错误提示；诊断记录保留关联ID，审计可关联，禁止向IM显示堆栈/日志路径或凭据。
+
+日志包含stage、safeCode和可用的eventId/sessionId/diagnosticId；使用diagnosticId关联感知审计。未知供应商文本不会原样记录，正常退出flush，强制结束进程可能丢失尚未写入的缓冲。

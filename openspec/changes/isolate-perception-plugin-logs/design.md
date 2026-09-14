@@ -40,3 +40,7 @@ T1（串行，Core/Desktop子代理）：公共端口、调用错误关联、日
 ### 实施核对：钉钉SDK日志出口
 
 本地dingtalk-stream@2.1.7-beta.1在debug:false时仍直写console且无logger注入。T3沿用仓库pnpm patchedDependencies，为该锁定版本增加可选实例logger并替换SDK日志调用，默认logger维持console以兼容其他调用者；同步CJS/ESM和类型。补丁存patches，禁止把node_modules当源码入口。重装、CJS/ESM及实际包默认工厂验收必须覆盖。此为原方案SDK局部适配的具体实现，不增加新平台依赖或修改网络协议。
+
+### 实施核对：SDK运行时依赖
+
+四插件继续仅type import Core SDK。Host在ports.log上注入sdkLogger对象，插件不直接运行时导入Core日志helper，避免安装包解析Core的TypeScript源码出口。公共接口随34717f8合入，9c12153补充Lark嵌套数组参数有界提取；232项集成回归、真实SDK及macOS包验收通过。具体证据、覆盖率及Windows剩余人工验证见Story testing.md。

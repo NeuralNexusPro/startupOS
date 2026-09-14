@@ -55,6 +55,6 @@ SENSE12-T6：修复感知配置跳回Email和草稿丢失，并按用户要求�
 
 SENSE12-T5/T6联合交付：136项回归、完整桌面构建及实际包验收通过；测试包与模拟性能证据见Story testing.md。
 
-## SENSE12-T7：插件独立日志（待批准）
+## SENSE12-T7：插件独立日志（已实施，2026-09-14）
 
-用户要求插件日志独立于现有日志。计划按邮箱/企微/飞书/钉钉每日分文件，覆盖SDK和宿主诊断及渠道原始错误关联。AC1独立归属，AC2原因可定位，AC3脱敏，AC4日志故障隔离。见[Proposal](../../../../openspec/changes/isolate-perception-plugin-logs/proposal.md)与testing.md PL01–PL08。尚未实施，不改变Story整体状态。
+邮箱、企微、飞书、钉钉已按插件每日独立记录SDK及宿主诊断；渠道失败保留安全原因并关联事件、会话和审计。232项集成回归、真实SDK检查及macOS包内Host/Worker落盘验收通过。Windows安装运行仍需对应环境验证；本次为本地测试包，未发布远端。见[Proposal](../../../../openspec/changes/isolate-perception-plugin-logs/proposal.md)与testing.md PL01–PL08；不改变Story其他任务状态。

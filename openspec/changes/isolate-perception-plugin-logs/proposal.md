@@ -5,7 +5,7 @@
 - task-id: SENSE12-T7
 - owner: OriginOS Team
 - 来源：[Story SENSE.12](../../../../docs/specs/epic-SENSE/story-SENSE.12/README.md)
-- 状态：已获用户批准（2026-09-14“继续”），实施中
+- 状态：已获用户批准（2026-09-14“继续”），本地实施及测试完成，未发布远端
 
 ## Why
 

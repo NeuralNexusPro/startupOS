@@ -43,3 +43,9 @@
 **类型**：docs
 **影响模块**：SENSE.12 / isolate-perception-plugin-logs
 **摘要**：新增独立日志、SDK出口、错误原因关联与脱敏的待实施Proposal及测试矩阵；不代表0.2.2已具备该功能。
+
+## 2026-09-14 — fix：插件独立日志与渠道失败诊断（本地完成，未发布）
+
+**类型**：fix
+**影响模块**：Core Plugin SDK/Host、channel-runtime/perception路由、Desktop日志、四个感知插件、钉钉SDK锁定补丁
+**摘要**：插件/SDK日志混入主日志且多层异常转换丢失原因，现按插件每日独立落盘，保留脱敏类别、HTTP状态和event/session/diagnosticId审计关联；修复飞书数组日志参数及钉钉错误被SDK吞掉、HTTP状态丢失的问题。232项集成回归、真实SDK与macOS包内Host/Worker验收通过；未远端发布，Windows安装运行待验，不承诺消除网络/模型服务失败。

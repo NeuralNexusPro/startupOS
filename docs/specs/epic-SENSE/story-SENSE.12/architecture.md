@@ -41,4 +41,4 @@ SENSE12-T6：SenseCenter复用store现有引用计数刷新订阅，仅事件tab
 
 ## SENSE12-T7：独立诊断出口
 
-Desktop宿主拥有plugins/{插件名}/plugin-日期.log的异步文件写入，Core仅定义可选受控日志端口与错误诊断回调，插件通过公共SDK接入。Host绑定plugin/connector，调用级关联event/session，禁止全局当前插件变量。复用BufferedDailyLogWriter并补缓冲上限与故障可观测性。方案及脱敏、并发、恢复边界见[design](../../../../openspec/changes/isolate-perception-plugin-logs/design.md)。无数据库、反向依赖或业务状态新事实源；实施时同步AGENTS公共边界说明。
+Desktop宿主拥有plugins/{插件名}/plugin-日期.log的异步文件写入，Core仅定义可选受控日志端口与错误诊断回调，插件通过公共SDK接入。Host绑定plugin/connector，调用级关联event/session，禁止全局当前插件变量。复用BufferedDailyLogWriter并补缓冲上限与故障可观测性。方案及脱敏、并发、恢复边界见[design](../../../../openspec/changes/isolate-perception-plugin-logs/design.md)。无数据库、反向依赖或业务状态新事实源；AGENTS v2.5.6已同步公共边界；钉钉使用pnpm锁定补丁注入实例logger，CJS/ESM和类型一致，飞书SDK数组参数由Host有界提取。
