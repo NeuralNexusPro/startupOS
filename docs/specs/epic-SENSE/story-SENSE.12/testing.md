@@ -237,6 +237,8 @@ IR01–IR06：Core渠道/感知137项通过；补齐长任务分支后Gateway及
 
 ### SENSE12-T8 包内验收与交付
 
+2026-09-14提交dev前补强验收：绑定类型隔离覆盖同外部ID的群聊/单聊、不同连接、旧无类型绑定、重启恢复及定向reset。Core channel-runtime/perception-runtime共138项通过；lint 0 errors / 2968既有warnings，架构871生产文件零诊断，自测43×2通过。日志`/private/tmp/im-dev-commit-{tests,lint,boundaries,selftest}.log`。用户已反馈原文透传测试可用；本次绑定补强未重新构建测试包，SENSE12-T9仍为待修复缺口。
+
 完整`pnpm --filter @originos/desktop build:app`通过，包含Desktop类型检查和18个Worker运行模块验证；使用T7记录的本地未签名打包命令生成macOS ARM64包。`verify:mac-package`通过，真实包内Electron/Worker依次接收企微、飞书、钉钉完整输入，核对原文空白/换行/表情、发送者ID/显示名和群会话。仅替换OriginOSAgent.prompt模型请求入口，真实Worker初始化及命令传输均执行；没有调用外部模型或发送IM。包内错误脚本同时验证真实Worker错误、四插件日志、审计关联和脱敏，全部通过。
 
 测试包：`release/im-context-20260914/OriginOS CE.app`；日志及可复现脚本保存在同目录`evidence/`，含im-context-{build,pack,package-verify,package-smoke,package-errors}.log。用包内Electron可执行文件并设置`ELECTRON_RUN_AS_NODE=1`运行evidence/originos-verify-im-context.cjs（唯一参数为包内Contents/Resources/app.asar），可重复输入验证；错误验证脚本同样调用。

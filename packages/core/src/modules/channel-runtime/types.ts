@@ -117,6 +117,7 @@ export interface ChannelSessionBinding {
   origin: ChannelOrigin;
   connectorId: string;
   conversationId: string;
+  conversationKind?: ChannelInboundMessage['conversationKind'];
   targetFingerprint: string;
   sessionId: string;
   createdAt: string;

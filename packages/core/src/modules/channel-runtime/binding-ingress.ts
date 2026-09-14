@@ -37,6 +37,7 @@ export class BindingChannelMessageIngress implements ChannelFlowMessageIngress {
       origin: input.message.origin,
       connectorId: input.message.connectorId,
       conversationId: input.message.conversationId,
+      conversationKind: input.message.conversationKind,
       target: input.target,
       createSessionId: () => this.sessions.provision(input),
     });

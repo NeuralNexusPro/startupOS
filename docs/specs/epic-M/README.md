@@ -485,3 +485,7 @@ Story 9.20（黑板 HNSW 语义索引）和 Story M.3（Archival Memory）共享
 | **实现** | `collaboration-runtime/session/semantic-index.ts` | `memory-core/archival/archival-memory.ts` |
 
 **策略：** M.3 实现底层 embedding + HNSW 引擎，9.20 复用 M.3 的引擎但使用不同的数据源和搜索策略。两者共享 `EmbeddingEngine` 和 `HNSWIndex` 实现。
+
+## 待修复缺口：共享记忆沟通来源（2026-09-14）
+
+[SENSE12-T9：共享记忆的沟通来源元数据](../epic-SENSE/story-SENSE.12/memory-source-context-gap.md)（Open，未实施）：逐轮记录、提炼、证据、召回及历史恢复须保留渠道、连接、群／单聊类型、平台会话、发送者与原消息来源；修正跨会话证据被标成当前sessionId的问题。用户明确记忆继续共享，不拆分记忆库；修复要求和待执行验收以该缺口记录为准。

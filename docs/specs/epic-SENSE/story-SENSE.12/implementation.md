@@ -55,3 +55,5 @@ Proposal isolate-perception-plugin-logs已获批准并实施。Core/Desktop先�
 Proposal fix-im-direct-reply-context已批准；按用户最新替换的AGENTS，当前代理直接处理相互依赖的Trigger、RuntimeAdapter、Channel types/validation、Gateway metadata、测试及包验证。核对所有调用者，不能只去掉perceptionText而留下运行时任务封套，不能只传正文而丢失发送者。无存储迁移，回滚不删历史。任务依赖与验收详见Proposal tasks.md。
 
 Trigger对三类IM透传原文；Runtime以JSON编码text、sender、conversation、origin及附件引用，正文不加入事件分析指令。Gateway保存原文与metadata.channel，向等待用户回复的长任务也传递同一完整输入。显示名缺失时省略，不推断身份；平台协议、角色提示词和既有记忆保持原样。
+
+2026-09-14后续补强：会话绑定键加入conversationKind，群聊、单聊、线程及未知类型分别绑定；reset支持按类型选择绑定。含类型的入站消息不复用旧版无类型绑定，会建立新绑定；旧会话与共享记忆保留，不做删除或记忆隔离。用户已反馈原文透传测试可用，此项绑定补强与SENSE12-T9记忆来源缺口分别跟踪，后者仍待修复。
