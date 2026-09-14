@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PerceptionPluginRuntimeContext } from '@originos/core/modules/perception-runtime/plugins';
+import type { PerceptionPluginRuntimeContext, PluginLogPort } from '@originos/core/modules/perception-runtime/plugins';
 import { EmailPerceptionPlugin, emailManifest } from '../plugin';
 
 const connect = vi.fn();
@@ -9,6 +9,7 @@ const logout = vi.fn();
 vi.mock('imapflow', () => ({
   ImapFlow: class {
     usable = true;
+    on = vi.fn();
     connect = connect;
     mailboxOpen = mailboxOpen;
     fetch = fetchMessages;
@@ -20,7 +21,7 @@ vi.mock('mailparser', () => ({
   simpleParser: vi.fn(async () => ({ text: '完整正文' })),
 }));
 
-function context(cursor?: unknown): PerceptionPluginRuntimeContext {
+function context(cursor?: unknown, log?: PluginLogPort): PerceptionPluginRuntimeContext {
   return {
     pluginId: 'originos.email',
     connectorId: 'email-main',
@@ -35,6 +36,7 @@ function context(cursor?: unknown): PerceptionPluginRuntimeContext {
       secretRef: 'secret://perception/mail/email-main',
     },
     ports: {
+      log,
       credentials: {
         bind: vi.fn(),
         remove: vi.fn(),
@@ -119,4 +121,23 @@ describe('Email perception plugin', () => {
       lastUid: 42,
     });
   });
+  it('records swallowed poll errors and keeps scheduling when the sink fails', async () => {
+    const host = context(undefined, { write: vi.fn(() => { throw new Error('sink unavailable'); }) });
+    const failure = new Error('authentication failed body=PRIVATE');
+    connect.mockRejectedValue(failure);
+    await expect(new EmailPerceptionPlugin().start(host)).resolves.toBeUndefined();
+    expect(host.ports.log?.write).toHaveBeenCalledWith({ level: 'error', stage: 'mail.poll', safeCode: 'MAIL_AUTH_FAILED', error: failure });
+    expect(host.ports.health?.report).toHaveBeenCalledWith({ status: 'degraded', safeCode: 'MAIL_AUTH_FAILED' });
+    expect(host.ports.schedule?.every).toHaveBeenCalledOnce();
+  });
+  it('does not advance the cursor after failed event acceptance', async () => {
+    mailboxOpen.mockResolvedValue({ uidValidity: '1', uidNext: 43, exists: 42 });
+    fetchMessages.mockReturnValue([{ uid: 42, envelope: { from: [{ address: 'sender@example.com' }] } }]);
+    const host = context({ uidValidity: '1', lastUid: 41 }, { write: vi.fn() });
+    host.ports.events!.submit = vi.fn().mockRejectedValue(new Error('disk failure'));
+    await new EmailPerceptionPlugin().start(host);
+    expect(host.ports.state?.write).not.toHaveBeenCalled();
+    expect(host.ports.log?.write).toHaveBeenCalledWith(expect.objectContaining({ stage: 'mail.poll' }));
+  });
+
 });
