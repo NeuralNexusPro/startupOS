@@ -1993,3 +1993,7 @@ SENSE12-T3：首次启用后台本可启动，但UI快照不自动刷新；增�
 **类型**：fix
 **影响模块**：Core channel-runtime / SENSE12-T8
 **摘要**：绑定键增加conversationKind，避免同连接同外部ID的不同会话类型复用会话；恢复与reset保留类型归属。类型化消息不复用旧无类型绑定，旧历史和共享记忆保留。原文透传修复已获用户测试反馈；记忆来源缺口SENSE12-T9仍待修复。本地dev提交，不推送或发布远端。
+
+## 2026-09-14 — release：准备 v0.2.3
+
+用户授权推送dev并正式发布。现有正式版本为v0.2.2，本次递增patch到v0.2.3，使用Desktop Release构建Windows、macOS ARM64/x64并在成功后发布到七牛、官网更新源和GitHub Release。版本说明见[ v0.2.3 ](releases/v0.2.3/changelog.md)；该记录为发布准备，最终构建和发布状态以CI为准。
