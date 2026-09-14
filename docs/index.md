@@ -1,6 +1,6 @@
 # OriginOS 文档索引
 
-**最后更新:** 2026-08-28
+**最后更新:** 2026-09-14
 
 ---
 
@@ -12,6 +12,7 @@
 |------|------|------|
 | **PRD v2.0** | [product/PRD-Main.md](./product/PRD-Main.md) | **核心 PRD - 融入 EEOIP/ECO 认知系统理论** |
 | 架构文档 | [design/os-framework.md](./design/os-framework.md) | OS 框架设计 |
+| 项目语义执行规划 | [主线与实施路线](./specs/epic-ONT/project-semantic-execution-plan.md) | 访谈→上下文契约→任务协作→看板→恢复，Planning |
 | Epic 索引 | [specs/](./specs/) | Epic 索引 |
 
 ### 规约文档

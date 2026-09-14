@@ -233,3 +233,11 @@ collaboration-runtime
 | 2026-07-28 | 创建初版 |
 | 2026-07-28 | 改为设计时 Workflow 和运行时 SolutionExecutionContract |
 | 2026-07-28 | 契约 schema、编译、发布和迁移职责迁移至 P2.8 |
+
+## 2026-09-14：项目语义执行规划补充
+
+导入P2.8唯一定义的执行契约，原DTO示例不构成第二类型来源。上下文实例含对象ID、事实读集/版本、contractHash、本体版本、task/session/branch/run/workItem/attempt、checkpointCursor、lease epoch。Blackboard和图是投影。
+
+持久意图 → ONT幂等提交与回执 → WorkItem接纳事件 → pi-tasks Evidence。部分提交按operationId对账补登。旧epoch迟到输出拒绝，跨进程互斥与快照cursor必须实测。退出正确性不依赖正常shutdown hook；不可查询/去重的外部副作用不能自动重放。
+
+完整依赖、状态所有权及验收场景见[主线规划](../../epic-ONT/project-semantic-execution-plan.md)。

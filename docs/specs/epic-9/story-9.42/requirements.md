@@ -162,3 +162,11 @@ Story 9.41 负责 Agent/RoleAgent 当前 Session 的直接正式任务。Story P
 | 2026-07-28 | 创建初版 |
 | 2026-07-28 | Workflow 改为解决方案设计产物，runtime 只消费已审批执行契约 |
 | 2026-07-28 | 契约编译、校验和发布职责迁移至 Story P2.8 |
+
+## 2026-09-14：项目语义执行规划补充
+
+WorkItem绑定P2.8上下文契约、具体业务对象和输入事实版本；同Agent多任务按run/workItem/attempt隔离。就绪同时满足依赖核验、事实/业务状态、版本与权限门控。候选输出经Verifier和ONT Action接纳后才登记Evidence，Task完成仍由pi-tasks门控。
+
+关闭窗口可继续宿主运行，应用重启允许回到原Task/Run核对后继续。不得重复Action/Evidence、复活已取消任务或自动推进暂停任务。回执不明的外部副作用进入待核对。
+
+完整依赖、状态所有权及验收场景见[主线规划](../../epic-ONT/project-semantic-execution-plan.md)。
