@@ -1957,3 +1957,9 @@ SENSE12-T3：首次启用后台本可启动，但UI快照不自动刷新；增�
 **类型**：fix
 **影响模块**：Desktop Windows发布校验
 **摘要**：schedule-tools迁入业务层后，Windows校验仍要求旧路径和不存在的外置副本。校验改为实际ASAR业务工具路径，并保留真实缺包失败检查；运行时及打包内容保持不变。用于从修复后的dev重新构建发布0.2.2。
+
+## 2026-09-14 — docs：感知插件日志独立记录方案
+
+**类型**：docs
+**影响模块**：SENSE.12 / isolate-perception-plugin-logs
+**摘要**：规划四插件独立每日日志及CHANNEL_RUNTIME_FAILED诊断关联，补齐PL01–PL08验收；尚未批准实施或发布。
