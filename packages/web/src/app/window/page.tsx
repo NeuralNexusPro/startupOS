@@ -13,6 +13,7 @@ const AgentDialogContent = dynamic(() => import('@/components/os/agent-dialog/Ag
 const SolutionDesign = dynamic<any>(() => import('@/components/solution/SolutionDesign').then(m => ({ default: m.SolutionDesign })), { ssr: false });
 const CollaborationWindow = dynamic(() => import('./CollaborationWindow'), { ssr: false });
 const SandboxWindow = dynamic<any>(() => import('@/components/sandbox/SandboxWindow').then(m => ({ default: m.SandboxWindow })), { ssr: false });
+const SenseCenter = dynamic(() => import('@/components/os/sense-center').then(m => ({ default: m.SenseCenter })), { ssr: false });
 
 function WindowContent() {
   const params = useSearchParams();
@@ -117,6 +118,7 @@ function WindowContent() {
           initialAppId={entryId}
         />
       )}
+      {windowType === 'sense-center' && <SenseCenter />}
       </div>
     </div>
   );

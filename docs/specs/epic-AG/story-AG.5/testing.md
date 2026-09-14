@@ -1,5 +1,10 @@
 # 测试策略 - Story AG.5
 
+## 2026-09-11：首轮可执行任务 AG5-T1
+
+本轮仅实施现有 Monorepo 边界检查修正，提案为 `fix-monorepo-boundary-lint`，状态为 AG5-T1 已验证完成，AG.5 其余任务待实施。下方历史整套工具链规划不作为 AG5-T1 验收要求；不得因此宣称 AG.5 全部完成。现行架构以 AGENTS.md 为准，旧 `src/`、atoms/organisms 目录及旧 CLI 命令仅作为历史背景。
+
+
 **Story:** 自动化围栏（ESLint 边界 + dead-code 工具 + any 预算 + CI 接入）
 **Epic:** AG — 架构治理与围栏对齐
 **最后更新:** 2026-07-20
@@ -396,3 +401,35 @@ npm run ci:guardrails
 - [需求规格](./requirements.md)
 - [架构设计](./architecture.md)
 - [Story AG.5 README](./README.md)
+
+## AG5-T1 测试矩阵（本轮权威范围）
+
+| ID | 场景 | 预期 |
+|---|---|---|
+| T1-01 | 同一 service → UI 从根和 Web CWD 检查 | 两者报告同一违规 |
+| T1-02 | 禁止方向以相对路径、alias、workspace 公共路径表达 | 均检出 |
+| T1-03 | Core → Web/Desktop；storage/shared/integrations/types → features/modules | 均检出 |
+| T1-04 | Web services/store → components/app；ui/molecules → 业务组件 | 均检出 |
+| T1-05 | 感知插件 → Web/Desktop | 检出 |
+| T1-06 | app → Core 公共 API、feature → storage/shared、业务组件 → ui | 不误报 |
+| T1-07 | import type、export from、字面量动态 import | 禁止方向均检出 |
+| T1-08 | 生产扫描命中测试、产物、node_modules、数据目录 | 排除；自测夹具显式执行 |
+| T1-09 | 非法配置、空扫描集合 | 非零退出，明确原因 |
+| T1-10 | 全量扫描有存量违规 | 非零退出且输出完整基线，不伪报通过 |
+| T1-11 | 执行原 pnpm lint | 非架构规则与既有兼容级别保持 |
+
+拟实施命令：`pnpm lint:boundaries`、`node scripts/check-architecture-boundaries.cjs --self-test`、`pnpm lint`。三条命令已执行，具体结果见下方验证记录。
+
+2026-09-11 已执行只读基线：Node 24.21.0，dev ad6b2b1。使用现有 ESLint.lintText 和真实 button.tsx 作为目标，虚拟 Web service 导入 `../components/ui/button`：根 CWD 为 0 条边界诊断，Web CWD 为 1 条 warning。未落盘测试源码。旧 bridge/service/CommandInterface 的生产扫描只剩历史注释和测试描述，没有待删生产导入。
+
+本轮无需 UI/安装包人工验收（不变更运行时）；CI 分支保护未实施，动态计算 import 的运行时依赖不在静态证明范围。源码阶段完成后创建验证 goal，目标为通过上述全部用例；全量扫描的失败是正确检测存量，不等同于存量已治理。
+
+## AG5-T1 验证结果（2026-09-11）
+
+T1-01–T1-10 全部由真实 ESLint 自测通过：43 imports × 2 个 CWD，覆盖正式配置 warning、生产排除、合法/违规退出、空集合与配置损坏；集成环境独立复验通过。自测修复了 macOS `/var` 与 `/private/var` realpath 不一致，避免夹具假漏报。
+
+T1-11：Web lint 383 文件，0 errors / 2920 warnings；与变更前 2931 warnings 对比，非边界诊断逐条完全相同。配置级比较也证明除过时架构限制与 resolver 外全部规则保持一致。移除的是过期 app→feature 与 collaboration-runtime→lib 的架构限制，不是降低无关代码质量规则。
+
+全量扫描实际返回 1：853 生产文件、34 条真实架构违规。此失败证明扫描器工作，不能记成仓库架构全绿；[完整基线](lint-baseline.md)保留每条路径、位置与原因。`git diff --check` 通过。自动化验证 goal 已建立，目标为通过 AG5-T1 全部 case 并完成 dev 集成与清理；最终状态随交付记录。
+
+交付收尾：已合入本地 dev（`0eac78e`），主工作区自测再次通过；独立 Task/Proposal 分支和 worktree 已清理，提案归档到 `openspec/changes/archive/2026-09-11-fix-monorepo-boundary-lint/`，主规范新增 3 条需求。全部 T1 测试 case 已通过；34 条业务存量仍未修复。

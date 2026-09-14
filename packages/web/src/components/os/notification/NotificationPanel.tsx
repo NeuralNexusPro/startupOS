@@ -3,6 +3,9 @@
  * Dropdown panel showing notification list
  */
 
+import { useState } from 'react';
+import { ArrowUpRight, ChevronDown } from 'lucide-react';
+
 import { useNotificationStore, type Notification } from '@/store/notificationStore';
 import type { SystemNotificationActivationTarget } from './SystemNotificationToastHost';
 
@@ -115,6 +118,11 @@ export default function NotificationPanel({ onClose }: NotificationPanelProps) {
             key={notification.id}
             notification={notification}
             onDismiss={dismissNotification}
+            onInspect={async () => {
+              if (notification.status === 'pending') {
+                await markNotificationRead(notification.id);
+              }
+            }}
             onActivate={async (target) => {
               if (notification.status === 'pending') {
                 await markNotificationRead(notification.id);
@@ -133,33 +141,39 @@ function NotificationItem({
   notification,
   onDismiss,
   onActivate,
+  onInspect,
 }: {
   notification: Notification;
   onDismiss: (id: string) => Promise<void>;
   onActivate: (target: SystemNotificationActivationTarget) => Promise<void>;
+  onInspect: () => Promise<void>;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const isUnread = notification.status === 'pending';
   const activationTarget = getNotificationActivationTarget(notification);
+  const detailsId = `notification-details-${notification.id}`;
+  const actionLabel = activationTarget ? '立即处理' : expanded ? '收起详情' : '查看详情';
+
+  const handlePrimaryAction = (): void => {
+    if (activationTarget) {
+      void onActivate(activationTarget);
+      return;
+    }
+    setExpanded((value) => !value);
+    if (!expanded) void onInspect();
+  };
 
   return (
-    <div
-      role={activationTarget ? 'button' : undefined}
-      tabIndex={activationTarget ? 0 : undefined}
-      onClick={() => {
-        if (activationTarget) {
-          void onActivate(activationTarget);
-        }
-      }}
-      onKeyDown={(event) => {
-        if (!activationTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
-        event.preventDefault();
-        void onActivate(activationTarget);
-      }}
-      className={`px-4 py-3 border-b border-white/5 transition-colors ${
-        isUnread ? 'bg-white/5' : ''
-      } ${activationTarget ? 'cursor-pointer hover:bg-white/10 focus:bg-white/10 focus:outline-none' : ''}`}
-    >
-      <div className="flex items-start gap-3">
+    <div className={`relative border-b border-white/5 transition-colors ${isUnread ? 'bg-white/5' : ''}`}>
+      <button
+        type="button"
+        onClick={handlePrimaryAction}
+        aria-label={`${actionLabel}：${notification.title}`}
+        aria-expanded={activationTarget ? undefined : expanded}
+        aria-controls={activationTarget ? undefined : detailsId}
+        className="w-full px-4 py-3 pr-11 text-left transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
+      >
+        <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <h4 className="text-sm font-medium text-white truncate">
@@ -179,20 +193,34 @@ function NotificationItem({
           <span className="text-[10px] text-white/30 mt-1 block">
             {formatTime(notification.createdAt)}
           </span>
+          <span className={`mt-2 inline-flex items-center gap-1 text-[11px] font-medium ${activationTarget ? 'text-blue-400' : 'text-white/45'}`}>
+            {actionLabel}
+            {activationTarget ? <ArrowUpRight className="h-3 w-3" aria-hidden="true" /> : <ChevronDown className={`h-3 w-3 transition-transform ${expanded ? 'rotate-180' : ''}`} aria-hidden="true" />}
+          </span>
         </div>
+        </div>
+      </button>
         <button
           onClick={(event) => {
             event.stopPropagation();
             void onDismiss(notification.id);
           }}
-          className="text-white/30 hover:text-white/60 transition-colors shrink-0 p-1"
+          className="absolute right-3 top-3 z-10 shrink-0 p-1 text-white/30 transition-colors hover:text-white/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           aria-label="关闭通知"
         >
           <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
             <path d="M18 6L6 18M6 6l12 12" />
           </svg>
         </button>
-      </div>
+      {!activationTarget && expanded && <div id={detailsId} role="region" aria-label={`通知详情：${notification.title}`} className="mx-4 mb-4 rounded border border-white/10 bg-black/20 p-3">
+        <h5 className="break-words text-sm font-semibold text-white">{notification.title}</h5>
+        <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-white/75">{notification.message}</p>
+        <dl className="mt-3 grid grid-cols-2 gap-2 border-t border-white/10 pt-3 text-[11px]">
+          <div><dt className="text-white/35">类型</dt><dd className="mt-0.5 break-words text-white/60">{notification.type}</dd></div>
+          <div><dt className="text-white/35">状态</dt><dd className="mt-0.5 text-white/60">{getStatusLabel(notification.status)}</dd></div>
+          <div className="col-span-2"><dt className="text-white/35">时间</dt><dd className="mt-0.5 text-white/60">{new Date(notification.createdAt).toLocaleString('zh-CN', { hour12: false })}</dd></div>
+        </dl>
+      </div>}
     </div>
   );
 }

@@ -36,6 +36,10 @@ export const IPC_CHANNELS = {
   AGENT_SESSION_MESSAGE: 'agent:session:message',
   AGENT_SESSION_MESSAGE_STREAM: 'agent:session:message:stream',
   AGENT_SESSION_ABORT: 'agent:session:abort',
+  AGENT_TASK_CREATE: 'agent:task:create',
+  AGENT_TASK_GET: 'agent:task:get',
+  AGENT_TASK_CONTROL: 'agent:task:control',
+  AGENT_TASK_EVENT: 'agent:task:event',
   AGENT_MEMORY_CONSOLIDATE: 'agent:memory:consolidate',
   AGENT_TEST_LLM: 'agent:test-llm',
   AGENT_CONTENT_GET: 'agent:content:get',
@@ -145,6 +149,8 @@ export const IPC_CHANNELS = {
   DOCK_ACTION: 'dock:action',
   DOCK_SYNC_APPS: 'dock:sync-apps',
   DOCK_SET_MOUSE_IGNORE: 'dock:set-mouse-ignore',
+  PERCEPTION_PLUGIN_CATALOG: 'perception:plugin:catalog',
+  PERCEPTION_PLUGIN_PROVISION: 'perception:plugin:provision',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
@@ -195,7 +201,7 @@ export interface EntryExportResponse {
 export type {
   SkillEvolutionRequest,
   EvolutionResult as SkillEvolutionResult,
-} from '../pi-agent/skill-evolution';
+} from '../../../types/skill-evolution';
 
 export type {
   SkillContentRequest,
@@ -214,7 +220,7 @@ export type {
   SkillListResponse,
   SkillSessionsRequest,
   SkillSessionsResponse,
-} from '../../features/skills/service';
+} from '../../../types/skill-service';
 
 export type {
   Project,
@@ -232,7 +238,7 @@ export type {
 export type {
   UserAgent,
   UserSkill,
-} from '../../features/user-registry';
+} from '../../../types/user-registry';
 
 // ── Project Agent IPC Types ──────────────────────────────────────────
 

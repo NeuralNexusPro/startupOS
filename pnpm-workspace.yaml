@@ -1,5 +1,6 @@
 packages:
   - packages/*
+  - packages/perception-plugins/*
 
 # Electron 主进程产物在 dist-electron/ 下，运行时向上解析 node_modules；
 # pnpm 默认 isolated 模式不 hoist，导致 zod 等依赖解析失败。

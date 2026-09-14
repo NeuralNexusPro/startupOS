@@ -50,14 +50,8 @@ export interface BlockDefinition {
 }
 
 /** 旧 MemoryBlock 接口（兼容 cognitive/types.ts） */
-export interface LegacyMemoryBlock {
-  label: string;
-  value: string;
-  limit: number;
-  description: string;
-  metadata: Record<string, unknown>;
-  readOnly: boolean;
-}
+import type { MemoryBlock as LegacyMemoryBlock } from '../../../lib/shared/cognitive/types';
+export type { MemoryBlock as LegacyMemoryBlock } from '../../../lib/shared/cognitive/types';
 
 // ============================================================================
 // Default Blocks

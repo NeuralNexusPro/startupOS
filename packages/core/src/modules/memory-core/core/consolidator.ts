@@ -6,10 +6,20 @@
  */
 
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { Memory } from './memory';
 import { HistoryStore, type RecallEntry } from '../recall/history-store';
 import { ArchivalMemory } from '../archival/archival-memory';
 import { ingestReflectionToArchival } from '../archival/pattern-ingest';
+import type { CognitionBank, CognitionKind, EvidenceRef } from '../bank';
+import type { Model } from '@originos/pi-agent-adapter/ai';
+
+type ConsolidationModel = Model<'anthropic-messages' | 'openai-completions' | 'google' | 'azure-openai-responses'>;
+const MIN_REFLECT_TURNS = 5;
+
+export interface MemoryConsolidatorDeps {
+  createAutoModel(): ConsolidationModel;
+}
 
 export interface ConsolidationResult {
   consolidated: boolean;
@@ -29,40 +39,49 @@ interface ConsolidationInstruction {
   content: string;
 }
 
+export interface CognitionRouting {
+  userBank: CognitionBank | null;
+  ownerBank: CognitionBank | null;
+}
+
 export class MemoryConsolidator {
   private memory: Memory;
   private history: HistoryStore;
   private archival: ArchivalMemory;
-  private modelFactory?: { createAutoModel(): unknown };
-
-  constructor(agentDir: string, sessionId: string = 'default', modelFactory?: { createAutoModel(): unknown }) {
+  constructor(
+    agentDir: string,
+    private readonly sessionId: string = 'default',
+    private readonly deps?: MemoryConsolidatorDeps,
+    private readonly cognition?: CognitionRouting,
+  ) {
     this.memory = new Memory(agentDir);
     this.history = new HistoryStore(path.join(agentDir, 'memory', 'history'), sessionId);
     this.archival = new ArchivalMemory(agentDir);
-    this.modelFactory = modelFactory;
   }
 
   async consolidate(): Promise<ConsolidationResult> {
     const entries = this.history.readAll();
     const recentTurns = entries.slice(-50);
+    const stableMemoryTurns = this.extractStableMemoryTurns(recentTurns);
 
-    if (recentTurns.length < 2) {
+    if (recentTurns.length < MIN_REFLECT_TURNS) {
       return {
         consolidated: false,
         changes: [],
         reason: 'too few turns',
-        stableMemory: [],
+        stableMemory: stableMemoryTurns,
         patterns: [],
         knowledgeCandidates: [],
       };
     }
 
     const instructions = await this.analyzeRecentHistory(recentTurns);
-    const stableMemoryTurns = this.extractStableMemoryTurns(recentTurns);
     const reflectionTurns = recentTurns.filter((turn) => this.shouldCreateReflection(turn));
     const knowledgeCandidates = this.extractKnowledgeCandidates(recentTurns);
     const reflectionChanges = await this.ingestReflections(reflectionTurns);
-    if (instructions.length === 0 && reflectionChanges.length === 0) {
+    const changes = this.applyInstructions(instructions);
+    changes.push(...this.retainOwnerEvidence(recentTurns, knowledgeCandidates));
+    if (changes.length === 0 && reflectionChanges.length === 0) {
       return {
         consolidated: false,
         changes: [],
@@ -73,7 +92,6 @@ export class MemoryConsolidator {
       };
     }
 
-    const changes = this.applyInstructions(instructions);
     this.memory.save();
 
     return {
@@ -119,8 +137,8 @@ Rules:
 Respond in the same language as the conversation (Chinese if conversation is in Chinese).`;
 
     try {
-      const factory = this.modelFactory ?? (await import('../../../lib/integrations/pi-agent/server-config'));
-      const model = factory.createAutoModel() as unknown as import('@originos/pi-agent-adapter/ai').Model<any>;
+      if (!this.deps) return [];
+      const model = this.deps.createAutoModel();
       const { complete } = await import('@originos/pi-agent-adapter/ai');
       const result = await complete(model, {
         messages: [{ role: 'user', content: prompt, timestamp: Date.now() }],
@@ -162,6 +180,11 @@ Respond in the same language as the conversation (Chinese if conversation is in 
     const changes: string[] = [];
 
     for (const inst of instructions) {
+      const routed = this.routeInstruction(inst);
+      if (routed) {
+        changes.push(routed);
+        continue;
+      }
       const block = this.memory.getBlock(inst.label);
       if (!block) {
         console.warn(`[Consolidator] Block '${inst.label}' not found, skipping`);
@@ -177,6 +200,73 @@ Respond in the same language as the conversation (Chinese if conversation is in 
     }
 
     return changes;
+  }
+
+  private routeInstruction(instruction: ConsolidationInstruction): string | null {
+    const bank = instruction.label === 'human'
+      ? this.cognition?.userBank
+      : instruction.label === 'project'
+        ? this.cognition?.ownerBank
+        : null;
+    if (!bank) return null;
+    const kind: CognitionKind = instruction.label === 'human' ? 'observation' : 'world_fact';
+    bank.retain({
+      kind,
+      content: instruction.content,
+      evidence: this.evidence(
+        `instruction:${instruction.label}:${instruction.content}`,
+        'conversation',
+        instruction.content,
+      ),
+      tags: [instruction.label === 'human' ? 'user-profile' : 'project-memory'],
+    });
+    return `[COGNITION:${instruction.label}] ${instruction.content.slice(0, 80)}...`;
+  }
+
+  private retainOwnerEvidence(
+    turns: RecallEntry[],
+    candidates: ConsolidationResult['knowledgeCandidates'],
+  ): string[] {
+    const bank = this.cognition?.ownerBank;
+    if (!bank) return [];
+    const changes: string[] = [];
+    for (const [candidateIndex, candidate] of candidates.entries()) {
+      for (const fact of candidate.facts) {
+        bank.retain({
+          kind: 'world_fact',
+          content: fact,
+          evidence: this.evidence(`fact:${candidateIndex}:${fact}`, 'conversation', fact),
+          tags: ['knowledge-candidate'],
+        });
+        changes.push(`[COGNITION:world_fact] ${fact.slice(0, 80)}...`);
+      }
+    }
+    for (const turn of turns) {
+      for (const [toolIndex, toolCall] of (turn.toolCalls ?? []).entries()) {
+        bank.retain({
+          kind: 'experience',
+          content: `${toolCall.name}: ${toolCall.success ? 'success' : 'failure'} — ${toolCall.result.slice(0, 500)}`,
+          evidence: this.evidence(
+            `turn:${turn.turnNumber}:tool:${toolIndex}:${toolCall.name}`,
+            'tool',
+            toolCall.result.slice(0, 4096),
+          ),
+          tags: [toolCall.success ? 'tool-success' : 'tool-failure', toolCall.name],
+        });
+        changes.push(`[COGNITION:experience] ${toolCall.name} turn=${turn.turnNumber}`);
+      }
+    }
+    return changes;
+  }
+
+  private evidence(key: string, source: EvidenceRef['source'], excerpt: string): EvidenceRef {
+    return {
+      id: createHash('sha256').update(`${this.sessionId}\0${key}`).digest('hex'),
+      source,
+      sourceId: this.sessionId,
+      excerpt,
+      observedAt: new Date().toISOString(),
+    };
   }
 
   private extractStableMemoryTurns(turns: RecallEntry[]): string[] {
@@ -271,10 +361,11 @@ Respond in the same language as the conversation (Chinese if conversation is in 
 function extractText(content: unknown): string {
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
-    return content
-      .filter((c: any) => c.type === 'text' && c.text)
-      .map((c: any) => c.text)
-      .join(' ');
+    return content.flatMap((item) => {
+      if (!item || typeof item !== 'object') return [];
+      const block = item as { type?: unknown; text?: unknown };
+      return block.type === 'text' && typeof block.text === 'string' ? [block.text] : [];
+    }).join(' ');
   }
   return '';
 }

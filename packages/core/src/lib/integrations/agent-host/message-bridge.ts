@@ -6,10 +6,12 @@ import { AgentMessage } from '@/types/agent-host';
 import { AgentHostIntegration } from './integration';
 
 export class MessageBridge {
+  constructor(private readonly integration: AgentHostIntegration) {}
+
   private subscriptions = new Map<string, () => void>();
 
   bridge(agentId: string, onMessage: (message: AgentMessage) => void): () => void {
-    const integration = new AgentHostIntegration();
+    const integration = this.integration;
 
     const unsubscribe = integration.subscribeToMessages(agentId, {
       onChunk: (chunk) => {

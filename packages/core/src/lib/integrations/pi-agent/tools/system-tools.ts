@@ -8,6 +8,8 @@ import { Type } from "@sinclair/typebox";
 import type { AgentToolResult } from "@originos/pi-agent-adapter";
 import type { AgentToolUpdateCallback } from "@originos/pi-agent-adapter";
 import type { ToolRegistration } from "../types";
+import { access } from "node:fs/promises";
+import { resolveToolPath } from "./path-utils";
 
 // ============================================================================
 // 工具执行辅助函数
@@ -142,10 +144,45 @@ const GetTimeTool: ToolRegistration = {
 	},
 };
 
+const OpenFileParamsSchema = Type.Object({
+	filePath: Type.String({ description: "要使用系统默认应用打开的本地文件路径" }),
+});
+
+const OpenFileTool: ToolRegistration = {
+	name: "open_file",
+	label: "打开文件",
+	description: "在桌面端使用操作系统默认应用直接打开本地文件。仅支持 Electron 桌面环境。",
+	parameters: OpenFileParamsSchema,
+	category: "system",
+	enabled: true,
+	async execute(toolCallId, params: Static<typeof OpenFileParamsSchema>, signal, onUpdate): Promise<AgentToolResult<unknown>> {
+		const ctx = createToolContext(toolCallId, "open_file", signal, onUpdate);
+		try {
+			logToolStart(ctx, params);
+			checkAbort(ctx.signal);
+			const resolved = resolveToolPath(params.filePath);
+			await access(resolved.fullPath);
+			if (typeof process === "undefined" || !process.versions?.electron) {
+				throw new Error("open_file 仅支持 Electron 桌面环境");
+			}
+			const electron = await import("electron");
+			const error = await electron.shell.openPath(resolved.fullPath);
+			if (error) throw new Error(error);
+			const result = { success: true, filePath: resolved.displayPath, openedWithSystem: true };
+			logToolEnd(ctx, result);
+			return { content: [{ type: "text", text: `已使用系统默认应用打开：${resolved.displayPath}` }], details: result };
+		} catch (error) {
+			logToolError(ctx, error);
+			return { content: [{ type: "text", text: JSON.stringify({ success: false, error: error instanceof Error ? error.message : String(error) }) }], details: undefined };
+		}
+	},
+};
+
 // ============================================================================
 // 导出所有系统工具
 // ============================================================================
 
 export const systemTools: ToolRegistration[] = [
 	GetTimeTool,
+	OpenFileTool,
 ];

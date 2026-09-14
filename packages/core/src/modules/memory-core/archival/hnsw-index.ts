@@ -22,8 +22,20 @@ interface HNSWNode {
   layers: Array<Set<number>>; // node indices per layer
 }
 
+interface SerializedHNSWNode {
+  id: string;
+  embedding: number[];
+  layers: number[][];
+}
+
+interface SerializedHNSWIndex {
+  m?: number;
+  efConstruction?: number;
+  nodes: SerializedHNSWNode[];
+}
+
 export class HNSWIndex {
-  private nodes: HNSWNode[] = [];
+  private nodes: Array<HNSWNode | null> = [];
   private idToIndex = new Map<string, number>();
   private m: number;
   private efConstruction: number;
@@ -117,13 +129,13 @@ export class HNSWIndex {
     const idx = this.idToIndex.get(id);
     if (idx === undefined) return;
 
-    this.nodes[idx] = null as any;
+    this.nodes[idx] = null;
     this.idToIndex.delete(id);
   }
 
   /** 获取节点数量 */
   count(): number {
-    return this.nodes.filter((n) => n !== null as any).length;
+    return this.nodes.filter((node) => node !== null).length;
   }
 
   /** 序列化到 JSON（用于持久化） */
@@ -131,23 +143,24 @@ export class HNSWIndex {
     return {
       m: this.m,
       efConstruction: this.efConstruction,
-      nodes: this.nodes.filter(Boolean).map((n) => ({
-        id: n.id,
-        embedding: Array.from(n.embedding),
-        layers: n.layers.map((l) => Array.from(l)),
-      })),
+      nodes: this.nodes.flatMap((node) => node ? [{
+        id: node.id,
+        embedding: Array.from(node.embedding),
+        layers: node.layers.map((layer) => Array.from(layer)),
+      }] : []),
     };
   }
 
   /** 从 JSON 反序列化 */
   fromJSON(data: unknown): void {
-    const json = data as any;
+    if (!isSerializedHNSWIndex(data)) throw new Error('Invalid HNSW index data');
+    const json = data;
     this.m = json.m ?? 16;
     this.efConstruction = json.efConstruction ?? 200;
-    this.nodes = json.nodes.map((n: any) => ({
-      id: n.id,
-      embedding: new Float32Array(n.embedding),
-      layers: n.layers.map((l: number[]) => new Set<number>(l)),
+    this.nodes = json.nodes.map((node) => ({
+      id: node.id,
+      embedding: new Float32Array(node.embedding),
+      layers: node.layers.map((layer) => new Set<number>(layer)),
     }));
     this.idToIndex.clear();
     this.nodes.forEach((n, i) => {
@@ -241,4 +254,18 @@ export class HNSWIndex {
 
     return results;
   }
+}
+
+function isSerializedHNSWIndex(value: unknown): value is SerializedHNSWIndex {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Record<string, unknown>;
+  return Array.isArray(candidate['nodes']) && candidate['nodes'].every((node) => {
+    if (!node || typeof node !== 'object') return false;
+    const item = node as Record<string, unknown>;
+    return typeof item['id'] === 'string'
+      && Array.isArray(item['embedding'])
+      && item['embedding'].every((number) => typeof number === 'number')
+      && Array.isArray(item['layers'])
+      && item['layers'].every((layer) => Array.isArray(layer) && layer.every((index) => Number.isInteger(index)));
+  });
 }

@@ -41,7 +41,13 @@ export class HistoryStore {
     if (!fs.existsSync(this.historyDir)) {
       fs.mkdirSync(this.historyDir, { recursive: true });
     }
-    fs.appendFileSync(this.sessionFilePath(), JSON.stringify(entry) + '\n', 'utf-8');
+    const timestamp = new Date(entry.timestamp).toISOString();
+    fs.appendFileSync(this.sessionFilePath(), JSON.stringify({
+      version: 'memory-core/1.0',
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      data: entry,
+    }) + '\n', 'utf-8');
   }
 
   /** 读取目录下所有 session 的记录，按 turnNumber 排序 */
@@ -55,8 +61,8 @@ export class HistoryStore {
         const lines = content.split('\n').filter((l) => l.trim());
         for (const line of lines) {
           try {
-            const entry = JSON.parse(line) as RecallEntry;
-            entries.push(entry);
+            const parsed = JSON.parse(line) as Record<string, unknown>;
+            entries.push((parsed['data'] ?? parsed) as RecallEntry);
           } catch {
             // skip corrupted lines
           }
@@ -79,7 +85,8 @@ export class HistoryStore {
       const entries: RecallEntry[] = [];
       for (const line of lines) {
         try {
-          entries.push(JSON.parse(line) as RecallEntry);
+          const parsed = JSON.parse(line) as Record<string, unknown>;
+          entries.push((parsed['data'] ?? parsed) as RecallEntry);
         } catch {
           // skip corrupted lines
         }
@@ -97,11 +104,11 @@ export class HistoryStore {
 
   /** 旧文件迁移：memory/history.jsonl → memory/history/default.jsonl */
   private migrateLegacyFile(): void {
-    // Check if legacy file exists at the parent of historyDir
     const legacySingleFile = path.join(path.dirname(this.historyDir), 'history.jsonl');
-    if (fs.existsSync(legacySingleFile) && !fs.existsSync(this.historyDir)) {
+    const destination = path.join(this.historyDir, 'default.jsonl');
+    if (fs.existsSync(legacySingleFile) && !fs.existsSync(destination)) {
       fs.mkdirSync(this.historyDir, { recursive: true });
-      fs.renameSync(legacySingleFile, path.join(this.historyDir, 'default.jsonl'));
+      fs.renameSync(legacySingleFile, destination);
     }
   }
 }

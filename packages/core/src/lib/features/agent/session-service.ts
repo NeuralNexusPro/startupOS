@@ -144,6 +144,9 @@ export class AgentSessionService {
     if (updates.llmConfig !== undefined) {
       session.llmConfig = updates.llmConfig;
     }
+    if (updates.taskRuntime !== undefined) {
+      session.taskRuntime = updates.taskRuntime;
+    }
 
     await this.saveSession(session);
 

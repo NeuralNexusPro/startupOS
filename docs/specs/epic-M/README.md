@@ -12,7 +12,7 @@
 > 作为进入 M.7 前的强制门禁（**Governance Phase**，覆盖 ARCH-MC-01..15 全部 15 项）。
 > 详见 [Memory Core 架构审查（2026-05-20）](../../design/memory-core-architecture-review-2026-05-20.md)。
 
-**状态:** 📋 Planning
+**状态:** 🚧 In Progress
 **创建日期:** 2026-05-16
 **设计文档:** [memory-core.md](../../design/memory-core.md)
 
@@ -20,7 +20,7 @@
 
 ## 📋 概述
 
-将 OriginOS 现有分散在 `lib/integrations/` 的记忆体系（MemoryTracker、MemoryBlockManager、Dream、Recall keyword search）重构为**三层记忆模型**（Core Memory + Archival Memory + Recall Memory），引入 Letta 的 Block-based 记忆抽象和语义检索能力，使 Agent 具备语义检索长期记忆、向量索引、标准记忆工具 API 等能力。
+将 OriginOS 现有分散在 `lib/integrations/` 的记忆体系重构为 Memory Core。M.12 在三层存储模型之上补充 Hindsight-inspired 的认知模型（world facts、experiences、evidence-backed observations、mental models）与 retain/recall/reflect 管线，并强制区分全局用户认知和 Agent/Project 世界认知的所有权。
 
 ### 核心问题
 
@@ -51,6 +51,8 @@
 5. **标准 Tools API** — Agent 可通过工具自主编辑 Core 和 Archival 记忆
 6. **CognitiveProvider 集成** — 实现 CognitiveProvider 接口，接入现有 CognitiveManager
 7. **零破坏性迁移** — 通过适配器层兼容所有现有 API
+8. **认知所有权分域** — 用户 Profile/个人风格全局唯一；Agent、RoleAgent 与 Project 独立维护世界认知；Skill 只读消费
+9. **证据驱动认知** — 从事实和经验形成可修订、可冲突、可追溯的 Observation 与 Mental Model
 
 ### 成功标准
 
@@ -90,27 +92,29 @@
 
 | Story | 标题 | 优先级 | 调度 | 状态 |
 |-------|------|--------|-----|------|
-| **M.1** | 类型定义与 Block 抽象 | Critical | Phase 1 | ⬜ Pending |
-| **M.2** | Memory 集合 + compile/render | Critical | Phase 1 | ⬜ Pending |
-| **M.3** | Archival Memory 语义存储 | Critical | Phase 2 | ⬜ Pending |
-| **M.4** | Recall Memory 语义增强 | High | Phase 2 | ⬜ Pending |
-| **M.5** | Memory Tools API | Critical | Phase 3 | ⬜ Pending |
-| **M.6** | MemoryProvider 集成 + 适配器 | Critical | Phase 3 | ⬜ Pending |
-| **M.7** | Pattern 质量提升 + Memory 集成 | High | Phase 4 | ⬜ Pending |
-| **M.8** | 记忆链路收敛（围栏修复 + 新旧合并 + DataFile 对齐）| Critical | Governance | ⬜ Pending |
+| **M.1** | 类型定义与 Block 抽象 | Critical | Phase 1 | ✅ Complete |
+| **M.2** | Memory 集合 + compile/render | Critical | Phase 1 | ✅ Complete |
+| **M.3** | Archival Memory 语义存储 | Critical | Phase 2 | ✅ Complete |
+| **M.4** | Recall Memory 语义增强 | High | Phase 2 | ✅ Complete |
+| **M.5** | Memory Tools API | Critical | Phase 3 | ✅ Complete |
+| **M.6** | MemoryProvider 集成 + 适配器 | Critical | Phase 3 | ✅ Complete |
+| **M.7** | Pattern 质量提升 + Memory 集成 | High | Phase 4 | ✅ Complete |
+| **M.8** | 记忆链路收敛（围栏修复 + 新旧合并 + DataFile 对齐）| Critical | Governance | ✅ Complete |
 | **M.9** | 语义检索能力补齐（ONNX/HNSW/RecallSemantic）| Critical | Governance | ⬜ Pending |
 | **M.10** | 文档与协作场景对齐（状态修正 + 数据路径 + 协作策略 + 术语表）| High | Governance | ⬜ Pending |
 | **M.11** | 用 Memory Core 统一 history-to-cognition 管线并替代 Dream | Critical | Governance | ⬜ Pending |
+| **M.12** | Hindsight-inspired 全局用户认知与 Agent 世界模型分域 | Critical | Governance | ✅ Complete |
+| **M.13** | 旧记忆机制清退（Dream / MemoryTracker / Adapter） | Critical | Governance | ✅ Complete |
 
 ---
 
 ## 🏗️ Story 详情
 
-### Phase 1: Core Memory 基础 ✅ Planning
+### Phase 1: Core Memory 基础 ✅ Complete
 
 #### Story M.1: 类型定义与 Block 抽象
 
-**状态:** ⬜ Pending
+**状态:** ✅ Complete
 **优先级:** Critical
 **估计工时:** 1-2 天
 
@@ -142,7 +146,7 @@ src/modules/memory-core/core/block.ts
 
 #### Story M.2: Memory 集合 + compile/render
 
-**状态:** ⬜ Pending
+**状态:** ✅ Complete
 **优先级:** Critical
 **估计工时:** 2-3 天
 
@@ -172,11 +176,11 @@ src/modules/memory-core/core/memory.ts
 
 ---
 
-### Phase 2: Archival + Recall 语义增强 ✅ Planning
+### Phase 2: Archival + Recall 语义增强 ✅ Complete
 
 #### Story M.3: Archival Memory 语义存储
 
-**状态:** ⬜ Pending
+**状态:** ✅ Complete
 **优先级:** Critical
 **估计工时:** 4-5 天
 
@@ -213,7 +217,7 @@ src/modules/memory-core/archival/archival-memory.ts
 
 #### Story M.4: Recall Memory 语义增强
 
-**状态:** ⬜ Pending
+**状态:** ✅ Complete
 **优先级:** High
 **估计工时:** 2-3 天
 
@@ -247,11 +251,11 @@ src/modules/memory-core/recall/history-store.ts
 
 ---
 
-### Phase 3: Tools API + Provider 集成 ✅ Planning
+### Phase 3: Tools API + Provider 集成 ✅ Complete
 
 #### Story M.5: Memory Tools API
 
-**状态:** ⬜ Pending
+**状态:** ✅ Complete
 **优先级:** Critical
 **估计工时:** 2-3 天
 
@@ -290,7 +294,7 @@ src/modules/memory-core/tools/archival-memory-tools.ts
 
 #### Story M.6: MemoryProvider 集成 + 适配器
 
-**状态:** ⬜ Pending
+**状态:** ✅ Complete
 **优先级:** Critical
 **估计工时:** 2-3 天
 
@@ -329,11 +333,11 @@ src/lib/integrations/memory/index.ts                   # 集成入口
 
 ---
 
-### Phase 4: Pattern 质量提升 + Memory 集成 ✅ Planning
+### Phase 4: Pattern 质量提升 + Memory 集成 ✅ Complete
 
 #### Story M.7: Pattern 质量提升 + Memory 集成
 
-**状态:** ⬜ Pending
+**状态:** ✅ Complete
 **优先级:** High
 **估计工时:** 3-4 天
 
@@ -377,6 +381,15 @@ src/lib/integrations/pi-agent/cognitive/pattern-provider.ts  # 修改 prefetch +
 
 #### Story M.10: 文档与协作场景对齐 — 状态修正 + 数据路径 + 协作策略 + 术语表
 处理 ARCH-MC-02（Epic M 全 Planning 但代码已上线）、12（数据路径未在 CLAUDE.md 登记）、13（协作场景记忆策略缺失）、14（术语漂移）。详见 [story-M.10](./story-M.10/README.md)。
+
+#### Story M.11: 用 Memory Core 统一 history-to-cognition 管线并替代 Dream
+将 Recall History、Stable Memory、Pattern/Reflection 与 Knowledge Candidate 收敛到唯一 consolidation 主路径，停止 Dream 和 turn 摘要直接改写 `Memory.md`。详见 [story-M.11](./story-M.11/README.md)。
+
+#### Story M.12: Hindsight-inspired 全局用户认知与 Agent 世界模型分域
+修正 M.11 仍以 `agentDir` 为唯一 bank、把 `human/persona/project` 混存的所有权问题：`data/users/{userId}/cognition` 保存全局 Profile/个人风格；Agent/RoleAgent/Project 保存各自 world facts、experiences、observations、mental models；Skill 只读消费组合快照。详见 [story-M.12](./story-M.12/README.md)。
+
+#### Story M.13: 旧记忆机制清退
+删除已退出主架构但仍残留或双写的 Dream、MemoryTracker、MemoryBlockManager 与 MemoryAdapter；保留旧数据的一次性安全迁移，所有 Agent 统一通过 MemoryCore。详见 [story-M.13](./story-M.13/README.md)。
 
 ---
 

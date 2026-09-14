@@ -130,13 +130,30 @@ export class LocalAgentBridge extends EventEmitter {
   }
 
   async stopAgent(agentId: string): Promise<void> {
-    if (!this.agents.has(agentId)) {
+    const state = this.agents.get(agentId);
+    if (!state) {
       return;
     }
     this.sendCommand(agentId, { type: 'shutdown' });
-    setTimeout(() => {
-      this.agents.get(agentId)?.process.kill('SIGKILL');
-    }, 3000);
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = (): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(forceKillTimer);
+        resolve();
+      };
+      const forceKillTimer = setTimeout(() => {
+        if (!state.process.killed) {
+          state.process.kill('SIGKILL');
+        }
+        finish();
+      }, 3000);
+      state.process.once('exit', finish);
+      if (state.process.exitCode !== null || state.process.signalCode !== null) {
+        finish();
+      }
+    });
   }
 
   async abortAgent(agentId: string): Promise<void> {

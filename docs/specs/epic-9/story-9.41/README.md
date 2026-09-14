@@ -99,3 +99,9 @@ Story 已解除集成阻塞，但任务入口、Task 卡片、completion policy�
 | 2026-07-29 | 根据审查修订 completion policy、创建协议、公开集成边界、持久化恢复和 evidence gate |
 | 2026-07-29 | A-01 判定 Rejected，Story 状态调整为 Blocked |
 | 2026-08-01 | A-02 公共边界通过，ADR-010 取代 ADR-009，Story 调整为 Ready |
+
+## 9.41-T2 (2026-09-13)
+
+测试包：/Users/archersado/workspace/startupOS/release/session-fixes-20260913/mac-arm64/OriginOS CE.app。
+
+[Testing](./testing.md)

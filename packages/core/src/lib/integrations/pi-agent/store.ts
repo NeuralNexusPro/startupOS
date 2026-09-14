@@ -224,7 +224,7 @@ const DEFAULT_STATE: Omit<
 /**
  * 创建 PiAgent Store
  */
-export const usePiAgentStore = create<PiAgentStore>((set, get) => ({
+export const createPiAgentStore = (initializeTools: () => void | Promise<void>) => create<PiAgentStore>((set, get) => ({
 	...DEFAULT_STATE,
 
 	/**
@@ -252,10 +252,10 @@ export const usePiAgentStore = create<PiAgentStore>((set, get) => ({
 			});
 
 			// 动态导入工具模块（避免 Node.js fs 模块被打包进浏览器 bundle）
-			const { getAgentTools, initializeBuiltInTools } = await import("./tools/index");
+			const { getAgentTools } = await import("./tools/index");
 
 			// 显式初始化内置工具（避免模块加载时的副作用）
-			initializeBuiltInTools();
+			await initializeTools();
 
 			// 设置工具执行上下文
 			setToolContext(sessionId, {
@@ -545,8 +545,8 @@ export const usePiAgentStore = create<PiAgentStore>((set, get) => ({
 		try {
 			set({ isRunning: true, errorMessage: null });
 
-			const { getAgentTools, initializeBuiltInTools } = await import("./tools/index");
-			initializeBuiltInTools();
+			const { getAgentTools } = await import("./tools/index");
+			await initializeTools();
 
 			// 设置工具执行上下文
 			setToolContext(sessionId, {
@@ -748,8 +748,8 @@ export const usePiAgentStore = create<PiAgentStore>((set, get) => ({
 		try {
 			set({ isRunning: true, errorMessage: null });
 
-			const { getAgentTools, initializeBuiltInTools } = await import("./tools/index");
-			initializeBuiltInTools();
+			const { getAgentTools } = await import("./tools/index");
+			await initializeTools();
 
 			const agent = await createOriginOSAgent({
 				sessionId: session.id,
@@ -875,3 +875,7 @@ export const usePiAgentStore = create<PiAgentStore>((set, get) => ({
 		});
 	},
 }));
+
+export const usePiAgentStore = createPiAgentStore(() => {
+  throw new Error("Local Agent Store requires business tool initialization; use the server-composed store or the HTTP/IPC agent hook");
+});

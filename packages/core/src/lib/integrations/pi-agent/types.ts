@@ -231,12 +231,8 @@ export interface OriginOSAgentConfig {
 	 */
 	thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high";
 
-	/**
-	 * 是否启用语义完成度检查与自动恢复。
-	 *
-	 * 默认开启；交互式项目访谈会显式关闭，避免把正常追问误判为未完成任务。
-	 */
-	completionGuardEnabled?: boolean;
+	/** Skill-only recovery for a terminal assistant response with no text or tools. */
+	emptyStopRecoveryEnabled?: boolean;
 }
 
 /**

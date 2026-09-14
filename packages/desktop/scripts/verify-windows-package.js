@@ -37,6 +37,18 @@ const piAiRuntimeDependencies = [
   'https-proxy-agent',
   'openai',
 ];
+const perceptionPluginPackages = [
+  '@originos/perception-plugin-email',
+  '@originos/perception-plugin-wecom',
+  '@originos/perception-plugin-feishu',
+  '@originos/perception-plugin-dingtalk',
+];
+const perceptionRuntimeDependencies = [
+  '@larksuiteoapi/node-sdk',
+  '@wecom/aibot-node-sdk',
+  'imapflow',
+  'mailparser',
+];
 
 function fail(message) {
   console.error(`[verify-windows-package] ${message}`);
@@ -106,7 +118,7 @@ async function verifyAsar() {
     'dist-electron/core/src/lib/integrations/pi-agent/core/agent.js',
     'dist-electron/core/src/lib/integrations/pi-agent/tools/index.js',
     'dist-electron/core/src/lib/integrations/pi-agent/tools/loop-detector.js',
-    'dist-electron/core/src/lib/integrations/pi-agent/tools/schedule-tools.js',
+    'dist-electron/core/src/lib/features/agent/tools/schedule-tools.js',
     'dist-electron/core/src/lib/features/skills/service.js',
     'dist-electron/core/src/lib/features/services/launcher/skill.js',
     'dist-electron/core/src/lib/integrations/electron/workspace-paths.js',
@@ -120,6 +132,8 @@ async function verifyAsar() {
     'node_modules/@originos/pi-agent-adapter/dist/ai.cjs',
     'node_modules/@originos/pi-agent-adapter/dist/goal.cjs',
     'node_modules/archiver/index.js',
+    ...perceptionPluginPackages.map((dependency) => `node_modules/${dependency}/package.json`),
+    ...perceptionRuntimeDependencies.map((dependency) => `node_modules/${dependency}/package.json`),
     ...piAiRuntimeDependencies.map((dependency) => `node_modules/${dependency}/package.json`),
   ];
 
@@ -134,7 +148,7 @@ async function verifyAsar() {
   const modules = [
     'dist-electron/core/src/lib/integrations/pi-agent/core/agent.js',
     'dist-electron/core/src/lib/integrations/pi-agent/tools/loop-detector.js',
-    'dist-electron/core/src/lib/integrations/pi-agent/tools/schedule-tools.js',
+    'dist-electron/core/src/lib/features/agent/tools/schedule-tools.js',
     'dist-electron/core/src/lib/features/skills/service.js',
     'dist-electron/core/src/lib/features/services/launcher/skill.js',
     'dist-electron/core/src/lib/integrations/electron/workspace-paths.js',
@@ -170,6 +184,15 @@ async function verifyAsar() {
   }
   for (const dependency of piAiRuntimeDependencies) {
     smokeRequire.resolve(dependency);
+  }
+  for (const dependency of perceptionRuntimeDependencies) {
+    smokeRequire.resolve(dependency);
+  }
+  for (const pluginPackage of perceptionPluginPackages) {
+    const pluginModule = smokeRequire(pluginPackage);
+    if (!Object.values(pluginModule).some((value) => value?.manifest?.id)) {
+      fail(`perception plugin does not expose a manifest: ${pluginPackage}`);
+    }
   }
   const launcherRuntimePath = path.join(
     smokeDir,
@@ -237,7 +260,6 @@ function verifyResources() {
     'agent-worker/agent-worker.mjs',
     'agent-worker/agent-worker-module-specifier.mjs',
     'agent-worker/core/lib/integrations/pi-agent/tools/loop-detector.js',
-    'agent-worker/core/lib/integrations/pi-agent/tools/schedule-tools.js',
     'app.asar.unpacked/node_modules/onnxruntime-node/bin/napi-v6/win32/x64/onnxruntime_binding.node',
     'app.asar.unpacked/node_modules/onnxruntime-node/bin/napi-v6/win32/x64/onnxruntime.dll',
   ];
@@ -265,7 +287,6 @@ function verifyWindowsZip() {
     'resources/agent-worker/agent-worker.mjs',
     'resources/agent-worker/agent-worker-module-specifier.mjs',
     'resources/agent-worker/core/lib/integrations/pi-agent/tools/loop-detector.js',
-    'resources/agent-worker/core/lib/integrations/pi-agent/tools/schedule-tools.js',
     'resources/app.asar.unpacked/node_modules/onnxruntime-node/bin/napi-v6/win32/x64/onnxruntime_binding.node',
     'resources/app.asar.unpacked/node_modules/onnxruntime-node/bin/napi-v6/win32/x64/onnxruntime.dll',
   ];
@@ -339,10 +360,12 @@ async function main() {
   }
 }
 
-main().catch((error) => {
+if (require.main === module) main().catch((error) => {
   console.error(
     '[verify-windows-package] failed:',
     error instanceof Error ? error.message : error,
   );
   process.exitCode = 1;
 });
+
+module.exports = { verifyAsar, verifyResources, verifyWindowsZip };

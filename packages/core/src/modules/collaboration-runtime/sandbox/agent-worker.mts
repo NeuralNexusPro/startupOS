@@ -378,6 +378,44 @@ class AgentWorker {
     this.agentType = agentType;
   }
 
+  /**
+   * 多 Agent worker 的认知统一归属于业务 Project。
+   * workingDirectory 仍用于会话记忆与工具，但 cognition bank 固定写入 Project owner。
+   */
+  private async createProjectCognitiveRuntime(): Promise<{
+    memoryCore: import("../../memory-core").MemoryCore;
+    cognitiveManager: unknown;
+  }> {
+    const { getDataRoot } = await runtimeImport("lib/paths");
+    const { ObservationPolicyResolver } = await runtimeImport("modules/memory-core/index");
+    const { CognitiveManager } = await runtimeImport("lib/integrations/pi-agent/cognitive/manager");
+    const { PracticeLogger } = await runtimeImport("lib/integrations/pi-agent/cognitive/practice-logger");
+    const { createOwnedCognitiveProviders } = await runtimeImport("lib/features/agent/server/index");
+    const dataRoot = getDataRoot();
+    const ownerDirectory = path.join(dataRoot, "projects", this.projectId);
+    const observationContext = new ObservationPolicyResolver().resolve({
+      entryType: "project",
+      sessionId: this.agentId,
+      projectId: this.projectId,
+    });
+    const providers = createOwnedCognitiveProviders({
+      ownerScope: "project",
+      ownerId: this.projectId,
+      userId: "default",
+      dataRoot,
+      workingDirectory: this.workingDirectory,
+      ownerDirectory,
+      sessionId: this.agentId,
+    }, observationContext);
+    const cognitiveManager = new CognitiveManager(this.workingDirectory);
+    cognitiveManager.register(new PracticeLogger(this.workingDirectory));
+    cognitiveManager.register(providers.knowledgeProvider);
+    cognitiveManager.register(providers.memoryProvider);
+    await providers.patternProvider.initialize();
+    cognitiveManager.register(providers.patternProvider);
+    return { memoryCore: providers.memoryCore, cognitiveManager };
+  }
+
   getRuntimeLogContext(): Record<string, unknown> {
     return {
       projectId: this.projectId,
@@ -618,7 +656,7 @@ class AgentWorker {
     const model = await createWorkerModel(extra?.model);
 
     // 4. 注册工具，按 Tool.md allowedTools 白名单过滤
-    const { initializeBuiltInTools, getAgentTools } = await runtimeImport("lib/integrations/pi-agent/tools");
+    const { initializeBuiltInTools, getAgentTools } = await runtimeImport("lib/features/agent/server/index");
     initializeBuiltInTools();
     const allTools = getAgentTools();
 
@@ -681,21 +719,8 @@ class AgentWorker {
     agent.setTools(filteredTools);
 
     // 8. 创建 Memory Core 系统（协作 Agent 也需要记忆）
-    const { MemoryCore } = await runtimeImport("modules/memory-core/index");
-    const { MemoryProvider } = await runtimeImport("modules/memory-core/session/memory-provider");
-    const { CognitiveManager } = await runtimeImport("lib/integrations/pi-agent/cognitive/manager");
-    const { PracticeLogger } = await runtimeImport("lib/integrations/pi-agent/cognitive/practice-logger");
-    const { PatternProvider } = await runtimeImport("lib/integrations/pi-agent/cognitive/pattern/index");
-
-    const memoryCore = new MemoryCore(this.workingDirectory, this.agentId);
+    const { memoryCore, cognitiveManager } = await this.createProjectCognitiveRuntime();
     this.recallMemory = memoryCore.recall;
-    const memoryProvider = new MemoryProvider(memoryCore, this.agentId);
-    const cognitiveManager = new CognitiveManager(this.workingDirectory);
-    cognitiveManager.register(new PracticeLogger(this.workingDirectory));
-    cognitiveManager.register(memoryProvider);
-    const patternProvider = new PatternProvider(this.workingDirectory, memoryCore.archival);
-    patternProvider.initialize().catch((e: unknown) => console.warn('[AgentWorker] PatternProvider init error:', e));
-    cognitiveManager.register(patternProvider);
     this.originosCognitiveManager = cognitiveManager;
 
     // 注册 Memory 工具
@@ -1202,7 +1227,7 @@ class AgentWorker {
     ];
 
     // 5. 注册工具：协调工具通过 registerTool 注册（ToolRegistration 格式），文件工具从全局表获取
-    const { initializeBuiltInTools, getAgentTools, registerTool } = await runtimeImport("lib/integrations/pi-agent/tools");
+    const { initializeBuiltInTools, getAgentTools, registerTool } = await runtimeImport("lib/features/agent/server/index");
     initializeBuiltInTools();
 
     // 注册协调工具到全局表
@@ -1346,7 +1371,7 @@ class AgentWorker {
 
     // 注册工具（子进程独立注册，不受主进程 registry 影响）
     // 使用 scopes 过滤：skill 类型自动排除 ontology 创建工具，worker 类型排除 ask_user_question
-    const { initializeBuiltInTools, getAgentToolsForScope } = await runtimeImport("lib/integrations/pi-agent/tools");
+    const { initializeBuiltInTools, getAgentToolsForScope } = await runtimeImport("lib/features/agent/server/index");
     initializeBuiltInTools();
     const scopeAgentType = extra?.agentType ?? this.agentType;
     const tools = getAgentToolsForScope(scopeAgentType);
@@ -1476,21 +1501,8 @@ class AgentWorker {
     // 创建 Memory Core 系统（三层记忆 + CognitiveManager）
     // Skill 类型 Agent 不需要记忆模块，跳过初始化
     if (this.agentType !== "skill") {
-      const { MemoryCore } = await runtimeImport("modules/memory-core/index");
-      const { MemoryProvider } = await runtimeImport("modules/memory-core/session/memory-provider");
-      const { CognitiveManager } = await runtimeImport("lib/integrations/pi-agent/cognitive/manager");
-      const { PracticeLogger: PL } = await runtimeImport("lib/integrations/pi-agent/cognitive/practice-logger");
-      const { PatternProvider: PP } = await runtimeImport("lib/integrations/pi-agent/cognitive/pattern/index");
-
-      const memoryCore = new MemoryCore(this.workingDirectory, this.agentId);
+      const { memoryCore, cognitiveManager } = await this.createProjectCognitiveRuntime();
       this.recallMemory = memoryCore.recall;
-      const memoryProvider = new MemoryProvider(memoryCore, this.agentId);
-      const cognitiveManager = new CognitiveManager(this.workingDirectory);
-      cognitiveManager.register(new PL(this.workingDirectory));
-      cognitiveManager.register(memoryProvider);
-      const pp = new PP(this.workingDirectory, memoryCore.archival);
-      pp.initialize().catch((e: unknown) => console.warn('[AgentWorker] PatternProvider init error:', e));
-      cognitiveManager.register(pp);
       this.originosCognitiveManager = cognitiveManager;
 
       // 注册 Memory 工具到 Agent
@@ -1737,29 +1749,8 @@ class AgentWorker {
       console.error(`[AgentWorker] ProjectContext not loaded, using workspace files only`);
     }
 
-    // 3. 创建 CognitiveManager
-    const { CognitiveManager } = await runtimeImport("lib/integrations/pi-agent/cognitive/manager");
-    const cognitiveManager = new CognitiveManager(this.workingDirectory);
-
-    // 4. 注册认知 Provider（PracticeLogger + Knowledge）
-    const { PracticeLogger } = await runtimeImport("lib/integrations/pi-agent/cognitive/practice-logger");
-    const { KnowledgeProvider } = await runtimeImport("lib/integrations/pi-agent/cognitive/knowledge-provider");
-    cognitiveManager.register(new PracticeLogger(this.workingDirectory));
-    cognitiveManager.register(new KnowledgeProvider(this.workingDirectory));
-
-    // 4b. 注册 Memory Core Provider（三层记忆）
-    const { MemoryCore } = await runtimeImport("modules/memory-core/index");
-    const { MemoryProvider } = await runtimeImport("modules/memory-core/session/memory-provider");
-
-    const memoryCore = new MemoryCore(this.workingDirectory, this.agentId);
-    const memoryProvider = new MemoryProvider(memoryCore, this.agentId);
-    cognitiveManager.register(memoryProvider);
-
-    // 4c. 注册新版 PatternProvider（上层应用，底层走 archival）
-    const { PatternProvider } = await runtimeImport("lib/integrations/pi-agent/cognitive/pattern/index");
-    const patternProvider = new PatternProvider(this.workingDirectory, memoryCore.archival);
-    await patternProvider.initialize();
-    cognitiveManager.register(patternProvider);
+    // 3-4c. 创建显式 Project ownership 的统一认知 Provider 集合
+    const { memoryCore, cognitiveManager } = await this.createProjectCognitiveRuntime();
 
     this.persistentCognitiveManager = cognitiveManager;
 
@@ -1768,7 +1759,10 @@ class AgentWorker {
     const { SleepComputeScheduler } = await runtimeImport("lib/integrations/pi-agent/cognitive/sleep-compute");
     const sleepScheduler = new SleepComputeScheduler();
 
+    const { initializeBuiltInTools, agentSessionService } = await runtimeImport("lib/features/agent/server/index");
     this.persistentAgent = new PersistentAgent({
+      initializeTools: initializeBuiltInTools,
+      sessionPersistence: agentSessionService,
       projectId: this.projectId,
       workingDirectory: this.workingDirectory,
       agentDefinition: agentDef,

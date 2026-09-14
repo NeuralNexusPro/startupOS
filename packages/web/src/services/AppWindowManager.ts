@@ -74,6 +74,8 @@ export class AppWindowManager {
         windowType = 'project-workspace';
       } else if (entryType === 'sandbox') {
         windowType = 'sandbox';
+      } else if (entryType === 'sense-center') {
+        windowType = 'sense-center';
       } else {
         windowType = 'workspace';
       }

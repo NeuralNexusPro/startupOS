@@ -154,10 +154,9 @@ describe("OriginOSAgent", () => {
 	});
 
 	describe("Runtime environment and completion guard", () => {
-		it("does not run completion judging or recovery when the guard is disabled", async () => {
+		it("does not run semantic completion judging or recovery", async () => {
 			agent = new OriginOSAgent({
 				...basicConfig,
-				completionGuardEnabled: false,
 			});
 			const internalAgent = (agent as any).agent;
 			const judgeSpy = vi.spyOn(agent as any, "judgePendingCompletion");
@@ -255,6 +254,28 @@ describe("OriginOSAgent", () => {
 			expect(recoveryMessage?.role).toBe("user");
 			expect(recoveryMessage?.content?.[0]?.text).toContain("Runtime Environment");
 			expect(recoveryMessage?.content?.[0]?.text).toContain("execute_command");
+		});
+
+		it("uses only Task Runtime policy for task turns", async () => {
+			agent = new OriginOSAgent(basicConfig);
+			const internalAgent = (agent as any).agent;
+			const receivedEvents: any[] = [];
+			agent.subscribe((event) => receivedEvents.push(event));
+			const promptSpy = vi.spyOn(internalAgent, "prompt").mockImplementationOnce(async () => {
+				emitAssistantStop(internalAgent, "我会先制定计划，然后继续执行。");
+			});
+			const judgeSpy = vi.mocked(piAi.completeSimple);
+
+			await agent.prompt(
+				"创建正式任务",
+				undefined,
+				{ completionPolicy: "task_runtime" },
+			);
+
+			expect(promptSpy).toHaveBeenCalledTimes(1);
+			expect(judgeSpy).not.toHaveBeenCalled();
+			expect(receivedEvents.filter((event) => event.type === "agent_end")).toHaveLength(1);
+			expect(JSON.stringify(receivedEvents)).toContain("我会先制定计划");
 		});
 
 		it("retries an aborted completion judge with a fresh timeout signal", async () => {
@@ -421,9 +442,9 @@ describe("OriginOSAgent", () => {
 			expect(receivedEvents.filter((event) => event.type === "agent_end")).toHaveLength(1);
 		});
 
-		it("surfaces an assistant stream error instead of reporting prompt completion", async () => {
+		it.each([false, true])("surfaces an assistant stream error with empty-stop recovery %s", async (emptyStopRecoveryEnabled) => {
 			const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
-			agent = new OriginOSAgent(basicConfig);
+			agent = new OriginOSAgent({ ...basicConfig, emptyStopRecoveryEnabled });
 			const internalAgent = (agent as any).agent;
 			const receivedEvents: any[] = [];
 			agent.subscribe((event) => receivedEvents.push(event));

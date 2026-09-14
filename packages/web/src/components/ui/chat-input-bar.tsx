@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useCallback } from 'react';
-import { Send, Paperclip, X, Loader2 } from 'lucide-react';
+import { useState, useCallback, useId, type ReactElement } from 'react';
+import { Send, Paperclip, X, Loader2, ListTodo } from 'lucide-react';
 import { cn } from '@originos/core/lib/utils';
 
 export interface UploadedFileDisplay {
@@ -29,12 +29,54 @@ interface ChatInputBarProps {
   uploadError?: string | null;
   /** Whether an upload is in progress */
   uploading?: boolean;
+  /** Open a renderer-local task draft in Agent/RoleAgent conversations. */
+  onCreateTask?: () => void;
+  /** Disable task creation without disabling uploads. */
+  createTaskDisabled?: boolean;
 }
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+interface CreateTaskButtonProps {
+  disabled: boolean;
+  buttonClassName: string;
+  onCreateTask(): void;
+}
+
+function CreateTaskButton({
+  disabled,
+  buttonClassName,
+  onCreateTask,
+}: CreateTaskButtonProps): ReactElement {
+  const tooltipId = useId();
+  return (
+    <div className="group relative shrink-0">
+      <button
+        type="button"
+        onClick={onCreateTask}
+        disabled={disabled}
+        className={cn(
+          'p-2 rounded-lg border disabled:opacity-40 disabled:cursor-not-allowed transition-colors',
+          buttonClassName,
+        )}
+        aria-label="创建任务"
+        aria-describedby={tooltipId}
+      >
+        <ListTodo className="w-4 h-4" />
+      </button>
+      <span
+        id={tooltipId}
+        role="tooltip"
+        className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 shadow transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+      >
+        创建任务
+      </span>
+    </div>
+  );
 }
 
 export function ChatInputBar({
@@ -50,7 +92,9 @@ export function ChatInputBar({
   onRemoveFile,
   uploadError,
   uploading,
-}: ChatInputBarProps) {
+  onCreateTask,
+  createTaskDisabled = false,
+}: ChatInputBarProps): ReactElement {
   const [input, setInput] = useState('');
 
   const canSend = input.trim().length > 0 && !disabled;
@@ -151,6 +195,13 @@ export function ChatInputBar({
           >
             <Paperclip className="w-4 h-4" />
           </button>
+        )}
+        {onCreateTask && (
+          <CreateTaskButton
+            disabled={createTaskDisabled || Boolean(disabled) || Boolean(isGenerating)}
+            buttonClassName={uploadBtnClass}
+            onCreateTask={onCreateTask}
+          />
         )}
         {onStop && isGenerating && (
           <button

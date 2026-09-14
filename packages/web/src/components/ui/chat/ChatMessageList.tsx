@@ -4,7 +4,7 @@ import { useRef, useEffect } from 'react';
 import { Loader2, Wrench } from 'lucide-react';
 import { cn } from '@originos/core/lib/utils';
 import { sanitizeAgentDisplayContent } from '@originos/core/lib/integrations/pi-agent/display-content';
-import ToolExecutionFrame, { type ToolExecution } from '@/components/os/agent-dialog/ToolExecutionFrame';
+import ToolExecutionFrame, { type ToolExecution } from '@/components/ui/chat/ToolExecutionFrame';
 import { MarkdownContent, normalizeAskUserQuestion, parseAskUserQuestion, removeYamlBlock, AskUserQuestionComponent, type ChatMessageData } from '@/components/ui/chat-message';
 
 // ============================================================================
@@ -39,6 +39,8 @@ export interface ChatMessageListProps {
   assistantMessageExtra?: (message: ChatMessageItem, index: number) => React.ReactNode;
   /** Message indices to skip rendering (e.g. hidden system messages) */
   skipIndices?: Set<number>;
+  /** Interactive task content rendered inside the conversation scroll area. */
+  footerContent?: React.ReactNode;
 }
 
 // ============================================================================
@@ -83,6 +85,7 @@ export function ChatMessageList({
   assistantMessageClassName,
   assistantMessageExtra,
   skipIndices = new Set(),
+  footerContent,
 }: ChatMessageListProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const prevLengthRef = useRef(0);
@@ -140,6 +143,12 @@ export function ChatMessageList({
   useEffect(() => {
     scheduleScroll();
   }, [toolExecutions]);
+
+  // Keep an interactive task form/card in view when it is opened or updated.
+  const hasFooterContent = Boolean(footerContent);
+  useEffect(() => {
+    if (hasFooterContent) scheduleScroll(true);
+  }, [hasFooterContent]);
 
   // Determine if we should show thinking/loading indicators
   const lastMsg = messages[messages.length - 1];
@@ -282,6 +291,8 @@ export function ChatMessageList({
           </div>
         </>
       )}
+
+      {footerContent}
     </div>
   );
 }

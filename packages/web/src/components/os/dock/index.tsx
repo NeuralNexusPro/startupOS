@@ -18,6 +18,11 @@ interface DraggableData {
   index: number;
 }
 
+export function resolveSystemDockAction(appId: string): { action: string } | undefined {
+  if (appId === 'app-sense-center') return { action: 'open-sense-center' };
+  return undefined;
+}
+
 export default function Dock({ forceExpanded = false }: { forceExpanded?: boolean }) {
   const {
     apps,
@@ -127,6 +132,11 @@ export default function Dock({ forceExpanded = false }: { forceExpanded?: boolea
     }
     if (appId === 'app-workspace') {
       sendDockAction({ action: 'open-workspace' });
+      return;
+    }
+    const systemAction = resolveSystemDockAction(appId);
+    if (systemAction) {
+      sendDockAction(systemAction);
       return;
     }
 

@@ -1,7 +1,7 @@
 # Story M.8: 记忆链路收敛 — 围栏修复 + 新旧合并 + DataFile 对齐
 
 **Epic:** M — Memory Core 记忆核心
-**状态:** ⬜ Pending
+**状态:** ✅ Complete
 **优先级:** Critical（M.7 启动前的强制门禁）
 **估计工时:** 4–6 天
 **依赖:** M.1–M.6（实现）、`src/modules/memory-core/`、`src/lib/integrations/pi-agent/role-agent/`

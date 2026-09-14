@@ -1,112 +1,84 @@
 # 测试策略 - Story AG.2
 
-**Story:** 模块边界修复 — DI 接口扩展 + UI 解耦 + shared 层
-**Epic:** AG — 架构治理与围栏对齐
-**最后更新:** 2026-07-17
+**任务:** AG2-T1；**更新:** 2026-09-11
 
----
+## 验收用例与证据
 
-## 测试策略
+实现前已定义TC01–10；用户追加通知bug后先补TC11再实施。验证goal目标为通过Story AG.2 AG2-T1定义的case，包含测试限制、构建与交付闭环。所有持久化测试使用临时目录。
 
-本 Story 的测试分为**静态验证**（grep 扫描确认越界 import 清零）和**动态验证**（TypeScript 编译 + 协作运行时 e2e 测试）。变更应拆分为至少 3 个 PR（shared 建立 / collaboration-runtime 修复 / memory-core 修复），每个 PR 独立通过验证。
+| 用例 | 场景 | 结果与证据 |
+|---|---|---|
+| TC01 | 原范围与规则下清零34处依赖违规 | 集成扫描866生产文件、0诊断、退出0；final-boundaries.log |
+| TC02 | 原围栏允许/禁止导入、双CWD及失败退出 | 43案例×2CWD全部通过；final-selftest.log |
+| TC03 | Web lint、类型检查与完整桌面构建 | lint 0errors/2917warnings；Web类型检查通过；desktop:build退出0；desktop-build-final.log |
+| TC04 | Agent/Role/Project启动、保存、并发恢复及依赖缺失拒绝 | 新业务5例+Role/Project真实文件保存恢复2例通过；使用可控模型适配替身，未调用远端模型；真实skill/persistent worker冷启动补充验证 |
+| TC05 | owner并发写入、flush/reload、错配拒绝、临时会话与Frozen Snapshot | business-boundaries双owner用例、runtime-restore重启快照2例、既有provider/observation用例通过 |
+| TC06 | 旧记忆格式、空/元数据Markdown及配置缺失/损坏 | contracts74项及Core回归通过，格式保持兼容；配置损坏仍按原语义回退 |
+| TC07 | 工具完整注册、重复初始化、scope、非法参数和路径授权 | 新业务用例与原工具组通过；真实read_document成功和越界拒绝；本体/定时非法输入拒绝 |
+| TC08 | IPC类型兼容、编译worker真实加载/执行 | 完整Desktop编译通过；verify-agent-business-runtime脚本对skill/persistent均通过，先冷启动再检查registry，无预热掩盖 |
+| TC09 | 工具三状态、名称、运行提示、空列表及调用方 | UI任务14例通过；最终组件与生命周期Hook2例通过 |
+| TC10 | 既有记忆/认知/会话/工具/协作回归 | 扩展回归64文件723tests，708通过，15失败与修改前逐条一致、无新增；最后改动对应50用例全过 |
+| TC11 | 通知中文技能/Agent/角色及继承角色owner进入真实渠道；非法ID拒绝 | 修复前4例失败，修复后Desktop通知流7例通过；含桌面组装最终共8例通过；Core渠道13文件43例通过 |
 
-### 测试前置条件
+## 最终日志
 
-- AG.1 清场作业已完成
-- 协作运行时 4 项核心 e2e 在当前基线上已通过
+以下路径前缀均为 `/private/tmp/originos-ag2-`：
 
----
+- `final-boundaries.log`、`final-selftest.log`、`final-lint.log`
+- `final-core-tests.log`：扩展回归，与`baseline-stable.log`的失败testname逐项比较，无新增。
+- `final-added-tests.log`：最终业务/恢复/渠道15文件50tests全过。
+- `final-web-tests.log`：最终Web2tests全过。
+- `final-desktop-channel.log`：最终Desktop2文件8tests全过。
+- `desktop-build-final.log`：完整桌面构建，包括18个worker运行时路径校验与根产物检查。
+- `final-worker-smoke.log`：编译skill/persistent真实worker冷启动、工具执行和持久会话。
+- 通知先红后绿证据另见 `/private/tmp/ag2-notification-red.log`、`ag2-notification-desktop.log`、`ag2-notification-core.log`。
 
-## 验收测试用例
+## 基线失败与验证限制
 
-### TC-1: modules 层 `@/lib` 越界 import 清零
+修改前47文件635tests中620通过，15失败：capability-matcher评分12项、dag-executor HITL恢复3项。本次扩展回归保留相同失败，不宣称全仓测试全绿。
 
-**验证目标：** `src/modules/**` 中不存在任何直接 import `@/lib/**`（shared 除外）
+旧agent-spawner测试调用npx tsx及尝试下载Electron，当前本地环境不能完成；保存原日志，不以该测试证明worker成功。新增受控编译worker脚本覆盖实际启动、工具和关闭。Desktop组装测试原先因未mockElectron触发下载，已按既有测试方式隔离宿主后通过，业务组装保持真实。
 
-```bash
-grep -rn "from ['\"]@/lib" src/modules/ | wc -l
-```
+未执行真实模型请求或人工GUI端到端通知点击。人工复核：退出旧应用，打开新构建；从通知分别打开中文技能与角色；确认初始消息正常、无CHANNEL_RUNTIME_FAILED；退出重开会话确认历史恢复。自动化已验证对应真实渠道和文件恢复链，但不覆盖远端模型服务可用性或所有操作系统；本轮只构建macOS arm64。
 
-**预期结果：** 输出 `0`
+本命令不覆盖所有动态计算import、跨feature私有路径和全仓循环；辅助审查的新Core静态运行时import/export图未发现环，结果仅限tsconfig扫描范围。
 
----
+## 最终应用包验收（2026-09-12）
 
-### TC-2: modules 层 `@/components` 越界 import 清零
+实际产物：/Users/archersado/workspace/startupOS/release/mac-arm64/OriginOS CE.app。使用产物内 Electron 执行 verify-agent-business-runtime.js，读取 app.asar 中的真实 Core：skill/persistent 两类 worker 均通过冷启动、工具注册、路径授权、关闭，persistent 会话落盘通过，且服务端未加载 React。
 
-**验证目标：** `src/modules/**` 中不存在任何直接 import `@/components/**`
+日志：/private/tmp/originos-ag2-desktop-build-delivery.log、/private/tmp/originos-ag2-mac-pack-delivery.log、/private/tmp/originos-ag2-packaged-worker-delivery.log。最终 lint/边界/自测日志为 /private/tmp/originos-ag2-delivery-{lint,boundaries,selftest}.log。React 隔离修复的 27 项回归通过；原有 15 项协作测试失败仍按前文记录，不声明全仓测试通过。未进行真实远程 LLM 或人工 GUI 验证。本地测试包未签名/公证，不用于正式发布。
 
-```bash
-grep -rn "from ['\"]@/components" src/modules/ | wc -l
-```
+## AG2-T2 / TC12 旧会话恢复后继续发送
 
-**预期结果：** 输出 `0`
+实现前验收：旧角色中文 ID、旧技能 skill-中文 ID、ASCII 助手均通过真实 ingress，保留 sessionId/sessionProjectId；显式元数据覆盖旧 agentType；真实项目行为不变，非法路径及项目 ID 仍被拒绝。先红后绿。随后运行 Desktop channel UI/compose、Core 渠道回归、lint、边界、自测、桌面构建及实际 ASAR worker 验证。人工步骤：退出旧版，打开新测试包，从定时任务通知打开旧角色/技能会话并发送；不自动调用真实 LLM。
 
----
+AG2-T2 结果：Task a2cf514，红测 5 失败，修复后 Desktop 18 / Core Channel 43 项通过；Web/Desktop 类型通过；Proposal Desktop 编译和集成测试通过，866 文件零违规、检查器 43×2 自测通过、lint 无错误。日志 /private/tmp/originos-restored-{integrated,build,lint,boundaries,selftest}.log。实际应用包与 SENSE12-T2 一起交付验证，不声称人工通知或真实 LLM 测试通过。
 
-### TC-3: shared 层目录结构完整
+## 联合交付验收（2026-09-12）
 
-**验证目标：** `src/lib/shared/` 目录已建立，含 `agent/`、`cognitive/`、`model/` 三个子目录
+Desktop 3 个文件 26 项联合回归通过；完整 desktop:build、macOS arm64 本地打包成功。实际 app.asar 内旧角色/Skill/助手发送映射和真实 ingress 通过；skill/persistent worker 冷启动、业务工具和授权检查通过。架构扫描866文件0违规、自测43×2通过、lint0错误2917既有警告。日志 /private/tmp/originos-bugfix-{delivery-tests,desktop-build,mac-pack,asar-workers,asar-restored,lint,boundaries,selftest}.log。未调用真实LLM或自动触发用户规则。
 
-**检查项：**
-- `src/lib/shared/agent/` 存在且含 `persistent-agent.ts` + `index.ts`
-- `src/lib/shared/cognitive/` 存在且含 `types.ts` + `index.ts`
-- `src/lib/shared/model/` 存在且含 `factory.ts` + `index.ts`
-- `src/lib/shared/index.ts` barrel 文件存在
+产物：[OriginOS CE.app](</Users/archersado/workspace/startupOS/release/mac-arm64/OriginOS CE.app>)。退出旧安装版后打开此本地测试包。用户的 /Applications 安装版未自动替换。
 
----
+## AG2-T3 / TC13 实施前验收：历史会话模型错误
 
-### TC-4: CollaborationRuntimeDeps 扩展字段注入验证
+复用既有真实OriginOSAgent失败用例：关闭空回复重试时，assistant stopReason=error应使prompt拒绝（修前resolve(undefined)）。参数化开关两态；验证正常回复不变；经过真实Channel adapter输出failed而非空completed。模型与历史配置保持，不调用真实远程模型。日志/private/tmp/originos-history-error-red.log。
 
-**验证目标：** `modelFactory` 字段已在所有调用方组装 deps 时传入
+## AG2-T3 源码集成验收（2026-09-13）
+Task ecba231 已审查并集成：模型错误捕获独立于空回复重试开关，正常完成与模型选择不变。真实 Agent 参数化两态 2 项与 Channel 4 项通过，Desktop 编译、类型、lint、边界与自测通过。日志 /private/tmp/originos-model-error-integrated-{agent,channel,build,lint,boundaries,selftest}.log。
+扩展回归 111 项中 107 通过，4 项失败与基线一致；原既有模型错误用例由失败转通过，不声明全 Core 全绿。实际历史 Role 的 402 已对应；未知 Skill 案例没有足够信息关联。模型服务拒绝仍需用户处理上游配置，修复确保失败不被当作空成功。包内验证随最终交付补充。
 
-**检查项：**
-- `src/app/api/collaboration/sessions/**` 路由中 `createCollaborationRuntime()` 调用含 `modelFactory` 参数
-- `npx tsc --noEmit` 无 missing property error
+## 最终联合交付验收（2026-09-13）
+测试包：/Users/archersado/workspace/startupOS/release/session-fixes-20260913/mac-arm64/OriginOS CE.app。
+联合 Core 47 项、Web 7 项通过；各 Task 与此前集成测试见前文。完整 desktop:build、macOS arm64 打包通过，架构扫描866文件0违规，自测43×2通过，lint0错误2966警告。日志 /private/tmp/solution-integrated-{core,web,build,pack,lint,boundaries,selftest}.log。
+实际 ASAR：合法项目内 solution-design Skill 可发送，跨项目/入口拒绝；模型拒绝在关闭空回复重试时仍抛出；任务协调器与通过回归的编译文件哈希一致；skill/persistent worker 冷启动、工具授权和关闭通过；感知首次启用、版本重连、停用通过。日志 /private/tmp/solution-asar-{session,worker,perception}-check.log。
+使用临时数据和本地模拟，不调用远程模型或发送外部消息。UI由组件集成测试覆盖，未声称人工GUI/真实平台联机通过。人工：打开此包，进入解决方案查看开场并继续发送；返回原Agent/Skill历史点击任务恢复/重试；模型拒绝应显示失败。远程402等拒绝仍需处理上游配置，未知Skill无回复案例未关联。本地包未签名、公证，未替换/Applications安装版；其他Epic/Story未完成工作保持原状态。
 
----
+## AG2-T4 Windows发布校验路径回归
 
-### TC-5: MemoryCoreDeps 扩展验证
+TC1：新业务工具路径存在且旧路径不存在时，通过相关ASAR/资源/ZIP检查。TC2：删除真实schedule-tools模块时必须失败，不能通过仅移除检查掩盖缺包。TC3：所有校验路径与当前源码、electron-builder及worker加载一致；本地定向测试/真实包检查、lint/架构/自测通过，Windows最终以CI结果记录。
 
-**验证目标：** 若 `MemoryCoreDeps` 已存在，`modelFactory` 字段已在调用方注入；若不存在 DI 入口，已顺势补齐
+AG2-T4本地验收（2026-09-14）：三项真实临时ASAR/资源/ZIP正反例通过；恢复旧路径假设时三项均失败。真实mac包ASAR含新路径，旧ASAR与新旧外置副本均无；Electron实际require新模块成功，导出两个定时工具。lint0错误2968既有警告、869文件0架构诊断、自测43×2通过。日志/private/tmp/windows-schedule-{tests,red,real-asar,real-load,lint,boundaries,selftest}.log。Task提交ed54114，仅脚本与测试，无打包/业务变更。Windows正式结果待新CI记录。
 
-**检查项：**
-- `MemoryCoreDeps` 接口含 `modelFactory` 字段
-- 所有创建 memory-core 实例的位置传入了 `modelFactory`
-
----
-
-### TC-6: TypeScript 编译通过
-
-**验证目标：** 所有类型搬移和 DI 扩展未引入类型错误
-
-```bash
-npx tsc --noEmit
-```
-
-**预期结果：** 0 error
-
----
-
-### TC-7: 协作运行时核心 e2e 通过
-
-**验证目标：** DI 改造后运行时行为不受影响
-
-**测试用例：**
-1. HITL recovery — 人在回路中断恢复
-2. DAG execution — 工作流 DAG 执行
-3. Supervisor mode — 主管模式任务分发
-4. User message routing — 用户消息路由
-
-**预期结果：** 全部 4 项通过
-
----
-
-### TC-8: 多 PR 拆分完整性
-
-**验证目标：** 变更拆分为至少 3 个独立 PR，便于精准 revert
-
-**检查项：**
-- PR 1: `src/lib/shared/` 建立
-- PR 2: `collaboration-runtime` 越界修复
-- PR 3: `memory-core` 越界修复
-- 每个 PR 独立通过 CI
+AG2-T4远端验收（2026-09-14）：修复提交1fdbd2e已推送dev，新发布运行https://github.com/NeuralNexusPro/startupOS/actions/runs/34791933255 的Build Windows成功，包含verify:win-package、更新元数据校验和产物上传。此前运行34760862119在旧schedule-tools路径失败。临时Task/Proposal工作区已清理；其余平台和最终发布状态独立以流水线为准。

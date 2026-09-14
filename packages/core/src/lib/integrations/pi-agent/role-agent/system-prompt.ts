@@ -14,7 +14,7 @@
 import type { RoleContext } from './role-context';
 import type { StateMachine } from './state-machine';
 import type { SkillInfo } from './skill-resolver';
-import { AGENT_PERMISSION_PROMPT } from '../../../../lib/features/services/launcher/base';
+import { AGENT_PERMISSION_PROMPT } from '../../../shared/agent-permissions';
 import { getEnabledToolsByCategory } from '../../../../lib/integrations/pi-agent/tools/registry';
 import { buildPromptMemorySections, renderMemoryBlocksXML } from '../memory-consumption';
 import { appendGlobalUserPreferencesPrompt } from '../user-preferences';

@@ -36,6 +36,10 @@ export const IPC_CHANNELS = {
   AGENT_SESSION_MESSAGE: 'agent:session:message',
   AGENT_SESSION_MESSAGE_STREAM: 'agent:session:message:stream',
   AGENT_SESSION_ABORT: 'agent:session:abort',
+  AGENT_TASK_CREATE: 'agent:task:create',
+  AGENT_TASK_GET: 'agent:task:get',
+  AGENT_TASK_CONTROL: 'agent:task:control',
+  AGENT_TASK_EVENT: 'agent:task:event',
   AGENT_MEMORY_CONSOLIDATE: 'agent:memory:consolidate',
   AGENT_TEST_LLM: 'agent:test-llm',
   AGENT_CONTENT_GET: 'agent:content:get',
@@ -145,6 +149,8 @@ export const IPC_CHANNELS = {
   DOCK_ACTION: 'dock:action',
   DOCK_SYNC_APPS: 'dock:sync-apps',
   DOCK_SET_MOUSE_IGNORE: 'dock:set-mouse-ignore',
+  PERCEPTION_PLUGIN_CATALOG: 'perception:plugin:catalog',
+  PERCEPTION_PLUGIN_PROVISION: 'perception:plugin:provision',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

@@ -352,6 +352,28 @@ export function usePiAgent(): UseClientPiAgentState {
 		};
 	}, []);
 
+	// Task Runtime may finish after the original message stream has ended. Keep
+	// a session-scoped IPC listener so its final assistant summary still enters
+	// the conversation instead of being dropped with the short-lived stream.
+	useEffect(() => {
+		if (!isElectron() || !sessionId) return undefined;
+		return subscribeAgentEvents((event) => {
+			if (event.type !== 'assistant_message') return;
+			const data = event.data as { content?: unknown; taskRuntimeCompletion?: unknown } | undefined;
+			const content = typeof data?.content === 'string' ? data.content.trim() : '';
+			if (data?.taskRuntimeCompletion !== true || !content) return;
+			setMessages((previous) => [
+				...previous.filter((message) => !(message.role === 'assistant' && message.content.trim() === content)),
+				{
+					id: `task-completion-${Date.now()}`,
+					role: 'assistant' as const,
+					content,
+					timestamp: Date.now(),
+				},
+			]);
+		}, sessionId);
+	}, [sessionId]);
+
 	// 触发事件
 	const emitEvent = useCallback((event: ClientAgentEvent) => {
 		eventListenersRef.current.forEach(listener => {

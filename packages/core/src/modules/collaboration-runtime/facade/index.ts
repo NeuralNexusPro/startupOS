@@ -19,7 +19,7 @@ export { listSessions, getSession, getBlackboardState, getEvents } from "./sessi
 // Re-export — event-bus 公共 API
 // ============================================================================
 export type { SseClient } from "./event-bus";
-export { subscribeToEvents, unsubscribeFromEvents, clientDisconnected } from "./event-bus";
+export { subscribeToEvents, subscribeToRuntimeEvents, unsubscribeFromEvents, clientDisconnected } from "./event-bus";
 
 // ============================================================================
 // Re-export — dag-runner 公共 API

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { MemoryCore } from '../core/memory-core';
-import { MemoryAdapter } from '../adapter';
 import { MemoryProvider } from '../session/memory-provider';
+import { MentalModelStore, ObservationPolicyResolver } from '../bank';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -18,6 +18,149 @@ function makeTestDir(): string {
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
+
+async function reachReflectThreshold(provider: MemoryProvider): Promise<void> {
+  for (let turnNumber = 3; turnNumber <= 5; turnNumber++) {
+    await provider.sync_turn({
+      turnNumber,
+      userMessage: `继续当前任务 ${turnNumber}`,
+      assistantMessage: '继续处理。',
+      assistantThinking: '',
+      toolCalls: [],
+      outcome: { resolved: true, toolChainLength: 0 },
+      timestamp: Date.now() + turnNumber,
+    });
+  }
+}
+
+describe('MemoryCore ownership context (M.12)', () => {
+  let dataRoot: string;
+
+  beforeEach(() => {
+    dataRoot = makeTestDir();
+  });
+
+  afterEach(() => {
+    fs.rmSync(dataRoot, { recursive: true, force: true });
+  });
+
+  it('constructs isolated user and project cognition banks from explicit ownership', () => {
+    const projectDirectory = path.join(dataRoot, 'projects', 'project-1');
+    const core = new MemoryCore({
+      ownerScope: 'project',
+      ownerId: 'project-1',
+      userId: 'default',
+      dataRoot,
+      workingDirectory: projectDirectory,
+      ownerDirectory: projectDirectory,
+      sessionId: 'session-1',
+    });
+
+    expect(core.ownership?.ownerScope).toBe('project');
+    expect(core.userCognition?.filePath).toBe(path.join(dataRoot, 'users', 'default', 'cognition', 'records.json'));
+    expect(core.ownerCognition?.filePath).toBe(path.join(projectDirectory, 'cognition', 'records.json'));
+  });
+
+  it('keeps the legacy human block readable but rejects new writes with explicit ownership', async () => {
+    const agentDirectory = path.join(dataRoot, 'agents', 'role-1');
+    const legacyMemory = new MemoryCore(agentDirectory);
+    legacyMemory.memory.setBlock('human', 'legacy preference');
+    const core = new MemoryCore({
+      ownerScope: 'agent',
+      ownerId: 'role-1',
+      userId: 'default',
+      dataRoot,
+      workingDirectory: agentDirectory,
+      ownerDirectory: agentDirectory,
+    });
+
+    expect(await core.coreTools.read_memory_block('human')).toBe('legacy preference');
+    expect(await core.coreTools.core_memory_append('human', 'new preference')).toContain('legacy read-only');
+    expect(await core.coreTools.core_memory_replace('human', 'legacy', 'new')).toContain('legacy read-only');
+    expect(core.memory.getBlock('human')?.value).toBe('legacy preference');
+  });
+
+  it('keeps legacy construction compatible without guessing cognition ownership', () => {
+    const core = new MemoryCore(path.join(dataRoot, 'legacy-agent'));
+    expect(core.ownership).toBeNull();
+    expect(core.userCognition).toBeNull();
+    expect(core.ownerCognition).toBeNull();
+  });
+
+  it('reads materialized cognition snapshots into the prompt in fixed order', async () => {
+    const agentDirectory = path.join(dataRoot, 'agents', 'role-2');
+    const core = new MemoryCore({
+      ownerScope: 'agent',
+      ownerId: 'role-2',
+      userId: 'default',
+      dataRoot,
+      workingDirectory: agentDirectory,
+      ownerDirectory: agentDirectory,
+    });
+    const evidence = { id: 'confirmed', source: 'user_confirmation' as const, sourceId: 's1', excerpt: '简洁回答', observedAt: '2026-09-09T00:00:00.000Z' };
+    core.userCognition?.retain({ kind: 'observation', content: '用户偏好简洁回答', status: 'active', evidence });
+    core.ownerCognition?.retain({ kind: 'world_fact', content: '领域使用事件驱动架构', status: 'active', evidence: { ...evidence, id: 'domain-fact' } });
+    const snapshots = new MentalModelStore();
+    snapshots.refreshUserProfile(core.userCognition!);
+    snapshots.refreshWorldModel(core.ownerCognition!);
+
+    const prompt = await new MemoryProvider(core).system_prompt_block();
+
+    expect(prompt.indexOf('<global_user_profile')).toBeLessThan(prompt.indexOf('<owner_world_model'));
+    expect(prompt.indexOf('<owner_world_model')).toBeLessThan(prompt.indexOf('<memory_blocks>'));
+    expect(prompt).toContain('用户偏好简洁回答');
+    expect(prompt).toContain('领域使用事件驱动架构');
+  });
+
+  it('materializes explicit user preferences into the global user profile without LLM instructions', async () => {
+    const agentDirectory = path.join(dataRoot, 'agents', 'architect');
+    const core = new MemoryCore({
+      ownerScope: 'agent',
+      ownerId: 'architect',
+      userId: 'default',
+      dataRoot,
+      workingDirectory: agentDirectory,
+      ownerDirectory: agentDirectory,
+      sessionId: 'atlas-session',
+    });
+    const context = new ObservationPolicyResolver().resolve({
+      entryType: 'role-agent',
+      sessionId: 'atlas-session',
+      agentId: 'architect',
+    });
+    const provider = new MemoryProvider(core, 'atlas-session', undefined, {
+      context,
+      consumers: {},
+    });
+    await provider.sync_turn({
+      turnNumber: 1,
+      userMessage: '请记住：我偏好简洁回答，示例优先使用 TypeScript。',
+      assistantMessage: '已记住。',
+      assistantThinking: '',
+      toolCalls: [],
+      outcome: { resolved: true, toolChainLength: 0 },
+      timestamp: Date.now(),
+    });
+    await provider.sync_turn({
+      turnNumber: 2,
+      userMessage: '这个偏好长期有效。',
+      assistantMessage: '明白。',
+      assistantThinking: '',
+      toolCalls: [],
+      outcome: { resolved: true, toolChainLength: 0 },
+      timestamp: Date.now() + 1,
+    });
+
+    await provider.on_session_end([]);
+
+    const profile = new MentalModelStore().read(core.userCognition!, 'user-profile');
+    expect(profile?.data.content).toContain('TypeScript');
+    expect(core.userCognition?.list().some((record) =>
+      record.scope === 'user' && record.status === 'active' && record.content.includes('TypeScript')
+    )).toBe(true);
+    expect(core.ownerCognition?.list().some((record) => record.content.includes('TypeScript'))).toBe(false);
+  });
+});
 
 describe('CoreMemoryTools (M.5)', () => {
   let dir: string;
@@ -250,6 +393,7 @@ describe('MemoryProvider (M.6)', () => {
       timestamp: Date.now() + 1,
     });
 
+    await reachReflectThreshold(provider);
     await provider.on_session_end([]);
 
     const stableMemoryResult = await provider.prefetch('简洁回答');
@@ -294,6 +438,7 @@ describe('MemoryProvider (M.6)', () => {
       timestamp: Date.now() + 1,
     });
 
+    await reachReflectThreshold(provider);
     await provider.on_session_end([]);
 
     const result = await provider.queryMemory('Tesla Factory');
@@ -337,72 +482,11 @@ describe('MemoryProvider (M.6)', () => {
       timestamp: Date.now() + 1,
     });
 
+    await reachReflectThreshold(provider);
     await provider.on_session_end([]);
 
     expect(consumer.ingestCandidates).toHaveBeenCalledTimes(1);
     const forwarded = consumer.ingestCandidates.mock.calls[0]?.[0];
     expect(forwarded?.[0]?.entities?.some((entity: { name: string }) => entity.name === 'Tesla Factory')).toBe(true);
-  });
-});
-
-describe('MemoryAdapter (M.6)', () => {
-  let dir: string;
-  let core: MemoryCore;
-  let adapter: MemoryAdapter;
-
-  beforeEach(() => {
-    dir = makeTestDir();
-    core = new MemoryCore(dir);
-    adapter = new MemoryAdapter(core);
-  });
-
-  afterEach(() => {
-    fs.rmSync(dir, { recursive: true, force: true });
-  });
-
-  it('getBlock returns correct format', () => {
-    const block = adapter.getBlock('human');
-    expect(block).not.toBeNull();
-    expect(block!.label).toBe('human');
-    expect(block!.value).toBe('');
-    expect(typeof block!.limit).toBe('number');
-    expect(typeof block!.readOnly).toBe('boolean');
-  });
-
-  it('setBlock updates value', () => {
-    adapter.setBlock('human', 'new value');
-    expect(adapter.getBlock('human')!.value).toBe('new value');
-  });
-
-  it('appendBlock appends', () => {
-    adapter.setBlock('human', 'existing');
-    adapter.appendBlock('human', 'appended');
-    expect(adapter.getBlock('human')!.value).toBe('existing\nappended');
-  });
-
-  it('replaceBlock replaces', () => {
-    adapter.setBlock('human', 'old text');
-    const result = adapter.replaceBlock('human', 'old', 'new');
-    expect(result).toBe(true);
-    expect(adapter.getBlock('human')!.value).toBe('new text');
-  });
-
-  it('getCoreMemory returns markdown', () => {
-    const content = adapter.getCoreMemory();
-    expect(content).toContain('# Memory');
-  });
-
-  it('recordTurn writes to recall', () => {
-    adapter.recordTurn('test message', 1);
-    expect(adapter.getDreamCursor()).toBe(0);
-    const history = adapter.readRecentHistory(1);
-    expect(history).toContain('test message');
-  });
-
-  it('searchHistoryFromPath returns keyword matches', () => {
-    adapter.recordTurn('Python database connection', 1);
-    adapter.recordTurn('Weather forecast', 2);
-    const result = adapter.searchHistoryFromPath('', 'Python', 2);
-    expect(result).toContain('Python');
   });
 });

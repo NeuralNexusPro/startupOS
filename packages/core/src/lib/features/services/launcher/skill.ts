@@ -18,6 +18,7 @@ import { buildPromptMemorySections } from '../../../../lib/integrations/pi-agent
 import { appendGlobalUserPreferencesPrompt } from '../../../../lib/integrations/pi-agent/user-preferences';
 import { getDataRoot } from '../../../paths';
 import { getBundledSkillDirs, materializeBundledSkill } from '../../../../lib/integrations/pi-agent/core/skills';
+import { ObservationPolicyResolver, readGlobalUserProfileSnapshot } from '../../../../modules/memory-core';
 
 const MAX_TOOL_DESC_CHARS = 120;
 
@@ -422,7 +423,11 @@ export class SkillLauncher extends Launcher {
         resolvedOutputDir,
       );
       const inheritedMemory = resolveInheritedMemory(agentWorkingDir);
-      const resolvedPrompt = injectInheritedMemory(systemPrompt, inheritedMemory)
+      const userProfile = readGlobalUserProfileSnapshot(getDataRoot(), ctx.userId ?? 'default');
+      const promptWithUserProfile = userProfile
+        ? `${systemPrompt}\n\n<global_user_profile readonly="true">\n${userProfile}\n</global_user_profile>`
+        : systemPrompt;
+      const resolvedPrompt = injectInheritedMemory(promptWithUserProfile, inheritedMemory)
         .replace(/\$\{CLAUDE_SKILL_DIR\}/g, skillInfo.baseDir)
         .replace(/\$\{OUTPUT_DIR\}/g, resolvedOutputDir ?? '');
 
@@ -439,12 +444,43 @@ export class SkillLauncher extends Launcher {
         llmConfig: ctx.llmConfig,
       });
 
+      const inheritedOwner = ctx.cognitionOwner
+        ? {
+            scope: ctx.cognitionOwner.kind === 'project' ? 'project' as const : 'agent' as const,
+            ownerId: ctx.cognitionOwner.id,
+          }
+        : undefined;
+      const observationContext = new ObservationPolicyResolver().resolve({
+        entryType: 'skill',
+        sessionId,
+        skillId: ctx.entryId,
+        callerOwner: inheritedOwner,
+        callerMode: ctx.cognitionOwner?.kind === 'project' ? 'project' : ctx.cognitionOwner ? 'role-agent' : undefined,
+      });
+      const ownerDirectory = ctx.cognitionOwner
+        ? path.join(
+            getDataRoot(),
+            ctx.cognitionOwner.kind === 'project' ? 'projects' : 'agents',
+            ctx.cognitionOwner.id,
+          )
+        : undefined;
+
       // 5. 注册 Agent 到 AgentManager
       const tools = await this.registerAgent(sessionId, projectId, {
         systemPrompt: resolvedPrompt,
         agentType: 'skill',
         agentBaseDir: agentWorkingDir,
         llmConfig: ctx.llmConfig,
+        memoryOwnership: inheritedOwner && ownerDirectory
+          ? {
+              ownerScope: inheritedOwner.scope,
+              ownerId: inheritedOwner.ownerId,
+              userId: ctx.userId ?? 'default',
+              dataRoot: getDataRoot(),
+              ownerDirectory,
+            }
+          : undefined,
+        observationContext: inheritedOwner ? observationContext : undefined,
       });
 
       return {

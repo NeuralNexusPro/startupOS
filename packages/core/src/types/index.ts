@@ -30,6 +30,7 @@ export * from './app-window';
 export type { InterviewAnswer, InterviewStep, InterviewFlow, InterviewState, InterviewData, InterviewResult, InterviewStatus, OntologyNode, OntologyModel } from './interview';
 export type { RelationType, Domain, Concept as OntologyConcept, Instance, Relation, Ontology, OntologyChat, OntologyGenerationResult, OntologyEditOperation, OntologyEditResponse, ChatHistoryRecord } from './ontology';
 export * from './os';
+export * from './perception';
 export * from './project';
 export * from './project-creation';
 export * from './sandbox';

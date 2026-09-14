@@ -1,5 +1,10 @@
 # 需求规格 - Story AG.5
 
+## 2026-09-11：首轮可执行任务 AG5-T1
+
+本轮仅实施现有 Monorepo 边界检查修正，提案为 `fix-monorepo-boundary-lint`，状态为 AG5-T1 已验证完成，AG.5 其余任务待实施。下方历史整套工具链规划不作为 AG5-T1 验收要求；不得因此宣称 AG.5 全部完成。现行架构以 AGENTS.md 为准，旧 `src/`、atoms/organisms 目录及旧 CLI 命令仅作为历史背景。
+
+
 **Story:** 自动化围栏（ESLint 边界 + dead-code 工具 + any 预算 + CI 接入）
 **Epic:** AG — 架构治理与围栏对齐
 **最后更新:** 2026-07-20
@@ -348,3 +353,9 @@
 - [CLAUDE.md §依赖验证 / §禁止事项](../../../../CLAUDE.md)
 - [knip 官方文档](https://knip.dev/)
 - [madge 官方仓库](https://github.com/pahen/madge)
+
+## AG5-T1 详细需求
+
+Given 现行 package 架构，When 从不同目录运行检查，Then 禁止导入一致被报告、合法导入不误报。Given 架构扫描失败或没有扫描到源码，When 生成结果，Then 非零退出且说明原因。输入为仓库源码，输出为开发诊断；不读写用户运行数据，不更改业务接口。新增依赖数量必须为零。
+
+AG5-T1 对应 testing.md 的 T1-01–T1-11；其余原验收标准由后续独立 Task 承担。

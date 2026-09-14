@@ -4,8 +4,25 @@ import {
 	buildCompletionFailureReport,
 	buildCompletionRecoveryMessage,
 } from "../completion-guard";
+import {
+	buildEmptyStopRecoveryMessage,
+	resolveEmptyStopRecoveryEnabled,
+} from "../skill-empty-stop-recovery";
 
 describe("completion guard", () => {
+	it("enables empty-stop recovery only for skills by default", () => {
+		expect(resolveEmptyStopRecoveryEnabled("skill")).toBe(true);
+		expect(resolveEmptyStopRecoveryEnabled("role-agent")).toBe(false);
+		expect(resolveEmptyStopRecoveryEnabled("assistant")).toBe(false);
+		expect(resolveEmptyStopRecoveryEnabled()).toBe(false);
+		expect(buildEmptyStopRecoveryMessage(1)).toContain("empty response");
+	});
+
+	it("honors explicit empty-stop recovery settings", () => {
+		expect(resolveEmptyStopRecoveryEnabled("role-agent", true)).toBe(true);
+		expect(resolveEmptyStopRecoveryEnabled("skill", false)).toBe(false);
+	});
+
 	it("detects a promise-only stop", () => {
 		expect(assessCompletion({
 			role: "assistant",

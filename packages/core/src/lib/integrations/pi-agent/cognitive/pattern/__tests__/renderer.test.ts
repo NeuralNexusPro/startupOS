@@ -2,7 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { describe, expect, it, vi } from 'vitest';
-import { PatternRenderer } from '../renderer';
+import { PatternRenderer } from '../../../../../features/agent/cognitive/pattern/renderer';
 
 function makeArchival(entries: Array<{ text: string; tags: string[]; createdAt?: number }>) {
   return {

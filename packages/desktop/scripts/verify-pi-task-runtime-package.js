@@ -45,11 +45,14 @@ const TASK_PACKAGE_RUNTIME_FILES = [
   'upstream/index.js', 'upstream/reducer.js',
 ];
 const EXPECTED_TASK_RUNTIME_EXPORTS = [
-  'DEFAULT_SANITIZE_LIMITS', 'PI_TASK_COMPATIBILITY_REQUIREMENTS',
+  'DEFAULT_SANITIZE_LIMITS', 'PI_TASK_AGENT_TOOL_NAMES',
+  'PI_TASK_COMPATIBILITY_REQUIREMENTS',
   'PI_TASK_CONTRACT_VERSION', 'PI_TASK_SNAPSHOT_VERSION', 'PI_TASK_STATE_EVENT_NAME',
-  'PI_TASK_STATE_EVENT_VERSION', 'PI_TASK_TOOL_NAMES', 'assertAllowedPiTaskTool',
+  'PI_TASK_STATE_EVENT_VERSION', 'PI_TASK_READ_ONLY_TOOL_NAMES',
+  'PI_TASK_SESSION_HOST_COMPATIBILITY', 'PI_TASK_TOOL_NAMES', 'assertAllowedPiTaskTool',
   'assertPiTaskCompatibility', 'createBoundedPiTaskSnapshot',
   'createPiTaskCompatibilityGuard', 'createPiTaskRuntimeBridge',
+  'createPiTaskSessionHost',
   'evaluatePiTaskCompatibility', 'isAllowedPiTaskTool', 'mapPiTaskRuntimeError',
   'normalizePiTaskCommand', 'sanitizeTaskRuntimeValue', 'stableJsonHash',
   'stableJsonStringify',

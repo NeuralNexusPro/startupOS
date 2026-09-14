@@ -4,7 +4,7 @@
 
 import { useState, useEffect } from 'react';
 import { AgentStatus } from '@originos/core/types';
-import { usePiAgentStore } from '@originos/core/lib/integrations/pi-agent/store';
+import { usePiAgent } from '@originos/core/lib/integrations/pi-agent/hooks';
 import { normalizeRuntimeLLMConfig } from '@originos/core/lib/integrations/pi-agent/client';
 import { useSettingsStore } from '@/store/settingsStore';
 
@@ -15,7 +15,7 @@ interface ProjectContext {
 
 export function useAgentLifecycle(agentId: string) {
   const [status, setStatus] = useState<AgentStatus>(AgentStatus.IDLE);
-  const piAgentStore = usePiAgentStore();
+  const piAgentStore = usePiAgent();
   const getEffectiveConfig = useSettingsStore((s) => s.getEffectiveConfig);
 
   const start = async (projectContext: ProjectContext) => {

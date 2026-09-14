@@ -8,7 +8,7 @@
     "audit:pi-tasks": "node scripts/pi-task-runtime-audit.js --json",
     "build": "node build-runtime.js",
     "prepare": "node build-runtime.js",
-    "test": "node scripts/verify-runtime.js && node --test scripts/pi-task-runtime-audit.test.js scripts/task-runtime.test.js scripts/task-runtime-integration.test.js"
+    "test": "node scripts/verify-runtime.js && node --test scripts/pi-task-runtime-audit.test.js scripts/runtime-host-invoke-patch.test.js scripts/task-runtime.test.js scripts/task-runtime-integration.test.js scripts/task-session-host.test.js"
   },
   "exports": {
     ".": {

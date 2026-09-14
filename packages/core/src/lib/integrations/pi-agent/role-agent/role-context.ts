@@ -12,7 +12,7 @@ import {
 import path from 'path';
 import { scanInstalledSkills, type SkillInfo } from './skill-resolver';
 import type { MemoryBlock } from '../../../../lib/integrations/pi-agent/cognitive/types';
-import { parseBlocksFromMarkdown } from './memory-tracker';
+import { parseBlocksFromMarkdown } from '../../../shared/cognitive/memory-markdown';
 
 // Re-export SkillInfo for downstream consumers
 export { type SkillInfo };
@@ -21,7 +21,7 @@ export { scanInstalledSkills } from './skill-resolver';
 // Re-export MemoryBlock for downstream consumers
 export { type MemoryBlock } from '../../../../lib/integrations/pi-agent/cognitive/types';
 // Re-export Memory Block parser
-export { parseBlocksFromMarkdown, serializeBlocksToMarkdown } from './memory-tracker';
+export { parseBlocksFromMarkdown } from '../../../shared/cognitive/memory-markdown';
 
 // ============================================================================
 // 类型定义

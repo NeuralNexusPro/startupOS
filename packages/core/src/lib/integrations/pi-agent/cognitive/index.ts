@@ -6,7 +6,6 @@ export { CognitiveManager } from './manager';
 export { PracticeLogger } from './practice-logger';
 export { KnowledgeProvider } from './knowledge-provider';
 export { KnowledgeIngest } from './knowledge-ingest';
-export { PatternProvider } from './pattern/index';
 export { UnifiedOntology } from './unified-ontology';
 export { RuleEngine } from './rule-engine';
 export type { CognitiveProvider, TurnCognitiveData, PrefetchResult } from './types';

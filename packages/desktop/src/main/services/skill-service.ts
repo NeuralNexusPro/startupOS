@@ -21,7 +21,7 @@ import type {
   SkillSessionsRequest,
   SkillSessionsResponse,
 } from '../../../../core/src/lib/integrations/electron/ipc-protocol';
-import { handleSkillEvolution } from '../../../../core/src/lib/integrations/pi-agent/skill-evolution';
+import { handleSkillEvolution } from '../../../../core/src/lib/features/agent/server/index';
 import {
   completeSkillExecution,
   getSkillExecutionTimeline,

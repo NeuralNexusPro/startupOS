@@ -3,17 +3,27 @@ import { IPC_CHANNELS } from '../ipc-protocol';
 import type { IpcResponse } from '../../../../core/src/lib/integrations/electron/ipc-protocol';
 import { agentSessionService } from '../../../../core/src/lib/features/agent';
 import { persistRuntimeLLMConfig } from '../../../../core/src/lib/features/user-config';
-import { agentManager } from '../../../../core/src/lib/integrations/pi-agent/agent-manager';
+import { agentManager } from '../../../../core/src/lib/features/agent/server/index';
+import { createAutoModel } from '../../../../core/src/lib/integrations/pi-agent/server-config';
 import { extractDisplayContent } from '../../../../core/src/lib/integrations/pi-agent/display-content';
 import { getVisibleStreamDelta, reconcileFinalStreamContent } from '../../../../core/src/lib/integrations/pi-agent/stream-dedupe';
 import type { RuntimeLLMConfig } from '../../../../core/src/lib/integrations/pi-agent/llm-config';
-import { MemoryConsolidator } from '../../../../core/src/modules/memory-core/core/consolidator';
+import {
+  consolidateOwnedMemory,
+  type MemoryConsolidationEntryType,
+} from '../../../../core/src/modules/memory-core';
 import { getDataRoot, getClaudeDir } from '../../../../core/src/lib/paths';
 import path from 'path';
 import { existsSync, readFileSync } from 'fs';
 import { StreamEventBatcher } from './stream-event-batcher';
 import { applyAssistantMessageEnd } from './assistant-stream-state';
 import { processHealthMonitor } from './process-health-monitor';
+import type { ChannelFlowMessageIngress } from '../../../../core/src/modules/channel-runtime';
+import { runUiChannelStream } from './channel-ui-stream';
+import {
+  AgentTaskRuntimeIpcController,
+  routeAgentSessionUserMessage,
+} from './agent-task-runtime-ipc';
 import {
   assertSessionMessageOwnership,
   restoreSessionAtBoundary,
@@ -53,17 +63,18 @@ function formatVisibleAgentError(error: unknown): string {
   return `LLM 请求失败：${compact || 'Unknown error'}`;
 }
 
-const ENTRY_TYPE_DIRS: Record<string, string> = {
-  project: 'projects',
-  solution: 'projects',
-  agent: 'agents',
-  'role-agent': 'agents',
-  skill: 'skills',
-};
+const MEMORY_ENTRY_TYPES = new Set<MemoryConsolidationEntryType>(['project', 'solution', 'agent', 'role-agent', 'skill']);
 
 export class AgentSessionService {
-  constructor() {
+  private readonly taskRuntimeIpc: AgentTaskRuntimeIpcController;
+
+  constructor(
+    taskRuntimeIpc = new AgentTaskRuntimeIpcController(),
+    private readonly channelIngress?: ChannelFlowMessageIngress,
+  ) {
+    this.taskRuntimeIpc = taskRuntimeIpc;
     this.registerHandlers();
+    this.taskRuntimeIpc.registerHandlers();
   }
 
   private registerHandlers(): void {
@@ -90,7 +101,7 @@ export class AgentSessionService {
 
     ipcMain.handle(
       IPC_CHANNELS.AGENT_SESSION_CREATE,
-      async (_event, request: {
+      async (event, request: {
         projectId: string;
         projectName: string;
         systemPrompt?: string;
@@ -137,6 +148,7 @@ export class AgentSessionService {
                 },
                 request.projectId,
               ) ?? existing;
+              this.taskRuntimeIpc.rememberSession(session, event.sender);
               return {
                 success: true,
                 data: session,
@@ -166,6 +178,7 @@ export class AgentSessionService {
           };
 
           const session = await agentSessionService.createSession(createRequest);
+          this.taskRuntimeIpc.rememberSession(session, event.sender);
           return {
             success: true,
             data: session,
@@ -181,7 +194,7 @@ export class AgentSessionService {
 
     ipcMain.handle(
       IPC_CHANNELS.AGENT_SESSION_GET,
-      async (_event, request: RestoreAgentSessionRequest): Promise<IpcResponse<unknown>> => {
+      async (event, request: RestoreAgentSessionRequest): Promise<IpcResponse<unknown>> => {
         try {
           if (!request.sessionId || !request.projectId || !request.entryType || !request.entryId) {
             return {
@@ -200,6 +213,7 @@ export class AgentSessionService {
               await agentManager.restoreAgentRuntime(storedSession);
             },
           });
+          await this.taskRuntimeIpc.restoreForSession(session, event.sender);
           return {
             success: true,
             data: session,
@@ -397,7 +411,7 @@ export class AgentSessionService {
 
     ipcMain.handle(
       IPC_CHANNELS.AGENT_SESSION_MESSAGE,
-      async (_event, request: {
+      async (event, request: {
         sessionId: string;
         content: string;
         role?: string;
@@ -423,7 +437,9 @@ export class AgentSessionService {
             };
           }
 
+          this.taskRuntimeIpc.rememberSession(session, event.sender);
           assertSessionMessageOwnership(session, request);
+
           const agent = await agentManager.getOrRestoreAgentRuntime(session);
 
           const updatedSession = await agentSessionService.addMessage(request.sessionId, {
@@ -529,7 +545,20 @@ export class AgentSessionService {
 
           processHealthMonitor.setAgentActivity(request.sessionId, 'prompt_start');
           try {
-            await agent.prompt(request.content);
+            await routeAgentSessionUserMessage({
+              controller: this.taskRuntimeIpc,
+              session,
+              sender: event.sender,
+              content: request.content,
+              promptChat: async () => {
+                this.taskRuntimeIpc.setUserMessagePending(request.sessionId, true);
+                try {
+                  await agent.prompt(request.content);
+                } finally {
+                  this.taskRuntimeIpc.setUserMessagePending(request.sessionId, false);
+                }
+              },
+            });
           } catch (promptError) {
             hasError = true;
             errorMessage = promptError instanceof Error ? promptError.message : 'Failed to call LLM';
@@ -622,7 +651,33 @@ export class AgentSessionService {
             };
           }
 
+          this.taskRuntimeIpc.rememberSession(session, event.sender);
           assertSessionMessageOwnership(session, request);
+
+          if (this.channelIngress) {
+            const sender = event.sender;
+            const send = (payload: Record<string, unknown>): void => {
+              if (!sender.isDestroyed()) sender.send(IPC_CHANNELS.AGENT_EVENT, payload);
+            };
+            processHealthMonitor.setAgentActivity(request.sessionId, 'prompt_start');
+            this.taskRuntimeIpc.setActiveStream(request.sessionId, request.streamId);
+            void runUiChannelStream({
+              ingress: this.channelIngress,
+              session,
+              content: request.content,
+              streamId: request.streamId,
+              send,
+            }).finally(() => {
+              this.taskRuntimeIpc.setActiveStream(request.sessionId);
+              processHealthMonitor.clearAgentActivity(request.sessionId);
+            });
+            return {
+              success: true,
+              data: { started: true },
+              timestamp: new Date().toISOString(),
+            };
+          }
+
           const agent = await agentManager.getOrRestoreAgentRuntime(session);
 
           await agentSessionService.addMessage(request.sessionId, {
@@ -815,7 +870,22 @@ export class AgentSessionService {
           });
 
           processHealthMonitor.setAgentActivity(request.sessionId, 'prompt_start');
-          agent.prompt(request.content).then(async () => {
+          this.taskRuntimeIpc.setActiveStream(request.sessionId, request.streamId);
+          routeAgentSessionUserMessage({
+            controller: this.taskRuntimeIpc,
+            session,
+            sender: event.sender,
+            content: request.content,
+            promptChat: async () => {
+              this.taskRuntimeIpc.setUserMessagePending(request.sessionId, true);
+              try {
+                await agent.prompt(request.content);
+              } finally {
+                this.taskRuntimeIpc.setUserMessagePending(request.sessionId, false);
+              }
+            },
+          }).then(async () => {
+            this.taskRuntimeIpc.setActiveStream(request.sessionId);
             unsubscribe();
             if (assistantContent) {
               await agentSessionService.addMessage(request.sessionId, {
@@ -826,6 +896,7 @@ export class AgentSessionService {
             sendToRenderer('done', { content: assistantContent, failed: completionFailed });
             batcher.dispose();
           }).catch(async (err: unknown) => {
+            this.taskRuntimeIpc.setActiveStream(request.sessionId);
             unsubscribe();
             const visibleError = formatVisibleAgentError(err);
             await agentSessionService.addMessage(request.sessionId, {
@@ -947,17 +1018,18 @@ export class AgentSessionService {
               timestamp: new Date().toISOString(),
             };
           }
-          const baseDir = ENTRY_TYPE_DIRS[request.entryType];
-          if (!baseDir) {
+          if (!MEMORY_ENTRY_TYPES.has(request.entryType as MemoryConsolidationEntryType)) {
             return {
               success: false,
               error: { code: 'INVALID_REQUEST', message: `Unknown entryType: ${request.entryType}` },
               timestamp: new Date().toISOString(),
             };
           }
-          const agentDir = path.join(getDataRoot(), baseDir, request.entryId);
-          const consolidator = new MemoryConsolidator(agentDir);
-          const result = await consolidator.consolidate();
+          const result = await consolidateOwnedMemory({
+            dataRoot: getDataRoot(),
+            entryType: request.entryType as MemoryConsolidationEntryType,
+            entryId: request.entryId,
+          }, { createAutoModel });
           return {
             success: true,
             data: result,

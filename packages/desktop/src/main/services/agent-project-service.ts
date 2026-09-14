@@ -11,7 +11,7 @@ import type {
   AgentProjectAbortRequest,
   AgentProjectAbortResponse,
 } from '../../../../core/src/lib/integrations/electron/ipc-protocol';
-import { persistentAgentManager } from '../../../../core/src/lib/integrations/pi-agent/persistent-agent-manager';
+import { persistentAgentManager } from '../../../../core/src/lib/features/agent/server/index';
 import { extractDisplayContent } from '../../../../core/src/lib/integrations/pi-agent/display-content';
 import { getVisibleStreamDelta } from '../../../../core/src/lib/integrations/pi-agent/stream-dedupe';
 import { applyAssistantMessageEnd } from './assistant-stream-state';

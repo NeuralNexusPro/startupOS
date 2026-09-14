@@ -23,10 +23,5 @@ export { scanInstalledSkills as scanInstalledSkillsDirect } from './skill-resolv
 // R.4: 分层 System Prompt 构建器
 export { buildRoleSystemPrompt, buildSkillMarkdown } from './system-prompt';
 
-// R.5: Memory Tracker
-export { MemoryTracker, type MemoryEntry, type MemoryTrackerState } from './memory-tracker';
-
-// R.7 legacy: Dream compatibility shim remains in ./dream, but is no longer part of the default runtime surface.
-
 // R.7: Consolidator (reserved)
 export { Consolidator, type ConsolidatorConfig, CONSOLIDATOR_ARCHIVE_PROMPT } from './consolidator';

@@ -11,7 +11,8 @@
 
 import path from 'path';
 import { Launcher, type LaunchContext, type LaunchResult, buildAgentSystemPrompt } from './base';
-import { getAgentsDataDir } from '../../../paths';
+import { getAgentsDataDir, getDataRoot } from '../../../paths';
+import { ObservationPolicyResolver } from '../../../../modules/memory-core';
 
 const AGENTS_DIR = getAgentsDataDir();
 
@@ -43,6 +44,11 @@ export class AgentLauncher extends Launcher {
         agentBaseDir,
         sessionId: ctx.restoreSessionId || ctx.sessionId,
       });
+      const observationContext = new ObservationPolicyResolver().resolve({
+        entryType: 'role-agent',
+        sessionId,
+        agentId: ctx.entryId,
+      });
 
       // 4. 注册 Agent 到 AgentManager
       const tools = await this.registerAgent(sessionId, ctx.entryId, {
@@ -50,6 +56,14 @@ export class AgentLauncher extends Launcher {
         agentType: 'assistant',
         agentBaseDir,
         isWindowBound: ctx.isWindowBound,
+        memoryOwnership: {
+          ownerScope: 'agent',
+          ownerId: ctx.entryId,
+          userId: ctx.userId ?? 'default',
+          dataRoot: getDataRoot(),
+          ownerDirectory: agentBaseDir,
+        },
+        observationContext,
       });
 
       return {

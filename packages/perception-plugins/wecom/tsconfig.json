@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@originos/core/*": ["../../core/src/*"],
+      "@wecom/aibot-node-sdk": ["node_modules/@wecom/aibot-node-sdk/dist/index.d.ts"]
+    },
+    "types": ["node", "vitest/globals"]
+  },
+  "include": ["src/**/*.ts"]
+}

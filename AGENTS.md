@@ -1,7 +1,7 @@
 # OriginOS 架构规约 (AGENTS.md)
 
-**版本：** 2.5.2
-**日期：** 2026-07-29
+**版本：** 2.5.5
+**日期：** 2026-09-13
 **状态：** 强制执行
 
 ---
@@ -143,6 +143,11 @@ originos/
 │   │   └── dist-electron/        # 编译产物（禁止作为源码修改入口）
 │   │
 │   ├── agent/                    # @originos/pi-agent-adapter 运行时适配边界
+│   ├── perception-plugins/       # 感知渠道插件（仅依赖 core Plugin SDK）
+│   │   ├── email/
+│   │   ├── wecom/
+│   │   ├── feishu/
+│   │   └── dingtalk/
 │   └── service/                  # 服务包（按 package 边界维护）
 │
 ├── docs/
@@ -186,6 +191,11 @@ originos/
 5. **编译与运行时产物不是源码入口**
    - 禁止把 `packages/desktop/dist-electron/`、`packages/web/.next/`、`packages/*/node_modules/` 作为修复入口
    - 如需修复打包运行问题，必须修改对应 `packages/*/src` 或 `packages/desktop/scripts`
+
+6. **感知渠道必须通过插件边界接入**
+   - 平台 SDK、协议解析与连接生命周期放在 `packages/perception-plugins/{plugin}/`
+   - 插件只能依赖 `packages/core` 对外导出的 Perception Plugin SDK，禁止依赖 Web 或 Desktop 内部实现
+   - Core 保留平台无关的事件、规则、授权、路由、Plugin Contract/Registry/Host
 
 ---
 
@@ -290,8 +300,14 @@ import { usePiAgent } from '@originos/core/lib/integrations/pi-agent/hooks';
 **在每次提交前必须运行：**
 
 ```bash
-pnpm lint  # 自动检查 Web lint / 依赖违规
+pnpm lint  # Web lint，架构规则保持 warning 级兼容
+pnpm lint:boundaries  # Web/Core/Desktop/感知插件生产源码架构扫描
+node scripts/check-architecture-boundaries.cjs --self-test  # 检查器正反例验收
 ```
+
+架构检查规则以仓库根目录定位，根目录或包目录运行必须得到一致结果。`lint:boundaries` 对违规、配置失败或空扫描集合非零退出；产物、测试与运行数据不属于生产扫描范围。动态计算 import、跨 feature 私有导入和循环依赖仍需其他检查或审查，不能将本命令通过等同于全部架构规约满足。
+
+AG5-T1 首轮以建立真实存量基线为验收目标，既有违规仍属待治理项；本次不将有存量失败的独立扫描接为全量 CI 合并门禁，不通过 allowlist 隐藏违规。该阶段说明不放宽依赖规约。
 
 ### 违规处理
 
@@ -421,8 +437,8 @@ interface OntologySkill {
 - `core/agent.ts`：OriginOSAgent 主体，管理会话生命周期
 - `core/skills.ts`：技能多源加载（bundled / project / user）
 - `hooks/`：React 端 `usePiAgent` Hook
-- `tools/`：Agent 工具集（bash、file、skill、ontology、url）
-- `agent-manager.ts`：Agent 实例管理，按 scope 过滤工具
+- `tools/`：通用工具、registry 与执行协议（bash、file、skill、url）；文档、本体、定时任务等业务工具位于 `packages/core/src/lib/features/agent/tools/`。
+- `agent-manager.ts`：底层 Agent 实例管理，按 scope 过滤工具；业务工具与记忆能力由上层注入，组装单例从 `@originos/core/lib/features/agent/server` 获取。
 - `session-store.ts`：会话持久化
 
 ### 2. RoleAgent 架构
@@ -508,7 +524,7 @@ turn_end hook
 | `Knowledge.md` | 知识库索引快照 | 周期更新 |
 | `Patterns.md` | 经验模式索引快照 | 周期更新 |
 
-**Project Agent 通过 `persistent-agent-manager.ts` 启动，在 `startAgent()` 时加载 `ProjectContext`，构建 7 层 prompt，传入 `PersistentAgent`。**
+**Project Agent 通过 `packages/core/src/lib/features/agent/persistent-agent-manager.ts` 启动，在 `startAgent()` 时加载 `ProjectContext`，构建 7 层 prompt，传入 `PersistentAgent`。**
 
 **Frozen Snapshot 模式**：Knowledge.md 和 Patterns.md 在 Agent 启动时加载到 system prompt（Layer 2: StateMemory），中途生成的知识只写入磁盘，不修改内存中的快照，保持 LLM prefix cache 稳定。
 
@@ -597,6 +613,16 @@ CognitiveManager
 
 ---
 
+
+### IM 文件回复边界（SENSE12-T4）
+
+- Agent 业务工具 `send_file` 仅把可信会话工作目录内的文件发回触发本轮调用的 IM 会话，不接受收件人或连接 ID。
+- 下层 `integrations/pi-agent/channel-file-reply.ts` 维护调用级异步上下文和有效期；Perception 路由注入回复能力，Channel Gateway 注入持久化工作目录。禁止使用全局工具上下文选择文件接收方。
+- 文件字节仅通过 Plugin SDK 文件事件传递，不进入 `AgentOutputEvent`、聊天 JSON 或投递回执。Host 校验 `outbound-files` 能力，插件持有平台 SDK、上传协议和生命周期。
+- `PluginEventPort.submit` 的接纳回调在入站事件持久化后执行；不得等待 Agent 完成才确认入站，也不得在保存失败时确认。
+
+---
+
 ## 📊 性能约束
 
 ### 强制性能指标
@@ -637,10 +663,22 @@ CognitiveManager
     │       ├── project.json      # 项目元数据
     │       ├── sessions/         # 项目会话
     │       │   └── {sessionId}.json
-    │       └── files/            # 项目文件
+    │       ├── files/            # 项目文件
+    │       └── cognition/        # Project 独立世界认知
+    │           ├── records.json
+    │           └── snapshots/
+    │               └── world-model.json
     │
     ├── sessions/                 # 全局会话（非项目会话）
     │   └── {sessionId}.json
+    │
+    ├── users/                    # 全局用户认知（Story M.12）
+    │   └── {userId}/
+    │       └── cognition/
+    │           ├── records.json
+    │           ├── versions/
+    │           └── snapshots/
+    │               └── user-profile.json
     │
     ├── skills/                   # 技能运行时产物
     │   └── {skillName}/          # 从首页内置应用入口触发时的输出目录
@@ -657,6 +695,12 @@ CognitiveManager
     │       ├── .skills/            # 已安装技能（软链接）
     │       ├── memory/             # 记忆存储
     │       │   └── history.jsonl   # JSONL 历史记录
+    │       ├── cognition/          # Agent/RoleAgent 独立世界认知
+    │       │   ├── records.json
+    │       │   ├── snapshots/
+    │       │   │   └── world-model.json
+    │       │   └── migrations/
+    │       │       └── legacy-user-signals-v1.json
     │       ├── knowledge/          # 知识库（认知系统）
     │       │   ├── schema.md
     │       │   ├── index.md
@@ -1101,5 +1145,5 @@ git worktree add ../startupos-add-agent-task-runtime-task-2 \
 
 ---
 
-**最后更新：** 2026-07-29（v2.5.2：要求 OpenSpec 文档除规范关键字、代码标识和专有名词外统一使用中文）
+**最后更新：** 2026-09-13（v2.5.5：IM 文件回复的调用隔离、插件能力与持久化后接纳确认规约）
 **下次审查：** 实施完成后
