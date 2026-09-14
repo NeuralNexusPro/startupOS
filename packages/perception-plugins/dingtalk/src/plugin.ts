@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { DingTalkStreamNormalizer, parseFrameData } from './normalizer';
 import { DingTalkApi, type DingTalkRecipient } from './api';
 import type { DingTalkStreamFrame } from './types';
-import type { PerceptionPlugin, PerceptionPluginManifest, PerceptionPluginProvisionContext, PerceptionPluginProvisionResult, PerceptionPluginRuntimeContext, PerceptionPluginWebhookRequest, PerceptionPluginWebhookResult, PluginReplyEvent, PluginReplyReceipt } from '@originos/core/modules/perception-runtime/plugins';
+import type { PluginSdkLogger, PerceptionPlugin, PerceptionPluginManifest, PerceptionPluginProvisionContext, PerceptionPluginProvisionResult, PerceptionPluginRuntimeContext, PerceptionPluginWebhookRequest, PerceptionPluginWebhookResult, PluginReplyEvent, PluginReplyReceipt } from '@originos/core/modules/perception-runtime/plugins';
 
 const loadSDK = () => import('dingtalk-stream');
 const ROBOT_TOPIC = '/v1.0/im/bot/messages/get';
@@ -26,6 +26,12 @@ function setting(context: PerceptionPluginRuntimeContext, key: string): string {
   const value = context.settings[key];
   if (typeof value !== 'string' || !value.trim()) throw new Error('DINGTALK_CONFIGURATION_REQUIRED');
   return value.trim();
+}
+function sdkLog(context: PerceptionPluginRuntimeContext, level: keyof Pick<PluginSdkLogger, 'info' | 'warn' | 'error'>, args: unknown[]): void {
+  try {
+    if (context.ports.log?.sdkLogger) context.ports.log.sdkLogger[level](...args);
+    else context.ports.log?.write({ level, stage: 'sdk', error: args.find(value => value instanceof Error) });
+  } catch { /* SDK logging must not interrupt connection or callback handling. */ }
 }
 export class DingTalkPerceptionPlugin implements PerceptionPlugin {
   readonly manifest = dingtalkManifest;
@@ -51,7 +57,11 @@ export class DingTalkPerceptionPlugin implements PerceptionPlugin {
       runtime.api = new DingTalkApi(appId, secret, runtime.stop.signal);
       const { DWClient } = await loadSDK();
       if (runtime.stop.signal.aborted) return;
-      const client = new DWClient({ clientId: appId, clientSecret: secret, subscriptions: [], keepAlive: true, debug: false });
+      const client = new DWClient({ clientId: appId, clientSecret: secret, subscriptions: [], keepAlive: true, debug: false, logger: {
+        info: (...args: unknown[]) => sdkLog(context, 'info', args),
+        warn: (...args: unknown[]) => sdkLog(context, 'warn', args),
+        error: (...args: unknown[]) => sdkLog(context, 'error', args),
+      } });
       runtime.client = client;
       client.registerCallbackListener(ROBOT_TOPIC, async frame => {
         try { await this.receive(context, runtime, { ...frame, type: 'CALLBACK' }, () => client.socketCallBackResponse(frame.headers.messageId, {})); }
@@ -70,11 +80,11 @@ export class DingTalkPerceptionPlugin implements PerceptionPlugin {
       await report();
       await client.connect();
       await report();
-    } catch {
+    } catch (error) {
       if (!runtime.stop.signal.aborted) {
         await this.stop(context);
         await context.ports.health?.report({ status: 'degraded', safeCode: 'DINGTALK_START_FAILED' });
-        throw new Error('DINGTALK_START_FAILED');
+        throw Object.assign(new Error('DINGTALK_START_FAILED'), { cause: error });
       }
     }
   }
