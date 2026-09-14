@@ -118,7 +118,7 @@ async function verifyAsar() {
     'dist-electron/core/src/lib/integrations/pi-agent/core/agent.js',
     'dist-electron/core/src/lib/integrations/pi-agent/tools/index.js',
     'dist-electron/core/src/lib/integrations/pi-agent/tools/loop-detector.js',
-    'dist-electron/core/src/lib/integrations/pi-agent/tools/schedule-tools.js',
+    'dist-electron/core/src/lib/features/agent/tools/schedule-tools.js',
     'dist-electron/core/src/lib/features/skills/service.js',
     'dist-electron/core/src/lib/features/services/launcher/skill.js',
     'dist-electron/core/src/lib/integrations/electron/workspace-paths.js',
@@ -148,7 +148,7 @@ async function verifyAsar() {
   const modules = [
     'dist-electron/core/src/lib/integrations/pi-agent/core/agent.js',
     'dist-electron/core/src/lib/integrations/pi-agent/tools/loop-detector.js',
-    'dist-electron/core/src/lib/integrations/pi-agent/tools/schedule-tools.js',
+    'dist-electron/core/src/lib/features/agent/tools/schedule-tools.js',
     'dist-electron/core/src/lib/features/skills/service.js',
     'dist-electron/core/src/lib/features/services/launcher/skill.js',
     'dist-electron/core/src/lib/integrations/electron/workspace-paths.js',
@@ -260,7 +260,6 @@ function verifyResources() {
     'agent-worker/agent-worker.mjs',
     'agent-worker/agent-worker-module-specifier.mjs',
     'agent-worker/core/lib/integrations/pi-agent/tools/loop-detector.js',
-    'agent-worker/core/lib/integrations/pi-agent/tools/schedule-tools.js',
     'app.asar.unpacked/node_modules/onnxruntime-node/bin/napi-v6/win32/x64/onnxruntime_binding.node',
     'app.asar.unpacked/node_modules/onnxruntime-node/bin/napi-v6/win32/x64/onnxruntime.dll',
   ];
@@ -288,7 +287,6 @@ function verifyWindowsZip() {
     'resources/agent-worker/agent-worker.mjs',
     'resources/agent-worker/agent-worker-module-specifier.mjs',
     'resources/agent-worker/core/lib/integrations/pi-agent/tools/loop-detector.js',
-    'resources/agent-worker/core/lib/integrations/pi-agent/tools/schedule-tools.js',
     'resources/app.asar.unpacked/node_modules/onnxruntime-node/bin/napi-v6/win32/x64/onnxruntime_binding.node',
     'resources/app.asar.unpacked/node_modules/onnxruntime-node/bin/napi-v6/win32/x64/onnxruntime.dll',
   ];
@@ -362,10 +360,12 @@ async function main() {
   }
 }
 
-main().catch((error) => {
+if (require.main === module) main().catch((error) => {
   console.error(
     '[verify-windows-package] failed:',
     error instanceof Error ? error.message : error,
   );
   process.exitCode = 1;
 });
+
+module.exports = { verifyAsar, verifyResources, verifyWindowsZip };
