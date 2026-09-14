@@ -1,4 +1,4 @@
-import type { ChannelReplyFile } from '@originos/core/modules/perception-runtime/plugins';
+import type { ChannelReplyFile, PluginLogPort } from '@originos/core/modules/perception-runtime/plugins';
 export interface FeishuSdkMessageEvent {
   event_id?: string;
   create_time?: string;
@@ -26,6 +26,7 @@ export interface FeishuApiClient {
 }
 export interface FeishuSdkRuntime { ws: FeishuWsClient; dispatcher: FeishuEventDispatcher; api: FeishuApiClient }
 export interface FeishuSdkFactoryOptions {
+  logger?: PluginLogPort['sdkLogger'];
   appId: string; appSecret: string; domain: 'feishu' | 'lark';
   onReady(): void; onError(error: Error): void; onReconnecting(): void; onReconnected(): void;
 }
