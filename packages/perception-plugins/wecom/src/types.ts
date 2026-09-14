@@ -1,3 +1,5 @@
+import type { PluginLogPort } from '@originos/core/modules/perception-runtime/plugins';
+
 export interface WeComFrameBody {
   msgid?: string;
   aibotid?: string;
@@ -32,4 +34,5 @@ export type WeComBotClientFactory = (options: {
   botId: string;
   secret: string;
   wsUrl?: string;
+  logger?: PluginLogPort['sdkLogger'];
 }) => WeComBotClient;
