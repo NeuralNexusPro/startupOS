@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { BoundedFlowPort, FlowPortClosedError } from './flow-port';
 import type { AgentOutputEvent, ChannelFlowRuntimePort, ChannelInvocation, FlowPacket } from './types';
 
@@ -47,54 +48,73 @@ export class StreamingSessionRuntimeAdapter implements ChannelFlowRuntimePort {
   }
 
   async *invokePackets(input: ChannelInvocation): AsyncIterable<FlowPacket<AgentOutputEvent>> {
-    const session = await this.sessions.resolve(input);
+    let session: ResolvedChannelSession | undefined;
+    try { session = await this.sessions.resolve(input); }
+    catch (error) {
+      const diagnosticId = randomUUID();
+      try { input.onDiagnostic?.({ stage: 'resolve', safeCode: 'CHANNEL_RUNTIME_FAILED', diagnosticId, eventId: input.message.id, sessionId: input.sessionId, error }); } catch { /* isolated */ }
+      yield { protocolVersion: '1.0', flowId: input.message.id, packetId: diagnosticId, sequence: 0, port: 'runtime.output', kind: 'error', emittedAt: new Date().toISOString(), payload: { type: 'failed', safeCode: 'CHANNEL_RUNTIME_FAILED', ...(input.onDiagnostic ? { diagnosticId } : {}) } };
+      return;
+    }
+    let unsubscribe: (() => void) | undefined;
+    let stage = 'resolve';
     const output = new BoundedFlowPort<AgentOutputEvent>({
       flowId: `${input.message.id}:${session.sessionId}`,
       port: 'runtime.output',
       capacity: this.options.portCapacity,
     });
-    this.active.set(session.sessionId, { output, runtime: session.runtime });
-    await output.send({ type: 'accepted', sessionId: session.sessionId });
-    await this.messages.appendUserMessage(
-      session.sessionId,
-      input.message.content.text ?? '',
-      input.message.content.attachmentRefs ?? [],
-    );
-
-    let pendingWrites = Promise.resolve();
-    const unsubscribe = session.runtime.subscribe((source) => {
-      pendingWrites = pendingWrites.then(async () => {
-        const events = toOutputEvents(source);
-        for (const event of events) {
-          if (event.type === 'assistant_message') await this.messages.appendAssistantMessage(session.sessionId, event.content);
-          await output.send(event);
-        }
-      });
-      return pendingWrites;
-    });
-    const prompt = buildRuntimeInput(input);
-    void session.runtime.prompt(prompt)
-      .then(async () => {
-        await pendingWrites;
-        await output.complete({ type: 'completed', resultRef: session.resultRef });
-      })
-      .catch(async () => {
-        try {
-          await output.fail({ type: 'failed', safeCode: 'CHANNEL_RUNTIME_FAILED' });
-        } catch (error: unknown) {
-          if (!(error instanceof FlowPortClosedError)) throw error;
-        }
-      });
+    let failed = false;
+    let disposed = false;
+    const fail = async (error: unknown, failureStage: string) => {
+      if (failed) return;
+      failed = true;
+      const diagnosticId = randomUUID();
+      try { input.onDiagnostic?.({ stage: failureStage, safeCode: 'CHANNEL_RUNTIME_FAILED', diagnosticId,
+        eventId: input.message.id, sessionId: session?.sessionId ?? input.sessionId, error }); } catch { /* diagnostic isolation */ }
+      try { await output.fail({ type: 'failed', safeCode: 'CHANNEL_RUNTIME_FAILED', ...(input.onDiagnostic ? { diagnosticId } : {}) }); }
+      catch { /* Consumer may already have closed the stream. */ }
+    };
     let reachedTerminal = false;
+    // Setup runs concurrently with consumption so a capacity-one port cannot block startup.
+    const setup = async () => {
+      try {
+        if (!session || disposed) return;
+        this.active.set(session.sessionId, { output, runtime: session.runtime });
+        await output.send({ type: 'accepted', sessionId: session.sessionId });
+        stage = 'persist.user';
+        await this.messages.appendUserMessage(session.sessionId, input.message.content.text ?? '', input.message.content.attachmentRefs ?? []);
+        let pendingWrites = Promise.resolve();
+        if (disposed) return;
+        stage = 'subscribe';
+        unsubscribe = session.runtime.subscribe(source => {
+          pendingWrites = pendingWrites.then(async () => {
+            if (failed) return;
+            for (const event of toOutputEvents(source)) {
+              if (event.type === 'assistant_message') await this.messages.appendAssistantMessage(session!.sessionId, event.content);
+              await output.send(event);
+            }
+          }).catch(error => fail(error, 'persist.output'));
+          return pendingWrites;
+        });
+        stage = 'prompt';
+        await session.runtime.prompt(buildRuntimeInput(input));
+        await pendingWrites;
+        if (!failed) await output.complete({ type: 'completed', resultRef: session.resultRef });
+      } catch (error) { await fail(error, stage); }
+    };
+    void setup();
     try {
       for await (const packet of output) {
-        yield packet;
         reachedTerminal = packet.kind !== 'data';
+        yield packet;
       }
     } finally {
-      unsubscribe();
-      if (this.active.get(session.sessionId)?.output === output) this.active.delete(session.sessionId);
-      if (!reachedTerminal && session.runtime.abort) await session.runtime.abort();
+      disposed = true;
+      try { unsubscribe?.(); } catch { /* Cleanup is best effort. */ }
+      if (session && this.active.get(session.sessionId)?.output === output) this.active.delete(session.sessionId);
+      if ((!reachedTerminal || failed) && session?.runtime.abort) {
+        try { await session.runtime.abort(); } catch { /* Preserve the original failure. */ }
+      }
     }
   }
 
