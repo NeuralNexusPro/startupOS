@@ -1,0 +1,14 @@
+# windows-business-tool-verification Specification
+
+## Purpose
+确保Windows包校验与迁移后业务工具的实际加载位置一致，并持续拒绝真实缺包。
+## Requirements
+### Requirement: 校验迁移后的业务工具
+Windows打包校验 SHALL 验证实际业务工具和worker加载所需文件，不要求迁移前已删除的路径。
+#### Scenario: 业务工具位于新位置
+- **WHEN** 包内业务工具位于features/agent/tools并满足worker加载契约
+- **THEN** ASAR、外置资源和ZIP校验不因旧schedule-tools路径失败
+#### Scenario: 缺少真实业务工具
+- **WHEN** 包内缺少当前运行时需要的schedule-tools模块
+- **THEN** 校验失败并报告当前真实路径
+

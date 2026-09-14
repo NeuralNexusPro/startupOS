@@ -80,3 +80,5 @@ Task ecba231 已审查并集成：模型错误捕获独立于空回复重试开�
 TC1：新业务工具路径存在且旧路径不存在时，通过相关ASAR/资源/ZIP检查。TC2：删除真实schedule-tools模块时必须失败，不能通过仅移除检查掩盖缺包。TC3：所有校验路径与当前源码、electron-builder及worker加载一致；本地定向测试/真实包检查、lint/架构/自测通过，Windows最终以CI结果记录。
 
 AG2-T4本地验收（2026-09-14）：三项真实临时ASAR/资源/ZIP正反例通过；恢复旧路径假设时三项均失败。真实mac包ASAR含新路径，旧ASAR与新旧外置副本均无；Electron实际require新模块成功，导出两个定时工具。lint0错误2968既有警告、869文件0架构诊断、自测43×2通过。日志/private/tmp/windows-schedule-{tests,red,real-asar,real-load,lint,boundaries,selftest}.log。Task提交ed54114，仅脚本与测试，无打包/业务变更。Windows正式结果待新CI记录。
+
+AG2-T4远端验收（2026-09-14）：修复提交1fdbd2e已推送dev，新发布运行https://github.com/NeuralNexusPro/startupOS/actions/runs/34791933255 的Build Windows成功，包含verify:win-package、更新元数据校验和产物上传。此前运行34760862119在旧schedule-tools路径失败。临时Task/Proposal工作区已清理；其余平台和最终发布状态独立以流水线为准。
