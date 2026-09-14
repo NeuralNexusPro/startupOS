@@ -6,7 +6,7 @@
 ## 2. 插件接线
 
 - [ ] 2.1 T2（依赖T1，与T3可并行，插件子代理，独立Task worktree）：只改packages/perception-plugins/wecom及feishu的SDK logger、连接/接纳/回复日志和测试；通过PL01/02/03/05及现有插件回归，提供commit和测试证据。
-- [ ] 2.2 T3（依赖T1，与T2可并行，插件子代理，独立Task worktree）：只改packages/perception-plugins/email及dingtalk的受控诊断、SDK出口及测试；通过PL01/02/05/06及现有插件回归，提供commit和测试证据。
+- [ ] 2.2 T3（依赖T1，与T2可并行，插件子代理，独立Task worktree）：修改packages/perception-plugins/email及dingtalk的受控诊断、SDK出口及测试，以及专属SDK日志patch、package.json补丁声明和pnpm-lock.yaml；通过PL01/02/05/06及现有插件回归，提供commit和测试证据。
 
 ## 3. 集成与交付
 

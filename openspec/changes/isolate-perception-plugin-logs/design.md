@@ -27,7 +27,7 @@
 
 ## 实施分工
 
-T1（串行，Core/Desktop子代理）：公共端口、调用错误关联、日志writer/宿主接线及对应测试；范围core和desktop。接口合入并冻结后，T2（插件子代理）只改wecom/feishu，T3（插件子代理）只改email/dingtalk，T2/T3并行且各自独立worktree。父代理只集成、补文档、运行完整验收，不直接实施源码。
+T1（串行，Core/Desktop子代理）：公共端口、调用错误关联、日志writer/宿主接线及对应测试；范围core和desktop。接口合入并冻结后，T2（插件子代理）只改wecom/feishu，T3（插件子代理）修改email/dingtalk及其专属SDK日志补丁、package.json补丁声明和pnpm-lock.yaml，T2/T3并行且各自独立worktree。父代理只集成、补文档、运行完整验收，不直接实施源码。
 
 ## Migration Plan
 
@@ -36,3 +36,7 @@ T1（串行，Core/Desktop子代理）：公共端口、调用错误关联、日
 ## Open Questions
 
 无需要用户选择的产品问题。SDK logger适配和worker诊断现有端口由T1/T2/T3核对本地源码收敛，若超出本方案再记录变更。
+
+### 实施核对：钉钉SDK日志出口
+
+本地dingtalk-stream@2.1.7-beta.1在debug:false时仍直写console且无logger注入。T3沿用仓库pnpm patchedDependencies，为该锁定版本增加可选实例logger并替换SDK日志调用，默认logger维持console以兼容其他调用者；同步CJS/ESM和类型。补丁存patches，禁止把node_modules当源码入口。重装、CJS/ESM及实际包默认工厂验收必须覆盖。此为原方案SDK局部适配的具体实现，不增加新平台依赖或修改网络协议。
