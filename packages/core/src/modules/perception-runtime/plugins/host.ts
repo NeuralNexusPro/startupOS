@@ -11,6 +11,7 @@ import type {
 } from './types';
 import { PerceptionPluginRegistry } from './registry';
 import { assertPluginEvent } from './validation';
+import { createPluginSdkLogger, writePluginLog } from './logging';
 
 interface PluginInstance {
   context: PerceptionPluginRuntimeContext;
@@ -32,6 +33,10 @@ export class PerceptionPluginHost {
     assertSafePerceptionId(connectorId, 'connector id');
     const approved = new Set<PerceptionPluginPermission>(entry.approvedPermissions);
     const exposed: { -readonly [Key in keyof PerceptionPluginRuntimePorts]: PerceptionPluginRuntimePorts[Key] } = {};
+    if (this.ports.log) {
+      exposed.log = { write: record => { try { this.ports.log?.write(pluginId, connectorId, record); } catch { /* isolated diagnostics */ } } };
+      exposed.log.sdkLogger = createPluginSdkLogger(exposed.log);
+    }
     if (approved.has('credentials')) {
       exposed.credentials = {
         bind: async (requestedConnectorId, name, secret) => {
@@ -81,7 +86,10 @@ export class PerceptionPluginHost {
       this.replyRegistrations.set(key, registrations);
       exposed.replies = { register: (handle, deliver, options) => {
         if (this.replyRegistrations.get(key) !== registrations) throw new Error('IM_FILE_REPLY_UNAVAILABLE');
-        const unregister = this.ports.replies!.register(handle, deliver, {
+        const unregister = this.ports.replies!.register(handle, async event => {
+          try { return await deliver(event); }
+          catch (error) { writePluginLog(exposed.log, { level: 'error', stage: 'delivery', error }); throw error; }
+        }, {
           supportsFiles: options?.supportsFiles === true && entry.plugin.manifest.capabilities.includes('outbound-files'),
         });
         const remove = () => { registrations.delete(remove); unregister(); };
@@ -94,8 +102,11 @@ export class PerceptionPluginHost {
         submit: async (event, options) => {
           try {
             assertPluginEvent(event, entry.plugin.manifest, connectorId);
-            return await this.ports.events.submit(event, options);
+            const result = await this.ports.events.submit(event, options);
+            writePluginLog(exposed.log, { level: 'info', stage: 'event.dispatched', eventId: event.id });
+            return result;
           } catch (error) {
+            writePluginLog(exposed.log, { level: 'error', stage: 'event.submit', eventId: event.id, error });
             await this.safeAudit(pluginId, connectorId, 'plugin.event.rejected', { safeCode: 'PLUGIN_EVENT_REJECTED' });
             throw error;
           }
@@ -117,7 +128,9 @@ export class PerceptionPluginHost {
     try {
       await entry.plugin.start(context);
       instance.status = { pluginId, connectorId, state: 'running' };
-    } catch {
+      writePluginLog(context.ports.log, { level: 'info', stage: 'lifecycle.started' });
+    } catch (error) {
+      writePluginLog(context.ports.log, { level: 'error', stage: 'lifecycle.start', safeCode: 'PLUGIN_START_FAILED', error });
       instance.status = { pluginId, connectorId, state: 'failed', safeCode: 'PLUGIN_START_FAILED' };
       await this.safeAudit(pluginId, connectorId, 'plugin.start.failed', { safeCode: 'PLUGIN_START_FAILED' });
     }
@@ -129,7 +142,8 @@ export class PerceptionPluginHost {
     if (!entry) throw new Error(`Plugin not registered: ${pluginId}`);
     if (!entry.plugin.provision) return { settings };
     const context = this.context(pluginId, connectorId, settings);
-    return entry.plugin.provision(Object.freeze({ ...context, secrets: Object.freeze({ ...secrets }) }));
+    try { return await entry.plugin.provision(Object.freeze({ ...context, secrets: Object.freeze({ ...secrets }) })); }
+    catch (error) { writePluginLog(context.ports.log, { level: 'error', stage: 'lifecycle.provision', error }); throw error; }
   }
 
   async stop(pluginId: string, connectorId: string): Promise<PerceptionPluginInstanceStatus> {
@@ -144,7 +158,9 @@ export class PerceptionPluginHost {
     try {
       await entry.plugin.stop(instance.context);
       instance.status = { pluginId, connectorId, state: 'stopped' };
-    } catch {
+      writePluginLog(instance.context.ports.log, { level: 'info', stage: 'lifecycle.stopped' });
+    } catch (error) {
+      writePluginLog(instance.context.ports.log, { level: 'error', stage: 'lifecycle.stop', safeCode: 'PLUGIN_STOP_FAILED', error });
       instance.status = { pluginId, connectorId, state: 'failed', safeCode: 'PLUGIN_STOP_FAILED' };
       await this.safeAudit(pluginId, connectorId, 'plugin.stop.failed', { safeCode: 'PLUGIN_STOP_FAILED' });
     }

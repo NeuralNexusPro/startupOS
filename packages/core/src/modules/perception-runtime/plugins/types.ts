@@ -146,6 +146,7 @@ export interface PluginReplyReceipt {
 }
 
 export interface PerceptionPluginHostPorts {
+  log?: import('./logging').PluginLogSink;
   credentials: PluginCredentialPort;
   events: PluginEventPort;
   network: PluginNetworkPort;
@@ -156,7 +157,7 @@ export interface PerceptionPluginHostPorts {
   replies?: PluginReplyPort;
 }
 
-export type PerceptionPluginRuntimePorts = Partial<PerceptionPluginHostPorts>;
+export type PerceptionPluginRuntimePorts = Partial<Omit<PerceptionPluginHostPorts, 'log'>> & { log?: import('./logging').PluginLogPort };
 
 export interface PerceptionPluginRuntimeContext {
   pluginId: string;

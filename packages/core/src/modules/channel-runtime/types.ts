@@ -34,7 +34,7 @@ export type AgentOutputEvent =
   | { type: 'hitl_request'; requestId: string; summary: string }
   | { type: 'completed'; resultRef: string }
   | { type: 'cancelled' }
-  | { type: 'failed'; safeCode: string };
+  | { type: 'failed'; safeCode: string; diagnosticId?: string };
 
 export type FlowPacketKind = 'data' | 'complete' | 'error' | 'control';
 
@@ -51,7 +51,18 @@ export interface FlowPacket<T> {
 
 export type FlowPacketStream<T> = AsyncIterable<FlowPacket<T>>;
 
+export interface ChannelRuntimeDiagnostic {
+  stage: string;
+  safeCode: string;
+  diagnosticId: string;
+  eventId: string;
+  sessionId?: string;
+  error: unknown;
+}
+
 export interface ChannelInvocation {
+  /** Host-local callback; never serialized into an Agent prompt or worker request. */
+  onDiagnostic?: (diagnostic: ChannelRuntimeDiagnostic) => void;
   message: ChannelInboundMessage;
   target: ChannelRuntimeTarget;
   sessionId?: string;
