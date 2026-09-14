@@ -24,3 +24,20 @@ describe('plugin logging boundaries', () => {
     expect(() => createPluginSdkLogger({ write: () => { throw new Error('disk'); } }).error('secret')).not.toThrow();
   });
 });
+
+
+it('handles Lark LoggerProxy arrays with bounded traversal and no SDK payload serialization', () => {
+  const write = vi.fn();
+  const logger = createPluginSdkLogger({ write: record => write(sanitizePluginLog(record)) });
+  logger.error([[Object.assign(new Error('ENOTFOUND secret-body'), { code: 'ENOTFOUND' })]]);
+  expect(write.mock.calls[0]?.[0]).toMatchObject({ safeCode: 'ENOTFOUND', error: { code: 'ENOTFOUND', reason: 'ENOTFOUND' } });
+  logger.error([['[ws]', ['HTTP 401: password=secret-body']], { body: 'secret-body' }]);
+  expect(write.mock.calls[1]?.[0]).toMatchObject({ error: { status: 401 } });
+  const cyclic: unknown[] = []; cyclic.push(cyclic);
+  expect(() => logger.error(cyclic)).not.toThrow();
+  const large = new Array<unknown>(100000); large[0] = 'HTTP 429';
+  Object.defineProperty(large, 33, { get: () => { throw new Error('must not visit'); } });
+  expect(() => logger.error(large)).not.toThrow();
+  expect(write.mock.calls[3]?.[0]).toMatchObject({ error: { status: 429 } });
+  expect(JSON.stringify(write.mock.calls)).not.toContain('secret-body');
+});
