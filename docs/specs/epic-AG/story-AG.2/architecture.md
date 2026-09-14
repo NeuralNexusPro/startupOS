@@ -21,3 +21,7 @@ Web/Desktop/worker 边界 → Core features/modules 业务组装 → integration
 ## 验证
 
 使用真实 ESLint 边界解析和调用链检查，替代旧 grep 计数；配合 testing.md 的运行时、持久化和打包用例。当前已有围栏不覆盖全部循环依赖，需人工审查新引入的传递依赖。
+
+## AG2-T4 Windows迁移后打包校验
+
+0.2.2发布校验仍要求旧integrations层schedule-tools路径。按当前业务层位置校验ASAR，外置worker资源依照实际加载契约；不新增业务副本、不降低缺包检测。用户界面和业务行为不变，发布通过现有Desktop Release重新触发。验收见testing.md。

@@ -23,3 +23,7 @@
 ## 非目标
 
 不全面重写 Agent、不扩大检查器、不补齐其他 Epic、不将本次清零等同全仓架构合规。
+
+## AG2-T4 Windows迁移后打包校验
+
+0.2.2发布校验仍要求旧integrations层schedule-tools路径。按当前业务层位置校验ASAR，外置worker资源依照实际加载契约；不新增业务副本、不降低缺包检测。用户界面和业务行为不变，发布通过现有Desktop Release重新触发。验收见testing.md。

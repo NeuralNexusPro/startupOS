@@ -286,3 +286,5 @@ AG2-T1当前34处存量边界已修复，通知中文入口及会话恢复快照
 测试包：/Users/archersado/workspace/startupOS/release/session-fixes-20260913/mac-arm64/OriginOS CE.app。
 
 [Testing](./story-AG.2/testing.md)
+
+AG2-T4：Windows发布校验同步迁移后的业务工具位置，沿用0.2.2重新构建发布。

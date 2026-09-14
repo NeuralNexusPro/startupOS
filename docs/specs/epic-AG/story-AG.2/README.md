@@ -35,3 +35,7 @@ AG2-T1 修复现有围栏报告的 34 处违规：33 处 Core 基础设施反向
 测试包：/Users/archersado/workspace/startupOS/release/session-fixes-20260913/mac-arm64/OriginOS CE.app。
 
 [Testing](./testing.md)
+
+## AG2-T4 Windows迁移后打包校验
+
+0.2.2发布校验仍要求旧integrations层schedule-tools路径。按当前业务层位置校验ASAR，外置worker资源依照实际加载契约；不新增业务副本、不降低缺包检测。用户界面和业务行为不变，发布通过现有Desktop Release重新触发。验收见testing.md。
