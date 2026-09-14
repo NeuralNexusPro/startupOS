@@ -58,7 +58,7 @@ describe('StreamingSessionRuntimeAdapter', () => {
       { type: 'assistant_message', content: 'hello' },
       { type: 'completed', resultRef: 'session://session-1' },
     ]);
-    expect(appendUserMessage).toHaveBeenCalledWith('session-1', 'hello', []);
+    expect(appendUserMessage).toHaveBeenCalledWith('session-1', 'hello', [], undefined);
     expect(appendAssistantMessage).toHaveBeenCalledWith('session-1', 'hello');
     expect(JSON.stringify(events)).not.toContain('private');
   });

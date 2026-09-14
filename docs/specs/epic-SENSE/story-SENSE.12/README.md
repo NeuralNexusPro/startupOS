@@ -58,3 +58,7 @@ SENSE12-T5/T6联合交付：136项回归、完整桌面构建及实际包验收�
 ## SENSE12-T7：插件独立日志（已实施，2026-09-14）
 
 邮箱、企微、飞书、钉钉已按插件每日独立记录SDK及宿主诊断；渠道失败保留安全原因并关联事件、会话和审计。232项集成回归、真实SDK检查及macOS包内Host/Worker落盘验收通过。Windows安装运行仍需对应环境验证；本次为本地测试包，未发布远端。见[Proposal](../../../../openspec/changes/isolate-perception-plugin-logs/proposal.md)与testing.md PL01–PL08；不改变Story其他任务状态。
+
+## SENSE12-T8：IM原始消息与发送者透传（本地验收完成）
+
+事件只负责规则匹配、授权和路由；命中后将原始正文、发送者ID/可用显示名、来源、会话ID/类型和附件交给目标Agent/Skill处理，不添加感知分析任务。共享入口、历史消息metadata及长任务等待回复分支已修复。详见[Proposal](../../../../openspec/changes/fix-im-direct-reply-context/proposal.md)及testing.md IR01–IR07；不改变Story整体状态。

@@ -49,3 +49,9 @@ SENSE12-T6：UI Task独立修复SenseCenter与顶部菜单刷新生命周期，�
 Proposal isolate-perception-plugin-logs已获批准并实施。Core/Desktop先冻结日志与诊断接口，再由两个独立子代理工作区并行适配企微/飞书与邮箱/钉钉。文件范围、依赖、验收及回滚见Proposal design/tasks；父代理只集成与验证。回滚整组SDK/宿主接线，保留既有日志和配置；审查默认SDK工厂、异常传播、脱敏、跨进程出口和写入失败，不能只覆盖模拟插件。
 
 实施提交：Core/Desktop `34717f8`、路由验收 `2b75668`、Lark数组参数兼容 `9c12153`；企微/飞书 `2ec768e`、真实SDK脚本 `38ae3d7`；邮箱/钉钉及锁定SDK补丁 `8b46c5d`。Host注入sdkLogger，插件只保留Core类型导入；钉钉HTTP失败保留status/cause。验收记录见testing.md。
+
+## SENSE12-T8：实施任务（本地验收完成）
+
+Proposal fix-im-direct-reply-context已批准；按用户最新替换的AGENTS，当前代理直接处理相互依赖的Trigger、RuntimeAdapter、Channel types/validation、Gateway metadata、测试及包验证。核对所有调用者，不能只去掉perceptionText而留下运行时任务封套，不能只传正文而丢失发送者。无存储迁移，回滚不删历史。任务依赖与验收详见Proposal tasks.md。
+
+Trigger对三类IM透传原文；Runtime以JSON编码text、sender、conversation、origin及附件引用，正文不加入事件分析指令。Gateway保存原文与metadata.channel，向等待用户回复的长任务也传递同一完整输入。显示名缺失时省略，不推断身份；平台协议、角色提示词和既有记忆保持原样。

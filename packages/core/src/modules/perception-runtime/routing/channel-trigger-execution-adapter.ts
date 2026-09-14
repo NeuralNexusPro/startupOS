@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { writePluginLog, type PluginLogPort } from '../plugins/logging';
 import { withChannelFileReply, type ChannelReplyFile, type ChannelFileSender } from '../../../lib/integrations/pi-agent/channel-file-reply';
-import { fanOutFlowPackets } from '../../channel-runtime';
+import { fanOutFlowPackets, isImChannel } from '../../channel-runtime';
 import type { AgentOutputEvent, ChannelFlowMessageIngress, ChannelInvocation, ChannelMessageIngress, ChannelRuntimeTarget, DeliveryReceipt, FlowPacket } from '../../channel-runtime';
 import type {
   PerceptionTriggerTarget,
@@ -127,8 +127,10 @@ function toChannelInvocation(input: Parameters<TriggerExecutionPort['dispatch']>
       connectorId: event.connectorId,
       conversationId: event.conversation?.externalId ?? event.sourceEventId,
       actorId: event.actor.externalId,
+      ...(event.actor.displayName !== undefined ? { actorDisplayName: event.actor.displayName } : {}),
+      ...(event.conversation ? { conversationKind: event.conversation.kind } : {}),
       content: {
-        text: perceptionText(input),
+        text: isImChannel(event.source) ? event.content.text : perceptionText(input),
         ...(event.content.attachmentRefs?.length ? { attachmentRefs: event.content.attachmentRefs } : {}),
       },
       receivedAt: event.receivedAt,

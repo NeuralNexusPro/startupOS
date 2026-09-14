@@ -214,3 +214,31 @@ node scripts/check-architecture-boundaries.cjs --self-test
 产物及证据保存在仓库根`release/plugin-logs-20260914/`：`OriginOS CE.app`和`evidence/`。证据包含final-plugins/core/desktop、coverage、real-sdk、types、lint、boundaries/selftest、build、pack、package-verify、package-smoke日志及`originos-verify-plugin-logs-package.cjs`。可用包内可执行文件配合`ELECTRON_RUN_AS_NODE=1`运行该脚本，唯一参数为包内app.asar路径。
 
 剩余人工验证：本机为macOS，不能验证Windows安装、真实平台鉴权/网络和远端IM展示。在Windows runner构建后运行`pnpm --filter @originos/desktop verify:win-package`；安装后分别启用四插件、触发一次受控连接或执行失败，检查应用日志目录`plugins/{source}/plugin-日期.log`及感知审计的diagnosticId，再正常退出、重启确认同日追加。不要把脚本级Windows检查通过等同于Windows运行验证。正常退出已测flush，强退可能损失未落盘缓冲；不记录正文和任意供应商错误文本，未知错误只保留受限堆栈/类别。本次未发布远端。
+
+## SENSE12-T8：原始IM消息与发送者（本地自动化及包验证通过，真实IM待人工复测）
+
+| Case / AC | Given / When | Then |
+|---|---|---|
+| IR01 / AC1 | 三个IM命中规则，输入问候/催促/明确代拟请求 | Invocation及会话正文等于原文，模型输入解码后的text逐字符相等，无内部事件任务说明 |
+| IR02 / AC2 | 发送者ID和可用显示名、群ID/类型、附件俱全 | 目标及模型收到同一完整消息；metadata保存正确发送者/会话/附件，非仅审计可见 |
+| IR03 / AC2 | 两连接、两群成员交错消息，或缺少显示名 | 归属无串线；缺失显示名不猜测为所有者或其他成员 |
+| IR04 / AC1/2 | 原文含空白、换行、表情、伪造封套或规则指令 | 原文保留且编码边界有效，不能改变宿主origin/actor；授权拒绝时不执行目标 |
+| IR05 / AC3 | 恢复已有第三方分析历史；或无当前回复句柄 | 新消息仍走完整消息透传，历史不删除，投递不假报成功 |
+| IR06 / AC3/4 | 非IM/UI、流式、文件回复及运行/投递失败 | 既有行为/安全失败/独立日志关联不回归，无新模型调用 |
+| IR07 / AC1–4 | 实际包Worker接收完整IM消息；原群原会话人工复测 | 跨进程原文与发送者俱全；普通问候/催促由目标直接处理，代拟仅按明确请求，无新增错误 |
+
+自动化：Core channel-runtime/perception-runtime相关vitest，Gateway真实metadata存储与绑定集成，Desktop回复及四插件回归；core/desktop类型检查、pnpm lint、pnpm lint:boundaries、node scripts/check-architecture-boundaries.cjs --self-test。用合成成员ID/显示名和临时目录，不使用真实凭据或自动发送平台消息。按用户最新规约直接记录验证结果，不另建测试goal。
+
+IR01–IR06：Core渠道/感知137项通过；补齐长任务分支后Gateway及IM上下文11项复验通过。新增三渠道集成测试穿过Trigger、BindingIngress、Runtime和Gateway，真实JSON保存及重建会话后核对原文、成员切换、可选显示名、附件和历史保留；验证错误封套不能改变结构化发送者。Desktop诊断/回复7项及四插件73项回归通过。Core类型检查通过，lint为0 errors / 2968既有warnings，架构871生产文件零诊断，自测43×2通过。
+
+命令沿用T7列出的Core、四插件和架构检查；Desktop本轮仅运行plugin-diagnostic-routing、plugin-reply-delivery-service两个文件。定向复验为`pnpm exec vitest run src/modules/channel-runtime/__tests__/im-message-context.test.ts src/modules/channel-runtime/__tests__/pi-agent-session-gateway.test.ts --root packages/core`。日志：`/private/tmp/im-context-{tests,gateway-tests,desktop-tests,plugin-tests,types,lint,boundaries,selftest}.log`。本轮未重新统计覆盖率，不将T7覆盖率作为T8结果。
+
+包内脚本验证实际Worker收到的模型输入包含未改写text与对应sender/conversation，并验证原安全错误链路；单元测试固定回复不能替代模型效果验证。人工由用户在原会话分别发送“在吗”“怎么回复这么慢”和“帮我拟一条回复”，核对处理方按当前发言人请求响应。历史记忆可能仍带有错误推断，不默认删除；平台未授权或Windows环境不可用时明确记为未验证并提供步骤，不把macOS脚本结果当作所有平台运行通过。
+
+### SENSE12-T8 包内验收与交付
+
+完整`pnpm --filter @originos/desktop build:app`通过，包含Desktop类型检查和18个Worker运行模块验证；使用T7记录的本地未签名打包命令生成macOS ARM64包。`verify:mac-package`通过，真实包内Electron/Worker依次接收企微、飞书、钉钉完整输入，核对原文空白/换行/表情、发送者ID/显示名和群会话。仅替换OriginOSAgent.prompt模型请求入口，真实Worker初始化及命令传输均执行；没有调用外部模型或发送IM。包内错误脚本同时验证真实Worker错误、四插件日志、审计关联和脱敏，全部通过。
+
+测试包：`release/im-context-20260914/OriginOS CE.app`；日志及可复现脚本保存在同目录`evidence/`，含im-context-{build,pack,package-verify,package-smoke,package-errors}.log。用包内Electron可执行文件并设置`ELECTRON_RUN_AS_NODE=1`运行evidence/originos-verify-im-context.cjs（唯一参数为包内Contents/Resources/app.asar），可重复输入验证；错误验证脚本同样调用。
+
+IR07跨进程部分通过，真实模型措辞及原群会话人工复测仍待用户执行，不据此声称彻底消除第三方视角。退出旧应用，打开新包，在原群原会话分别发送“在吗”“怎么回复这么慢”和“帮我拟一条回复”；前两条应按发言人的当前请求处理，第三条可正常代拟。旧会话/记忆未清理；Windows运行、真实平台网络及收件效果未验证。未远端推送或发布。

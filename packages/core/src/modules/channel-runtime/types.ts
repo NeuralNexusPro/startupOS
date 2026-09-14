@@ -2,6 +2,10 @@ export const CHANNEL_PROTOCOL_VERSION = '1.0' as const;
 
 export type ChannelOrigin = 'originos-ui' | 'email' | 'wecom' | 'feishu' | 'dingtalk';
 
+export function isImChannel(origin: ChannelOrigin): boolean {
+  return origin === 'wecom' || origin === 'feishu' || origin === 'dingtalk';
+}
+
 export type ChannelRuntimeTarget =
   | { kind: 'agent' | 'role-agent'; id: string }
   | { kind: 'project-agent'; id: string; projectId: string }
@@ -20,10 +24,15 @@ export interface ChannelInboundMessage {
   connectorId: string;
   conversationId: string;
   actorId: string;
+  actorDisplayName?: string;
+  conversationKind?: 'direct' | 'group' | 'thread';
   content: ChannelMessageContent;
   replyHandle?: string;
   receivedAt: string;
 }
+
+export type ChannelMessageMetadata = Pick<ChannelInboundMessage,
+  'origin' | 'connectorId' | 'actorId' | 'actorDisplayName' | 'conversationId' | 'conversationKind'>;
 
 export type AgentOutputEvent =
   | { type: 'accepted'; sessionId: string }
