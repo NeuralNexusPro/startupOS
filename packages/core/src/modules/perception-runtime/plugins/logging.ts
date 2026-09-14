@@ -29,7 +29,19 @@ export function writePluginLog(log: PluginLogPort | undefined, record: PluginLog
 
 /** SDK strings may contain whole messages. Keep only Error objects or explicit error codes. */
 export function createPluginSdkLogger(log: PluginLogPort | undefined, stage = 'sdk') {
-  const write = (level: PluginLogRecord['level'], args: unknown[]) => {
+  const write = (level: PluginLogRecord['level'], input: unknown[]) => {
+    const args: unknown[] = [];
+    let remaining = 32;
+    const collect = (value: unknown, depth: number): void => {
+      if (remaining-- <= 0) return;
+      if (!Array.isArray(value)) { args.push(value); return; }
+      // ponytail: three array wrappers and 32 entries cover SDK LoggerProxy; expand only for a proven SDK shape.
+      if (depth >= 3) return;
+      for (let index = 0; index < value.length && remaining > 0; index += 1) {
+        collect(Object.getOwnPropertyDescriptor(value, String(index))?.value, depth + 1);
+      }
+    };
+    for (let index = 0; index < input.length && remaining > 0; index += 1) collect(input[index], 0);
     const error = args.find(value => value instanceof Error) ?? args.filter((value): value is string => typeof value === 'string').slice(0, 8).map(value => value.slice(0, 1024)).join(' ');
     const code = args.flatMap(value => {
       if (!value || typeof value !== 'object') return [];
