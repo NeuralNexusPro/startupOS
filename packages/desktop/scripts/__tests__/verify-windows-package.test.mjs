@@ -20,10 +20,11 @@ const modules = [
 ].map(p => `dist-electron/core/src/${p}.js`).concat(schedule, [
   'services/workspace-service', 'services/entry-export-service', 'main',
 ].map(p => `dist-electron/desktop/src/main/${p}.js`));
-const deps = ['@anthropic-ai/sdk', '@aws-sdk/client-bedrock-runtime', '@google/genai', '@mistralai/mistralai', '@opentelemetry/api', '@smithy/node-http-handler', 'http-proxy-agent', 'https-proxy-agent', 'openai', '@larksuiteoapi/node-sdk', '@wecom/aibot-node-sdk', 'imapflow', 'mailparser', ...['email', 'wecom', 'feishu', 'dingtalk'].map(p => `@originos/perception-plugin-${p}`)];
-const workerFiles = ['agent-worker.mjs', 'agent-worker-module-specifier.mjs', 'core/lib/integrations/pi-agent/tools/loop-detector.js'].map(p => `agent-worker/${p}`);
+const deps = ['@anthropic-ai/sdk', '@aws-sdk/client-bedrock-runtime', '@google/genai', '@mistralai/mistralai', '@opentelemetry/api', '@smithy/node-http-handler', 'http-proxy-agent', 'https-proxy-agent', 'openai', '@larksuiteoapi/node-sdk', '@wecom/aibot-node-sdk', '@wecom/cli', '@wecom/cli-win32-x64', 'imapflow', 'mailparser', ...['email', 'wecom', 'feishu', 'dingtalk'].map(p => `@originos/perception-plugin-${p}`)];
+const workerFiles = ['agent-worker.mjs', 'agent-worker-module-specifier.mjs', 'core/lib/integrations/pi-agent/channel-office-capabilities.js', 'core/lib/integrations/pi-agent/tools/loop-detector.js'].map(p => `agent-worker/${p}`);
 const resources = ['web/packages/web/server.js', 'web/packages/web/node_modules/next/dist/server/next.js', 'web/packages/web/node_modules/styled-jsx/package.json', ...workerFiles,
-  ...['onnxruntime_binding.node', 'onnxruntime.dll'].map(p => `app.asar.unpacked/node_modules/onnxruntime-node/bin/napi-v6/win32/x64/${p}`)];
+  ...['onnxruntime_binding.node', 'onnxruntime.dll'].map(p => `app.asar.unpacked/node_modules/onnxruntime-node/bin/napi-v6/win32/x64/${p}`),
+  'app.asar.unpacked/node_modules/@wecom/cli-win32-x64/bin/wecom-cli.exe'];
 function write(root, name, text = '') { const target = path.join(root, name); fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(target, text); }
 function zip(names) {
   const headers = names.map(name => { const text = Buffer.from(name); const header = Buffer.alloc(46); header.writeUInt32LE(0x02014b50); header.writeUInt16LE(text.length, 28); return Buffer.concat([header, text]); });

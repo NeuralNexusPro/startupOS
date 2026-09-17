@@ -1,3 +1,4 @@
+import { PluginCapabilitySession, type PluginCapabilityActor, type PluginCapabilityConnectionStatus, type PluginCapabilityInvocation, type PluginCapabilityPolicyPort } from './capabilities';
 import type { JsonValue } from '../protocol/types';
 import { assertSafePerceptionId } from '../protocol/validation';
 import type {
@@ -16,6 +17,7 @@ import { createPluginSdkLogger, writePluginLog } from './logging';
 interface PluginInstance {
   context: PerceptionPluginRuntimeContext;
   status: PerceptionPluginInstanceStatus;
+  capabilities?: PluginCapabilitySession;
 }
 
 function instanceKey(pluginId: string, connectorId: string): string { return `${pluginId}:${connectorId}`; }
@@ -25,7 +27,8 @@ export class PerceptionPluginHost {
   private readonly replyRegistrations = new Map<string, Set<() => void>>();
   private readonly scheduledKeys = new Map<string, Set<string>>();
 
-  constructor(private readonly registry: PerceptionPluginRegistry, private readonly ports: PerceptionPluginHostPorts) {}
+  constructor(private readonly registry: PerceptionPluginRegistry, private readonly ports: PerceptionPluginHostPorts,
+    private readonly capabilityOptions?: { dataRoot: string; policy: PluginCapabilityPolicyPort }) {}
 
   private context(pluginId: string, connectorId: string, settings: Readonly<Record<string, JsonValue>>): PerceptionPluginRuntimeContext {
     const entry = this.registry.get(pluginId);
@@ -80,6 +83,14 @@ export class PerceptionPluginHost {
     }
     if (approved.has('health')) exposed.health = { report: (health) => this.ports.health.report({ ...health, pluginId, connectorId }) };
     if (approved.has('audit')) exposed.audit = this.ports.audit;
+    if (approved.has('attachments') && this.ports.attachments) {
+      exposed.attachments = {
+        store: async (requestedConnectorId, file) => {
+          if (requestedConnectorId !== connectorId) throw new Error('Plugin attachment scope mismatch');
+          return this.ports.attachments!.store(connectorId, file);
+        },
+      };
+    }
     if (approved.has('replies') && this.ports.replies) {
       const key = instanceKey(pluginId, connectorId);
       const registrations = this.replyRegistrations.get(key) ?? new Set<() => void>();
@@ -154,6 +165,7 @@ export class PerceptionPluginHost {
     if (!entry) throw new Error(`Plugin not registered: ${pluginId}`);
     for (const remove of this.replyRegistrations.get(key) ?? []) remove();
     this.replyRegistrations.delete(key);
+    instance.capabilities?.close();
     instance.status = { pluginId, connectorId, state: 'stopping' };
     try {
       await entry.plugin.stop(instance.context);
@@ -186,6 +198,43 @@ export class PerceptionPluginHost {
     const plugin = this.registry.get(pluginId)?.plugin;
     if (!plugin?.handleWebhook) throw new Error('Plugin does not support webhooks');
     return plugin.handleWebhook(instance.context, request);
+  }
+
+  private capabilitySession(pluginId: string, connectorId: string): PluginCapabilitySession {
+    const instance = this.instances.get(instanceKey(pluginId, connectorId));
+    const entry = this.registry.get(pluginId);
+    if (!entry?.plugin.officeCapabilities || !entry.plugin.manifest.capabilities.includes('office-capabilities')) throw new Error('IM_CAPABILITY_UNSUPPORTED');
+    if (!instance || instance.status.state !== 'running' || instance.context.settings['officeCapabilitiesEnabled'] !== true ||
+      !entry.approvedPermissions.includes('office-capabilities') || !this.capabilityOptions) throw new Error('IM_CAPABILITY_UNAVAILABLE');
+    return instance.capabilities ??= new PluginCapabilitySession(instance.context, entry.plugin.officeCapabilities,
+      this.capabilityOptions.policy, this.capabilityOptions.dataRoot);
+  }
+
+  async discoverCapabilities(pluginId: string, connectorId: string, actor: PluginCapabilityActor, query?: string, name?: string) {
+    try { return await this.capabilitySession(pluginId, connectorId).discover(actor, query, name); }
+    catch (error) { throw new Error(error instanceof Error && /^IM_CAPABILITY_[A-Z_]+$/.test(error.message) ? error.message : 'IM_CAPABILITY_DISCOVERY_FAILED'); }
+  }
+
+  async inspectCapabilities(pluginId: string, connectorId: string): Promise<PluginCapabilityConnectionStatus> {
+    try { return { connectorId, ...await this.capabilitySession(pluginId, connectorId).inspect() }; }
+    catch (error) {
+      const code = error instanceof Error ? error.message : '';
+      if (code === 'IM_CAPABILITY_UNAVAILABLE') return { connectorId, state: 'disabled' };
+      return { connectorId, state: 'sync_failed' };
+    }
+  }
+
+  async invokeCapability(pluginId: string, connectorId: string, actor: PluginCapabilityActor, input: PluginCapabilityInvocation): Promise<JsonValue> {
+    try {
+      const result = await this.capabilitySession(pluginId, connectorId).invoke(actor, input);
+      await this.safeAudit(pluginId, connectorId, 'plugin.capability.completed', { eventId: actor.eventId, sessionId: actor.sessionId, callId: input.callId, name: input.name });
+      return result;
+    } catch (error) {
+      await this.safeAudit(pluginId, connectorId, 'plugin.capability.failed', { eventId: actor.eventId, sessionId: actor.sessionId, callId: input.callId, name: input.name });
+      // Never expose an SDK error body (which may contain tokens or business data).
+      const safeCode = error instanceof Error && /^IM_CAPABILITY_[A-Z_]+$/.test(error.message) ? error.message : 'IM_CAPABILITY_FAILED';
+      throw new Error(safeCode);
+    }
   }
 
   private async safeAudit(pluginId: string, connectorId: string, action: string, detail: JsonValue): Promise<void> {

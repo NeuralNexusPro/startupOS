@@ -5,7 +5,9 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
+
 import { jsonStore } from '../../storage/json-store';
+
 import type {
   AgentSession,
   SessionListItem,
@@ -20,6 +22,56 @@ import type {
  * Session directory for storage (global fallback)
  */
 const SESSIONS_DIR = 'sessions';
+const SESSION_TITLE_LENGTH = 32;
+const INTERNAL_ROLE_INTRO_PREFIX = '你好！请根据你的人设';
+const GENERIC_MESSAGE = /^(?:你好|您好|hi|hello|在吗|继续|开始|好的?|可以|收到|谢谢|ok|嗯+)[!！,.，。?？~～\s]*$/i;
+const GENERIC_ACTION = /^(?:打开|打开了么|开始授权|创建(?:一个|一条)?(?:文件夹|文件|文档|待办|任务)|更新.+情况|优先级\s*\d+)$/i;
+
+function userMessageText(message: AgentMessage): string {
+  let content = message.content.trim();
+  if (content.startsWith('{')) {
+    try {
+      const value: unknown = JSON.parse(content);
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        const text = (value as Record<string, unknown>)['text'];
+        if (typeof text === 'string') {
+          content = text;
+        }
+      }
+    } catch { /* Plain user text that happens to start with `{`. */ }
+  }
+  if (content.startsWith('Perception event:')) {
+    const bodyStart = content.indexOf('\n\n');
+    if (bodyStart >= 0) {
+      content = content.slice(bodyStart + 2);
+    }
+  }
+  return content.replace(/\s+/g, ' ').trim()
+    .replace(/^@\S+\s+/, '')
+    .replace(/^(?:请|麻烦)?(?:再|直接|先|在)?(?:帮我|为我|给我)\s*/, '');
+}
+
+function sessionTitle(messages: readonly AgentMessage[]): string | undefined {
+  const candidates = messages
+    .filter((message) => message.role === 'user')
+    .map(userMessageText)
+    .filter((content) => content && !content.startsWith(INTERNAL_ROLE_INTRO_PREFIX) && !GENERIC_MESSAGE.test(content));
+  const normalized = candidates.reduce((best, content) => {
+    if (!best) {
+      return content;
+    }
+    const score = content.length - (GENERIC_ACTION.test(content) ? 1000 : 0);
+    const bestScore = best.length - (GENERIC_ACTION.test(best) ? 1000 : 0);
+    return score > bestScore ? content : best;
+  }, '');
+  const characters = Array.from(normalized);
+  if (!characters.length) {
+    return undefined;
+  }
+  return characters.length > SESSION_TITLE_LENGTH
+    ? `${characters.slice(0, SESSION_TITLE_LENGTH).join('')}…`
+    : normalized;
+}
 
 /**
  * Get project-specific session directory
@@ -95,7 +147,7 @@ export class AgentSessionService {
     // We only pass the session object directly
     await this.store.write(
       this.getSessionPath(session.sessionId, projectId),
-      session as any,
+      session,
     );
   }
 
@@ -128,6 +180,9 @@ export class AgentSessionService {
     // Apply updates
     if (updates.messages) {
       session.messages = updates.messages;
+      if (!session.summary) {
+        session.summary = sessionTitle(updates.messages);
+      }
     }
     if (updates.status) {
       session.status = updates.status;
@@ -173,6 +228,9 @@ export class AgentSessionService {
     };
 
     session.messages.push(newMessage);
+    if (!session.summary && newMessage.role === 'user') {
+      session.summary = sessionTitle(session.messages);
+    }
     session.updatedAt = Date.now();
 
     await this.saveSession(session);
@@ -308,7 +366,7 @@ export class AgentSessionService {
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
       messageCount: session.messages?.length ?? 0,
-      summary: session.summary,
+      summary: sessionTitle(session.messages ?? []) || session.summary,
       agentType: session.agentType,
     };
   }

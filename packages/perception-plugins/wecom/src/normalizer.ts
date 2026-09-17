@@ -7,9 +7,10 @@ export interface NormalizeWeComFrameInput {
   frame: WeComFrame;
   receivedAt?: string;
   createId?: () => string;
+  attachment?: { ref: string; fileName: string };
 }
 
-/** Normalize both `message.text` and `message.voice` SDK frames. */
+/** Normalize supported WeCom SDK message frames. */
 export function normalizeWeComFrame(input: NormalizeWeComFrameInput): PerceptionEventV1 {
   const body = input.frame.body ?? {};
   const receivedAt = input.receivedAt ?? new Date().toISOString();
@@ -32,7 +33,10 @@ export function normalizeWeComFrame(input: NormalizeWeComFrameInput): Perception
       externalId: body.chatid ?? body.from?.userid ?? 'unknown',
       kind: body.chattype === 'group' ? 'group' : 'direct',
     },
-    content: { text: body.text?.content ?? body.voice?.content ?? '' },
+    content: {
+      text: body.text?.content ?? body.voice?.content ?? (input.attachment ? `[文件] ${input.attachment.fileName}` : ''),
+      ...(input.attachment ? { attachmentRefs: [input.attachment.ref] } : {}),
+    },
     provenance: {
       tenantExternalId: body.aibotid,
       rawPayloadRef: `wecom-ws://${input.connectorId}/${input.frame.headers?.req_id ?? 'unknown'}`,

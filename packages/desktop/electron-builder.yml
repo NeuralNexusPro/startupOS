@@ -70,6 +70,13 @@ files:
     filter:
       - "package.json"
       - "dist/**/*"
+  - from: ../../packages/perception-plugins/wecom/node_modules/@wecom
+    to: node_modules/@wecom
+    filter:
+      - "cli/package.json"
+      - "cli/bin/**/*"
+      - "cli-*/package.json"
+      - "cli-*/bin/**/*"
   - from: .packaging/pi-ai-runtime/node_modules
     to: node_modules
   - package.json
@@ -78,6 +85,8 @@ files:
 npmRebuild: false
 nodeGypRebuild: false
 buildDependenciesFromSource: false
+asarUnpack:
+  - "node_modules/@wecom/cli-*/bin/**/*"
 
 extraResources:
   - from: .packaging/web-standalone
@@ -107,6 +116,8 @@ extraResources:
     to: agent-worker/core/lib/integrations/pi-agent/project-agent/project-collaboration-context.js
   - from: dist-electron/core/src/lib/integrations/pi-agent/project-agent/collaboration-prompt.js
     to: agent-worker/core/lib/integrations/pi-agent/project-agent/collaboration-prompt.js
+  - from: dist-electron/core/src/lib/integrations/pi-agent/channel-office-capabilities.js
+    to: agent-worker/core/lib/integrations/pi-agent/channel-office-capabilities.js
   - from: dist-electron/core/src/modules/collaboration-runtime/engine/agent-context-writer.js
     to: agent-worker/core/modules/collaboration-runtime/engine/agent-context-writer.js
   - from: dist-electron/core/src/lib/integrations/pi-agent/tools

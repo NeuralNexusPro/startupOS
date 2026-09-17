@@ -3,13 +3,14 @@ import { DingTalkStreamNormalizer, parseFrameData } from './normalizer';
 import { DingTalkApi, type DingTalkRecipient } from './api';
 import type { DingTalkStreamFrame } from './types';
 import type { PluginSdkLogger, PerceptionPlugin, PerceptionPluginManifest, PerceptionPluginProvisionContext, PerceptionPluginProvisionResult, PerceptionPluginRuntimeContext, PerceptionPluginWebhookRequest, PerceptionPluginWebhookResult, PluginReplyEvent, PluginReplyReceipt } from '@originos/core/modules/perception-runtime/plugins';
+import { DingTalkOfficeCapabilityProvider, type DingTalkOfficeCli } from './office-capabilities';
 
 const loadSDK = () => import('dingtalk-stream');
 const ROBOT_TOPIC = '/v1.0/im/bot/messages/get';
 
 export const dingtalkManifest: PerceptionPluginManifest = {
   id: 'originos.dingtalk', name: '钉钉', version: '0.1.0', hostApi: '1.0', entry: '@originos/perception-plugin-dingtalk', source: 'dingtalk', transport: 'stream',
-  capabilities: ['inbound-events', 'outbound-reply', 'outbound-files'], permissions: ['credentials', 'events', 'health', 'replies', 'schedule'],
+  capabilities: ['inbound-events', 'outbound-reply', 'outbound-files', 'office-capabilities'], permissions: ['credentials', 'events', 'health', 'replies', 'schedule', 'office-capabilities'],
   configurationSchema: { version: '1.0', fields: [
     { key: 'appId', label: 'Client ID（AppKey）', type: 'text', required: true },
     { key: 'appSecret', label: 'Client Secret', type: 'password', sensitive: true, required: true },
@@ -35,7 +36,12 @@ function sdkLog(context: PerceptionPluginRuntimeContext, level: keyof Pick<Plugi
 }
 export class DingTalkPerceptionPlugin implements PerceptionPlugin {
   readonly manifest = dingtalkManifest;
+  readonly officeCapabilities: DingTalkOfficeCapabilityProvider;
   private readonly runtimes = new Map<string, Runtime>();
+
+  constructor(officeCli?: DingTalkOfficeCli) {
+    this.officeCapabilities = new DingTalkOfficeCapabilityProvider(officeCli);
+  }
 
   async provision(context: PerceptionPluginProvisionContext): Promise<PerceptionPluginProvisionResult> {
     const appId = setting(context, 'appId'); const robotCode = setting(context, 'robotCode');

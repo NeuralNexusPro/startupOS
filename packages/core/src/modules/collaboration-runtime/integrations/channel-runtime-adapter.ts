@@ -52,24 +52,27 @@ export class CollaborationChannelRuntimeAdapter implements ChannelFlowRuntimePor
       });
       return pendingWrites;
     });
-    void this.backend.send(
-      sessionId,
-      input.message.content.text ?? '',
-      input.message.content.attachmentRefs ?? [],
-    ).then(async (result) => {
-      if (!result.success) await output.fail({ type: 'failed', safeCode: 'CHANNEL_COLLABORATION_REJECTED' });
-    }).catch(async () => {
-      try {
-        await output.fail({ type: 'failed', safeCode: 'CHANNEL_COLLABORATION_FAILED' });
-      } catch (error: unknown) {
-        if (!(error instanceof FlowPortClosedError)) throw error;
-      }
-    });
-
     let reachedTerminal = false;
+    let started = false;
     try {
       for await (const packet of output) {
         yield packet;
+        if (!started && packet.payload.type === 'accepted') {
+          started = true;
+          void this.backend.send(
+            sessionId,
+            input.message.content.text ?? '',
+            input.message.content.attachmentRefs ?? [],
+          ).then(async (result) => {
+            if (!result.success) await output.fail({ type: 'failed', safeCode: 'CHANNEL_COLLABORATION_REJECTED' });
+          }).catch(async () => {
+            try {
+              await output.fail({ type: 'failed', safeCode: 'CHANNEL_COLLABORATION_FAILED' });
+            } catch (error: unknown) {
+              if (!(error instanceof FlowPortClosedError)) throw error;
+            }
+          });
+        }
         reachedTerminal = packet.kind !== 'data';
       }
     } finally {

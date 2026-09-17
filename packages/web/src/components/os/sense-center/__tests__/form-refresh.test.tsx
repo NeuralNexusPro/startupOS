@@ -4,8 +4,8 @@ import type { PerceptionPluginManifest } from '@originos/core/modules/perception
 import { usePerceptionStore } from '@/store/perceptionStore';
 import { SenseCenter } from '../SenseCenter';
 
-const services = vi.hoisted(() => ({ catalog: vi.fn(), assets: vi.fn() }));
-vi.mock('@/services/perceptionPluginService', () => ({ listPerceptionPlugins: services.catalog, canProvisionPlugin: () => true, provisionPerceptionPlugin: vi.fn() }));
+const services = vi.hoisted(() => ({ catalog: vi.fn(), assets: vi.fn(), capabilities: vi.fn() }));
+vi.mock('@/services/perceptionPluginService', () => ({ listPerceptionPlugins: services.catalog, listPerceptionCapabilityStatuses: services.capabilities, canProvisionPlugin: () => true, provisionPerceptionPlugin: vi.fn() }));
 vi.mock('@/services/perceptionTargetService', () => ({ listPerceptionTargetAssets: services.assets }));
 const now = '2026-09-13T00:00:00Z';
 const data = {
@@ -20,7 +20,7 @@ async function click(name: string): Promise<void> { await act(async () => { fire
 beforeEach(() => {
   vi.useFakeTimers(); vi.clearAllMocks();
   const manifests: PerceptionPluginManifest[] = ['email', 'wecom', 'feishu', 'dingtalk'].map(source => ({ id: `originos.${source}`, name: source, source: source as PerceptionPluginManifest['source'], version: '1', hostApi: '1.0', entry: 'fixture', capabilities: [], permissions: [], transport: 'stream', configurationSchema: { version: '1.0', fields: [{ key: 'account', label: '账号', type: 'text' }, { key: 'secret', label: '凭据', type: 'password', sensitive: true }] } }));
-  services.catalog.mockResolvedValue(manifests); services.assets.mockResolvedValue([{ id: 'assistant', name: '助手' }]);
+  services.catalog.mockResolvedValue(manifests); services.assets.mockResolvedValue([{ id: 'assistant', name: '助手' }]); services.capabilities.mockResolvedValue([]);
   fetchMock.mockImplementation(response); vi.stubGlobal('fetch', fetchMock);
   usePerceptionStore.setState({ ...structuredClone(data), loading: false, error: undefined });
 });
@@ -30,12 +30,28 @@ describe('SenseCenter drafts during live refresh', () => {
   it('polls only while the events tab is visible and stops on exit/unmount', async () => {
     let view: ReturnType<typeof render> | undefined;
     await act(async () => { view = render(<SenseCenter />); });
-    expect(fetchMock).toHaveBeenCalledTimes(1); await tick(); expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1); expect(services.capabilities).toHaveBeenCalledTimes(1); await tick(); expect(fetchMock).toHaveBeenCalledTimes(1); expect(services.capabilities).toHaveBeenCalledTimes(1);
     await click('事件记录'); expect(fetchMock).toHaveBeenCalledTimes(2);
     await tick(); expect(fetchMock).toHaveBeenCalledTimes(3);
     await click('感知源'); await tick(); expect(fetchMock).toHaveBeenCalledTimes(3);
     await click('事件记录'); expect(fetchMock).toHaveBeenCalledTimes(4);
     view?.unmount(); await tick(); expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+  it('shows office capability status without exposing account identifiers', async () => {
+    const connector = { id: 'wecom-main', source: 'wecom' as const, mode: 'webhook' as const, enabled: true, settings: {}, secretConfigured: true, createdAt: now, updatedAt: now };
+    usePerceptionStore.setState({ ...structuredClone(data), connectors: [connector], loading: false, error: undefined });
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ success: true, data: { ...structuredClone(data), connectors: [connector] } }) });
+    services.capabilities.mockResolvedValue([{ connectorId: connector.id, state: 'available', capabilityCount: 13, identityMode: 'user', delegatedActorCount: 1, writeEnabled: false }]);
+    await act(async () => { render(<SenseCenter />); });
+    expect(screen.getByText('办公能力：可用 · 13 项 · 用户授权 · 白名单 1 人 · 只读')).toBeInTheDocument();
+  });
+  it('shows an explicit unsupported state for a platform without a safe office adapter', async () => {
+    const connector = { id: 'feishu-main', source: 'feishu' as const, mode: 'stream' as const, enabled: true, settings: {}, secretConfigured: true, createdAt: now, updatedAt: now };
+    usePerceptionStore.setState({ ...structuredClone(data), connectors: [connector], loading: false, error: undefined });
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ success: true, data: { ...structuredClone(data), connectors: [connector] } }) });
+    services.capabilities.mockResolvedValue([{ connectorId: connector.id, state: 'unsupported' }]);
+    await act(async () => { render(<SenseCenter />); });
+    expect(screen.getByText('办公能力：暂未接入')).toBeInTheDocument();
   });
   it('does not stop another consumer when leaving events', async () => {
     let stopOther: (() => void) | undefined;

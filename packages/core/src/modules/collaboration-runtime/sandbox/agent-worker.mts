@@ -462,6 +462,28 @@ class AgentWorker {
     });
   }
 
+  private async callHostTool(toolCallId: string, toolName: string, args: unknown): Promise<string> {
+    return new Promise<string>((resolve) => {
+      this.pendingToolResults.set(toolCallId, resolve);
+      emitEvent({
+        id: `evt-host-tool-${toolCallId}`,
+        sessionId: this.collaborationSessionId ?? this.projectId,
+        seq: 0,
+        type: "HOST_TOOL_CALL",
+        payload: { toolCallId, toolName, args },
+        source: this.agentId,
+        timestamp: new Date().toISOString(),
+      });
+    });
+  }
+
+  private async installHostCapabilityProxy(): Promise<void> {
+    const module = await runtimeImport("lib/integrations/pi-agent/channel-office-capabilities");
+    module.setChannelOfficeCapabilityFallback(module.createChannelOfficeCapabilityWorkerFallback(
+      (toolCallId: string, toolName: string, args: unknown) => this.callHostTool(toolCallId, toolName, args),
+    ));
+  }
+
   /**
    * Story 9.33: 追加决策日志到 decisions.jsonl。
    * 路径：data/projects/{projectId}/collaboration-sessions/{sessionId}/supervisor/memory/decisions.jsonl
@@ -560,6 +582,7 @@ class AgentWorker {
       toolsCount: extra?.tools?.length ?? 0,
     });
     try {
+      if (this.collaborationSessionId) await this.installHostCapabilityProxy();
       // Supervisor Agent 路径
       if (this.agentType === "supervisor") {
         await this.initializeSupervisorAgent(extra);

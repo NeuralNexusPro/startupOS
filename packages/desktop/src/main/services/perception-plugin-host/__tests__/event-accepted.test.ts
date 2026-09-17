@@ -30,3 +30,16 @@ it('ACKs only after durable acceptance, also ACKs duplicates, and keeps routing 
  await expect(ports.events.submit(event,{onAccepted})).rejects.toThrow('disk full'); expect(onAccepted).toHaveBeenCalledTimes(2);
  service.stop();
 });
+
+it('stores inbound attachments under the data root with bounded safe names', async () => {
+ const root = fs.mkdtempSync(path.join(os.tmpdir(), 'attachments-')); roots.push(root);
+ const service = new PerceptionPluginHostService({} as ChannelMessageIngress,root);
+ const ports = (service as unknown as { createPorts(): PerceptionPluginHostPorts }).createPorts();
+ const ref = await ports.attachments!.store('wecom-main', { fileName: '../../report?.pdf', bytes: Buffer.from('content') });
+ expect(ref).toMatch(/^data\/perception\/attachments\/wecom-main\/[0-9a-f-]+\/report_\.pdf$/);
+ expect(fs.readFileSync(path.join(root, ref.slice('data/'.length)), 'utf8')).toBe('content');
+ await expect(ports.attachments!.store('wecom-main', {
+   fileName: 'too-large.bin', bytes: new Uint8Array(20_000_001),
+ })).rejects.toThrow('IM_ATTACHMENT_TOO_LARGE');
+ await service.stop();
+});

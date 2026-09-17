@@ -47,7 +47,7 @@ it('default SDK factory scopes SDK errors and connection callbacks to each conne
   await plugin.stop(first.context); await plugin.stop(second.context);
 });
 
-it('default SDK reply failures keep accepted session and normalized event IDs', async () => {
+it('a failed processing indicator does not stop the accepted Agent run', async () => {
   const { context, records } = host('reply');
   let deliver!: (event: PluginReplyEvent) => Promise<unknown>;
   let eventId: string | undefined;
@@ -56,8 +56,8 @@ it('default SDK reply failures keep accepted session and normalized event IDs', 
     replies: { register: (_handle: string, next: typeof deliver) => { deliver = next; return unregister; } },
     events: { submit: vi.fn(async (event: { id: string }) => {
       eventId = event.id;
-      await deliver({ type: 'accepted', sessionId: 'session-1' });
-      await expect(deliver({ type: 'assistant_message', content: 'BODY' })).rejects.toThrow('ETIMEDOUT');
+      await expect(deliver({ type: 'accepted', sessionId: 'session-1' })).resolves.toMatchObject({ status: 'failed' });
+      await expect(deliver({ type: 'assistant_message', content: 'BODY' })).resolves.toMatchObject({ status: 'delivered' });
       return [];
     }) },
   } };

@@ -4,15 +4,19 @@ import type {
   PerceptionPluginRuntimeContext, PluginReplyEvent, PluginReplyReceipt,
 } from '@originos/core/modules/perception-runtime/plugins';
 import { normalizeFeishuMessage } from './normalizer';
+import { FeishuOfficeCapabilityProvider, type FeishuOfficeCli } from './office-capabilities';
 import type { FeishuApiClient, FeishuMarkdownStreamController, FeishuSdkFactory, FeishuSdkFactoryOptions, FeishuSdkMessageEvent, FeishuSdkRuntime } from './types';
 
 export const feishuManifest: PerceptionPluginManifest = {
   id: 'originos.feishu', name: '飞书机器人', version: '0.3.0', hostApi: '1.0', entry: '@originos/perception-plugin-feishu', source: 'feishu', transport: 'stream',
-  capabilities: ['inbound-events', 'outbound-reply', 'outbound-files', 'attachments'], permissions: ['credentials', 'events', 'health', 'replies'],
+  capabilities: ['inbound-events', 'outbound-reply', 'outbound-files', 'attachments', 'office-capabilities'], permissions: ['credentials', 'events', 'health', 'replies', 'office-capabilities'],
   configurationSchema: { version: '1.0', fields: [
     { key: 'appId', label: 'App ID', type: 'text', required: true, help: '飞书开放平台应用凭证中的 App ID' },
     { key: 'appSecret', label: 'App Secret', type: 'password', required: true, sensitive: true },
     { key: 'domain', label: '服务区域', type: 'select', defaultValue: 'feishu', options: [{ value: 'feishu', label: '飞书（中国）' }, { value: 'lark', label: 'Lark（国际）' }] },
+    { key: 'officeCapabilitiesEnabled', label: '启用飞书办公能力', type: 'boolean', defaultValue: false, help: '使用独立的 lark-cli 用户授权，不使用机器人 App Secret' },
+    { key: 'officeAllowedActorIds', label: '办公能力授权发送者 ID', type: 'text', defaultValue: '', help: '多个 ID 用逗号分隔；留空时全部拒绝' },
+    { key: 'officeWriteEnabled', label: '允许办公写操作', type: 'boolean', defaultValue: false, help: '仅对白名单发送者生效；破坏性操作仍禁止' },
   ] },
 };
 
@@ -55,8 +59,11 @@ function defaultSdkFactory(options: FeishuSdkFactoryOptions): FeishuSdkRuntime {
 
 export class FeishuPerceptionPlugin implements PerceptionPlugin {
   readonly manifest = feishuManifest;
+  readonly officeCapabilities: FeishuOfficeCapabilityProvider;
   private readonly clients = new Map<string, RunningClient>();
-  constructor(private readonly createSdk: FeishuSdkFactory = defaultSdkFactory) {}
+  constructor(private readonly createSdk: FeishuSdkFactory = defaultSdkFactory, officeCli?: FeishuOfficeCli) {
+    this.officeCapabilities = new FeishuOfficeCapabilityProvider(officeCli);
+  }
 
   async provision(context: PerceptionPluginProvisionContext): Promise<PerceptionPluginProvisionResult> {
     if (!context.ports.credentials) throw new Error('FEISHU_CREDENTIAL_PORT_MISSING');

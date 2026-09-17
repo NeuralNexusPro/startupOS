@@ -9,6 +9,7 @@ import type {
 } from '@originos/core/modules/perception-runtime/plugins';
 import { weComManifest } from './manifest';
 import { normalizeWeComFrame } from './normalizer';
+import { WeComOfficeCapabilityProvider, type WeComOfficeCli } from './office-capabilities';
 import type {
   WeComBotClient,
   WeComBotClientFactory,
@@ -34,6 +35,7 @@ function parseSettings(
 
 export class WeComPerceptionPlugin implements PerceptionPlugin {
   readonly manifest = weComManifest;
+  readonly officeCapabilities: WeComOfficeCapabilityProvider;
   private readonly clients = new Map<string, WeComBotClient>();
   private readonly reconnectCounts = new Map<string, number>();
 
@@ -57,8 +59,11 @@ export class WeComPerceptionPlugin implements PerceptionPlugin {
   }
 
   constructor(
-    private readonly createClient: WeComBotClientFactory = defaultClientFactory
-  ) {}
+    private readonly createClient: WeComBotClientFactory = defaultClientFactory,
+    officeCli?: WeComOfficeCli
+  ) {
+    this.officeCapabilities = new WeComOfficeCapabilityProvider(officeCli);
+  }
 
   async start(context: PerceptionPluginRuntimeContext): Promise<void> {
     if (this.clients.has(context.connectorId)) return;
@@ -153,6 +158,9 @@ export class WeComPerceptionPlugin implements PerceptionPlugin {
         if (isWeComFrame(frame)) void this.submit(context, client, frame);
       });
     }
+    client.on('message.file', (frame) => {
+      if (isWeComFrame(frame)) void this.submit(context, client, frame);
+    });
   }
 
   private async submit(
@@ -166,15 +174,31 @@ export class WeComPerceptionPlugin implements PerceptionPlugin {
     let stage = 'receive';
     try {
       if (!context.ports.events) throw new Error('WECOM_EVENT_PORT_MISSING');
+      const file = frame.body?.file;
+      let attachment: { ref: string; fileName: string } | undefined;
+      if (file) {
+        if (!file.url) throw new Error('WECOM_FILE_URL_MISSING');
+        if (!context.ports.attachments) throw new Error('WECOM_ATTACHMENT_PORT_MISSING');
+        const downloaded = await client.downloadFile(file.url, file.aeskey);
+        const fileName = downloaded.filename?.trim() || 'file';
+        attachment = {
+          fileName,
+          ref: await context.ports.attachments.store(context.connectorId, {
+            fileName,
+            bytes: downloaded.buffer,
+          }),
+        };
+      }
       const event = normalizeWeComFrame({
         connectorId: context.connectorId,
         frame,
+        ...(attachment ? { attachment } : {}),
       });
       eventId = event.id;
       const replyHandle = event.provenance.rawPayloadRef;
       if (context.ports.replies) {
         const streamId = `perception-${event.id}`;
-        const replyState = { content: '' };
+        const replyState = { content: '', started: false };
         unregisterReply = context.ports.replies.register(
           replyHandle,
           async (output) => {
@@ -188,6 +212,9 @@ export class WeComPerceptionPlugin implements PerceptionPlugin {
               output
             ); } catch (error) {
               context.ports.log?.write({ level: 'error', stage: 'reply', safeCode: 'WECOM_REPLY_FAILED', eventId, sessionId, error });
+              if (output.type === 'accepted') return {
+                messageId: 'pending', connectorId: context.connectorId, status: 'failed', attempt: 1, safeCode: 'WECOM_REPLY_FAILED',
+              };
               throw error;
             }
           },
@@ -233,10 +260,15 @@ export class WeComPerceptionPlugin implements PerceptionPlugin {
     client: WeComBotClient,
     frame: WeComFrame,
     streamId: string,
-    state: { content: string },
+    state: { content: string; started: boolean },
     output: PluginReplyEvent
   ): Promise<PluginReplyReceipt> {
-    if (output.type === 'file') {
+    if (output.type === 'accepted') {
+      if (!state.started) {
+        await client.replyStream(frame, streamId, '正在处理中…', false);
+        state.started = true;
+      }
+    } else if (output.type === 'file') {
       const assertActive = () => {
         output.signal?.throwIfAborted();
         if (this.clients.get(connectorId) !== client) throw new Error('IM_FILE_REPLY_UNAVAILABLE');
@@ -252,16 +284,19 @@ export class WeComPerceptionPlugin implements PerceptionPlugin {
       const content = limitReply(`${state.content}${output.delta}`);
       await client.replyStream(frame, streamId, content, false);
       state.content = content;
+      state.started = true;
     } else if (output.type === 'assistant_message') {
       const content = limitReply(output.content);
       await client.replyStream(frame, streamId, content, false);
       state.content = content;
+      state.started = true;
     } else if (output.type === 'hitl_request') {
       const content = limitReply(`需要人工确认：${output.summary}`);
       await client.replyStream(frame, streamId, content, false);
       state.content = content;
+      state.started = true;
     } else if (output.type === 'completed') {
-      await client.replyStream(frame, streamId, state.content, true);
+      await client.replyStream(frame, streamId, state.content || '处理完成', true);
     } else if (output.type === 'failed' || output.type === 'cancelled') {
       const content = output.type === 'failed' ? output.safeCode : '任务已取消';
       await client.replyStream(frame, streamId, content, true);

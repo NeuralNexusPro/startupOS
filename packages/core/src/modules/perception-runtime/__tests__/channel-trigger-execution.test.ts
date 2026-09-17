@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { SessionSerializingChannelRuntime } from '../../channel-runtime/session-coordinator';
 import { requireChannelFileReply, withChannelFileWorkingDirectory } from '../../../lib/integrations/pi-agent/channel-file-reply';
+import { requireChannelOfficeCapabilities } from '../../../lib/integrations/pi-agent/channel-office-capabilities';
 import { describe, expect, it, vi } from 'vitest';
 import { ChannelTriggerExecutionAdapter } from '../routing/channel-trigger-execution-adapter';
 import type { ChannelFlowMessageIngress, ChannelInvocation, ChannelMessageIngress } from '../../channel-runtime';
@@ -97,6 +98,24 @@ describe('ChannelTriggerExecutionAdapter', () => {
     const adapter = new ChannelTriggerExecutionAdapter(ingress, undefined, { canDeliver: () => true, dispatch });
     await expect(adapter.dispatch({ event, target: { kind: 'project', id: 'project-1' }, context })).resolves.toMatchObject({ responseText: 'Delivered response' });
     expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ connectorId: 'email-main', replyHandle: 'perception://raw/one' }));
+  });
+
+  it('binds office capabilities to the current IM actor and session only', async () => {
+    const imEvent: PerceptionEventV1 = { ...event, source: 'wecom', connectorId: 'wecom-one', actor: { externalId: 'member-1' },
+      conversation: { externalId: 'group-1', kind: 'group' }, type: 'message.received' };
+    const discover = vi.fn(async () => ({ capabilities: [] }));
+    const invoke = vi.fn(async () => ({ ok: true }));
+    const ingress: ChannelMessageIngress = { send: async function* () {
+      yield { type: 'accepted', sessionId: 'session-im' };
+      await requireChannelOfficeCapabilities().discover('calendar');
+      await requireChannelOfficeCapabilities().invoke({ name: 'calendar.list', catalogRevision: 'r1', callId: 'call-1', arguments: {} });
+      yield { type: 'completed', resultRef: 'session://session-im' };
+    } };
+    const adapter = new ChannelTriggerExecutionAdapter(ingress, undefined, undefined, undefined, { discover, invoke });
+    await adapter.dispatch({ event: imEvent, target: { kind: 'role-agent', id: 'role-1' }, context: { ...context, connectorId: 'wecom-one' } });
+    expect(discover).toHaveBeenCalledWith(expect.objectContaining({ source: 'wecom', connectorId: 'wecom-one', eventId: 'event-1', sessionId: 'session-im', actorId: 'member-1', conversationId: 'group-1', conversationKind: 'group', query: 'calendar' }));
+    expect(invoke).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'session-im', invocation: expect.objectContaining({ callId: 'call-1' }) }));
+    expect(() => requireChannelOfficeCapabilities()).toThrow('UNAVAILABLE');
   });
 });
 

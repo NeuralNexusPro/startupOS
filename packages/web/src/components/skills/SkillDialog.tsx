@@ -334,9 +334,9 @@ export function SkillDialog({
   }, [skills.length, isLoadingSkillsList]);
 
   // 加载当前 Skill 的历史会话
-  const loadSessionHistory = useCallback(async () => {
+  const loadSessionHistory = useCallback(async (showLoading = true) => {
     if (!currentSkill) return;
-    setIsLoadingHistory(true);
+    if (showLoading) setIsLoadingHistory(true);
     try {
       const data = await listAvailableSkillSessions({ skillName: currentSkill });
       if (data.success && data.data?.sessions) {
@@ -351,7 +351,7 @@ export function SkillDialog({
     } catch (error) {
       console.error('Failed to load session history:', error);
     } finally {
-      setIsLoadingHistory(false);
+      if (showLoading) setIsLoadingHistory(false);
     }
   }, [currentSkill]);
 
@@ -807,7 +807,11 @@ export function SkillDialog({
           {/* Session History Button */}
           <div className="native-no-drag relative">
             <button
-              onClick={() => setShowHistory(!showHistory)}
+              onClick={() => {
+                const opening = !showHistory;
+                setShowHistory(opening);
+                if (opening) void loadSessionHistory(false);
+              }}
               className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
               title="历史会话"
             >

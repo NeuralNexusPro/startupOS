@@ -2,6 +2,30 @@
 
 ---
 
+## 2026-09-17 — fix：角色与技能历史会话显示内容标题
+
+**类型**：fix
+**影响模块**：`packages/core/src/lib/features/agent/`, `packages/web/src/components/skills/`, `packages/web/src/components/os/agent-dialog/`
+**摘要**：Agent与Skill会话从完整历史中选择最具体的用户任务生成简短标题，降低“创建文件夹”“帮我打开”等操作性短句权重，优先保留“9月工作计划”、具体待办或工作主题；忽略启动语、问候和“继续”等无主题消息。旧会话打开历史菜单时即时重新提炼，无需迁移。
+
+---
+
+## 2026-09-17 — fix：接收企业微信文件消息
+
+**类型**：fix
+**影响模块**：`packages/perception-plugins/wecom/`, `packages/core/src/modules/perception-runtime/plugins/`, `packages/desktop/src/main/services/perception-plugin-host/`
+**摘要**：企业微信手机端发送的文件现在通过官方 SDK 下载解密，由 Host 限制大小、净化文件名并落入感知附件目录，再以受控 `data/...` 路径交给对应 Agent；文件字节、下载地址和解密密钥不进入事件或诊断日志。
+
+---
+
+## 2026-09-16 — feat：企业微信办公能力发现与受控调用
+
+**类型**：feat
+**影响模块**：`packages/core/src/modules/perception-runtime/`, `packages/core/src/lib/features/agent/`, `packages/perception-plugins/wecom/`, `packages/desktop/`, `packages/web/src/components/os/sense-center/`
+**摘要**：接入企微、飞书、钉钉官方CLI动态日程／待办目录，Agent及协作Worker按当前IM调用上下文发现与调用，Desktop按发送者白名单约束授权；感知中心展示能力、授权和读写范围且不新增5秒配置轮询。企业微信真实授权环境已完成日程和待办闭环并清理测试对象；飞书、钉钉当前未授权，仅完成真实目录发现，不虚报业务联调。
+
+---
+
 ## 2026-09-10 — refactor：清退旧记忆运行时
 
 **类型**：refactor
@@ -1997,3 +2021,23 @@ SENSE12-T3：首次启用后台本可启动，但UI快照不自动刷新；增�
 ## 2026-09-14 — release：准备 v0.2.3
 
 用户授权推送dev并正式发布。现有正式版本为v0.2.2，本次递增patch到v0.2.3，使用Desktop Release构建Windows、macOS ARM64/x64并在成功后发布到七牛、官网更新源和GitHub Release。版本说明见[ v0.2.3 ](releases/v0.2.3/changelog.md)；该记录为发布准备，最终构建和发布状态以CI为准。
+
+## 2026-09-15 — docs：规划 SENSE.14 IM平台能力发现
+
+**类型**：docs
+**影响模块**：Epic SENSE / SENSE.14 / discover-im-sdk-capabilities
+**摘要**：规划可信SDK／工具服务能力目录到Agent按需发现和授权调用的闭环，日程与待办仅作代表性验收，避免逐项硬编码Core工具。补齐Story六份文档、OpenSpec提案/设计/规范/工作包，明确三平台来源实证、身份边界、生命周期及实际包验证。仅规划，未实施或发布。见[Story SENSE.14](../specs/epic-SENSE/story-SENSE.14/README.md)。
+
+### 2026-09-15 · SENSE.14 实施第一批（未发布）
+
+- 实现可选Plugin能力契约、Host按需发现/执行授权边界与异步DataFile目录/调用记录。
+- 新增跨重启去重、撤权、并发和生命周期测试；办公平台provider、Agent/Worker、管理UI及真实授权联调尚未接通。
+- 企微消息被Channel接纳后立即发送“正在处理中…”流式首帧，真实内容到达后原位更新；首帧失败仅记插件日志，不中断Agent执行。
+- 2026-09-16：钉钉插件接入官方`dws` 1.0.61动态Schema与独立用户OAuth profile绑定，真实二进制发现日历／待办93项；当前环境未登录，未执行钉钉业务操作。
+- 2026-09-17：飞书插件接入官方`lark-cli` 1.0.95动态Schema与独立用户OAuth profile绑定，真实二进制发现日历／任务49项；当前环境未配置profile，未执行飞书业务操作。三平台provider已完成，联合验收仍保留未授权平台的真实操作项。
+
+## 2026-09-17 — release：准备 v0.2.4
+
+**类型**：release
+**影响模块**：IM办公能力、企业微信附件、Agent/Skill历史会话、感知中心、桌面发布
+**摘要**：完成SENSE.14平台能力发现与调用链路，补齐企微移动端附件输入和处理中状态；修复Agent/Skill历史会话重复标题并兼容旧会话重算。版本递增到0.2.4，由Desktop Release构建Windows、macOS ARM64/x64并发布到七牛、官网更新源和GitHub Release。

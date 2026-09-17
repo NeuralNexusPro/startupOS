@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button';
 import { usePerceptionStore } from '@/store/perceptionStore';
 import type { ConnectorSummary } from '@/store/perceptionStore';
 import type { PerceptionTriggerRule } from '@originos/core/types';
+import type { PluginCapabilityConnectionStatus } from '@originos/core/modules/perception-runtime';
+import { listPerceptionCapabilityStatuses } from '@/services/perceptionPluginService';
 import { ConnectorForm } from './ConnectorForm';
 import { RuleWizard } from './RuleWizard';
 import { TargetGrantForm } from './TargetGrantForm';
@@ -26,15 +28,20 @@ export function SenseCenter(): JSX.Element {
   const [ruleActionError, setRuleActionError] = useState<string>();
   const [showGrantForm, setShowGrantForm] = useState(false);
   const [eventPage, setEventPage] = useState(0);
+  const [capabilityStatuses, setCapabilityStatuses] = useState<PluginCapabilityConnectionStatus[]>([]);
   const { connectors, grants, rules, eventTraces, health, deadLetters, loading, error, load, startRefreshing, setConnectorEnabled, replay, saveConnector, saveRule, deleteRule, saveGrant, deleteGrant } = usePerceptionStore();
   useEffect(() => { void load(); }, [load]);
+  const connectorRevision = connectors.map(({ id, updatedAt }) => `${id}:${updatedAt}`).join('|');
+  useEffect(() => {
+    void listPerceptionCapabilityStatuses().then(setCapabilityStatuses, () => setCapabilityStatuses([]));
+  }, [connectorRevision]);
   useEffect(() => tab === 'events' ? startRefreshing() : undefined, [tab, startRefreshing]);
 
   return (
     <main className="flex h-full min-h-0 flex-col bg-slate-950 text-slate-100" aria-label="感知中心">
       <header className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
         <div><h1 className="font-bold">感知中心</h1><p className="text-xs text-slate-400">邮箱与 IM 外部事件触发器</p></div>
-        <Button variant="outline" size="sm" onClick={() => void load()} aria-label="刷新感知中心"><RefreshCw className="mr-2 h-4 w-4" />刷新</Button>
+        <Button variant="outline" size="sm" onClick={() => { void load(); void listPerceptionCapabilityStatuses().then(setCapabilityStatuses, () => setCapabilityStatuses([])); }} aria-label="刷新感知中心"><RefreshCw className="mr-2 h-4 w-4" />刷新</Button>
       </header>
       <nav className="flex gap-1 overflow-x-auto border-b border-slate-800 p-2" aria-label="感知中心分区">
         {TABS.map((item) => <button key={item.id} type="button" onClick={() => setTab(item.id)} aria-pressed={tab === item.id} className={`rounded px-3 py-2 text-sm ${tab === item.id ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}>{item.label}</button>)}
@@ -53,7 +60,7 @@ export function SenseCenter(): JSX.Element {
   );
 
   function renderSourceList(): JSX.Element {
-    return <><div className="mb-4 flex justify-end"><Button onClick={() => { setEditingConnector(undefined); setShowConnectorForm((value) => !value); }}>{showConnectorForm ? '收起表单' : '添加感知源'}</Button></div>{showConnectorForm && <ConnectorForm key={editingConnector?.id ?? 'new'} initial={editingConnector} onSave={saveConnector} onProvisioned={load} onCancel={() => { setShowConnectorForm(false); setEditingConnector(undefined); }} />}{connectors.length === 0 ? <Empty icon={<Cable className="h-8 w-8" />} text="尚未配置感知源" /> : <div className="grid gap-3 md:grid-cols-2">{connectors.map((item) => <article key={item.id} className="rounded border border-slate-700 bg-slate-900 p-4"><div className="flex items-start justify-between"><div><h2 className="font-bold">{item.id}</h2><p className="text-sm text-slate-400">{item.source} · {item.mode}</p></div><span className={`rounded px-2 py-1 text-xs ${item.enabled ? 'bg-green-600' : 'bg-slate-700'}`}>{item.enabled ? '已启用' : '已停用'}</span></div><p className="mt-3 text-xs text-slate-400">凭据：{item.secretConfigured ? '已安全绑定' : '未绑定'}</p><div className="mt-3 flex gap-2"><Button variant="outline" size="sm" onClick={() => void setConnectorEnabled(item.id, !item.enabled)}>{item.enabled ? '停用' : '启用'}</Button><Button variant="outline" size="sm" onClick={() => { setEditingConnector(item); setShowConnectorForm(true); }}>重新绑定</Button></div></article>)}</div>}</>;
+    return <><div className="mb-4 flex justify-end"><Button onClick={() => { setEditingConnector(undefined); setShowConnectorForm((value) => !value); }}>{showConnectorForm ? '收起表单' : '添加感知源'}</Button></div>{showConnectorForm && <ConnectorForm key={editingConnector?.id ?? 'new'} initial={editingConnector} onSave={saveConnector} onProvisioned={load} onCancel={() => { setShowConnectorForm(false); setEditingConnector(undefined); }} />}{connectors.length === 0 ? <Empty icon={<Cable className="h-8 w-8" />} text="尚未配置感知源" /> : <div className="grid gap-3 md:grid-cols-2">{connectors.map((item) => { const capability = capabilityStatuses.find((status) => status.connectorId === item.id); return <article key={item.id} className="rounded border border-slate-700 bg-slate-900 p-4"><div className="flex items-start justify-between"><div><h2 className="font-bold">{item.id}</h2><p className="text-sm text-slate-400">{item.source} · {item.mode}</p></div><span className={`rounded px-2 py-1 text-xs ${item.enabled ? 'bg-green-600' : 'bg-slate-700'}`}>{item.enabled ? '已启用' : '已停用'}</span></div><p className="mt-3 text-xs text-slate-400">凭据：{item.secretConfigured ? '已安全绑定' : '未绑定'}</p>{capability && <p className="mt-1 text-xs text-slate-400">办公能力：{capabilityStatusLabel(capability)}{capability.state !== 'unsupported' && <>{capability.capabilityCount !== undefined ? ` · ${capability.capabilityCount} 项` : ''}{capability.identityMode ? ` · ${capability.identityMode === 'user' ? '用户授权' : '应用授权'}` : ''} · 白名单 {capability.delegatedActorCount ?? 0} 人{capability.writeEnabled ? ' · 允许写入' : ' · 只读'}</>}</p>}<div className="mt-3 flex gap-2"><Button variant="outline" size="sm" onClick={() => void setConnectorEnabled(item.id, !item.enabled)}>{item.enabled ? '停用' : '启用'}</Button><Button variant="outline" size="sm" onClick={() => { setEditingConnector(item); setShowConnectorForm(true); }}>重新绑定</Button></div></article>; })}</div>}</>;
   }
 
   function renderRuleList(): JSX.Element {
@@ -157,6 +164,14 @@ function targetKindLabel(kind: 'project' | 'role-agent' | 'skill'): string {
   if (kind === 'project') return '项目';
   if (kind === 'role-agent') return '角色 Agent';
   return 'Skill';
+}
+
+function capabilityStatusLabel(status: PluginCapabilityConnectionStatus): string {
+  if (status.state === 'unsupported') return '暂未接入';
+  if (status.state === 'available') return '可用';
+  if (status.state === 'needs_authorization') return '待授权';
+  if (status.state === 'sync_failed') return '同步失败';
+  return '未启用';
 }
 
 function Empty({ icon, text }: { icon: React.ReactNode; text: string }): JSX.Element {

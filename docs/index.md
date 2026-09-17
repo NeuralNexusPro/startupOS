@@ -87,6 +87,7 @@
 7. 📋 **Epic T** (TASTE/SOUL 品味积累) - Speech-Cognition 层
 8. 📋 **Epic A2UI** (生成式交互卡片协议) - 通过 Agent-to-UI 协议承载图表、表格、表单、确认卡等生成式 UI
 9. 📋 **Epic SENSE** (感知层与外部事件触发器) - 邮箱、企业微信、飞书、钉钉事件接入与 Agent 唤醒
+   - [Story SENSE.14：IM平台能力发现与Agent按需调用](specs/epic-SENSE/story-SENSE.14/README.md) — In Progress；可信SDK／工具目录、按需发现、授权调用与跨进程验收。
 
 ### Epic 文档
 

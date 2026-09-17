@@ -1,4 +1,7 @@
 import { ipcMain, safeStorage } from 'electron';
+import { randomUUID } from 'node:crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import type { PluginLogSink } from '../../../../../core/src/modules/perception-runtime/plugins';
 import { dingtalkPlugin } from '@originos/perception-plugin-dingtalk';
 import { emailPlugin } from '@originos/perception-plugin-email';
@@ -19,6 +22,7 @@ import {
   PerceptionRouter,
   TriggerRuleStore,
   type PerceptionPluginHostPorts,
+  type PluginCapabilityConnectionStatus,
   type PerceptionPluginWebhookRequest,
   type PerceptionPluginWebhookResult,
 } from '../../../../../core/src/modules/perception-runtime';
@@ -54,6 +58,8 @@ const BUNDLED_CATALOG = [
       'network',
       'health',
       'replies',
+      'attachments',
+      'office-capabilities',
     ] as const,
   },
   {
@@ -63,11 +69,12 @@ const BUNDLED_CATALOG = [
       'events',
       'health',
       'replies',
+      'office-capabilities',
     ] as const,
   },
   {
     plugin: dingtalkPlugin,
-    approvedPermissions: ['credentials', 'events', 'health', 'replies', 'schedule'] as const,
+    approvedPermissions: ['credentials', 'events', 'health', 'replies', 'schedule', 'office-capabilities'] as const,
   },
 ];
 const PLUGIN_IDS = Object.fromEntries(
@@ -76,6 +83,31 @@ const PLUGIN_IDS = Object.fromEntries(
     plugin.manifest.id,
   ])
 );
+
+export function authorizeConfiguredOfficeCapability(
+  settings: Readonly<Record<string, JsonValue>> | undefined,
+  actor: { actorId: string; requireHitl?: boolean },
+  effect: 'read' | 'write' | 'destructive' | 'unknown'
+): boolean {
+  const allowed = configuredActorIds(settings);
+  if (!allowed.has(actor.actorId)) return false;
+  if (effect === 'read') return true;
+  if (effect !== 'write') return false;
+  return settings?.['officeWriteEnabled'] === true && actor.requireHitl === false;
+}
+
+function configuredActorIds(settings: Readonly<Record<string, JsonValue>> | undefined): Set<string> {
+  const configured = settings?.['officeAllowedActorIds'];
+  if (typeof configured !== 'string' || configured.length > 8192) return new Set();
+  return new Set(configured.split(/[\s,]+/).map(value => value.trim()).filter(Boolean).slice(0, 100));
+}
+
+export function mergeProvisionedSettings(
+  requested: Record<string, JsonValue>,
+  provisioned?: Readonly<Record<string, JsonValue>>
+): Record<string, JsonValue> {
+  return { ...requested, ...(provisioned ?? {}) };
+}
 
 export class PerceptionPluginHostService {
   private readonly timers = new Map<string, NodeJS.Timeout>();
@@ -100,7 +132,13 @@ export class PerceptionPluginHostService {
         approvedPermissions: [...entry.approvedPermissions],
       }))
     );
-    this.host = new PerceptionPluginHost(registry, this.createPorts());
+    this.host = new PerceptionPluginHost(registry, this.createPorts(), {
+      dataRoot,
+      policy: { authorize: async ({ connectorId, actor, capability }) => {
+        const settings = this.configs.get(connectorId)?.settings;
+        return authorizeConfiguredOfficeCapability(settings, actor, capability.effect);
+      } },
+    });
     this.registerProvisioningIpc();
   }
   private registerProvisioningIpc(): void {
@@ -111,6 +149,19 @@ export class PerceptionPluginHostService {
         data: BUNDLED_CATALOG.map(({ plugin }) => plugin.manifest),
         timestamp: new Date().toISOString(),
       })
+    );
+    ipcMain.handle(
+      IPC_CHANNELS.PERCEPTION_PLUGIN_CAPABILITY_STATUS,
+      async (): Promise<IpcResponse<PluginCapabilityConnectionStatus[]>> => {
+        const statuses = await Promise.all(this.configs.list().filter(config => config.source !== 'email').map(async (config): Promise<PluginCapabilityConnectionStatus> => {
+          const entry = BUNDLED_CATALOG.find(({ plugin }) => plugin.manifest.id === config.pluginId || plugin.manifest.source === config.source);
+          const common = { connectorId: config.id, delegatedActorCount: configuredActorIds(config.settings).size,
+            writeEnabled: config.settings['officeWriteEnabled'] === true };
+          if (!entry?.plugin.manifest.capabilities.includes('office-capabilities')) return { ...common, state: 'unsupported' };
+          return { ...await this.host.inspectCapabilities(entry.plugin.manifest.id, config.id), ...common };
+        }));
+        return { success: true, data: statuses, timestamp: new Date().toISOString() };
+      }
     );
     ipcMain.handle(
       IPC_CHANNELS.PERCEPTION_PLUGIN_PROVISION,
@@ -138,7 +189,7 @@ export class PerceptionPluginHostService {
           );
           const secretRef = Object.values(result.secretRefs ?? {})[0];
           const now = new Date().toISOString();
-          const settings = { ...(result.settings ?? request.settings) };
+          const settings = mergeProvisionedSettings(request.settings, result.settings);
           if (entry.plugin.manifest.source === 'email') {
             settings['testReceipt'] = {
               profileFingerprint: fingerprintMailProfile(validateMailConnectorSettings(settings)),
@@ -280,7 +331,21 @@ export class PerceptionPluginHostService {
       this.channelIngress,
       undefined,
       this.replies,
-      (source, connectorId) => ({ write: record => this.logs?.write(PLUGIN_IDS[source] ?? source, connectorId, record) })
+      (source, connectorId) => ({ write: record => this.logs?.write(PLUGIN_IDS[source] ?? source, connectorId, record) }),
+      {
+        discover: ({ source, connectorId, eventId, sessionId, actorId, conversationId, conversationKind, requireHitl, targetKind, targetId, query, name }) => {
+          const pluginId = PLUGIN_IDS[source];
+          if (!pluginId) throw new Error('IM_CAPABILITY_UNSUPPORTED');
+          return this.host.discoverCapabilities(pluginId, connectorId,
+            { eventId, sessionId, actorId, conversationId, conversationKind, requireHitl, targetKind, targetId }, query, name);
+        },
+        invoke: ({ source, connectorId, eventId, sessionId, actorId, conversationId, conversationKind, requireHitl, targetKind, targetId, invocation }) => {
+          const pluginId = PLUGIN_IDS[source];
+          if (!pluginId) throw new Error('IM_CAPABILITY_UNSUPPORTED');
+          return this.host.invokeCapability(pluginId, connectorId,
+            { eventId, sessionId, actorId, conversationId, conversationKind, requireHitl, targetKind, targetId }, invocation);
+        },
+      }
     );
     const router = new PerceptionRouter(
       this.dataRoot,
@@ -319,6 +384,20 @@ export class PerceptionPluginHostService {
           catch (error) { this.logs?.write(PLUGIN_IDS[event.source] ?? event.source, event.connectorId, { level: 'error', stage: 'event.ack', eventId: event.id, safeCode: 'EVENT_ACK_FAILED', error }); }
           if (saved.duplicate) return [{ status: 'duplicate' as const }];
           return router.route(saved.event);
+        },
+      },
+      attachments: {
+        store: async (connectorId, file) => {
+          if (!file.bytes.byteLength) throw new Error('IM_ATTACHMENT_EMPTY');
+          if (file.bytes.byteLength > 20_000_000) throw new Error('IM_ATTACHMENT_TOO_LARGE');
+          const baseName = path.basename(file.fileName.replaceAll('\\', '/'));
+          const fileName = baseName.replace(/[^\p{L}\p{N}._ -]/gu, '_').slice(0, 120);
+          const safeName = fileName && fileName !== '.' && fileName !== '..' ? fileName : 'file';
+          const directory = path.join(this.dataRoot, 'perception', 'attachments', connectorId, randomUUID());
+          await mkdir(directory, { recursive: true, mode: 0o700 });
+          const fullPath = path.join(directory, safeName);
+          await writeFile(fullPath, file.bytes, { flag: 'wx', mode: 0o600 });
+          return `data/${path.relative(this.dataRoot, fullPath).split(path.sep).join('/')}`;
         },
       },
       network: {

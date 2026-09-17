@@ -11,7 +11,8 @@ export type PerceptionPluginCapability =
   | 'outbound-files'
   | 'callback-handshake'
   | 'encrypted-payload'
-  | 'attachments';
+  | 'attachments'
+  | 'office-capabilities';
 export type PerceptionPluginPermission =
   | 'credentials'
   | 'events'
@@ -20,7 +21,9 @@ export type PerceptionPluginPermission =
   | 'state'
   | 'health'
   | 'audit'
-  | 'replies';
+  | 'replies'
+  | 'attachments'
+  | 'office-capabilities';
 
 export type PluginConfigurationFieldType = 'text' | 'password' | 'number' | 'boolean' | 'select';
 
@@ -125,6 +128,10 @@ export interface PluginReplyPort {
   register(replyHandle: string, deliver: (event: PluginReplyEvent) => Promise<PluginReplyReceipt>, options?: { supportsFiles?: boolean }): () => void;
 }
 
+export interface PluginAttachmentPort {
+  store(connectorId: string, file: { fileName: string; bytes: Uint8Array }): Promise<string>;
+}
+
 export type PluginReplyEvent =
   | { type: 'file'; file: ChannelReplyFile; signal?: AbortSignal }
   | { type: 'accepted'; sessionId: string }
@@ -155,6 +162,7 @@ export interface PerceptionPluginHostPorts {
   health: PluginHealthPort;
   audit: PluginAuditPort;
   replies?: PluginReplyPort;
+  attachments?: PluginAttachmentPort;
 }
 
 export type PerceptionPluginRuntimePorts = Partial<Omit<PerceptionPluginHostPorts, 'log'>> & { log?: import('./logging').PluginLogPort };
@@ -192,6 +200,7 @@ export interface PerceptionPluginWebhookResult {
 
 export interface PerceptionPlugin {
   readonly manifest: PerceptionPluginManifest;
+  readonly officeCapabilities?: import('./capabilities').PluginCapabilityProvider;
   provision?(context: PerceptionPluginProvisionContext): Promise<PerceptionPluginProvisionResult>;
   handleWebhook?(context: PerceptionPluginRuntimeContext, request: PerceptionPluginWebhookRequest): Promise<PerceptionPluginWebhookResult>;
   start(context: PerceptionPluginRuntimeContext): Promise<void>;
