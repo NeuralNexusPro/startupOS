@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { createRequire } = require('node:module');
+const { execFileSync } = require('node:child_process');
 const asar = require('@electron/asar');
 const {
   verifyAsarRuntime: verifyPiTaskAsarRuntime,
@@ -57,8 +58,12 @@ async function verifyApp(appPath) {
   }
 
   const entries = asar.listPackage(asarPath, { isPack: true }).map(normalizeAsarEntry);
-  const outputDirectory = path.basename(path.dirname(appPath));
-  const wecomCliPlatform = outputDirectory === 'mac-arm64' ? 'darwin-arm64' : 'darwin-x64';
+  const executablePath = path.join(appPath, 'Contents', 'MacOS', 'OriginOS CE');
+  const executableArchitectures = execFileSync('/usr/bin/lipo', ['-archs', executablePath], {
+    encoding: 'utf8',
+  }).trim().split(/\s+/);
+  const isArm64 = executableArchitectures.includes('arm64');
+  const wecomCliPlatform = isArm64 ? 'darwin-arm64' : 'darwin-x64';
   const requiredEntries = [
     'dist-electron/core/src/lib/integrations/pi-agent/core/agent.js',
     'dist-electron/core/src/lib/features/skills/service.js',
@@ -142,7 +147,7 @@ async function verifyApp(appPath) {
     if (!fs.existsSync(wecomCliBinary)) fail(`WeCom CLI binary missing: ${path.relative(repoRoot, wecomCliBinary)}`);
     const piTaskReport = await verifyPiTaskAsarRuntime({
       asarPath,
-      platform: outputDirectory === 'mac-arm64' ? 'macos-arm64' : 'macos-x64',
+      platform: isArm64 ? 'macos-arm64' : 'macos-x64',
     });
     console.log('[verify-mac-package] pi task runtime ok', {
       hash: piTaskReport.hash,
