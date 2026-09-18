@@ -78,6 +78,17 @@ describe('legacy ontology migration', () => {
     });
 
     expect(oldPreview.ontology?.concepts[0]?.sourceRefs?.[0]).toMatchObject({ sourceType: 'import', sourceId: 'old.json' });
+    const hierarchyPreview = previewLegacyOntologyMigration({
+      ...legacy,
+      relations: [
+        ...legacy.relations,
+        { id: 'domain-contains-customer', sourceId: 'domain-1', targetId: 'customer', type: 'contains', createdAt: iso },
+      ],
+    }, { projectId: 'project-1', sourceKind: 'ontology', sourceId: 'builder.json', now: instant });
+    expect(hierarchyPreview.ontology?.relations).toHaveLength(1);
+    expect(hierarchyPreview.diagnostics).toContainEqual(expect.objectContaining({
+      severity: 'warning', code: 'REDUNDANT_HIERARCHY_RELATION', path: 'relations.1',
+    }));
     expect(interviewPreview.ontology?.properties[0]).toMatchObject({ id: 'invoice-number', conceptId: 'invoice' });
     expect(businessPreview.ontology).toEqual(repeated.ontology);
     expect(businessPreview.ontology?.relations[0]).toMatchObject({
@@ -109,6 +120,13 @@ describe('legacy ontology migration', () => {
       expect.objectContaining({ severity: 'error', path: 'nodes.0' }),
       expect.objectContaining({ severity: 'warning', path: 'nodes.1' }),
     ]));
+
+    const duplicateBusinessEntity = previewLegacyOntologyMigration({
+      ...businessModel,
+      entities: [...businessModel.entities, { name: 'Order', definition: 'Duplicate' }],
+    }, { projectId: 'project-1', sourceKind: 'business-model', now: instant });
+    expect(duplicateBusinessEntity.ontology).toBeNull();
+    expect(duplicateBusinessEntity.diagnostics).toContainEqual(expect.objectContaining({ path: 'entities.2.name' }));
 
     const canonical = previewLegacyOntologyMigration(businessModel, {
       projectId: 'project-1', sourceKind: 'business-model', now: instant,
