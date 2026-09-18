@@ -374,6 +374,11 @@ interface Instance {
 - 回滚只允许删除本次迁移新建且此后未修改的 canonical 快照；旧源文件和备份始终保留
 - legacy compatibility projection 仅供读取，不得成为第二写入事实源
 
+**Canonical Validator 与 Action Gate：**
+- canonical ontology 的唯一性、交叉引用和状态归属校验统一由 `packages/core/src/lib/features/ontology/` 公共 API 提供；下游不得复制规则
+- Action Gate 在任何副作用前校验 ontology ID/version、Action/Concept、当前业务状态和精确权限集合，并返回结构化 `CanonicalValidationResult`
+- ONT Validator 是无状态纯函数，不读取或写入 Facts、不执行 `Rule.expression`、不提交 Action；事实查询、revision 和操作回执由后续 OSDK/Action 提交边界负责
+
 ### 2. 项目访谈模块架构
 
 **访谈流程（强制）：**
