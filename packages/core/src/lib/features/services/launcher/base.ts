@@ -17,7 +17,7 @@ import {
 } from '../../agent/server/index';
 import { loadToolConfig } from '../../../../lib/integrations/pi-agent/tool-config-loader';
 import type { RuntimeLLMConfig } from '../../../../lib/integrations/pi-agent/llm-config';
-import { toStableMemoryExcerpt } from '../../../../lib/integrations/pi-agent/memory-consumption';
+import { buildPromptMemorySections } from '../../../../lib/integrations/pi-agent/memory-consumption';
 import { appendGlobalUserPreferencesPrompt } from '../../../../lib/integrations/pi-agent/user-preferences';
 import type { CreateSessionRequest } from '../../../../types/agent';
 import type { ObservationContext } from '../../../../modules/memory-core';
@@ -58,17 +58,17 @@ export function buildAgentSystemPrompt(
     lines.push('\n## 角色状态\n\n' + options.role);
   }
 
-  // 注入历史记忆
-  if (options?.memory) {
-    lines.push('\n## Long-term Stable Memory\n\n' + toStableMemoryExcerpt(options.memory, 4000));
-  }
-
-  if (options?.knowledge) {
-    lines.push('\n## Knowledge Base Snapshot\n\n' + options.knowledge);
-  }
-
-  if (options?.patterns) {
-    lines.push('\n## Experience Patterns Snapshot\n\n' + options.patterns);
+  const memorySections = buildPromptMemorySections({
+    memoryMd: options?.memory,
+    knowledgeMd: options?.knowledge,
+    patternsMd: options?.patterns,
+  });
+  for (const section of [
+    memorySections.stableMemorySection,
+    memorySections.knowledgeSection,
+    memorySections.patternsSection,
+  ]) {
+    if (section) lines.push(section);
   }
 
   // 注入风格偏好
