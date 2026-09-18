@@ -174,7 +174,7 @@ describe('MemoryConsolidator', () => {
   });
 
   it('routes user preferences and owner evidence without writing the legacy human block', async () => {
-    completeResponse = '- [UPDATE:human] 用户偏好简洁回答';
+    completeResponse = '- [UPDATE:human@S1] 用户偏好简洁回答';
     const projectDir = path.join(testDir, 'projects', 'project-1');
     const history = new HistoryStore(path.join(projectDir, 'memory', 'history'), 'session-1');
     history.append({
@@ -184,6 +184,7 @@ describe('MemoryConsolidator', () => {
       assistantMessage: '好的，我会保持简洁。',
       toolCalls: [{ name: 'read_file', result: 'Successfully read the project requirements document.', success: true }],
       timestamp: Date.now(),
+      source: { sessionId: 'original-session', messageId: 'original-message', observedAt: '2026-09-14T00:00:00.000Z' },
     });
     history.append({
       turnNumber: 2,
@@ -203,7 +204,29 @@ describe('MemoryConsolidator', () => {
 
     expect(userBank.list()).toHaveLength(1);
     expect(userBank.list()[0]?.proofCount).toBe(1);
+    expect(userBank.list()[0]?.evidence[0]).toMatchObject({
+      sourceId: 'original-session', observedAt: '2026-09-14T00:00:00.000Z',
+      communicationSource: { sessionId: 'original-session', messageId: 'original-message' },
+    });
     expect(ownerBank.list().some((record) => record.kind === 'experience')).toBe(true);
     expect(new Memory(projectDir).getBlock('human')?.value).toBe('');
+  });
+
+  it('keeps multiple cited sources and rejects model-invented source labels', async () => {
+    completeResponse = '- [UPDATE:project@S1,S2] shared fact\n- [UPDATE:human@S99] invented source\n- [UPDATE:human] missing source';
+    const projectDir = path.join(testDir, 'projects', 'project-1');
+    const first = new HistoryStore(path.join(projectDir, 'memory', 'history'), 'session-a');
+    const second = new HistoryStore(path.join(projectDir, 'memory', 'history'), 'session-b');
+    first.append({ turnNumber: 1, summary: 'one', userMessage: 'Project Alpha decision', assistantMessage: 'recorded decision one', timestamp: 1, source: { sessionId: 'session-a', messageId: 'a', observedAt: '2026-09-14T00:00:00.000Z' } });
+    second.append({ turnNumber: 1, summary: 'two', userMessage: 'Project Alpha confirmed', assistantMessage: 'recorded decision two', timestamp: 2, source: { sessionId: 'session-b', messageId: 'b', observedAt: '2026-09-14T00:00:01.000Z' } });
+    appendFillerTurns(first);
+    const userBank = new CognitionBank({ scope: 'user', ownerId: 'default', dataRoot: testDir });
+    const ownerBank = new CognitionBank({ scope: 'project', ownerId: 'project-1', dataRoot: testDir, ownerDirectory: projectDir });
+
+    await new MemoryConsolidator(projectDir, 'consolidating-session', createModelFactory(), { userBank, ownerBank }).consolidate();
+
+    const fact = ownerBank.list().find((record) => record.content === 'shared fact');
+    expect(fact?.evidence.map((evidence) => evidence.sourceId)).toEqual(['session-a', 'session-b']);
+    expect(userBank.list()).toHaveLength(0);
   });
 });

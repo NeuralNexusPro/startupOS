@@ -13,6 +13,7 @@ import { ArchivalMemory } from '../archival/archival-memory';
 import { ingestReflectionToArchival } from '../archival/pattern-ingest';
 import type { CognitionBank, CognitionKind, EvidenceRef } from '../bank';
 import type { Model } from '@originos/pi-agent-adapter/ai';
+import { formatCommunicationSource, type CommunicationSource } from '../../../lib/shared/cognitive';
 
 type ConsolidationModel = Model<'anthropic-messages' | 'openai-completions' | 'google' | 'azure-openai-responses'>;
 const MIN_REFLECT_TURNS = 5;
@@ -26,6 +27,7 @@ export interface ConsolidationResult {
   changes: string[];
   reason?: string;
   stableMemory: string[];
+  stableMemoryEvidence: Array<{ content: string; source?: CommunicationSource; turnNumber: number; timestamp: number }>;
   patterns: string[];
   knowledgeCandidates: Array<{
     entities: Array<{ name: string; type: string; attributes: Record<string, unknown> }>;
@@ -37,6 +39,7 @@ interface ConsolidationInstruction {
   action: 'ADD' | 'UPDATE';
   label: string;
   content: string;
+  sourceKeys: string[];
 }
 
 export interface CognitionRouting {
@@ -63,13 +66,17 @@ export class MemoryConsolidator {
     const entries = this.history.readAll();
     const recentTurns = entries.slice(-50);
     const stableMemoryTurns = this.extractStableMemoryTurns(recentTurns);
+    const stableMemoryEvidence = stableMemoryTurns.map((turn) => ({
+      content: turn.userMessage.trim(), source: turn.source, turnNumber: turn.turnNumber, timestamp: turn.timestamp,
+    }));
 
     if (recentTurns.length < MIN_REFLECT_TURNS) {
       return {
         consolidated: false,
         changes: [],
         reason: 'too few turns',
-        stableMemory: stableMemoryTurns,
+        stableMemory: stableMemoryEvidence.map((item) => item.content),
+        stableMemoryEvidence,
         patterns: [],
         knowledgeCandidates: [],
       };
@@ -77,16 +84,18 @@ export class MemoryConsolidator {
 
     const instructions = await this.analyzeRecentHistory(recentTurns);
     const reflectionTurns = recentTurns.filter((turn) => this.shouldCreateReflection(turn));
-    const knowledgeCandidates = this.extractKnowledgeCandidates(recentTurns);
+    const sourcedKnowledgeCandidates = this.extractKnowledgeCandidates(recentTurns);
+    const knowledgeCandidates = sourcedKnowledgeCandidates.map(({ turn: _turn, ...candidate }) => candidate);
     const reflectionChanges = await this.ingestReflections(reflectionTurns);
-    const changes = this.applyInstructions(instructions);
-    changes.push(...this.retainOwnerEvidence(recentTurns, knowledgeCandidates));
+    const changes = this.applyInstructions(instructions, recentTurns);
+    changes.push(...this.retainOwnerEvidence(recentTurns, sourcedKnowledgeCandidates));
     if (changes.length === 0 && reflectionChanges.length === 0) {
       return {
         consolidated: false,
         changes: [],
         reason: 'no instructions',
-        stableMemory: stableMemoryTurns,
+        stableMemory: stableMemoryEvidence.map((item) => item.content),
+        stableMemoryEvidence,
         patterns: reflectionChanges,
         knowledgeCandidates,
       };
@@ -97,7 +106,8 @@ export class MemoryConsolidator {
     return {
       consolidated: true,
       changes: [...changes, ...reflectionChanges],
-      stableMemory: stableMemoryTurns,
+      stableMemory: stableMemoryEvidence.map((item) => item.content),
+      stableMemoryEvidence,
       patterns: reflectionChanges,
       knowledgeCandidates,
     };
@@ -107,8 +117,8 @@ export class MemoryConsolidator {
     const existingMemory = this.memory.compile({ format: 'xml' });
     const conversation = turns
       .map(
-        (e) =>
-          `Turn #${e.turnNumber}:\nUser: ${e.userMessage}\nAssistant: ${e.assistantMessage ?? ''}`,
+        (e, index) =>
+          `[S${index + 1}] Source ${formatCommunicationSource(e.source)}\nTurn #${e.turnNumber}:\nUser: ${e.userMessage}\nAssistant: ${e.assistantMessage ?? ''}`,
       )
       .join('\n\n');
 
@@ -120,18 +130,19 @@ ${existingMemory}
 Conversation History (last ${turns.length} turns):
 ${conversation}
 
-Output format (one per line, specify block label):
-- [UPDATE:human] new user fact
-- [UPDATE:persona] agent self-awareness adjustment
-- [UPDATE:project] project state/decision
-- [UPDATE:scratchpad] temporary note
-- [ADD:scratchpad] new temporary content
+Output format (one per line, specify block label and supporting source labels):
+- [UPDATE:human@S1] new user fact
+- [UPDATE:persona@S2] agent self-awareness adjustment
+- [UPDATE:project@S1,S3] project state/decision
+- [UPDATE:scratchpad@S2] temporary note
+- [ADD:scratchpad@S1] new temporary content
 - [SKIP] if no update needed
 
 Rules:
 - Only record concrete, non-derivable facts
 - Deduplicate: do not repeat what's already in blocks
 - Keep entries atomic and specific
+- Cite only source labels shown in the conversation
 - [SKIP] if all important info is already covered
 
 Respond in the same language as the conversation (Chinese if conversation is in Chinese).`;
@@ -160,27 +171,28 @@ Respond in the same language as the conversation (Chinese if conversation is in 
       const trimmed = line.trim();
       if (!trimmed || trimmed === '[SKIP]') continue;
 
-      const match = trimmed.match(/^[-*]?\s*\[(ADD|UPDATE):([a-z]+)\]\s+(.+)$/);
+      const match = trimmed.match(/^[-*]?\s*\[(ADD|UPDATE):([a-z]+)(?:@([^\]]+))?\]\s+(.+)$/);
       if (!match) continue;
 
       const action = match[1] as 'ADD' | 'UPDATE';
       const label = match[2]!;
-      const content = match[3]!;
+      const sourceKeys = (match[3] ?? '').split(',').map((key) => key.trim()).filter(Boolean);
+      const content = match[4]!;
 
       // temporal is readOnly, skip
       if (label === 'temporal') continue;
 
-      instructions.push({ action, label, content });
+      instructions.push({ action, label, content, sourceKeys });
     }
 
     return instructions;
   }
 
-  private applyInstructions(instructions: ConsolidationInstruction[]): string[] {
+  private applyInstructions(instructions: ConsolidationInstruction[], turns: RecallEntry[]): string[] {
     const changes: string[] = [];
 
     for (const inst of instructions) {
-      const routed = this.routeInstruction(inst);
+      const routed = this.routeInstruction(inst, turns);
       if (routed) {
         changes.push(routed);
         continue;
@@ -202,30 +214,34 @@ Respond in the same language as the conversation (Chinese if conversation is in 
     return changes;
   }
 
-  private routeInstruction(instruction: ConsolidationInstruction): string | null {
+  private routeInstruction(instruction: ConsolidationInstruction, turns: RecallEntry[]): string | null {
     const bank = instruction.label === 'human'
       ? this.cognition?.userBank
       : instruction.label === 'project'
         ? this.cognition?.ownerBank
         : null;
     if (!bank) return null;
-    const kind: CognitionKind = instruction.label === 'human' ? 'observation' : 'world_fact';
-    bank.retain({
-      kind,
-      content: instruction.content,
-      evidence: this.evidence(
-        `instruction:${instruction.label}:${instruction.content}`,
-        'conversation',
-        instruction.content,
-      ),
-      tags: [instruction.label === 'human' ? 'user-profile' : 'project-memory'],
+    const sources = instruction.sourceKeys.map((key) => {
+      const match = key.match(/^S(\d+)$/);
+      return match ? turns[Number(match[1]) - 1] : undefined;
     });
+    if (sources.length === 0 || sources.some((turn) => !turn)) return null;
+    const kind: CognitionKind = instruction.label === 'human' ? 'observation' : 'world_fact';
+    for (const turn of sources) {
+      if (!turn) continue;
+      bank.retain({
+        kind,
+        content: instruction.content,
+        evidence: this.evidence(turn, `instruction:${instruction.label}:${instruction.content}`, 'conversation', instruction.content),
+        tags: [instruction.label === 'human' ? 'user-profile' : 'project-memory'],
+      });
+    }
     return `[COGNITION:${instruction.label}] ${instruction.content.slice(0, 80)}...`;
   }
 
   private retainOwnerEvidence(
     turns: RecallEntry[],
-    candidates: ConsolidationResult['knowledgeCandidates'],
+    candidates: Array<ConsolidationResult['knowledgeCandidates'][number] & { turn: RecallEntry }>,
   ): string[] {
     const bank = this.cognition?.ownerBank;
     if (!bank) return [];
@@ -235,7 +251,7 @@ Respond in the same language as the conversation (Chinese if conversation is in 
         bank.retain({
           kind: 'world_fact',
           content: fact,
-          evidence: this.evidence(`fact:${candidateIndex}:${fact}`, 'conversation', fact),
+          evidence: this.evidence(candidate.turn, `fact:${candidateIndex}:${fact}`, 'conversation', fact),
           tags: ['knowledge-candidate'],
         });
         changes.push(`[COGNITION:world_fact] ${fact.slice(0, 80)}...`);
@@ -246,7 +262,7 @@ Respond in the same language as the conversation (Chinese if conversation is in 
         bank.retain({
           kind: 'experience',
           content: `${toolCall.name}: ${toolCall.success ? 'success' : 'failure'} — ${toolCall.result.slice(0, 500)}`,
-          evidence: this.evidence(
+          evidence: this.evidence(turn,
             `turn:${turn.turnNumber}:tool:${toolIndex}:${toolCall.name}`,
             'tool',
             toolCall.result.slice(0, 4096),
@@ -259,20 +275,22 @@ Respond in the same language as the conversation (Chinese if conversation is in 
     return changes;
   }
 
-  private evidence(key: string, source: EvidenceRef['source'], excerpt: string): EvidenceRef {
+  private evidence(turn: RecallEntry, key: string, source: EvidenceRef['source'], excerpt: string): EvidenceRef {
+    const sourceId = turn.source?.sessionId ?? this.sessionId;
+    const observedAt = turn.source?.observedAt ?? new Date(turn.timestamp).toISOString();
     return {
-      id: createHash('sha256').update(`${this.sessionId}\0${key}`).digest('hex'),
+      id: createHash('sha256').update(`${sourceId}\0${turn.source?.messageId ?? turn.turnNumber}\0${key}`).digest('hex'),
       source,
-      sourceId: this.sessionId,
+      sourceId,
       excerpt,
-      observedAt: new Date().toISOString(),
+      observedAt,
+      communicationSource: turn.source,
     };
   }
 
-  private extractStableMemoryTurns(turns: RecallEntry[]): string[] {
+  private extractStableMemoryTurns(turns: RecallEntry[]): RecallEntry[] {
     return turns
-      .map((turn) => turn.userMessage.trim())
-      .filter((message) => this.looksLikeStableMemory(message))
+      .filter((turn) => this.looksLikeStableMemory(turn.userMessage.trim()))
       .slice(-10);
   }
 
@@ -324,6 +342,7 @@ Respond in the same language as the conversation (Chinese if conversation is in 
   private extractKnowledgeCandidates(turns: RecallEntry[]): Array<{
     entities: Array<{ name: string; type: string; attributes: Record<string, unknown> }>;
     facts: string[];
+    turn: RecallEntry;
   }> {
     return turns
       .map((turn) => {
@@ -352,7 +371,7 @@ Respond in the same language as the conversation (Chinese if conversation is in 
           }
         }
 
-        return { entities, facts };
+        return { entities, facts, turn };
       })
       .filter((candidate) => candidate.entities.length > 0 || candidate.facts.length > 0);
   }

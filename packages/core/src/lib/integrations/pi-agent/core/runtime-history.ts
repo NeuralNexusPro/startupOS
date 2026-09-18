@@ -4,11 +4,14 @@ import type {
   AssistantMessage,
   Model,
 } from '@originos/pi-agent-adapter/ai';
+import { encodeCommunicationUserMessage, type CommunicationSource } from '../../../shared/cognitive';
 
 export interface PersistedRuntimeMessage {
+  id?: string;
   role: 'user' | 'assistant' | 'system' | 'tool' | 'toolResult';
   content: string;
   timestamp: number;
+  metadata?: Record<string, unknown>;
 }
 
 export type RestorableRuntimeApi =
@@ -57,15 +60,19 @@ function createRestoredUsage(): AssistantMessage['usage'] {
 export function mapPersistedMessagesForRuntime(
   messages: readonly PersistedRuntimeMessage[],
   model: Model<RestorableRuntimeApi>,
+  sessionId?: string,
 ): AgentMessage[] {
   return messages.flatMap((message): AgentMessage[] => {
     if (message.role === 'system') {
       return [];
     }
     if (message.role === 'user') {
+      const source = persistedCommunicationSource(message, sessionId);
       return [{
         role: 'user',
-        content: message.content,
+        content: source
+          ? encodeCommunicationUserMessage(message.content, source, attachmentRefs(message.metadata))
+          : message.content,
         timestamp: message.timestamp,
       }];
     }
@@ -89,4 +96,34 @@ export function mapPersistedMessagesForRuntime(
       timestamp: message.timestamp,
     }];
   });
+}
+
+function persistedCommunicationSource(message: PersistedRuntimeMessage, sessionId?: string): CommunicationSource | undefined {
+  if (!sessionId) return undefined;
+  const channel = message.metadata?.['channel'];
+  if (!channel || typeof channel !== 'object' || Array.isArray(channel)) return undefined;
+  const value = channel as Record<string, unknown>;
+  const origin = stringField(value, 'origin');
+  if (!origin) return undefined;
+  const conversationKind = value['conversationKind'];
+  return {
+    origin,
+    connectorId: stringField(value, 'connectorId'),
+    conversationKind: conversationKind === 'direct' || conversationKind === 'group' || conversationKind === 'thread' ? conversationKind : undefined,
+    conversationId: stringField(value, 'conversationId'),
+    actorId: stringField(value, 'actorId'),
+    actorDisplayName: stringField(value, 'actorDisplayName'),
+    sessionId,
+    messageId: stringField(value, 'id') ?? message.id,
+    observedAt: stringField(value, 'occurredAt') ?? stringField(value, 'receivedAt'),
+  };
+}
+
+function attachmentRefs(metadata?: Record<string, unknown>): string[] {
+  const refs = metadata?.['attachmentRefs'];
+  return Array.isArray(refs) ? refs.filter((value): value is string => typeof value === 'string') : [];
+}
+
+function stringField(value: Record<string, unknown>, key: string): string | undefined {
+  return typeof value[key] === 'string' && value[key].length > 0 ? value[key] : undefined;
 }

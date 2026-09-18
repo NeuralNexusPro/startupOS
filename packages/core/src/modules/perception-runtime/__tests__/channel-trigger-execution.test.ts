@@ -32,7 +32,7 @@ describe('ChannelTriggerExecutionAdapter', () => {
     };
     const result = await new ChannelTriggerExecutionAdapter(ingress).dispatch({ event, target: { kind: 'project', id: 'project-1' }, context });
     expect(received).toMatchObject({
-      message: { origin: 'email', connectorId: 'email-main', conversationId: 'thread-1', actorId: 'sender@example.test', content: { attachmentRefs: ['attachment://one'] } },
+      message: { origin: 'email', connectorId: 'email-main', conversationId: 'thread-1', actorId: 'sender@example.test', occurredAt: event.occurredAt, receivedAt: event.receivedAt, content: { attachmentRefs: ['attachment://one'] } },
       target: { kind: 'project-agent', id: 'project-1', projectId: 'project-1' },
     });
     expect(received?.message.content.text).toContain('Subject: Invoice');

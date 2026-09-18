@@ -1440,6 +1440,7 @@ export class OriginOSAgent {
 		const runtimeMessages = mapPersistedMessagesForRuntime(
 			messages,
 			toRestorableRuntimeModel(this.agent.state.model),
+			this.sessionId,
 		);
 		this.agent.state.messages = runtimeMessages;
 		return runtimeMessages.length;

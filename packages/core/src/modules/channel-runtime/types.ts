@@ -28,11 +28,12 @@ export interface ChannelInboundMessage {
   conversationKind?: 'direct' | 'group' | 'thread';
   content: ChannelMessageContent;
   replyHandle?: string;
+  occurredAt?: string;
   receivedAt: string;
 }
 
 export type ChannelMessageMetadata = Pick<ChannelInboundMessage,
-  'origin' | 'connectorId' | 'actorId' | 'actorDisplayName' | 'conversationId' | 'conversationKind'>;
+  'id' | 'origin' | 'connectorId' | 'actorId' | 'actorDisplayName' | 'conversationId' | 'conversationKind' | 'occurredAt' | 'receivedAt'>;
 
 export type AgentOutputEvent =
   | { type: 'accepted'; sessionId: string }
