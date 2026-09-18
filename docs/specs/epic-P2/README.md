@@ -166,3 +166,7 @@ data/projects/{projectId}/
 测试包：/Users/archersado/workspace/startupOS/release/session-fixes-20260913/mac-arm64/OriginOS CE.app。
 
 [Testing](./story-P2.1/testing.md)
+
+## 2026-09-14：访谈语义驱动的上下文设计
+
+P2.8扩展为把访谈确认的概念/关系/业务状态编译进语义上下文契约，包含任务模板、输入事实绑定、Action/验收及新鲜度策略，随方案版本冻结。P2.6提供I/O语义连通校验，9.42只消费已发布契约。[实施主线](../epic-ONT/project-semantic-execution-plan.md)记录依赖和验收；本次仅规划，未新增运行实现。

@@ -62,3 +62,9 @@
 | 2026-07-28 | 创建 Story，定义 `pi-tasks` 与 collaboration WorkItem 分层 |
 | 2026-07-28 | Workflow 收敛到解决方案设计阶段，运行时改为执行已审批 SolutionExecutionContract |
 | 2026-07-28 | 契约编译和发布迁移到 P2.8，9.42 仅消费执行契约 |
+
+## 2026-09-14：项目语义执行规划补充
+
+942-T1负责按语义上下文实例化任务与就绪门控，942-T2负责持久恢复、回执核对与Evidence幂等。复用pi-tasks唯一Task事实源。9.43看板消费同一投影。仍为Planning。
+
+完整依赖、状态所有权及验收场景见[主线规划](../../epic-ONT/project-semantic-execution-plan.md)。

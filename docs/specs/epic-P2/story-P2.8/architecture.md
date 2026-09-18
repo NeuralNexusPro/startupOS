@@ -170,3 +170,11 @@ collaboration-runtime
 | 日期 | 变更 |
 |------|------|
 | 2026-07-28 | 初始架构设计 |
+
+## 2026-09-14：项目语义执行规划补充
+
+保持本Story为SolutionExecutionContract唯一定义方；semanticContext引用ONT.1/6/7公共DTO，与拓扑共同编译、存储和计算hash。ontologyVersion固定，具体对象ID/事实版本在9.42实例化时绑定。P2负责选择组合与发布，ONT定义对象、状态、Action和权限。
+
+9.42旧示例中的id/contractId、verify/verifyIntegrity在本Story实施时统一，消费侧导入公共类型，禁止复制第二契约。按现有solutions目录保存，撤销元数据独立于冻结正文。
+
+完整依赖、状态所有权及验收场景见[主线规划](../../epic-ONT/project-semantic-execution-plan.md)。
