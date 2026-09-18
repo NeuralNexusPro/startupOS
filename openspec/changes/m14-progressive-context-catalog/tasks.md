@@ -10,5 +10,5 @@
 
 ## 3. 集成与验收
 
-- [ ] 3.1（依赖：2.1；串行；角色：Integration owner；写入：Proposal integration branch）合并 Task commit，运行 Core typecheck/定向测试、`pnpm lint:boundaries` 和架构检查器 self-test；证据：命令输出均成功。
+- [x] 3.1（依赖：2.1；串行；角色：Integration owner；写入：Proposal integration branch）合并 Task commit，运行 Core typecheck/定向测试、`pnpm lint:boundaries` 和架构检查器 self-test；证据：渐进目录测试 6/6、Core `tsc --noEmit`、884 文件边界扫描 0 诊断、架构 self-test 43×2 用例及 strict validation 均通过。
 - [ ] 3.2（依赖：3.1；串行；角色：Integration owner；写入：Story 验证记录与 Git refs）核对 M14-T1 verification goal、再次 strict validate，合并到 `dev` 并清理 Task worktree；证据：dev merge commit、验证记录和已删除 worktree。
