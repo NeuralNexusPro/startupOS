@@ -10,9 +10,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { persistentAgentManager } from '@originos/core/lib/features/agent/server';
 import { sanitizeAgentDisplayContent } from '@originos/core/lib/integrations/pi-agent/display-content';
 import { getVisibleStreamDelta, reconcileFinalStreamContent } from '@originos/core/lib/integrations/pi-agent/stream-dedupe';
+import { normalizeAgentTokenUsage, summarizeSessionTokenUsage } from '@originos/core/lib/integrations/pi-agent';
 import { getRuntimeAgent, setRuntimeAgent, type ProjectRuntimeAgent } from '@/app/api/agent/_runtime-agent-registry';
 import { getGlobalSpawner } from '@originos/core/modules/collaboration-runtime/sandbox/agent-spawner';
 import type { ApiResponse } from '@originos/core/types';
+import type { AgentMessage } from '@originos/core/types';
 import type { AgentEvent } from '@originos/pi-agent-adapter';
 import type { RuntimeEvent } from '@originos/core/modules/collaboration-runtime/session/types';
 import type { RuntimeLLMConfig } from '@originos/core/lib/integrations/pi-agent/server';
@@ -210,6 +212,7 @@ function createEventStream(
   const encoder = new TextEncoder();
   let assistantContent = '';
   let completionFailed = false;
+  const assistantUsages: NonNullable<AgentMessage['usage']>[] = [];
 
   return new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -268,6 +271,8 @@ function createEventStream(
 
             case 'message_end':
               if (event['message']?.role === 'assistant') {
+                const messageUsage = normalizeAgentTokenUsage(event['message']?.usage);
+                if (messageUsage) assistantUsages.push(messageUsage);
                 if (event['message']?.completionFailure === true) {
                   completionFailed = true;
                   const failure = extractTextContent(event['message']['content']);
@@ -285,7 +290,7 @@ function createEventStream(
                   if (content) {
                     send({
                       type: 'assistant_message',
-                      data: { content, isStreaming: false },
+                      data: { content, isStreaming: false, ...(messageUsage ? { usage: messageUsage } : {}) },
                     });
                   }
                 }
@@ -306,7 +311,9 @@ function createEventStream(
         await agent?.handleMessage(userContent, sessionId);
         console.log(`[Stream] Agent handleMessage completed`);
 
-        send({ type: 'done', data: { failed: completionFailed } });
+        const usage = summarizeSessionTokenUsage(assistantUsages.map((item) => ({ role: 'assistant', usage: item })));
+        const contextTokenEstimate = piAgent.getContextTokenEstimate();
+        send({ type: 'done', data: { failed: completionFailed, ...(usage ? { usage } : {}), contextTokenEstimate } });
       } catch (error) {
         console.error('[Stream] Error in handleMessage:', error);
         send({ type: 'error', data: { message: error instanceof Error ? error.message : 'Unknown error' } });

@@ -16,6 +16,8 @@ import {
 } from '../electron/services/agent-project';
 import { appendStreamDelta, reconcileFinalStreamContent } from './stream-dedupe';
 import { StreamRenderScheduler } from './stream-render-scheduler';
+import type { AgentContextTokenEstimate, AgentTokenUsage } from '../../../types/agent';
+import { normalizeAgentTokenUsage } from './token-usage';
 
 export interface AgentMessage {
   id?: string;
@@ -23,6 +25,8 @@ export interface AgentMessage {
   content: string;
   timestamp: number;
   isStreaming?: boolean;
+  usage?: AgentTokenUsage;
+  contextTokenEstimate?: AgentContextTokenEstimate;
 }
 
 export interface ToolExecution {
@@ -185,12 +189,17 @@ export function usePersistentAgent(projectId: string, llmConfig?: LlmConfig): Us
       state.content = reconcileFinalStreamContent(state.content, data.content);
       void state.scheduler.finish(state.content);
     } else if (event.type === 'done') {
-      const data = event.data as { content?: string } | null;
+      const data = event.data as { content?: string; usage?: unknown; contextTokenEstimate?: AgentContextTokenEstimate } | null;
       if (data?.content) {
         const state = streamSchedulersRef.current.get(assistantId);
         if (state) {
           state.content = reconcileFinalStreamContent(state.content, data.content);
         }
+      }
+      if (data) {
+        setMessages(prev => prev.map(message => message.id === assistantId
+          ? { ...message, usage: normalizeAgentTokenUsage(data.usage), contextTokenEstimate: data.contextTokenEstimate }
+          : message));
       }
     } else if (event.type === 'tool_start') {
       const data = event.data as { toolCallId?: string; toolName: string; args?: unknown };

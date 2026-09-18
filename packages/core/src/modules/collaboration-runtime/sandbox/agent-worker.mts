@@ -2294,7 +2294,7 @@ class AgentWorker {
             sessionId,
             seq,
             type: "MESSAGE_SENT",
-            payload: { message: event.message },
+            payload: { message: event.message, usage: event.message.usage },
             source: this.agentId,
             timestamp: now,
           };

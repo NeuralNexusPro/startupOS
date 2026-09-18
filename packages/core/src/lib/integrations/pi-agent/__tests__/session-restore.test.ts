@@ -89,6 +89,30 @@ function expectRestoreError(
 }
 
 describe('Session restore contract', () => {
+  it('preserves real token usage and context estimates without inventing legacy values', () => {
+    const [message] = mapSessionDisplayMessages([{
+      id: 'assistant-usage',
+      role: 'assistant',
+      content: 'done',
+      timestamp: 20,
+      usage: { input: 10, output: 4, cacheRead: 3, cacheWrite: 2, totalTokens: 19 },
+      contextTokenEstimate: {
+        stableSystem: 5,
+        sessionContext: 4,
+        turnRecall: 3,
+        history: 2,
+        total: 14,
+        estimated: true,
+      },
+    }]);
+
+    expect(message).toMatchObject({
+      usage: { input: 10, output: 4, cacheRead: 3, cacheWrite: 2, totalTokens: 19 },
+      contextTokenEstimate: { total: 14, estimated: true },
+    });
+    expect(mapSessionDisplayMessages([{ role: 'assistant', content: 'legacy' }])[0]).not.toHaveProperty('usage');
+  });
+
   it('TC-U1 maps canonical history and context into a bounded display snapshot', () => {
     const result = createRestoreAgentSessionResult(createStoredSession(), restoreRequest);
 

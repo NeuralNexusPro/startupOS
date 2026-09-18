@@ -27,12 +27,15 @@ import {
 } from '@originos/core/lib/integrations/electron/services/skill';
 import { getAgentContent } from '@originos/core/lib/integrations/electron/services/agent-session';
 import { isSkillExportAllowed } from './skill-export-policy';
+import type { AgentContextTokenEstimate, AgentTokenUsage } from '@originos/core/types';
 
 export interface SkillMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: number;
   isStreaming?: boolean;
+  usage?: AgentTokenUsage;
+  contextTokenEstimate?: AgentContextTokenEstimate;
 }
 
 export interface SkillDefinition {
@@ -577,11 +580,13 @@ export function SkillDialog({
 
   // 转换 Pi Agent 消息为 SkillMessage 格式
   const skillMessages = useMemo<SkillMessage[]>(() => {
-    return (piMessages ?? []).map((msg: { role: string; content: string; timestamp?: number }) => ({
+    return (piMessages ?? []).map((msg: { role: string; content: string; timestamp?: number; usage?: AgentTokenUsage; contextTokenEstimate?: AgentContextTokenEstimate }) => ({
       role: (msg.role === 'tool' || msg.role === 'toolResult') ? 'system' : msg.role as 'user' | 'assistant' | 'system',
       content: msg.content || '',
       timestamp: msg.timestamp || Date.now(),
       isStreaming: (msg as { isStreaming?: boolean }).isStreaming,
+      usage: msg.usage,
+      contextTokenEstimate: msg.contextTokenEstimate,
     }));
   }, [piMessages]);
 

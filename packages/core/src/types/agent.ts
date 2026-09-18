@@ -157,6 +157,34 @@ export interface AgentIconProps {
 
 // ============ Agent Session Types ============
 
+export interface AgentTokenUsageCost {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  total: number;
+}
+
+export interface AgentTokenUsage {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  cacheWrite1h?: number;
+  reasoning?: number;
+  totalTokens: number;
+  cost?: AgentTokenUsageCost;
+}
+
+export interface AgentContextTokenEstimate {
+  stableSystem: number;
+  sessionContext: number;
+  turnRecall: number;
+  history: number;
+  total: number;
+  estimated: true;
+}
+
 /**
  * Agent message in a session
  */
@@ -170,6 +198,8 @@ export interface AgentMessage {
     result: unknown;
   }>;
   metadata?: Record<string, unknown>;
+  usage?: AgentTokenUsage;
+  contextTokenEstimate?: AgentContextTokenEstimate;
 
   // AI 推理过程（Task #17 - 仅 assistant 消息有）
   thinking?: ThinkingData;
