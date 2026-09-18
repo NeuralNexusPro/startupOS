@@ -105,6 +105,35 @@ export interface CanonicalContextProjectionRecord {
   createdAt: Date;
 }
 
+export interface CanonicalFactRecord {
+  ref: CanonicalFactReference;
+  value: Record<string, unknown>;
+  source: CanonicalSourceReference;
+  operationId: string;
+  revision: number;
+  acceptedAt: Date;
+}
+
+export interface CanonicalOperationRecord {
+  operationId: string;
+  actionId: string;
+  status: 'intent' | 'accepted' | 'rejected' | 'unknown';
+  expectedRevision: number;
+  factRefs: CanonicalFactReference[];
+  recordedAt: Date;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CanonicalMigrationRecord {
+  migrationId: string;
+  projectId: string;
+  fromVersion: string;
+  toVersion: string;
+  status: 'started' | 'completed' | 'failed';
+  recordedAt: Date;
+  metadata?: Record<string, unknown>;
+}
+
 export interface CanonicalDomain {
   id: string;
   name: string;
