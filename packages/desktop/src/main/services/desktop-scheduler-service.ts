@@ -7,15 +7,21 @@ import {
 import { getNotificationManager, NotificationType } from '../../../../core/src/lib/integrations/pi-agent/notification-system';
 import { showNativeSystemNotification } from './native-notification-service';
 
-const DEFAULT_POLL_INTERVAL_MS = 30_000;
+const DEFAULT_POLL_INTERVAL_MS = 1_000;
+const DEFAULT_USER_SCAN_INTERVAL_MS = 30_000;
 
 export class DesktopSchedulerService {
   private readonly scheduler: SchedulerService;
   private timer: NodeJS.Timeout | null = null;
   private running = false;
+  private nextUserScanAt = 0;
 
-  constructor(private readonly pollIntervalMs = DEFAULT_POLL_INTERVAL_MS) {
-    this.scheduler = new SchedulerService(undefined, new DesktopSchedulerActionRunner());
+  constructor(
+    private readonly pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
+    scheduler?: SchedulerService,
+    private readonly userScanIntervalMs = DEFAULT_USER_SCAN_INTERVAL_MS
+  ) {
+    this.scheduler = scheduler ?? new SchedulerService(undefined, new DesktopSchedulerActionRunner());
   }
 
   start(): void {
@@ -23,6 +29,8 @@ export class DesktopSchedulerService {
       return;
     }
 
+    this.scheduler.startSystemTasks();
+    this.nextUserScanAt = 0;
     void this.tick('startup');
     this.timer = setInterval(() => {
       void this.tick('interval');
@@ -31,22 +39,44 @@ export class DesktopSchedulerService {
     console.log('[DesktopSchedulerService] started', { pollIntervalMs: this.pollIntervalMs });
   }
 
-  stop(): void {
-    if (!this.timer) {
-      return;
-    }
-    clearInterval(this.timer);
-    this.timer = null;
+  async stop(): Promise<void> {
+    this.pause();
+    await this.scheduler.stopSystemTasks();
     console.log('[DesktopSchedulerService] stopped');
   }
 
+  pause(): void {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+    this.scheduler.pauseSystemTasks();
+  }
+
+  every(key: string, intervalMs: number, task: () => Promise<void>): void {
+    const parts = key.split(':');
+    this.scheduler.registerSystemTask({
+      id: key,
+      ownerId: parts.length > 1 ? parts.slice(0, -1).join(':') : 'perception-plugin',
+      intervalMs,
+      callback: task,
+      runImmediately: false,
+    });
+  }
+
+  cancel(key: string): void {
+    this.scheduler.cancelSystemTask(key);
+  }
+
   private async tick(reason: 'startup' | 'interval'): Promise<void> {
+    const systemCount = this.scheduler.runDueSystemTasks();
+    const now = Date.now();
+    if (now < this.nextUserScanAt) return;
     if (this.running) {
-      console.warn('[DesktopSchedulerService] skip tick while previous run is active', { reason });
+      if (systemCount > 0) console.log('[DesktopSchedulerService] system tasks dispatched', { reason, count: systemCount });
       return;
     }
 
     this.running = true;
+    this.nextUserScanAt = now + this.userScanIntervalMs;
     try {
       const runs = await this.scheduler.runDueTasks();
       if (runs.length > 0) {
