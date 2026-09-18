@@ -57,6 +57,11 @@ import {
 	toRestorableRuntimeModel,
 	type PersistedRuntimeMessage,
 } from "./runtime-history";
+import {
+	estimateAgentContextTokens,
+	estimateTokens,
+} from "../token-usage";
+import type { AgentContextTokenEstimate } from "../../../../types/agent";
 
 // ============================================================================
 // Event Emitter
@@ -290,6 +295,7 @@ export class OriginOSAgent {
 		timestamp?: number;
 		value: Promise<string>;
 	};
+	private contextTokenEstimate: AgentContextTokenEstimate = estimateAgentContextTokens({});
 
 	private isEmptyStopRecoveryEnabled(): boolean {
 		return this.config?.emptyStopRecoveryEnabled === true;
@@ -358,22 +364,6 @@ export class OriginOSAgent {
 			const contextWindow: number = modelAny?.contextWindow ?? 128000;
 			const maxOutputTokens: number = modelAny?.maxTokens ?? 16384;
 			const tokenBudget = contextWindow - maxOutputTokens - 4000; // 预留 system prompt + buffer
-
-			// 估算 token 数（chars/4 启发式，中文约 2 chars/token）
-			const estimateTokens = (content: unknown): number => {
-				if (typeof content === 'string') {
-					return Math.ceil(content.length / 3);
-				}
-				if (Array.isArray(content)) {
-					return content.reduce((sum, c) => {
-						if (c && typeof c === 'object' && 'text' in c) {
-							return sum + Math.ceil((c.text as string).length / 3);
-						}
-						return sum;
-					}, 0);
-				}
-				return 0;
-			};
 
 			// 单条消息最大 token 限制（防止一条超大消息撑爆上下文）
 			const maxSingleMessageTokens = Math.floor(tokenBudget * 0.4); // 单条最多占 40% 预算
@@ -527,6 +517,15 @@ export class OriginOSAgent {
 			convertToLlm,
 			transformContext: async (messages) => {
 				const withSessionContext = injectSessionContext(messages, this.sessionContext);
+				const updateEstimate = (turnRecall = '') => {
+					this.contextTokenEstimate = estimateAgentContextTokens({
+						stableSystem: this.agent?.state.systemPrompt ?? this.config?.systemPrompt,
+						sessionContext: this.sessionContext,
+						turnRecall,
+						history: messages,
+					});
+				};
+				updateEstimate();
 				const lastUserIndex = messages.findLastIndex((message) => message.role === 'user');
 				const lastUserMessage = messages[lastUserIndex];
 				const query = getMessageText(lastUserMessage);
@@ -551,6 +550,7 @@ export class OriginOSAgent {
 					}
 					const recalledContext = await this.turnContextCache!.value;
 					if (!recalledContext.trim()) return withSessionContext;
+					updateEstimate(recalledContext);
 					const insertionIndex = withSessionContext.findLastIndex((message) => message.role === 'user');
 					const recalledMessage: AgentMessage = {
 						role: 'user',
@@ -1414,6 +1414,10 @@ export class OriginOSAgent {
 	setSessionContext(context: string): void {
 		this.rawSessionContext = context;
 		this.sessionContext = appendRuntimeEnvironmentPrompt(this.rawSessionContext, this.runtimeEnvironment);
+	}
+
+	getContextTokenEstimate(): AgentContextTokenEstimate {
+		return { ...this.contextTokenEstimate };
 	}
 
 	setTurnContextProvider(provider?: (query: string) => Promise<string>): void {
