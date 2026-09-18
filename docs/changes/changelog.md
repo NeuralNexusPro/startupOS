@@ -2053,3 +2053,9 @@ SENSE12-T3：首次启用后台本可启动，但UI快照不自动刷新；增�
 **类型**：feat
 **影响模块**：Core ontology feature / ONT1-T1
 **摘要**：新增版本化 canonical ontology、三层模型、业务状态、事实/Action/Event/Projection、来源引用及 Agent/Skill contract DTO，并从既有 ontology 公共入口导出。旧本体类型与持久化路径保持不变；core/类型样例编译、lint、架构边界及 OpenSpec strict validation 通过。
+
+## 2026-09-18 — feat：完成 ONT7-T1 最小 Context Projection 协议
+
+**类型**：feat
+**影响模块**：Core ontology feature / ONT7-T1
+**摘要**：新增 decision、execution context、snapshot、九类 projection record 与 checkpoint reference DTO，显式绑定 task/run/workItem/attempt、contract hash 和 ontology version。仅交付公共协议，不实现存储、调度或自动恢复；core/类型样例编译、lint、架构边界及 OpenSpec strict validation 通过。

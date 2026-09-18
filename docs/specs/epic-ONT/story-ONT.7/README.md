@@ -1,7 +1,7 @@
 # Story ONT.7：Context Projection Protocol
 
 **Epic:** ONT  
-**状态:** 🟡 In Progress
+**状态:** 🟡 In Progress（ONT7-T1 Done）
 **Owner:** Architecture / Core  
 **Task:** ONT7-T1  
 **最后更新:** 2026-09-18
@@ -12,11 +12,13 @@
 
 ## 验收摘要
 
-- [ ] context 明确绑定 task/session/branch/run/workItem/attempt 与 contract/ontology 版本。
-- [ ] snapshot 仅保存对象、事实、决策和来源引用。
-- [ ] projection 覆盖九类最小运行语义。
-- [ ] checkpoint 可表达 cursor、revision、attempt 和 lease epoch。
-- [ ] 不实现存储、调度或自动恢复。
+- [x] context 明确绑定 task/session/branch/run/workItem/attempt 与 contract/ontology 版本。
+- [x] snapshot 仅保存对象、事实、决策和来源引用。
+- [x] projection 覆盖九类最小运行语义。
+- [x] checkpoint 可表达 cursor、revision、attempt 和 lease epoch。
+- [x] ONT7-T1 不实现存储、调度或自动恢复。
+
+完整 Story 仍需后续工作包实现 projection append/query 与持久化适配。
 
 ## 文档
 
