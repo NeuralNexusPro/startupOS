@@ -78,12 +78,12 @@ CognitiveManager（认知管理器，类似 MemoryManager）
 | `on_turn_end` | 记录实践日志到 JSONL | 轻量（只写磁盘） |
 | `on_session_end` | 批量分析日志 → 提取知识 + 沉淀模式 | 重量（LLM 分析） |
 | 每 N 轮（可选） | 增量分析最近未处理的日志 | 重量（LLM 分析） |
-| Agent 启动 | 加载知识库 + 模式快照到 prompt | 轻量（读文件） |
+| Agent 启动 | 冻结 Core Memory；Knowledge/Pattern 仅加载有界目录 | 轻量（读文件） |
 
-**Frozen Snapshot（冻结快照）模式：**
-- Agent 启动时加载知识库快照 → system prompt（Layer 2: StateMemory）
-- 中途生成的知识只写入磁盘，不修改内存中的快照
-- 保持 LLM prefix cache 稳定，避免每轮重建 prompt
+**Frozen Snapshot 与渐进加载：**
+- Core Memory、用户 Profile 和 Agent/Project 世界模型可在会话启动时冻结为 session snapshot。
+- Knowledge 与 Pattern 正文不再作为完整 snapshot 注入；会话上下文只保留有界目录，正文按当前 turn 召回或由工具读取。
+- Prompt 稳定前缀、认知预取预算和 provider cache 接线统一由 [Story M.14](../epic-M/story-M.14/README.md) 约束。
 
 ### 认知所有权分域（Story M.12）
 
