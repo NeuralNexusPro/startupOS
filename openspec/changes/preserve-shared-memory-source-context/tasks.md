@@ -3,7 +3,7 @@
 ## 1. Proposal 与实施边界
 
 - [x] 1.1 【串行；依赖：无；角色：Proposal 编排者；写入范围：`openspec/changes/preserve-shared-memory-source-context/`】完成 Proposal、capability spec、design 和 tasks，并以 `npx -y @fission-ai/openspec validate preserve-shared-memory-source-context --strict` 通过作为完成证据。
-- [ ] 1.2 【串行；依赖：1.1；角色：Proposal 编排者；写入范围：Git 分支与 worktree 元数据】从 Proposal integration branch 创建独立 Task branch/worktree，并记录分支、基线提交和洁净状态作为完成证据。
+- [x] 1.2 【串行；依赖：1.1；角色：Proposal 编排者；写入范围：Git 分支与 worktree 元数据】已创建 `task/preserve-shared-memory-source-context` 与 `/private/tmp/startupos-task-memory-source-context`，基线为 `5d70bc1` 且初始状态洁净。
 
 ## 2. 可信来源贯穿链路
 
