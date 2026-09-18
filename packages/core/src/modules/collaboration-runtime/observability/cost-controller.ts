@@ -23,6 +23,14 @@ export interface AgentQuota {
 export interface AgentUsage {
   agentId: string;
   tokensUsed: number;
+  totalTokens: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  cacheWrite1hTokens: number;
+  providerCostUsd: number;
+  estimatedCostUsd: number;
   toolCalls: number;
   messagesSent: number;
   turnCount: number;
@@ -37,12 +45,23 @@ export interface CostReport {
     string,
     {
       tokensUsed: number;
+      totalTokens: number;
+      inputTokens: number;
+      outputTokens: number;
+      cacheReadTokens: number;
+      cacheWriteTokens: number;
+      cacheWrite1hTokens: number;
+      costUsd: number;
+      providerCostUsd: number;
+      estimatedCostUsd: number;
       turns: number;
       messages: number;
       quotaRemaining: number;
       quotaExceeded: boolean;
     }
   >;
+  costUsd: number;
+  providerCostUsd: number;
   estimatedCostUsd: number;
 }
 
@@ -68,8 +87,6 @@ const TOKEN_COST_PER_1K: Record<string, number> = {
 export class CostController {
   private quotas = new Map<string, AgentQuota>();
   private usages = new Map<string, AgentUsage>(); // agentId → usage
-  private tokenInputCounts = new Map<string, number>();
-  private tokenOutputCounts = new Map<string, number>();
 
   /**
    * 设置 Agent Token 配额。
@@ -79,13 +96,7 @@ export class CostController {
 
     // 初始化 usage（如不存在）
     if (!this.usages.has(config.agentId)) {
-      this.usages.set(config.agentId, {
-        agentId: config.agentId,
-        tokensUsed: 0,
-        toolCalls: 0,
-        messagesSent: 0,
-        turnCount: 0,
-      });
+      this.usages.set(config.agentId, this.emptyUsage(config.agentId));
     }
   }
 
@@ -149,23 +160,37 @@ export class CostController {
    */
   recordUsage(
     agentId: string,
-    usage: { inputTokens?: number; outputTokens?: number }
+    usage: {
+      input?: number;
+      output?: number;
+      cacheRead?: number;
+      cacheWrite?: number;
+      cacheWrite1h?: number;
+      totalTokens?: number;
+      cost?: { total: number };
+      inputTokens?: number;
+      outputTokens?: number;
+    }
   ): void {
     const agentUsage = this.ensureUsage(agentId);
+    const input = usage.input ?? usage.inputTokens ?? 0;
+    const output = usage.output ?? usage.outputTokens ?? 0;
+    const cacheRead = usage.cacheRead ?? 0;
+    const cacheWrite = usage.cacheWrite ?? 0;
+    const cacheWrite1h = usage.cacheWrite1h ?? 0;
 
-    if (usage.inputTokens) {
-      agentUsage.tokensUsed += usage.inputTokens;
-      this.tokenInputCounts.set(
-        agentId,
-        (this.tokenInputCounts.get(agentId) ?? 0) + usage.inputTokens
-      );
-    }
-    if (usage.outputTokens) {
-      agentUsage.tokensUsed += usage.outputTokens;
-      this.tokenOutputCounts.set(
-        agentId,
-        (this.tokenOutputCounts.get(agentId) ?? 0) + usage.outputTokens
-      );
+    agentUsage.inputTokens += input;
+    agentUsage.outputTokens += output;
+    agentUsage.cacheReadTokens += cacheRead;
+    agentUsage.cacheWriteTokens += cacheWrite;
+    agentUsage.cacheWrite1hTokens += cacheWrite1h;
+    agentUsage.totalTokens += usage.totalTokens ?? input + output + cacheRead + cacheWrite;
+    // Preserve quota semantics: cached token classes are reported separately.
+    agentUsage.tokensUsed += input + output;
+    if (usage.cost) {
+      agentUsage.providerCostUsd += usage.cost.total;
+    } else {
+      agentUsage.estimatedCostUsd += this.estimateCost(input, output);
     }
   }
 
@@ -211,6 +236,8 @@ export class CostController {
     let totalTokens = 0;
     let totalTurns = 0;
     let totalMessages = 0;
+    let providerCostUsd = 0;
+    let estimatedCostUsd = 0;
     const agentBreakdown: CostReport["agentBreakdown"] = {};
 
     for (const [agentId, usage] of this.usages) {
@@ -221,15 +248,26 @@ export class CostController {
 
       agentBreakdown[agentId] = {
         tokensUsed: usage.tokensUsed,
+        totalTokens: usage.totalTokens,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        cacheReadTokens: usage.cacheReadTokens,
+        cacheWriteTokens: usage.cacheWriteTokens,
+        cacheWrite1hTokens: usage.cacheWrite1hTokens,
+        costUsd: usage.providerCostUsd + usage.estimatedCostUsd,
+        providerCostUsd: usage.providerCostUsd,
+        estimatedCostUsd: usage.estimatedCostUsd,
         turns: usage.turnCount,
         messages: usage.messagesSent,
         quotaRemaining: remaining,
         quotaExceeded: quota ? usage.tokensUsed > quota.maxTokens : false,
       };
 
-      totalTokens += usage.tokensUsed;
+      totalTokens += usage.totalTokens;
       totalTurns += usage.turnCount;
       totalMessages += usage.messagesSent;
+      providerCostUsd += usage.providerCostUsd;
+      estimatedCostUsd += usage.estimatedCostUsd;
     }
 
     return {
@@ -238,7 +276,9 @@ export class CostController {
       totalAgentTurns: totalTurns,
       totalMessages,
       agentBreakdown,
-      estimatedCostUsd: this.estimateCost(totalTokens),
+      costUsd: providerCostUsd + estimatedCostUsd,
+      providerCostUsd,
+      estimatedCostUsd,
     };
   }
 
@@ -246,13 +286,7 @@ export class CostController {
    * 重置指定 Agent 的使用统计。
    */
   resetUsage(agentId: string): void {
-    this.usages.set(agentId, {
-      agentId,
-      tokensUsed: 0,
-      toolCalls: 0,
-      messagesSent: 0,
-      turnCount: 0,
-    });
+    this.usages.set(agentId, this.emptyUsage(agentId));
   }
 
   /**
@@ -270,24 +304,33 @@ export class CostController {
 
   private ensureUsage(agentId: string): AgentUsage {
     if (!this.usages.has(agentId)) {
-      this.usages.set(agentId, {
-        agentId,
-        tokensUsed: 0,
-        toolCalls: 0,
-        messagesSent: 0,
-        turnCount: 0,
-      });
+      this.usages.set(agentId, this.emptyUsage(agentId));
     }
     return this.usages.get(agentId)!;
   }
 
-  private estimateCost(totalTokens: number): number {
-    // Simplified: assume 50/50 input/output split
-    const inputTokens = totalTokens * 0.5;
-    const outputTokens = totalTokens * 0.5;
+  private estimateCost(inputTokens: number, outputTokens: number): number {
     return (
       (inputTokens / 1000) * (TOKEN_COST_PER_1K["input"] ?? 0.0025) +
       (outputTokens / 1000) * (TOKEN_COST_PER_1K["output"] ?? 0.01)
     );
+  }
+
+  private emptyUsage(agentId: string): AgentUsage {
+    return {
+      agentId,
+      tokensUsed: 0,
+      totalTokens: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      cacheWrite1hTokens: 0,
+      providerCostUsd: 0,
+      estimatedCostUsd: 0,
+      toolCalls: 0,
+      messagesSent: 0,
+      turnCount: 0,
+    };
   }
 }

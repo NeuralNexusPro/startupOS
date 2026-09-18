@@ -22,6 +22,9 @@ import { getMonorepoRoot } from '../../../lib/paths';
 
 import type { RuntimeEvent } from "../session/types";
 import type { RuntimeLLMConfig } from "../../../lib/integrations/pi-agent/llm-config";
+import { normalizeAgentTokenUsage } from "../../../lib/integrations/pi-agent/token-usage";
+import { CostController, type CostReport } from "../observability/cost-controller";
+import { MetricsRegistry, type MetricSample } from "../observability/metrics";
 
 type AgentCommandState = "ready" | "waiting";
 
@@ -577,6 +580,8 @@ export class AgentProcess {
 
 export class AgentSpawner {
   private processes = new Map<string, AgentProcess>();
+  private costs = new Map<string, CostController>();
+  private metrics = new MetricsRegistry();
 
   constructor(_deps: unknown) {
     void _deps;
@@ -600,7 +605,10 @@ export class AgentSpawner {
       model: summarizeModel(config.model),
     });
     const proc = new AgentProcess(config.agentId, null, config);
-    await proc.start(onEvent);
+    await proc.start((event) => {
+      this.recordUsageEvent(event);
+      onEvent(event);
+    });
     this.processes.set(config.agentId, proc);
     logRuntime("spawner.spawn.ready", {
       projectId: config.projectId,
@@ -646,6 +654,25 @@ export class AgentSpawner {
   /** 列出所有运行中的 Agent */
   list(): AgentProcess[] {
     return Array.from(this.processes.values());
+  }
+
+  /** Record usage once at the parent-process boundary for every worker mode. */
+  recordUsageEvent(event: RuntimeEvent): void {
+    const usage = normalizeAgentTokenUsage(event.payload["usage"]);
+    if (!usage) return;
+    const cost = this.costs.get(event.sessionId) ?? new CostController();
+    this.costs.set(event.sessionId, cost);
+    cost.recordUsage(event.source, usage);
+    this.metrics.recordTokenUsage(event.source, event.sessionId, usage);
+  }
+
+  getCostReport(sessionId: string): CostReport | undefined {
+    return this.costs.get(sessionId)?.getCostReport(sessionId);
+  }
+
+  getTokenMetrics(sessionId?: string): MetricSample[] {
+    const samples = this.metrics.collect().filter((sample) => sample.name.includes("tokens"));
+    return sessionId ? samples.filter((sample) => sample.labels["sessionId"] === sessionId) : samples;
   }
 
   /** 停止所有 Agent */
