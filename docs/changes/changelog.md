@@ -2087,3 +2087,9 @@ SENSE12-T3：首次启用后台本可启动，但UI快照不自动刷新；增�
 **类型**：feat
 **影响模块**：Core ontology feature / ONT5-T1
 **摘要**：新增绑定当前 ontology 的类型化 facts 查询与 latest revision 选择，并以 Action Gate、输入/输出类型、权限和 expectedRevision 门控事实接纳。operationId 通过请求指纹、intent、缺失事实补写和 accepted 回执支持幂等恢复；Rule evaluator、外部副作用和 instance 状态更新仍明确拒绝或留在后续边界。Ontology 33 项测试、Core 编译、lint、架构边界和 OpenSpec strict validation 通过。
+
+## 2026-09-18 — feat：完成 ONT6-T1 Agent / Skill 契约校验
+
+**类型**：feat
+**影响模块**：Core ontology feature / ONT6-T1
+**摘要**：新增 Agent/Skill contract 与最小 flow DTO 校验，覆盖 ontology/version、FactType/Concept、Action binding、权限、节点/边引用、生产消费兼容和 required input 连通性。校验为确定性纯函数，不包含 DAG 环、P2 发布或 runtime 调度；Ontology 41 项测试、Core 编译、lint、架构边界和 OpenSpec strict validation 通过。

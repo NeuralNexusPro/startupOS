@@ -385,6 +385,11 @@ interface Instance {
 - OSDK 不解释 `Rule.expression`、不调用外部副作用、不更新 instance 状态；有 Rule 且无确定性 evaluator 时必须在写入前拒绝
 - facts JSONL 与 operations JSONL 分别是事实和操作回执的持久来源；审计 metadata 只用于追踪，不得参与授权或成为业务状态事实源
 
+**Agent / Skill 语义契约校验：**
+- Agent/Skill contract 与 SOP facts 连通性统一通过 ontology feature 公共纯函数校验；P2 不得复制 FactType、Action binding 或权限规则
+- contract 必须绑定当前 ontology ID/version；FactType 与 flow edge 使用完整 ontology/version/concept/factType 引用精确匹配，不按名称或相似度猜测
+- 每个 required input 必须由兼容入边或显式 external input 提供；validator 只证明静态语义连通，不负责 DAG 环、调度或运行时产出
+
 ### 2. 项目访谈模块架构
 
 **访谈流程（强制）：**

@@ -312,6 +312,24 @@ export interface CanonicalSkillContract {
   permissions: string[];
 }
 
+export type CanonicalContract = CanonicalAgentContract | CanonicalSkillContract;
+
+export type CanonicalContractNode =
+  | { id: string; kind: 'agent'; contract: CanonicalAgentContract }
+  | { id: string; kind: 'skill'; contract: CanonicalSkillContract };
+
+export interface CanonicalContractEdge {
+  fromNodeId: string;
+  toNodeId: string;
+  factType: CanonicalConceptReference & { factTypeId: string };
+}
+
+export interface CanonicalContractFlow {
+  nodes: CanonicalContractNode[];
+  edges: CanonicalContractEdge[];
+  externalInputs: Array<CanonicalConceptReference & { factTypeId: string }>;
+}
+
 export interface CanonicalValidationIssue {
   code: string;
   message: string;
