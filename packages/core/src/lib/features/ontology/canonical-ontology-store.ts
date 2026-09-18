@@ -94,7 +94,11 @@ export class CanonicalOntologyStore {
 
   constructor(private readonly dataRoot = getDataRoot()) {}
 
-  async writeOntology(projectId: string, ontology: CanonicalOntology): Promise<DataFile<CanonicalOntology>> {
+  async writeOntology(
+    projectId: string,
+    ontology: CanonicalOntology,
+    options: { createOnly?: boolean } = {},
+  ): Promise<DataFile<CanonicalOntology>> {
     if (ontology.projectId !== projectId) {
       throw new TypeError(`Ontology projectId ${ontology.projectId} does not match ${projectId}`);
     }
@@ -102,6 +106,9 @@ export class CanonicalOntologyStore {
     return this.enqueue(filePath, async () => {
       await fs.mkdir(path.dirname(filePath), { recursive: true });
       const existing = await this.readDataFile(filePath);
+      if (options.createOnly && existing) {
+        throw new Error(`Canonical ontology already exists for ${projectId}`);
+      }
       const now = new Date().toISOString();
       const stored: DataFile<StoredOntology> = {
         version: CANONICAL_ONTOLOGY_SCHEMA_VERSION,
@@ -128,6 +135,24 @@ export class CanonicalOntologyStore {
     const stored = await this.readDataFile(filePath);
     if (!stored) return null;
     return { ...stored, data: decodeOntology(stored.data as StoredOntology) };
+  }
+
+  async deleteOntology(projectId: string, expectedUpdatedAt?: string): Promise<boolean> {
+    const filePath = this.file(projectId, 'ontology.json');
+    return this.enqueue(filePath, async () => {
+      const existing = await this.readDataFile(filePath);
+      if (!existing) return false;
+      if (expectedUpdatedAt && existing.updatedAt !== expectedUpdatedAt) {
+        throw new Error(`Canonical ontology ${projectId} changed after migration`);
+      }
+      try {
+        await fs.unlink(filePath);
+        return true;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+        throw error;
+      }
+    });
   }
 
   appendFact(projectId: string, record: CanonicalFactRecord): Promise<void> {

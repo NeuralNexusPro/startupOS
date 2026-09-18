@@ -129,7 +129,7 @@ export interface CanonicalMigrationRecord {
   projectId: string;
   fromVersion: string;
   toVersion: string;
-  status: 'started' | 'completed' | 'failed';
+  status: 'started' | 'completed' | 'failed' | 'rolled_back';
   recordedAt: Date;
   metadata?: Record<string, unknown>;
 }

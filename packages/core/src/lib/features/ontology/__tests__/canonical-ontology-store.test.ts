@@ -171,4 +171,11 @@ describe('CanonicalOntologyStore', () => {
     await expect(store.writeOntology('project-2', ontology('1'))).rejects.toThrow('does not match');
     await expect(fs.access(path.join(root, 'ontology'))).rejects.toMatchObject({ code: 'ENOENT' });
   });
+
+  it('deletes snapshots only at the expected stored version', async () => {
+    const written = await store.writeOntology('project-1', ontology('1'));
+    await expect(store.deleteOntology('project-1', 'stale')).rejects.toThrow('changed after migration');
+    expect(await store.deleteOntology('project-1', written.updatedAt)).toBe(true);
+    expect(await store.deleteOntology('project-1')).toBe(false);
+  });
 });
