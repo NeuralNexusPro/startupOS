@@ -2,6 +2,12 @@
 
 ---
 
+## 2026-09-18 — docs：规划渐进式 Agent 上下文、KV Cache 与 Token 统计
+
+**类型**：docs
+**影响模块**：Epic M / Story M.14、Epic C 认知上下文说明
+**摘要**：新增 Story M.14，统一普通 Agent、RoleAgent、Project Agent 与协作 Agent 的上下文分级；Patterns/Knowledge 从默认全文注入改为有界目录、当前 turn 预取和工具按需读取，动态内容移出稳定 system prompt，并复用 Pi AI 的 session cache 与真实 usage。统计随 assistant message 持久化并在现有 Agent/Skill 会话中聚合展示；仅完成架构规划，未修改运行时代码。
+
 ## 2026-09-18 — feat：Canonical Ontology Validator 与 Action Gate
 
 **类型**：feat
