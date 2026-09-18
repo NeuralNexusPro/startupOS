@@ -1,7 +1,7 @@
 # Story ONT.6：Skill / Agent Contract Validation API
 
 **Epic:** ONT
-**状态:** 🟡 In Progress（ONT6-T1）
+**状态:** ✅ Done
 **Owner:** Architecture / Core
 **Task:** ONT6-T1
 **最后更新:** 2026-09-18
@@ -12,11 +12,11 @@
 
 ## 验收摘要
 
-- [ ] Agent/Skill contract 绑定当前 ontology 并校验 facts/actions。
-- [ ] contract permissions 覆盖绑定 Action 的最小权限。
-- [ ] flow edge 同时兼容上游 output 与下游 input。
-- [ ] required input 由入边或 external input 提供。
-- [ ] 校验纯函数返回稳定 code/path，不修改输入。
+- [x] Agent/Skill contract 绑定当前 ontology 并校验 facts/actions。
+- [x] contract permissions 覆盖绑定 Action 的最小权限。
+- [x] flow edge 同时兼容上游 output 与下游 input。
+- [x] required input 由入边或 external input 提供。
+- [x] 校验纯函数返回稳定 code/path，不修改输入。
 
 ## 文档
 

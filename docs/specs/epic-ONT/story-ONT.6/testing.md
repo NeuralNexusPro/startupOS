@@ -13,3 +13,12 @@
 自动化命令：ontology 定向 Vitest、core TypeScript、`pnpm lint`、`pnpm lint:boundaries`、架构 self-test、OpenSpec strict validation、`git diff --check`。
 
 测试使用内存 fixtures，无文件系统和用户数据。P2 DesignGap 映射与真实发布属于 P2.8。
+
+## 2026-09-18 验证结果
+
+- Ontology 定向 Vitest：5 files、41 tests 全部通过；其中 contract-validator 8 tests。
+- Core TypeScript 与 `git diff --check` 通过。
+- `pnpm lint`：0 error，仅 2983 条既有 warning。
+- 架构边界：884 个生产文件 0 诊断；43 个导入用例 × 2 个 CWD 自测通过。
+- OpenSpec strict validation 通过。
+- 含 NUL 的稳定 ID 四元组碰撞回归通过；DAG 环、P2 发布和 runtime 不在本 Task 范围。
