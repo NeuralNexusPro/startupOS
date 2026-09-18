@@ -367,6 +367,13 @@ interface Instance {
 - 所有本体数据存储在 `{project-root}/data/ontology/` 目录
 - 每个项目一个独立的 JSON 文件
 
+**旧模型迁移约束：**
+- `packages/core/src/lib/features/ontology/` 是旧 `Ontology`、访谈 `OntologyModel` 与 `business-model.json` 转换的唯一业务实现；Web/Desktop 禁止复制转换逻辑
+- 迁移必须由调用方显式触发，先支持无写入 dry-run；禁止在读取、启动或升级过程中静默迁移
+- 正式迁移必须保留源文件原始字节备份、拒绝覆盖已有 canonical ontology，并记录 started/completed/failed/rolled_back 审计状态
+- 回滚只允许删除本次迁移新建且此后未修改的 canonical 快照；旧源文件和备份始终保留
+- legacy compatibility projection 仅供读取，不得成为第二写入事实源
+
 ### 2. 项目访谈模块架构
 
 **访谈流程（强制）：**
