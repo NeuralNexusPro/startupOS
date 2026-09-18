@@ -2,6 +2,14 @@
 
 ---
 
+## 2026-09-18 — feat：旧本体模型安全迁移与只读兼容投影
+
+**类型**：feat
+**影响模块**：`packages/core/src/lib/features/ontology/`, `docs/specs/epic-ONT/`, `AGENTS.md`
+**摘要**：完成 ONT3-T1。Core 统一支持旧 `Ontology`、访谈 `OntologyModel` 和 `business-model.json` 的 dry-run 与显式迁移；正式迁移保留原字节备份、拒绝覆盖已有 canonical ontology，并以 DataFile 更新时间保护回滚。旧 DTO 仅通过纯函数只读投影继续兼容，不再形成独立写入源。
+
+---
+
 ## 2026-09-17 — fix：角色与技能历史会话显示内容标题
 
 **类型**：fix

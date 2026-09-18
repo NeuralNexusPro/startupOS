@@ -1,9 +1,9 @@
 # Story ONT.3：旧模型迁移与兼容投影
 
-**Epic:** ONT  
-**状态:** 🚧 In Progress  
-**Owner:** Architecture / Core  
-**Task:** ONT3-T1  
+**Epic:** ONT
+**状态:** ✅ Done
+**Owner:** Architecture / Core
+**Task:** ONT3-T1
 **最后更新:** 2026-09-18
 
 ## User Story
@@ -12,10 +12,10 @@
 
 ## 验收摘要
 
-- [ ] 支持旧 `Ontology`、访谈 `OntologyModel` 和 `business-model.json`。
-- [ ] dry-run 不写盘，正式迁移先备份且拒绝覆盖。
-- [ ] 回滚保留旧源与备份，并拒绝删除迁移后已修改的数据。
-- [ ] 兼容投影只读，不形成第二写入源。
+- [x] 支持旧 `Ontology`、访谈 `OntologyModel` 和 `business-model.json`。
+- [x] dry-run 不写盘，正式迁移先备份且拒绝覆盖。
+- [x] 回滚保留旧源与备份，并拒绝删除迁移后已修改的数据。
+- [x] 兼容投影只读，不形成第二写入源。
 
 ## 文档
 
