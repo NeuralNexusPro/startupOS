@@ -6,7 +6,7 @@
 
 ## 2. 目录化实现
 
-- [ ] 2.1（依赖：1.1；串行；角色：Core subagent；写入：`memory-consumption.ts`、现有 prompt builders 与定向测试）在隔离 Task branch/worktree 实现共享 Markdown 目录 helper 并替换四条 Agent 链路的全文注入；证据：提交哈希及目录预算、顺序、空内容测试通过。
+- [x] 2.1（依赖：1.1；串行；角色：Core subagent；写入：`memory-consumption.ts`、现有 prompt builders 与定向测试）在隔离 Task branch/worktree 实现共享 Markdown 目录 helper 并替换四条 Agent 链路的全文注入；证据：实现提交 `3d6f5a4303e746775399d3b4e6edb2585de52be6`；渐进目录定向测试 6/6、协作 prompt 定向回归 13/13 和 Core `tsc --noEmit` 通过，`git diff --check` 无错误。
 
 ## 3. 集成与验收
 
