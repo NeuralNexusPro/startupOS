@@ -13,10 +13,10 @@
 
 ## 3. 集成、验证与交付
 
-- [ ] 3.1 【串行；依赖：2.3；角色：Proposal编排者；写入范围：Proposal integration branch】审查并合并Task branch，确认平台插件仅包含Email错误传播修复且无Web业务改动。
-- [ ] 3.2 【可并行；依赖：3.1；角色：验证者；写入范围：无】独立复跑Core scheduler、Desktop plugin host和email/dingtalk plugin回归，执行Core/Desktop typecheck与Desktop构建。
-- [ ] 3.3 【可并行；依赖：3.1；角色：架构验证者；写入范围：无】运行`pnpm lint`、`pnpm lint:boundaries`、架构检查器self-test、OpenSpec strict validation和`git diff --check`。
-- [ ] 3.4 【串行；依赖：3.2、3.3；角色：Proposal编排者；写入范围：`docs/specs/epic-OS/story-OS.21/`与本tasks文件】更新Story状态、自动化证据和剩余人工Windows睡眠恢复验收。
+- [x] 3.1 【串行；依赖：2.3；角色：Proposal编排者；写入范围：Proposal integration branch】已审查并以merge commit合并Task branch；平台插件仅包含Email错误传播修复，无Web业务改动。
+- [x] 3.2 【可并行；依赖：3.1；角色：验证者；写入范围：无】Core 6/6、Desktop 11/11、Email 6/6、DingTalk 29/29、Web Scheduler 4/4通过；Core/Email类型检查及Desktop构建通过。
+- [x] 3.3 【可并行；依赖：3.1；角色：架构验证者；写入范围：无】`pnpm lint`为0 error、`lint:boundaries`为0 diagnostics，架构self-test、OpenSpec strict validation和`git diff --check`通过。
+- [x] 3.4 【串行；依赖：3.2、3.3；角色：Proposal编排者；写入范围：`docs/specs/epic-OS/story-OS.21/`与本tasks文件】已更新Story状态、自动化证据，并保留Windows睡眠恢复和真实邮箱断网为人工验收。
 
 ## 4. 合并与清理
 

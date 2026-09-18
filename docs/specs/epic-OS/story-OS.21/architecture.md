@@ -4,8 +4,8 @@
 
 | 层级 | 模块 | 职责 |
 |---|---|---|
-| Core Layer 2 | `packages/core/src/modules/scheduler/` | 通用时钟、队列、fire key、防重、退避、运行摘要 |
-| Core Layer 2 | `packages/core/src/modules/perception-runtime/` | 邮箱 owner adapter；保留游标、抓取和路由业务 |
+| Core Layer 2 | `packages/core/src/modules/scheduler/` | 用户任务存储、系统任务内存 registry、防重、退避、运行摘要 |
+| Core Layer 2 | `packages/core/src/modules/perception-runtime/` | Plugin SDK schedule port 与连接器作用域 key |
 | Desktop Layer 6 | `packages/desktop/src/main/` | Runtime 启停、电源恢复、Electron 环境装配 |
 | Web Layer 4/5 | 现有 schedules UI/API | 默认过滤用户任务，不承载调度逻辑 |
 
@@ -16,8 +16,8 @@ Desktop lifecycle / power monitor
               │
               ▼
       SchedulerRuntime (Core)
-      ├─ clock + due queue
-      ├─ fire-key dedupe
+      ├─ injected clock
+      ├─ in-memory system registry
       ├─ in-flight guard
       ├─ backoff policy
       └─ run metadata
@@ -54,16 +54,16 @@ interface ScheduleOwnerPort {
 
 1. Runtime 启动后加载用户任务；各系统 owner 幂等注册当前任务。
 2. 单个短周期 timer 唤醒 due queue；业务执行异步进行，不阻塞 tick。
-3. 执行前以 `scheduleId + scheduledAt` 生成 fire key，并检查 in-flight 与历史。
+3. 执行前检查任务级 in-flight；重叠触发按 skip 处理。
 4. 成功后计算正常 next run；失败只更新该任务的退避状态。
-5. Desktop suspend 时停止发起新执行，resume 后重新计算并应用 missed-run policy。
-6. stop 时清除 timer，拒绝新执行，并对在途 Promise 做有界等待。
+5. 设备恢复后按当前时间最多派发一次，不逐次补发错过的周期。
+6. stop 时清除 timer，拒绝新执行，并等待在途 Promise 完成。
 
 ## 存储与日志
 
 - 用户任务继续使用 `data/schedules/tasks.json` 与 `runs/{taskId}.jsonl`。
-- 动态系统任务可由 owner 在启动时重建；若需持久化运行元数据，写入 `data/schedules/system-runs/{namespace}/{ownerId}.jsonl`。
-- 系统日志仅包含 task ID、owner、fire key、时间、耗时、状态和安全错误码。
+- 动态系统任务由 owner 在启动时重建，不持久化 callback 或运行 payload。
+- 系统快照仅包含 task ID、owner、时间、状态、连续失败数和安全错误码。
 - 邮箱 secret、正文、附件内容以及未脱敏异常禁止进入调度日志。
 
 ## API 与状态方案
@@ -75,7 +75,7 @@ interface ScheduleOwnerPort {
 
 ## 性能、安全与兼容
 
-- 使用单一近端 timer/优先队列，禁止每个连接器创建独立永久 timer。
+- 使用单一 Desktop timer 扫描百级内存任务，禁止每个连接器创建独立永久 timer。
 - owner 输入按 schema 校验，执行继承原 Agent/Skill/Project 权限和工作目录。
 - 迁移保留 OS.16 任务文件格式；必要时采用读取旧格式、写入新版本的向后兼容迁移。
 - 故障隔离粒度为 schedule ID，不允许单个 owner 异常终止主循环。

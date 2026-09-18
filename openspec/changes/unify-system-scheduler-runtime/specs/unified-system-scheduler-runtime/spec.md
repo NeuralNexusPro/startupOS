@@ -64,4 +64,3 @@ Runtime SHALL 保证同一系统任务同一时刻至多一个执行实例；失
 #### Scenario: 邮箱认证失败
 - **WHEN** 邮箱 callback 抛出包含服务端详情的错误
 - **THEN** Scheduler 诊断 SHALL 只记录任务标识、owner、阶段和安全错误码，不记录异常正文或凭据
-
