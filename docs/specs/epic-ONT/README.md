@@ -214,7 +214,7 @@ Skill/Agent contract 是 ONT 暴露给 P2 和 collaboration-runtime 的协议。
 
 | Story | 标题 | 状态 | 优先级 | ONT 交付边界 |
 |-------|------|------|--------|--------------|
-| ONT.1 | Canonical Ontology Schema 与公共类型 | Planning | Critical | 定义 canonical model、contract DTO、schema version、public exports |
+| ONT.1 | Canonical Ontology Schema 与公共类型 | Done | Critical | 定义 canonical model、contract DTO、schema version、public exports |
 | ONT.2 | Ontology Store 与 DataFile/JSONL 存储 | Planning | Critical | core storage adapter、data-root 解析、atomic write、append-only facts |
 | ONT.3 | 旧模型迁移与兼容投影 | Planning | Critical | `Domain/Concept/Instance`、`business-model.json`、`OntologyModel` 迁移与只读投影 |
 | ONT.4 | Validator、Rule、Action Gate | Planning | Critical | 引用校验、聚合不变量、Action 前置/后置条件、结构化错误 |
@@ -307,7 +307,7 @@ ONT.1、ONT.2、ONT.4 是架构门。下游 P2、Epic 9、Epic C/M/T 不得复�
 | 运行门控 | 匹配评分为主 | collaboration-runtime 消费 OSDK / Action gate |
 | Context Graph | 未形成统一协议 | ONT 定义 projection protocol，下游 runtime 写入 |
 
-Epic 当前处于规格设计阶段，尚未开始代码实施。
+ONT.1 已完成公共类型基线；ONT.2 及后续 Story 仍处于规划阶段。
 
 ---
 

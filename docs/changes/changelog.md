@@ -2047,3 +2047,9 @@ SENSE12-T3：首次启用后台本可启动，但UI快照不自动刷新；增�
 **类型**：docs
 **影响模块**：Epic ONT、P2.8、9.42、9.43及项目访谈规划
 **摘要**：定义访谈语义到执行上下文、任务驱动协作和可恢复状态的主线，复用pi-tasks任务事实源，补项目任务看板与协同图联动。明确六批实施顺序、提交恢复协议及贯通验收矩阵；仅规划文档，未实施或发布功能。
+
+## 2026-09-18 — feat：完成 ONT.1 canonical ontology 公共类型
+
+**类型**：feat
+**影响模块**：Core ontology feature / ONT1-T1
+**摘要**：新增版本化 canonical ontology、三层模型、业务状态、事实/Action/Event/Projection、来源引用及 Agent/Skill contract DTO，并从既有 ontology 公共入口导出。旧本体类型与持久化路径保持不变；core/类型样例编译、lint、架构边界及 OpenSpec strict validation 通过。

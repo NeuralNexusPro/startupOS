@@ -1,7 +1,7 @@
 # Story ONT.1：Canonical Ontology Schema 与公共类型
 
 **Epic:** ONT  
-**状态:** 🟡 In Progress  
+**状态:** ✅ Done
 **Owner:** Architecture / Core  
 **Task:** ONT1-T1  
 **最后更新:** 2026-09-18
@@ -12,10 +12,10 @@
 
 ## 验收摘要
 
-- [ ] canonical model 覆盖三层结构、业务状态、事实、Rule、Action、Event 和 Projection。
-- [ ] 来源、ontology、概念与事实引用可跨模块稳定传递。
-- [ ] Agent/Skill contract DTO 通过 ontology feature 公共入口导出。
-- [ ] 不破坏旧本体类型，不引入存储、迁移或运行时校验。
+- [x] canonical model 覆盖三层结构、业务状态、事实、Rule、Action、Event 和 Projection。
+- [x] 来源、ontology、概念与事实引用可跨模块稳定传递。
+- [x] Agent/Skill contract DTO 通过 ontology feature 公共入口导出。
+- [x] 不破坏旧本体类型，不引入存储、迁移或运行时校验。
 
 ## 文档
 
