@@ -335,6 +335,45 @@ export interface CanonicalActionValidationInput {
   permissions: readonly string[];
 }
 
+export interface CanonicalFactQuery {
+  projectId: string;
+  ontologyId: string;
+  ontologyVersion: string;
+  conceptId?: string;
+  factTypeId?: string;
+  latestOnly?: boolean;
+}
+
+export type CanonicalFactQueryResult =
+  | { ok: true; facts: CanonicalFactRecord[] }
+  | { ok: false; issues: CanonicalValidationIssue[] };
+
+export interface CanonicalActionOutputDraft {
+  factId: string;
+  factTypeId: string;
+  value: Record<string, unknown>;
+  source: CanonicalSourceReference;
+}
+
+export interface CanonicalActionSubmission {
+  projectId: string;
+  ontologyId: string;
+  ontologyVersion: string;
+  operationId: string;
+  actionId: string;
+  conceptId: string;
+  currentStateId?: string;
+  permissions: readonly string[];
+  inputFactRefs: readonly CanonicalFactReference[];
+  outputs: readonly CanonicalActionOutputDraft[];
+  expectedRevision: number;
+  audit?: Record<string, unknown>;
+}
+
+export type CanonicalActionSubmissionResult =
+  | { ok: true; receipt: CanonicalOperationRecord & { status: 'accepted' } }
+  | { ok: false; issues: CanonicalValidationIssue[] };
+
 /**
  * Single interview question
  */

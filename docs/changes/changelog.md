@@ -2081,3 +2081,9 @@ SENSE12-T3：首次启用后台本可启动，但UI快照不自动刷新；增�
 **类型**：feat
 **影响模块**：Core ontology feature / ONT2-T1
 **摘要**：新增原子 DataFile ontology 快照、facts/operations/projections/migrations 四类 JSONL、显式 Date codec、尾部截断恢复、单实例并发队列和 operation 最新回执查询。严格隔离 projectId，不修改旧 store 或运行数据；定向测试、编译、lint、架构边界及 OpenSpec strict validation 通过。
+
+## 2026-09-18 — feat：完成 ONT5-T1 Facts / Actions OSDK
+
+**类型**：feat
+**影响模块**：Core ontology feature / ONT5-T1
+**摘要**：新增绑定当前 ontology 的类型化 facts 查询与 latest revision 选择，并以 Action Gate、输入/输出类型、权限和 expectedRevision 门控事实接纳。operationId 通过请求指纹、intent、缺失事实补写和 accepted 回执支持幂等恢复；Rule evaluator、外部副作用和 instance 状态更新仍明确拒绝或留在后续边界。Ontology 33 项测试、Core 编译、lint、架构边界和 OpenSpec strict validation 通过。

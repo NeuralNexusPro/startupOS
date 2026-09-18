@@ -11,3 +11,4 @@ export * from './client';
 export * from './canonical-ontology-store';
 export * from './legacy-migration';
 export * from './validator';
+export * from './ontology-osdk';
