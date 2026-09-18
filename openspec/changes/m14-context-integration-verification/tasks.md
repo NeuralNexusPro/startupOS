@@ -2,7 +2,7 @@
 
 ## 1. 集成准备
 
-- [ ] 1.1（依赖：M14-T1 至 M14-T5；串行；角色：Integration owner；写入：本 change artifacts）完成 strict validation，并记录用户于 2026-09-18 对 Story M.14 的实施批准及 Story verification goal“通过 Story M.14 中定义的全部测试 case”；证据：`openspec validate m14-context-integration-verification --strict` 退出码为 0。
+- [x] 1.1（依赖：M14-T1 至 M14-T5；串行；角色：Integration owner；写入：本 change artifacts）已完成 strict validation，并记录用户于 2026-09-18 对 Story M.14 的实施批准及 Story verification goal“通过 Story M.14 中定义的全部测试 case”；证据：M14-T1 至 M14-T5 已合并到 `dev`，`openspec validate m14-context-integration-verification --strict` 退出码为 0。
 
 ## 2. 全量验证
 
