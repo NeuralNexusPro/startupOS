@@ -2,7 +2,7 @@
 
 ## 1. 实施准备
 
-- [ ] 1.1（依赖：M14-T1；串行；角色：Proposal owner；写入：本 change artifacts）完成 strict validation，并记录用户于 2026-09-18 对 Story M.14 的实施批准；证据：`openspec validate m14-stable-prompt-prefix --strict` 退出码为 0。
+- [x] 1.1（依赖：M14-T1；串行；角色：Proposal owner；写入：本 change artifacts）完成 strict validation，并记录用户于 2026-09-18 对 Story M.14 的实施批准；证据：M14-T1 已合并为 `2e47de4`，`openspec validate m14-stable-prompt-prefix --strict` 退出码为 0。
 
 ## 2. Prompt 边界实现
 
