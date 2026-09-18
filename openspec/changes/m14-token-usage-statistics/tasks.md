@@ -13,4 +13,4 @@
 ## 3. 集成与验收
 
 - [x] 3.1（依赖：2.2、2.3；串行；角色：Integration owner；写入：Proposal integration branch）已合并三个 Task commit；Core usage/context/restore、Web UI、协作 observability 与 worker usage 定向测试共 71 项通过，Core `tsc --noEmit`、`pnpm lint:boundaries`、架构 self-test 和 strict validation 通过。Web/Desktop 全量 build 仍由既有 canonical ontology 6 条类型错误与未构建感知插件包阻塞；隔离 worker 全量测试已通过，integration worktree 因 `npx tsx` 路径缺失仅复跑 usage 定向测试通过；主工作区既有 worker diff 未进入本分支。
-- [ ] 3.2（依赖：3.1；串行；角色：Integration owner；写入：Story 验证记录与 Git refs）核对 M14-T5 verification goal、再次 strict validate，合并到 `dev` 并清理全部 Task worktree；证据：dev merge commit、验证记录和已删除 worktree。
+- [x] 3.2（依赖：3.1；串行；角色：Integration owner；写入：Story 验证记录与 Git refs）已核对 M14-T5 verification goal 并 strict validate，Proposal integration branch 以 `80978c1` 合并到 `dev`；主工作区既有 Supervisor CWD diff 已恢复且语义不变，Task/Proposal worktree 随本提交清理。
