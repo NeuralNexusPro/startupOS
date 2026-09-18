@@ -20,7 +20,12 @@ afterEach(() => {
 });
 
 function controlledAgent(systemPrompt = '', sessionContext = '') {
-  const state = { systemPrompt, sessionContext, messages: [] as AgentMessage[] };
+  const state = {
+    systemPrompt,
+    sessionContext,
+    messages: [] as AgentMessage[],
+    turnContextProvider: undefined as ((query: string) => Promise<string>) | undefined,
+  };
   return {
     agent: { state },
     isInitialized: () => true,
@@ -28,6 +33,9 @@ function controlledAgent(systemPrompt = '', sessionContext = '') {
     setSessionContext: vi.fn((context: string) => { state.sessionContext = context; }),
     appendSessionContext: vi.fn((context: string) => {
       state.sessionContext = [state.sessionContext, context].filter(Boolean).join('\n\n---\n\n');
+    }),
+    setTurnContextProvider: vi.fn((provider?: (query: string) => Promise<string>) => {
+      state.turnContextProvider = provider;
     }),
     setTools: vi.fn(), registerTool: vi.fn(),
     subscribe: vi.fn(() => () => {}), destroy: vi.fn(),
@@ -59,6 +67,8 @@ describe('public business runtime cold start and restore', () => {
     const frozen = initial.agent.state.systemPrompt;
     const frozenContext = initial.agent.state.sessionContext;
     expect(frozenContext).toContain('initial knowledge');
+    expect(initial.setTurnContextProvider).toHaveBeenCalledOnce();
+    expect(initial.agent.state.turnContextProvider).toEqual(expect.any(Function));
     expect(initial.subscribe).toHaveBeenCalledOnce();
     const memory = new MemoryCore(workingDirectory, sessionId);
     memory.memory.appendBlock('project', 'knowledge discovered after startup');
@@ -79,6 +89,8 @@ describe('public business runtime cold start and restore', () => {
     expect(restarted.agent.state.systemPrompt).toBe(frozen);
     expect(restarted.agent.state.sessionContext).not.toBe('');
     expect(restarted.appendSessionContext).toHaveBeenCalled();
+    expect(restarted.setTurnContextProvider).toHaveBeenCalledOnce();
+    expect(restarted.agent.state.turnContextProvider).toEqual(expect.any(Function));
     expect(restarted.replacePersistedMessages).toHaveBeenCalledOnce();
     expect(restarted.agent.state.messages).toEqual(messages);
     expect(restarted.subscribe).toHaveBeenCalledOnce();
