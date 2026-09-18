@@ -209,6 +209,9 @@ export interface OriginOSAgentConfig {
 	/** Frozen context injected only at the provider boundary. */
 	sessionContext?: string;
 
+	/** Per-request reference context. The returned value is never persisted. */
+	turnContextProvider?: (query: string) => Promise<string>;
+
 	/**
 	 * LLM 模型
 	 */

@@ -283,6 +283,13 @@ export class OriginOSAgent {
 	private activeCompletionPolicy: AgentCompletionPolicy = "chat_guard";
 	private sessionContext = "";
 	private rawSessionContext = "";
+	private turnContextProvider?: (query: string) => Promise<string>;
+	private turnContextCache?: {
+		message: AgentMessage;
+		index: number;
+		timestamp?: number;
+		value: Promise<string>;
+	};
 
 	private isEmptyStopRecoveryEnabled(): boolean {
 		return this.config?.emptyStopRecoveryEnabled === true;
@@ -307,6 +314,7 @@ export class OriginOSAgent {
 		this.state.sessionId = config.sessionId ?? "";
 		this.state.projectContext = config.projectContext;
 		this.healthMonitor = healthMonitor ?? createHealthMonitor();
+		this.turnContextProvider = config.turnContextProvider;
 
 		// 设置 Agent 引用到健康监控器
 		this.healthMonitor.setAgent(this);
@@ -517,7 +525,52 @@ export class OriginOSAgent {
 				messages: [],
 			},
 			convertToLlm,
-			transformContext: async (messages) => injectSessionContext(messages, this.sessionContext),
+			transformContext: async (messages) => {
+				const withSessionContext = injectSessionContext(messages, this.sessionContext);
+				const lastUserIndex = messages.findLastIndex((message) => message.role === 'user');
+				const lastUserMessage = messages[lastUserIndex];
+				const query = getMessageText(lastUserMessage);
+				if (!query || !lastUserMessage || !this.turnContextProvider) return withSessionContext;
+				try {
+					const timestamp = typeof lastUserMessage.timestamp === 'number'
+						? lastUserMessage.timestamp
+						: undefined;
+					const cached = this.turnContextCache;
+					const sameTurn = cached?.message === lastUserMessage || (
+						timestamp !== undefined &&
+						cached?.index === lastUserIndex &&
+						cached.timestamp === timestamp
+					);
+					if (!sameTurn) {
+						this.turnContextCache = {
+							message: lastUserMessage,
+							index: lastUserIndex,
+							timestamp,
+							value: this.turnContextProvider(query),
+						};
+					}
+					const recalledContext = await this.turnContextCache!.value;
+					if (!recalledContext.trim()) return withSessionContext;
+					const insertionIndex = withSessionContext.findLastIndex((message) => message.role === 'user');
+					const recalledMessage: AgentMessage = {
+						role: 'user',
+						content: [{ type: 'text', text: recalledContext }],
+						timestamp: 0,
+					};
+					if (insertionIndex < 0) return [...withSessionContext, recalledMessage];
+					return [
+						...withSessionContext.slice(0, insertionIndex),
+						recalledMessage,
+						...withSessionContext.slice(insertionIndex),
+					];
+				} catch (error) {
+					console.warn('[OriginOSAgent] Turn context prefetch failed', {
+						sessionId: this.sessionId,
+						errorCategory: error instanceof Error ? error.name : 'UnknownError',
+					});
+					return withSessionContext;
+				}
+			},
 			// 提供 getApiKey 回调，确保 API key 可用于所有 provider
 			getApiKey: async (_provider: string) => {
 				// 优先使用当前模型配置中的 API key，支持 setModel() 后热切换
@@ -1361,6 +1414,11 @@ export class OriginOSAgent {
 	setSessionContext(context: string): void {
 		this.rawSessionContext = context;
 		this.sessionContext = appendRuntimeEnvironmentPrompt(this.rawSessionContext, this.runtimeEnvironment);
+	}
+
+	setTurnContextProvider(provider?: (query: string) => Promise<string>): void {
+		this.turnContextProvider = provider;
+		this.turnContextCache = undefined;
 	}
 
 	appendSessionContext(context: string): void {

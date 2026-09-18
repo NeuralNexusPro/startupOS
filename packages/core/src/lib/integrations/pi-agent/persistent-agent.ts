@@ -299,6 +299,10 @@ export class PersistentAgent {
 			},
 			llmConfig,
 		});
+		const cognitiveManager = this.cognitiveManager;
+		if (cognitiveManager) {
+			this.agent.setTurnContextProvider((query) => cognitiveManager.prefetchContext(query));
+		}
 
 		// 3. 注册工具（从 Tool.md）
 		const persistentSessionId = `persistent-${this.projectId}`;

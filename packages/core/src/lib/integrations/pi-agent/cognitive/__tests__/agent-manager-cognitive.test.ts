@@ -26,6 +26,8 @@ describe('AgentManager cognitive registration', () => {
       isInitialized: () => true,
       setSystemPrompt: vi.fn(),
       setTools: vi.fn(),
+      setTurnContextProvider: vi.fn(),
+      appendSessionContext: vi.fn(),
       registerTool: vi.fn(),
       subscribe: vi.fn().mockReturnValue(() => {}),
       destroy: vi.fn(),
