@@ -6,7 +6,7 @@
 
 ## 2. Turn 召回实现
 
-- [ ] 2.1（依赖：1.1；串行；角色：Cognitive Runtime subagent；写入：CognitiveManager 聚合 helper、OriginOSAgent/context hook、persistent/in-process/worker 接线与定向测试）在隔离 Task branch/worktree 接通 owner 范围内的有界 prefetch，保持原始消息不变且失败不阻塞；证据：提交哈希及 owner 隔离、预算、空结果、错误降级、恢复测试通过。
+- [x] 2.1（依赖：1.1；串行；角色：Cognitive Runtime subagent；写入：CognitiveManager 聚合 helper、OriginOSAgent/context hook、persistent/in-process/worker 接线与定向测试）在隔离 Task branch/worktree 接通 owner 范围内的有界 prefetch，保持原始消息不变且失败不阻塞；证据：Task commit 及 owner 隔离、预算、空结果、错误降级、恢复测试通过。
 
 ## 3. 集成与验收
 

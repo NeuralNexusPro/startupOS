@@ -388,6 +388,7 @@ export class AgentManager {
       if (options.memoryOwnership && !options.observationContext) throw new Error('Explicit memory ownership requires observationContext');
       if (!this.dependencies?.integrateMemory) throw new Error('Agent business memory integration is required');
       const { cognitiveManager, memoryProvider } = await this.dependencies.integrateMemory(agent, sessionId, { ...options, agentBaseDir: options.agentBaseDir });
+      agent.setTurnContextProvider((query) => cognitiveManager.prefetchContext(query));
       this.injectMemoryIntoSessionContext(agent, memoryProvider);
       this.subscribeInProcessCognitive(agent, cognitiveManager, sessionId);
       this.setCognitiveManager(agent, cognitiveManager);
