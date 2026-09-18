@@ -17,8 +17,8 @@ import {
 } from '../../agent/server/index';
 import { loadToolConfig } from '../../../../lib/integrations/pi-agent/tool-config-loader';
 import type { RuntimeLLMConfig } from '../../../../lib/integrations/pi-agent/llm-config';
-import { buildPromptMemorySections } from '../../../../lib/integrations/pi-agent/memory-consumption';
 import { appendGlobalUserPreferencesPrompt } from '../../../../lib/integrations/pi-agent/user-preferences';
+import { buildAgentSessionContext, createAgentPromptBoundary, type AgentPromptBoundary } from '../../../../lib/integrations/pi-agent/prompt-boundary';
 import type { CreateSessionRequest } from '../../../../types/agent';
 import type { ObservationContext } from '../../../../modules/memory-core';
 
@@ -46,6 +46,22 @@ export function buildAgentSystemPrompt(
     baseDir?: string;
   },
 ): string {
+  const boundary = buildAgentPromptBoundary(baseContent, options);
+  return [boundary.systemPrompt, boundary.sessionContext].filter(Boolean).join('\n\n---\n\n');
+}
+
+export function buildAgentPromptBoundary(
+  baseContent: string,
+  options?: {
+    memory?: string;
+    knowledge?: string;
+    patterns?: string;
+    role?: string;
+    taste?: string;
+    baseDir?: string;
+    additionalSessionContext?: string;
+  },
+): AgentPromptBoundary {
   const lines: string[] = [];
 
   // 基础内容（Agent.md）
@@ -53,41 +69,18 @@ export function buildAgentSystemPrompt(
     lines.push(baseContent);
   }
 
-  // 注入角色状态
-  if (options?.role) {
-    lines.push('\n## 角色状态\n\n' + options.role);
-  }
-
-  const memorySections = buildPromptMemorySections({
-    memoryMd: options?.memory,
-    knowledgeMd: options?.knowledge,
-    patternsMd: options?.patterns,
-  });
-  for (const section of [
-    memorySections.stableMemorySection,
-    memorySections.knowledgeSection,
-    memorySections.patternsSection,
-  ]) {
-    if (section) lines.push(section);
-  }
-
   // 注入风格偏好
   if (options?.taste) {
     lines.push('\n## 风格偏好\n\n' + options.taste);
   }
 
-  // 注入工作目录
-  if (options?.baseDir) {
-    lines.push('\n## Working Directory\n\nYour working directory is: ' + options.baseDir);
-    lines.push('');
-    lines.push('IMPORTANT: All file paths in your operations are relative to this working directory. When a file path like "data/agents/xxx/Tool.md" appears, resolve it relative to your working directory. You should use relative file names (e.g., "Tool.md", "Agent.md") rather than full directory paths, since you are already in your working directory.');
-    lines.push('');
-  }
-
   // 注入权限授权
   lines.push(AGENT_PERMISSION_PROMPT);
 
-  return appendGlobalUserPreferencesPrompt(lines.join('\n'));
+  return createAgentPromptBoundary(
+    appendGlobalUserPreferencesPrompt(lines.join('\n')),
+    buildAgentSessionContext(options),
+  );
 }
 
 export interface LaunchContext {
@@ -117,6 +110,7 @@ export interface LaunchResult {
   success: boolean;
   sessionId: string;
   systemPrompt: string;
+  sessionContext?: string;
   agentType: string;
   baseDir: string;
   tools?: string[];
@@ -192,6 +186,7 @@ export abstract class Launcher {
     projectId: string,
     options: {
       systemPrompt?: string;
+      sessionContext?: string;
       agentType?: string;
       agentBaseDir?: string;
       isWindowBound?: boolean;
@@ -202,6 +197,7 @@ export abstract class Launcher {
   ): Promise<string[]> {
     await agentManager.getOrCreateAgent(sessionId, projectId, {
       systemPrompt: options.systemPrompt,
+      sessionContext: options.sessionContext,
       agentType: options.agentType,
       agentBaseDir: options.agentBaseDir,
       isWindowBound: options.isWindowBound,

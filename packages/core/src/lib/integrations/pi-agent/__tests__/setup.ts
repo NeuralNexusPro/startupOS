@@ -24,6 +24,9 @@ vi.mock("@originos/pi-agent-adapter", () => ({
 			if (config?.convertToLlm) {
 				this.convertToLlm = config.convertToLlm;
 			}
+			if (config?.transformContext) {
+				this.transformContext = config.transformContext;
+			}
 			if (config?.streamFn) {
 				this.streamFn = config.streamFn;
 			}
@@ -40,6 +43,7 @@ vi.mock("@originos/pi-agent-adapter", () => ({
 		_listeners: Set<(event: any) => void>;
 
 		convertToLlm?: (messages: any[]) => any[];
+		transformContext?: (messages: any[]) => Promise<any[]>;
 		streamFn?: (model: any, context: any, options?: any) => any;
 
 		prompt = vi.fn(async (message?: string) => {

@@ -206,6 +206,9 @@ export interface OriginOSAgentConfig {
 	 */
 	systemPrompt: string;
 
+	/** Frozen context injected only at the provider boundary. */
+	sessionContext?: string;
+
 	/**
 	 * LLM 模型
 	 */
