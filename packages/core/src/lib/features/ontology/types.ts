@@ -1,12 +1,238 @@
 /**
- * Interview Module Types
- * Story 1.2: Structured Interview Question Collection
+ * Ontology feature public types
+ * Includes the canonical ontology contract and interview session types.
  */
 
 /**
  * Question type for interview
  */
 export type QuestionType = 'text' | 'select' | 'multiselect' | 'textarea';
+
+/** Current in-memory canonical ontology contract. Persistence codecs are versioned separately. */
+export const CANONICAL_ONTOLOGY_SCHEMA_VERSION = '1.0.0' as const;
+
+export type CanonicalOntologySchemaVersion = typeof CANONICAL_ONTOLOGY_SCHEMA_VERSION;
+export type CanonicalValueType =
+  | 'string'
+  | 'number'
+  | 'boolean'
+  | 'date'
+  | 'object'
+  | 'array'
+  | 'reference';
+
+export interface CanonicalSourceReference {
+  sourceType: 'interview' | 'manual' | 'import' | 'runtime';
+  sourceId: string;
+  sourceVersion?: string;
+  locator?: string;
+}
+
+export interface CanonicalOntologyReference {
+  ontologyId: string;
+  ontologyVersion: string;
+}
+
+export interface CanonicalConceptReference extends CanonicalOntologyReference {
+  conceptId: string;
+}
+
+export interface CanonicalFactReference extends CanonicalConceptReference {
+  factTypeId: string;
+  factId: string;
+  factVersion: string;
+}
+
+export interface CanonicalDomain {
+  id: string;
+  name: string;
+  description: string;
+  icon?: string;
+  color?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CanonicalConcept {
+  id: string;
+  domainId: string;
+  name: string;
+  type: string;
+  attributes: Record<string, unknown>;
+  description?: string;
+  propertyIds?: string[];
+  sourceRefs?: CanonicalSourceReference[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CanonicalInstance {
+  id: string;
+  conceptId: string;
+  data: Record<string, unknown>;
+  stateId?: string;
+  sourceRefs?: CanonicalSourceReference[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CanonicalProperty {
+  id: string;
+  conceptId: string;
+  name: string;
+  valueType: CanonicalValueType;
+  required: boolean;
+  description?: string;
+  referenceConceptId?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CanonicalRelation {
+  id: string;
+  name: string;
+  sourceConceptId: string;
+  targetConceptId: string;
+  cardinality: 'one-to-one' | 'one-to-many' | 'many-to-one' | 'many-to-many';
+  description?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CanonicalBusinessState {
+  id: string;
+  conceptId: string;
+  name: string;
+  initial?: boolean;
+  terminal?: boolean;
+  description?: string;
+}
+
+export interface CanonicalStateTransition {
+  id: string;
+  conceptId: string;
+  name: string;
+  fromStateId: string;
+  toStateId: string;
+  actionId?: string;
+  ruleIds?: string[];
+}
+
+export interface CanonicalFactType {
+  id: string;
+  conceptId: string;
+  name: string;
+  propertyIds: string[];
+  description?: string;
+}
+
+export interface CanonicalRule {
+  id: string;
+  name: string;
+  kind: 'invariant' | 'precondition' | 'postcondition' | 'derivation' | 'permission';
+  expression: unknown;
+  severity: 'error' | 'warning' | 'info';
+  description?: string;
+}
+
+export interface CanonicalAction {
+  id: string;
+  name: string;
+  conceptId: string;
+  inputFactTypeIds: string[];
+  outputFactTypeIds: string[];
+  fromStateIds?: string[];
+  toStateId?: string;
+  ruleIds?: string[];
+  permissions?: string[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface CanonicalDomainEvent {
+  id: string;
+  name: string;
+  conceptId: string;
+  factTypeId: string;
+  actionId?: string;
+  description?: string;
+}
+
+export interface CanonicalProjection {
+  id: string;
+  name: string;
+  sourceFactTypeIds: string[];
+  targetConceptId: string;
+  propertyMappings: Record<string, string>;
+  description?: string;
+}
+
+export interface CanonicalOntology {
+  id: string;
+  projectId: string;
+  name: string;
+  schemaVersion: CanonicalOntologySchemaVersion;
+  version: string;
+  domains: CanonicalDomain[];
+  concepts: CanonicalConcept[];
+  instances: CanonicalInstance[];
+  properties: CanonicalProperty[];
+  relations: CanonicalRelation[];
+  businessStates: CanonicalBusinessState[];
+  transitions: CanonicalStateTransition[];
+  factTypes: CanonicalFactType[];
+  rules: CanonicalRule[];
+  actions: CanonicalAction[];
+  events: CanonicalDomainEvent[];
+  projections: CanonicalProjection[];
+  sourceRefs?: CanonicalSourceReference[];
+  metadata?: Record<string, unknown>;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CanonicalInputFact {
+  factType: CanonicalConceptReference & { factTypeId: string };
+  required: boolean;
+}
+
+export interface CanonicalOutputFact {
+  factType: CanonicalConceptReference & { factTypeId: string };
+  required: boolean;
+}
+
+export interface CanonicalActionBinding {
+  actionId: string;
+  concept: CanonicalConceptReference;
+}
+
+export interface CanonicalAgentContract {
+  agentId: string;
+  ontology: CanonicalOntologyReference;
+  inputs: CanonicalInputFact[];
+  outputs: CanonicalOutputFact[];
+  actions: CanonicalActionBinding[];
+  permissions: string[];
+}
+
+export interface CanonicalSkillContract {
+  skillId: string;
+  ontology: CanonicalOntologyReference;
+  inputs: CanonicalInputFact[];
+  outputs: CanonicalOutputFact[];
+  actions: CanonicalActionBinding[];
+  permissions: string[];
+}
+
+export interface CanonicalValidationIssue {
+  code: string;
+  message: string;
+  path?: string;
+  severity: 'error' | 'warning';
+  reference?: CanonicalOntologyReference | CanonicalConceptReference | CanonicalFactReference;
+}
+
+export interface CanonicalValidationResult {
+  valid: boolean;
+  issues: CanonicalValidationIssue[];
+}
 
 /**
  * Single interview question
