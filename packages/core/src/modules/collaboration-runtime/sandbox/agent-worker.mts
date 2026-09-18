@@ -745,6 +745,9 @@ class AgentWorker {
     const { memoryCore, cognitiveManager } = await this.createProjectCognitiveRuntime();
     this.recallMemory = memoryCore.recall;
     this.originosCognitiveManager = cognitiveManager;
+    agent.setTurnContextProvider((query: string) => (
+      cognitiveManager as { prefetchContext: (value: string) => Promise<string> }
+    ).prefetchContext(query));
 
     // 注册 Memory 工具
     const { CoreMemoryTools } = await runtimeImport("modules/memory-core/tools/core-memory-tools");
@@ -1527,6 +1530,9 @@ class AgentWorker {
       const { memoryCore, cognitiveManager } = await this.createProjectCognitiveRuntime();
       this.recallMemory = memoryCore.recall;
       this.originosCognitiveManager = cognitiveManager;
+      agent.setTurnContextProvider((query: string) => (
+        cognitiveManager as { prefetchContext: (value: string) => Promise<string> }
+      ).prefetchContext(query));
 
       // 注册 Memory 工具到 Agent
       const { CoreMemoryTools } = await runtimeImport("modules/memory-core/tools/core-memory-tools");
