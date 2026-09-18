@@ -21,6 +21,7 @@ import {
   type AgentTaskRuntimeSnapshotV1,
   type AgentTaskRuntimePersistenceV1,
 } from './task-runtime';
+import { loadFrozenSessionContext } from './session-prompt-context';
 
 type CognitiveSessionEndManager = {
   on_session_end: (messages: unknown[]) => Promise<void>;
@@ -30,6 +31,7 @@ export type AgentMemoryOwnership = Omit<MemoryOwnershipContext, 'workingDirector
 
 export interface InProcessAgentOptions {
   systemPrompt?: string;
+  sessionContext?: string;
   agentType?: string;
   agentBaseDir?: string;
   outputDir?: string;
@@ -154,6 +156,9 @@ export class AgentManager {
         entry.agent.setSystemPrompt(options.systemPrompt);
         entry.baseSystemPrompt = options.systemPrompt;
       }
+      if (options?.sessionContext !== undefined && entry.agent.isInitialized()) {
+        entry.agent.setSessionContext(options.sessionContext);
+      }
 
       // Apply llmConfig if provided (launcher may have created agent without it)
       if (options?.llmConfig && entry.agent.isInitialized()) {
@@ -251,11 +256,16 @@ export class AgentManager {
 
   private async restoreAgentRuntimeOnce(session: AgentSession): Promise<RestoredAgentRuntime> {
     const hadRuntime = this.hasAgent(session.sessionId);
+    const sessionContext = await loadFrozenSessionContext({
+      agentType: session.agentType,
+      workingDirectory: session.projectContext.currentPath,
+    });
     const agent = await this.getOrCreateAgent(
       session.sessionId,
       session.projectContext.projectId,
       {
         systemPrompt: session.systemPrompt || undefined,
+        sessionContext,
         agentType: session.agentType,
         agentBaseDir: session.projectContext.currentPath,
         outputDir: session.projectContext.outputDir,
@@ -297,11 +307,16 @@ export class AgentManager {
       return restoredAgent;
     }
 
+    const sessionContext = await loadFrozenSessionContext({
+      agentType: session.agentType,
+      workingDirectory: session.projectContext.currentPath,
+    });
     return this.getOrCreateAgent(
       session.sessionId,
       session.projectContext.projectId,
       {
         systemPrompt: session.systemPrompt || undefined,
+        sessionContext,
         agentType: session.agentType,
         agentBaseDir: session.projectContext.currentPath,
         outputDir: session.projectContext.outputDir,
@@ -347,6 +362,7 @@ export class AgentManager {
     const agent = createOriginOSAgent({
       sessionId,
       systemPrompt: options?.systemPrompt,
+      sessionContext: options?.sessionContext,
       variables: {
         projectId,
         projectName: options?.agentType || 'Agent Session',
@@ -372,7 +388,7 @@ export class AgentManager {
       if (options.memoryOwnership && !options.observationContext) throw new Error('Explicit memory ownership requires observationContext');
       if (!this.dependencies?.integrateMemory) throw new Error('Agent business memory integration is required');
       const { cognitiveManager, memoryProvider } = await this.dependencies.integrateMemory(agent, sessionId, { ...options, agentBaseDir: options.agentBaseDir });
-      this.injectMemoryIntoSystemPrompt(agent, memoryProvider);
+      this.injectMemoryIntoSessionContext(agent, memoryProvider);
       this.subscribeInProcessCognitive(agent, cognitiveManager, sessionId);
       this.setCognitiveManager(agent, cognitiveManager);
     }
@@ -380,21 +396,15 @@ export class AgentManager {
     return agent;
   }
 
-  /**
-   * 将 Memory 快照注入 system prompt
-   */
-  private injectMemoryIntoSystemPrompt(
+  /** 将 Memory 快照追加到冻结会话上下文。 */
+  private injectMemoryIntoSessionContext(
     agent: OriginOSAgent,
     memoryProvider: { system_prompt_block: () => Promise<string> }
   ): void {
     memoryProvider.system_prompt_block()
       .then(block => {
         if (block) {
-          const existing = (agent as any).agent?.state?.systemPrompt ?? '';
-          const augmented = existing
-            ? existing + '\n\n---\n\n# Core Memory\n\n' + block
-            : block;
-          (agent as any).setSystemPrompt?.(augmented);
+          agent.appendSessionContext(`# Core Memory\n\n${block}`);
         }
       })
       .catch(err => console.warn('[AgentManager] Failed to inject memory into prompt:', err));

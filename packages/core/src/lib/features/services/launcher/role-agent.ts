@@ -14,13 +14,13 @@
 import path from 'path';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { createHash } from 'crypto';
-import { Launcher, type LaunchContext, type LaunchResult, buildAgentSystemPrompt } from './base';
+import { Launcher, type LaunchContext, type LaunchResult, buildAgentPromptBoundary } from './base';
 import { agentManager } from '../../agent/server/index';
 import { type AgentEvent } from '@originos/pi-agent-adapter';
 import { loadRoleContext, parseToolMdTools, type RoleContext } from '../../../../lib/integrations/pi-agent/role-agent/role-context';
 import { scanInstalledSkills } from '../../../../lib/integrations/pi-agent/role-agent/skill-resolver';
 import { parseStateMachine, checkTransition, applyTransition, type StateMachine } from '../../../../lib/integrations/pi-agent/role-agent/state-machine';
-import { buildPromptLayers, rebuildToolboxLayer, assemblePrompt, type PromptLayers } from '../../../../lib/integrations/pi-agent/role-agent/system-prompt';
+import { buildPromptLayers, buildRolePromptBoundary, rebuildToolboxLayer, type PromptLayers } from '../../../../lib/integrations/pi-agent/role-agent/system-prompt';
 import { ObservationPolicyResolver } from '../../../../modules/memory-core';
 
 import { getAgentsDataDir, getDataRoot } from '../../../paths';
@@ -140,7 +140,7 @@ function refreshToolMdIfNeeded(sessionId: string, state: RoleAgentSessionState):
     // 只重建 toolbox 层
     state.promptLayers.toolbox = rebuildToolboxLayer(state.roleContext);
 
-    const newPrompt = assemblePrompt(state.promptLayers);
+    const newPrompt = buildRolePromptBoundary(state.roleContext, state.stateMachine).systemPrompt;
     const agent = agentManager.getAgent(sessionId);
     if (agent) {
       agent.setSystemPrompt(newPrompt);
@@ -237,6 +237,8 @@ export class RoleAgentLauncher extends Launcher {
       const roleContext = await loadRoleContext(agentBaseDir);
 
       let systemPrompt: string;
+      let sessionContext = '';
+      let roleSessionState: RoleAgentSessionState | undefined;
 
       if (roleContext) {
         // 成功加载 → 使用 6 层 system prompt
@@ -251,26 +253,30 @@ export class RoleAgentLauncher extends Launcher {
         const initialToolMdHash = hashContent(initialToolMd);
         const initialSkillsHash = hashContent(roleContext.installedSkills.map(s => s.code).sort().join(','));
         const promptLayers = buildPromptLayers(roleContext, stateMachine);
-        systemPrompt = assemblePrompt(promptLayers);
+        const promptBoundary = buildRolePromptBoundary(roleContext, stateMachine);
+        systemPrompt = promptBoundary.systemPrompt;
+        sessionContext = promptBoundary.sessionContext;
 
         // 存储会话状态
-        roleSessions.set(ctx.entryId, {
+        roleSessionState = {
           roleContext,
           stateMachine,
           lastToolMdHash: initialToolMdHash,
           lastSkillsHash: initialSkillsHash,
           promptLayers,
-        });
+        };
 
         console.log(`[RoleAgent] Loaded role context for ${ctx.entryId}, phase=${stateMachine.currentPhase}, skills=${roleContext.installedSkills.length}, toolMdHash=${initialToolMdHash.slice(0, 8)}..., sessionId to be created`);
       } else {
         // 降级到旧流程
-        systemPrompt = buildAgentSystemPrompt(agentMd, {
+        const promptBoundary = buildAgentPromptBoundary(agentMd, {
           role: content['Role.md'],
           memory: content['Memory.md'],
           taste: content['Taste.md'],
           baseDir: agentBaseDir,
         });
+        systemPrompt = promptBoundary.systemPrompt;
+        sessionContext = promptBoundary.sessionContext;
         console.log(`[RoleAgent] RoleContext not found, using legacy prompt for ${ctx.entryId}`);
       }
 
@@ -288,10 +294,12 @@ export class RoleAgentLauncher extends Launcher {
         sessionId,
         agentId: ctx.entryId,
       });
+      if (roleSessionState) roleSessions.set(sessionId, roleSessionState);
 
       // 4. 注册 Agent 到 AgentManager
       await this.registerAgent(sessionId, ctx.entryId, {
         systemPrompt,
+        sessionContext,
         agentType: 'role-agent',
         agentBaseDir,
         isWindowBound: ctx.isWindowBound,
@@ -309,6 +317,7 @@ export class RoleAgentLauncher extends Launcher {
         success: true,
         sessionId,
         systemPrompt,
+        sessionContext,
         agentType: 'role-agent',
         baseDir: agentBaseDir,
         tools: [],

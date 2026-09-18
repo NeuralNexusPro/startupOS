@@ -18,6 +18,7 @@ import { AGENT_PERMISSION_PROMPT } from '../../../shared/agent-permissions';
 import { getEnabledToolsByCategory } from '../../../../lib/integrations/pi-agent/tools/registry';
 import { buildPromptMemorySections, renderMemoryBlocksXML } from '../memory-consumption';
 import { appendGlobalUserPreferencesPrompt } from '../user-preferences';
+import { createAgentPromptBoundary, type AgentPromptBoundary } from '../prompt-boundary';
 
 // ============================================================================
 // Prompt 尺寸限制常量
@@ -61,6 +62,26 @@ export function buildRoleSystemPrompt(
   stateMachine?: StateMachine,
 ): string {
   return assemblePrompt(buildPromptLayers(roleContext, stateMachine));
+}
+
+export function buildRolePromptBoundary(
+  roleContext: RoleContext,
+  stateMachine?: StateMachine,
+): AgentPromptBoundary {
+  const layers = buildPromptLayers(roleContext, stateMachine);
+  const systemPrompt = appendGlobalUserPreferencesPrompt([
+    layers.identity,
+    layers.thinkingLoop,
+    layers.toolbox,
+    layers.style,
+    `## Permissions\n\n${AGENT_PERMISSION_PROMPT}`,
+    layers.safety,
+  ].filter(Boolean).join('\n\n---\n\n'));
+  const sessionContext = [
+    layers.stateMemory,
+    buildWorkingDirectoryContext(roleContext),
+  ].filter(Boolean).join('\n\n---\n\n');
+  return createAgentPromptBoundary(systemPrompt, sessionContext);
 }
 
 export function buildPromptLayers(
@@ -249,6 +270,10 @@ function buildLayer6_Permissions(ctx: RoleContext): string {
 IMPORTANT: All file paths in your operations are relative to this working directory. Use relative file names (e.g., "Tool.md", "Agent.md") rather than full directory paths.
 
 ${AGENT_PERMISSION_PROMPT}`;
+}
+
+function buildWorkingDirectoryContext(ctx: RoleContext): string {
+  return `## Working Directory\n\n你的工作目录是: ${ctx.agentBaseDir}\n\nIMPORTANT: All file paths in your operations are relative to this working directory. Use relative file names (e.g., "Tool.md", "Agent.md") rather than full directory paths.`;
 }
 
 function buildLayer7_Safety(): string {

@@ -207,6 +207,7 @@ export interface PersistentAgentConfig {
 	skillDefinition: SkillDefinition;
 	workspaceFiles?: WorkspaceContextFile[];
 	builtSystemPrompt?: string;
+	builtSessionContext?: string;
 	cognitiveManager?: CognitiveManager;
 	sleepScheduler?: SleepComputeScheduler;
 }
@@ -244,6 +245,7 @@ export class PersistentAgent {
 	private skillDefinition: SkillDefinition;
 	private workspaceFiles: WorkspaceContextFile[];
 	private builtSystemPrompt?: string;
+	private builtSessionContext?: string;
 	private cognitiveManager?: CognitiveManager;
 	private sleepScheduler?: SleepComputeScheduler;
 	private isRunning = false;
@@ -261,6 +263,7 @@ export class PersistentAgent {
 		this.skillDefinition = config.skillDefinition;
 		this.workspaceFiles = config.workspaceFiles ?? [];
 		this.builtSystemPrompt = config.builtSystemPrompt;
+		this.builtSessionContext = config.builtSessionContext;
 		this.cognitiveManager = config.cognitiveManager;
 		this.sleepScheduler = config.sleepScheduler;
 	}
@@ -289,6 +292,7 @@ export class PersistentAgent {
 		this.agent = await createOriginOSAgent({
 			sessionId: `persistent-${this.projectId}`,
 			systemPrompt,
+			sessionContext: this.builtSessionContext,
 			variables: {
 				projectId: this.projectId,
 				projectName: this.agentDefinition.name,
@@ -514,6 +518,7 @@ export class PersistentAgent {
 		skillDef?: SkillDefinition,
 		workspaceFiles?: WorkspaceContextFile[],
 		builtSystemPrompt?: string,
+		builtSessionContext?: string,
 	): Promise<void> {
 		console.log(`[PersistentAgent] Reloading configuration for project: ${this.projectId}`);
 
@@ -523,6 +528,7 @@ export class PersistentAgent {
 		if (skillDef) this.skillDefinition = skillDef;
 		if (workspaceFiles) this.workspaceFiles = workspaceFiles;
 		if (builtSystemPrompt !== undefined) this.builtSystemPrompt = builtSystemPrompt;
+		if (builtSessionContext !== undefined) this.builtSessionContext = builtSessionContext;
 
 		if (!this.agent) {
 			throw new Error('Agent is not initialized');
@@ -531,6 +537,7 @@ export class PersistentAgent {
 		// 重新构建 system prompt 和工具
 		const systemPrompt = this.builtSystemPrompt ?? this.buildSystemPrompt();
 		this.agent.setSystemPrompt(systemPrompt);
+		this.agent.setSessionContext(this.builtSessionContext ?? '');
 
 		const tools = bindToolsToSession(this.buildTools(), `persistent-${this.projectId}`);
 		this.agent.setTools(tools as AgentTool<any>[]);

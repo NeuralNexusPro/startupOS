@@ -19,6 +19,7 @@ import { existsSync } from 'fs';
 import path from 'path';
 import { buildPromptMemorySections } from '../memory-consumption';
 import { appendGlobalUserPreferencesPrompt } from '../user-preferences';
+import { createAgentPromptBoundary, type AgentPromptBoundary } from '../prompt-boundary';
 
 // ============================================================================
 // 常量
@@ -60,6 +61,21 @@ export function buildProjectPromptLayers(ctx: ProjectContext): ProjectPromptLaye
     style: buildLayer5_Style(ctx),
     permissions: buildLayer6_Permissions(ctx),
   };
+}
+
+export function buildProjectPromptBoundary(ctx: ProjectContext): AgentPromptBoundary {
+  const layers = buildProjectPromptLayers(ctx);
+  const systemPrompt = appendGlobalUserPreferencesPrompt([
+    layers.identity,
+    layers.thinkingLoop,
+    layers.toolbox,
+    layers.style,
+    `## Permissions\n\n${AGENT_PERMISSION_PROMPT}`,
+  ].filter(Boolean).join('\n\n---\n\n'));
+  return createAgentPromptBoundary(
+    systemPrompt,
+    [layers.stateMemory, buildWorkingDirectoryContext(ctx)].filter(Boolean).join('\n\n---\n\n'),
+  );
 }
 
 export function rebuildProjectToolboxLayer(ctx: ProjectContext): string {
@@ -194,6 +210,13 @@ function buildLayer6_Permissions(ctx: ProjectContext): string {
 IMPORTANT: All file paths in your operations are relative to this working directory. Use relative file names (e.g., "Tool.md", "Agent.md") rather than full directory paths.${originosSection}
 
 ${AGENT_PERMISSION_PROMPT}`;
+}
+
+function buildWorkingDirectoryContext(ctx: ProjectContext): string {
+  const originosSection = ctx.originosProjectId
+    ? `\n\n**OriginOS Business Project ID:** ${ctx.originosProjectId}\n\n这是 OriginOS 业务项目 ID（格式：proj-{id}），用于区分业务项目和本体中的"项目"概念。本体操作工具会使用此 ID 定位正确的本体目录。`
+    : '';
+  return `## Working Directory\n\n你的工作目录是: ${ctx.workingDirectory}\n\nIMPORTANT: All file paths in your operations are relative to this working directory. Use relative file names (e.g., "Tool.md", "Agent.md") rather than full directory paths.${originosSection}`;
 }
 
 // ============================================================================

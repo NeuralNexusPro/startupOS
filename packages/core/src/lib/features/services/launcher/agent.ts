@@ -10,7 +10,7 @@
  */
 
 import path from 'path';
-import { Launcher, type LaunchContext, type LaunchResult, buildAgentSystemPrompt } from './base';
+import { Launcher, type LaunchContext, type LaunchResult, buildAgentPromptBoundary } from './base';
 import { getAgentsDataDir, getDataRoot } from '../../../paths';
 import { ObservationPolicyResolver } from '../../../../modules/memory-core';
 
@@ -28,7 +28,7 @@ export class AgentLauncher extends Launcher {
       const agentMd = content['Agent.md'] || '';
 
       // 2. 构建系统提示词（注入权限授权）
-      const systemPrompt = buildAgentSystemPrompt(agentMd, {
+      const promptBoundary = buildAgentPromptBoundary(agentMd, {
         memory: content['Memory.md'],
         knowledge: content['Knowledge.md'],
         patterns: content['Patterns.md'],
@@ -39,7 +39,7 @@ export class AgentLauncher extends Launcher {
       const { sessionId } = await this.createOrRestoreSession({
         projectId: ctx.entryId,
         projectName: ctx.entryId,
-        systemPrompt,
+        systemPrompt: promptBoundary.systemPrompt,
         agentType: 'assistant',
         agentBaseDir,
         sessionId: ctx.restoreSessionId || ctx.sessionId,
@@ -52,7 +52,8 @@ export class AgentLauncher extends Launcher {
 
       // 4. 注册 Agent 到 AgentManager
       const tools = await this.registerAgent(sessionId, ctx.entryId, {
-        systemPrompt,
+        systemPrompt: promptBoundary.systemPrompt,
+        sessionContext: promptBoundary.sessionContext,
         agentType: 'assistant',
         agentBaseDir,
         isWindowBound: ctx.isWindowBound,
@@ -69,7 +70,8 @@ export class AgentLauncher extends Launcher {
       return {
         success: true,
         sessionId,
-        systemPrompt,
+        systemPrompt: promptBoundary.systemPrompt,
+        sessionContext: promptBoundary.sessionContext,
         agentType: 'assistant',
         baseDir: agentBaseDir,
         tools,
