@@ -217,7 +217,7 @@ Skill/Agent contract 是 ONT 暴露给 P2 和 collaboration-runtime 的协议。
 | ONT.1 | Canonical Ontology Schema 与公共类型 | Done | Critical | 定义 canonical model、contract DTO、schema version、public exports |
 | ONT.2 | Ontology Store 与 DataFile/JSONL 存储 | Done | Critical | core storage adapter、data-root 解析、atomic write、append-only facts |
 | ONT.3 | 旧模型迁移与兼容投影 | Done | Critical | 已提供 `Domain/Concept/Instance`、`business-model.json`、`OntologyModel` 的安全迁移与只读投影 |
-| ONT.4 | Validator、Rule、Action Gate | Planning | Critical | 引用校验、聚合不变量、Action 前置/后置条件、结构化错误 |
+| ONT.4 | Validator、Rule、Action Gate | In Progress | Critical | 引用校验、聚合不变量、Action 前置/后置条件、结构化错误 |
 | ONT.5 | OSDK Facts / Actions API | Planning | Critical | 类型化 facts 查询、Action execute、版本检查、审计 metadata |
 | ONT.6 | Skill / Agent Contract Validation API | Planning | High | P2 可消费的 contract DTO、SOP I/O 连通性校验、权限校验 |
 | ONT.7 | Context Projection Protocol | In Progress（T1 Done） | High | 已定义最小 runtime projection DTO；append/query API 待后续工作包 |
