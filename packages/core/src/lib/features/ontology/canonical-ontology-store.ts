@@ -95,6 +95,9 @@ export class CanonicalOntologyStore {
   constructor(private readonly dataRoot = getDataRoot()) {}
 
   async writeOntology(projectId: string, ontology: CanonicalOntology): Promise<DataFile<CanonicalOntology>> {
+    if (ontology.projectId !== projectId) {
+      throw new TypeError(`Ontology projectId ${ontology.projectId} does not match ${projectId}`);
+    }
     const filePath = this.file(projectId, 'ontology.json');
     return this.enqueue(filePath, async () => {
       await fs.mkdir(path.dirname(filePath), { recursive: true });

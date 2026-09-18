@@ -168,6 +168,7 @@ describe('CanonicalOntologyStore', () => {
 
   it('rejects unsafe project identifiers before touching disk', async () => {
     await expect(store.readFacts('../other')).rejects.toThrow('Invalid projectId');
+    await expect(store.writeOntology('project-2', ontology('1'))).rejects.toThrow('does not match');
     await expect(fs.access(path.join(root, 'ontology'))).rejects.toMatchObject({ code: 'ENOENT' });
   });
 });
