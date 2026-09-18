@@ -2,7 +2,7 @@
 
 ## 1. 实施准备
 
-- [ ] 1.1（依赖：M14-T2；串行；角色：Proposal owner；写入：本 change artifacts）完成 strict validation，并记录用户于 2026-09-18 对 Story M.14 的实施批准；证据：`openspec validate m14-pi-prompt-cache --strict` 退出码为 0。
+- [x] 1.1（依赖：M14-T2；串行；角色：Proposal owner；写入：本 change artifacts）完成 strict validation，并记录用户于 2026-09-18 对 Story M.14 的实施批准；证据：M14-T2 已合并为 `6c8ade2`，`openspec validate m14-pi-prompt-cache --strict` 退出码为 0。
 
 ## 2. Pi 缓存关联实现
 
