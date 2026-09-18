@@ -359,10 +359,31 @@ function cdnUrl(baseUrl, key, prefix) {
 
 async function verifyCdnUrl(url) {
   if (!url) return;
-  const response = await fetch(url, { method: 'HEAD' });
-  if (!response.ok) {
-    throw new Error(`CDN verification failed: ${response.status} ${url}`);
+
+  const retries = Number.parseInt(process.env.QINIU_CDN_VERIFY_RETRIES || '6', 10);
+  const retryDelayMs = Number.parseInt(process.env.QINIU_CDN_VERIFY_RETRY_DELAY_MS || '10000', 10);
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= Math.max(1, retries); attempt += 1) {
+    try {
+      const response = await fetch(url, { method: 'HEAD' });
+      if (!response.ok) {
+        throw new Error(`CDN verification failed: ${response.status} ${url}`);
+      }
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt >= retries) break;
+      console.warn(
+        `[publish-qiniu-updates] release URL verification attempt ${attempt}/${retries} failed: ${
+          error instanceof Error ? error.message : error
+        }; retrying in ${retryDelayMs}ms`,
+      );
+      await sleep(retryDelayMs);
+    }
   }
+
+  throw lastError;
 }
 
 function sleep(ms) {

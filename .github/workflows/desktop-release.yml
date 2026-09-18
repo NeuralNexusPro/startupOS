@@ -346,7 +346,7 @@ jobs:
           QINIU_BUCKET: ${{ secrets.QINIU_BUCKET }}
           QINIU_PREFIX: ${{ secrets.QINIU_PREFIX }}
           QINIU_REGION: ${{ secrets.QINIU_REGION }}
-          QINIU_FORCE: "1"
+          QINIU_FORCE: ${{ inputs.resume_existing == 'true' && '0' || '1' }}
           QINIU_RESUME_EXISTING: ${{ inputs.resume_existing == 'true' && '1' || '0' }}
           QINIU_SKIP_LOCAL_PACKAGE_VERIFY: "1"
           ORIGINOS_UPDATE_BASE_URL: ${{ secrets.ORIGINOS_UPDATE_BASE_URL }}
