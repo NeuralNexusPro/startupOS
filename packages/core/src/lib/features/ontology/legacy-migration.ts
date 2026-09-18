@@ -176,6 +176,15 @@ function issue(pathValue: string, message: string): LegacyMigrationDiagnostic {
   return { severity: 'error', code: 'INVALID_REFERENCE', path: pathValue, message };
 }
 
+function duplicateIds(items: Array<{ id: string }>, collection: string): LegacyMigrationDiagnostic[] {
+  const seen = new Set<string>();
+  return items.flatMap((item, index) => {
+    if (seen.has(item.id)) return [issue(`${collection}.${index}.id`, `Duplicate id ${item.id}`)];
+    seen.add(item.id);
+    return [];
+  });
+}
+
 function baseOntology(projectId: string, id: string, name: string, version: string, at: Date, sourceRef: CanonicalSourceReference): CanonicalOntology {
   return {
     id, projectId, name, schemaVersion: CANONICAL_ONTOLOGY_SCHEMA_VERSION, version,
@@ -189,7 +198,12 @@ function convertOntology(input: unknown, projectId: string, sourceId: string): L
   const parsed = legacyOntologySchema.safeParse(input);
   if (!parsed.success) return { ontology: null, diagnostics: diagnostic(parsed.error) };
   const value = parsed.data as unknown as LegacyOntologyInput;
-  const diagnostics: LegacyMigrationDiagnostic[] = [];
+  const diagnostics: LegacyMigrationDiagnostic[] = [
+    ...duplicateIds(value.domains, 'domains'),
+    ...duplicateIds(value.concepts, 'concepts'),
+    ...duplicateIds(value.instances, 'instances'),
+    ...duplicateIds(value.relations, 'relations'),
+  ];
   if (value.projectId !== projectId) diagnostics.push(issue('projectId', `Expected ${projectId}`));
   const domainIds = new Set(value.domains.map((item) => item.id));
   const conceptIds = new Set(value.concepts.map((item) => item.id));
@@ -199,11 +213,22 @@ function convertOntology(input: unknown, projectId: string, sourceId: string): L
   value.instances.forEach((item, index) => {
     if (!conceptIds.has(item.conceptId)) diagnostics.push(issue(`instances.${index}.conceptId`, `Unknown concept ${item.conceptId}`));
   });
+  const hierarchyRelations = new Set<number>();
+  const conceptsById = new Map(value.concepts.map((concept) => [concept.id, concept]));
   value.relations.forEach((item, index) => {
+    const hierarchyConcept = conceptsById.get(item.targetId);
+    if (item.type === 'contains' && domainIds.has(item.sourceId) && hierarchyConcept?.domainId === item.sourceId) {
+      hierarchyRelations.add(index);
+      diagnostics.push({
+        severity: 'warning', code: 'REDUNDANT_HIERARCHY_RELATION', path: `relations.${index}`,
+        message: 'Domain-to-concept contains relation is already represented by concept.domainId',
+      });
+      return;
+    }
     if (!conceptIds.has(item.sourceId)) diagnostics.push(issue(`relations.${index}.sourceId`, `Unknown concept ${item.sourceId}`));
     if (!conceptIds.has(item.targetId)) diagnostics.push(issue(`relations.${index}.targetId`, `Unknown concept ${item.targetId}`));
   });
-  if (diagnostics.length) return { ontology: null, diagnostics };
+  if (diagnostics.some((item) => item.severity === 'error')) return { ontology: null, diagnostics };
   const rootSource = source(sourceId, 'ontology');
   const ontology = baseOntology(projectId, value.id, value.name, value.version, new Date(value.createdAt), rootSource);
   ontology.updatedAt = new Date(value.updatedAt);
@@ -216,7 +241,7 @@ function convertOntology(input: unknown, projectId: string, sourceId: string): L
     ...item, sourceRefs: [source(sourceId, 'ontology', `instances.${index}`)],
     createdAt: new Date(item.createdAt), updatedAt: new Date(item.updatedAt),
   }));
-  ontology.relations = value.relations.map((item) => ({
+  ontology.relations = value.relations.filter((_, index) => !hierarchyRelations.has(index)).map((item) => ({
     id: item.id, name: item.type, sourceConceptId: item.sourceId, targetConceptId: item.targetId,
     cardinality: 'many-to-many', metadata: { ...item.metadata, legacyType: item.type, createdAt: item.createdAt },
   }));
@@ -235,11 +260,16 @@ function convertOntologyModel(input: unknown, projectId: string, sourceId: strin
   const ontology = baseOntology(projectId, value.id, value.name, '1', at, rootSource);
   const domainId = `${value.id}-domain`;
   const diagnostics: LegacyMigrationDiagnostic[] = [];
+  const mappedNodeIds = new Set<string>();
   ontology.domains.push({ id: domainId, name: value.name, description: value.description, createdAt: at, updatedAt: at });
   const walk = (nodes: InterviewNode[], parentConceptId?: string, prefix = 'nodes'): void => {
     nodes.forEach((node, index) => {
       const locator = `${prefix}.${index}`;
       let nextParent = parentConceptId;
+      if (node.type === 'entity' || node.type === 'class' || node.type === 'property') {
+        if (mappedNodeIds.has(node.id)) diagnostics.push(issue(`${locator}.id`, `Duplicate id ${node.id}`));
+        mappedNodeIds.add(node.id);
+      }
       if (node.type === 'entity' || node.type === 'class') {
         ontology.concepts.push({
           id: node.id, domainId, name: node.name, type: node.type, attributes: {}, description: node.description,
@@ -294,9 +324,11 @@ function convertBusinessModel(input: unknown, projectId: string, sourceId: strin
   const domainId = 'domain_main';
   ontology.domains.push({ id: domainId, name, description: value.background ?? value.description ?? '', createdAt: at, updatedAt: at });
   const ids = new Map<string, string>();
+  const diagnostics: LegacyMigrationDiagnostic[] = [];
   value.entities.forEach((entity, index) => {
     const conceptId = `concept_${index}`;
     const entityName = typeof entity === 'string' ? entity : (entity.name ?? entity.label ?? '');
+    if (ids.has(entityName)) diagnostics.push(issue(`entities.${index}.name`, `Duplicate entity name ${entityName}`));
     ids.set(entityName, conceptId);
     const properties = typeof entity === 'string' ? {} : (entity.properties ?? {});
     const propertyIds: string[] = [];
@@ -321,7 +353,6 @@ function convertBusinessModel(input: unknown, projectId: string, sourceId: strin
       }));
     }
   });
-  const diagnostics: LegacyMigrationDiagnostic[] = [];
   value.relationships.forEach((relationship, index) => {
     const parts = typeof relationship === 'string'
       ? relationship.split(/→|->/).map((part) => part.trim())
