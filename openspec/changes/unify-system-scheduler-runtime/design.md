@@ -31,7 +31,7 @@
 
 ### 2. DesktopSchedulerService 是唯一平台计时入口
 
-Desktop 使用一个固定的短 tick 驱动 `SchedulerService`。每次 tick 始终先派发到期系统任务；用户任务扫描保持原有持久化流程，并以独立 guard 防止用户扫描重入。这样长用户任务不会阻止邮箱 owner 的后续调度。
+Desktop 使用一个固定的一秒 tick 驱动 `SchedulerService`。每次 tick 始终先派发到期系统任务；用户任务仍按原有30秒频率扫描持久化 Store，并以独立时间门槛和 guard 防止重复扫描及重入。这样保持单一 timer，且长用户任务不会阻止邮箱 owner 的后续调度。
 
 `DesktopSchedulerService` 暴露结构兼容 Plugin SDK 的 `every/cancel` 适配方法。`PerceptionPluginHostService` 通过构造参数接收该端口；Core Plugin Host 已经把 key 限定为 `pluginId:connectorId:key`，该 scoped key 直接作为稳定 system task ID/owner，不再解析正文或平台数据。
 
@@ -53,9 +53,9 @@ Desktop 使用一个固定的短 tick 驱动 `SchedulerService`。每次 tick �
 
 ### 6. 架构与 subagent 写入边界
 
-Core scheduler 位于 `packages/core/src/modules/scheduler/`，不依赖 Desktop、Web 或感知插件。Desktop 只做生命周期和 Plugin SDK 端口适配。平台插件代码不修改。符合 AGENTS.md 的 `desktop -> core modules -> storage/shared` 单向依赖。
+Core scheduler 位于 `packages/core/src/modules/scheduler/`，不依赖 Desktop、Web 或感知插件。Desktop 只做生命周期和 Plugin SDK 端口适配。Email 插件在完成脱敏日志和健康上报后继续抛出轮询错误，让统一 Runtime 执行退避；其他平台插件代码不修改。符合 AGENTS.md 的 `desktop -> core modules -> storage/shared` 单向依赖。
 
-应用源码由一个实现 subagent 在独立 Task worktree 串行修改：`packages/core/src/modules/scheduler/`、`packages/desktop/src/main/services/desktop-scheduler-service.ts`、`packages/desktop/src/main/services/perception-plugin-host/`、`packages/desktop/src/main/main.ts` 及对应测试。Proposal worktree只负责规格、合并和验证。
+应用源码由一个实现 subagent 在独立 Task worktree 串行修改：`packages/core/src/modules/scheduler/`、`packages/desktop/src/main/services/desktop-scheduler-service.ts`、`packages/desktop/src/main/services/perception-plugin-host/`、`packages/desktop/src/main/main.ts`、`packages/perception-plugins/email/src/plugin.ts` 及对应测试。Proposal worktree只负责规格、合并和验证。
 
 ## Risks / Trade-offs
 
@@ -70,4 +70,3 @@ Core scheduler 位于 `packages/core/src/modules/scheduler/`，不依赖 Desktop
 2. Desktop将Plugin Host schedule port接到现有Scheduler实例，保持插件API不变。
 3. 运行旧用户任务、邮箱/钉钉周期任务、配置热更新和退出回归。
 4. 回滚时恢复Plugin Host本地timer端口；新增可选类型字段由旧读取器忽略，不删除用户任务或运行日志。
-

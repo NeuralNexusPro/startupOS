@@ -25,6 +25,7 @@ import {
   type PluginCapabilityConnectionStatus,
   type PerceptionPluginWebhookRequest,
   type PerceptionPluginWebhookResult,
+  type PluginSchedulePort,
 } from '../../../../../core/src/modules/perception-runtime';
 import type { ChannelMessageIngress } from '../../../../../core/src/modules/channel-runtime';
 import { SafeStorageWeComCredentialAdapter } from '../perception-wecom/safe-storage-wecom-credential-adapter';
@@ -110,7 +111,6 @@ export function mergeProvisionedSettings(
 }
 
 export class PerceptionPluginHostService {
-  private readonly timers = new Map<string, NodeJS.Timeout>();
   private readonly host: PerceptionPluginHost;
   private readonly configs: PerceptionConnectorConfigStore;
   private readonly replies: PluginReplyDeliveryService;
@@ -121,7 +121,8 @@ export class PerceptionPluginHostService {
   constructor(
     private readonly channelIngress: ChannelMessageIngress,
     private readonly dataRoot = getDataRoot(),
-    private readonly logs?: PluginLogSink
+    private readonly logs: PluginLogSink | undefined,
+    private readonly schedule: PluginSchedulePort
   ) {
     this.configs = new PerceptionConnectorConfigStore(dataRoot);
     this.replies = new PluginReplyDeliveryService(dataRoot);
@@ -252,8 +253,6 @@ export class PerceptionPluginHostService {
       return pluginId ? this.host.stop(pluginId, rest.join(':')) : Promise.resolve();
     });
     this.active.clear();
-    for (const timer of this.timers.values()) clearInterval(timer);
-    this.timers.clear();
     await Promise.allSettled(stopping);
   }
   async handleWebhook(
@@ -414,20 +413,7 @@ export class PerceptionPluginHostService {
           };
         },
       },
-      schedule: {
-        every: (key, ms, task) => {
-          const timer = setInterval(() => {
-            void task();
-          }, ms);
-          timer.unref();
-          this.timers.set(key, timer);
-        },
-        cancel: (key) => {
-          const timer = this.timers.get(key);
-          if (timer) clearInterval(timer);
-          this.timers.delete(key);
-        },
-      },
+      schedule: this.schedule,
       state,
       health: {
         report: async (health) => {

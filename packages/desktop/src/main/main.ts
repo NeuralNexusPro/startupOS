@@ -450,7 +450,10 @@ app.whenReady().then(() => {
   });
   perceptionPluginHost = new PerceptionPluginHostService(channelRuntime.ingress, undefined, createPluginLogSink(pluginLogWriter, {
     'originos.email': 'email', 'originos.wecom': 'wecom', 'originos.feishu': 'feishu', 'originos.dingtalk': 'dingtalk',
-  }));
+  }), {
+    every: (key, intervalMs, task) => desktopSchedulerService?.every(key, intervalMs, task),
+    cancel: key => desktopSchedulerService?.cancel(key),
+  });
   mainWindow = createWindow();
   windowManager.setMainWindow(mainWindow);
   windowManager.createDockWindow();
@@ -515,13 +518,14 @@ app.on('before-quit', (event) => {
   localFileSystem?.dispose();
   trayManager?.destroy();
   shortcutManager?.destroy();
-  desktopSchedulerService?.stop();
+  desktopSchedulerService?.pause();
   const pluginShutdown = perceptionPluginHost?.stop();
   rendererServerProcess?.kill();
   rendererServerProcess = null;
   void (async () => {
     try {
       await pluginShutdown;
+      await desktopSchedulerService?.stop();
       await pluginLogWriter?.dispose();
       await dailyLogWriter?.flush();
       await localAgentBridge?.shutdown();

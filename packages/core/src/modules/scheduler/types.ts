@@ -13,6 +13,9 @@ export type ScheduledAction =
 
 export interface ScheduledTask {
 	id: string;
+	ownerKind?: "user" | "system";
+	ownerId?: string;
+	visibility?: "user" | "internal";
 	title: string;
 	description?: string;
 	status: ScheduledTaskStatus;
@@ -55,4 +58,33 @@ export interface UpdateScheduledTaskInput {
 
 export interface SchedulerActionRunner {
 	run(task: ScheduledTask): Promise<unknown>;
+}
+
+export interface SystemScheduledTaskInput {
+	id: string;
+	ownerId: string;
+	intervalMs: number;
+	callback: () => Promise<void>;
+	runImmediately?: boolean;
+	maxBackoffMs?: number;
+	jitterRatio?: number;
+}
+
+export interface SystemScheduledTaskSnapshot {
+	id: string;
+	ownerId: string;
+	ownerKind: "system";
+	visibility: "internal";
+	intervalMs: number;
+	nextRunAt: string;
+	lastRunAt?: string;
+	state: "scheduled" | "running" | "backoff";
+	consecutiveFailures: number;
+	lastOutcome?: "success" | "overlap-skipped" | "failed";
+	safeCode?: "SYSTEM_TASK_FAILED";
+}
+
+export interface SchedulerRuntimeOptions {
+	now?: () => number;
+	random?: () => number;
 }
