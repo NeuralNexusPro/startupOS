@@ -13,4 +13,4 @@
 
 - [x] 3.1 合并 Task commit 并运行 core/fixture 编译、`pnpm lint`、边界扫描、自测和 OpenSpec strict validation；依赖：2.1、2.2；写入范围：Proposal integration branch；角色：Proposal owner；证据：全部命令退出码 0；lint 为 2983 条既有 warning、0 error，879 文件边界扫描 0 诊断。
 - [x] 3.2 核对 Story verification goal：公共出口可导入协议、旧类型无需修改、EventStore 与运行数据未变化；依赖：3.1；写入范围：Story/OpenSpec 状态；角色：Proposal owner；验证：diff 审查；证据：fixture 从 `../index` 导入；diff 仅含 ontology types、类型样例及文档。
-- [ ] 3.3 合并到 `dev`、归档 OpenSpec 并清理 Task/Proposal worktree 与分支；依赖：3.2；写入范围：git/OpenSpec；角色：Proposal owner；验证：git 状态、worktree 清单和归档 spec strict validation；证据：最终 commit。
+- [x] 3.3 合并到 `dev`、归档 OpenSpec 并清理 Task/Proposal worktree 与分支；依赖：3.2；写入范围：git/OpenSpec；角色：Proposal owner；验证：git 状态、worktree 清单和归档 spec strict validation；证据：合并提交 `fb22984`，Task/Proposal worktree 与分支已清理；归档验证记录在后续提交。
