@@ -98,6 +98,10 @@ export class MetricsRegistry {
   private agentTurns = new Counter();
   private agentToolCalls = new Counter();
   private agentTokensUsed = new Counter();
+  private agentInputTokens = new Counter();
+  private agentOutputTokens = new Counter();
+  private agentCacheReadTokens = new Counter();
+  private agentCacheWriteTokens = new Counter();
   private collaborationMessages = new Counter();
   private collaborationConflicts = new Counter();
   private collaborationTaskSuccess = new Counter();
@@ -124,6 +128,20 @@ export class MetricsRegistry {
    */
   recordTokens(agentId: string, sessionId: string, count: number): void {
     this.agentTokensUsed.increment({ agentId, sessionId }, count);
+  }
+
+  /** Record provider token classes from one completed assistant message. */
+  recordTokenUsage(
+    agentId: string,
+    sessionId: string,
+    usage: { input: number; output: number; cacheRead: number; cacheWrite: number; totalTokens: number },
+  ): void {
+    const labels = { agentId, sessionId };
+    this.agentTokensUsed.increment(labels, usage.totalTokens);
+    this.agentInputTokens.increment(labels, usage.input);
+    this.agentOutputTokens.increment(labels, usage.output);
+    this.agentCacheReadTokens.increment(labels, usage.cacheRead);
+    this.agentCacheWriteTokens.increment(labels, usage.cacheWrite);
   }
 
   /**
@@ -175,6 +193,10 @@ export class MetricsRegistry {
     collectCounter(this.agentTurns, "agent_turns_total");
     collectCounter(this.agentToolCalls, "agent_tool_calls_total");
     collectCounter(this.agentTokensUsed, "agent_tokens_used_total");
+    collectCounter(this.agentInputTokens, "agent_input_tokens_total");
+    collectCounter(this.agentOutputTokens, "agent_output_tokens_total");
+    collectCounter(this.agentCacheReadTokens, "agent_cache_read_tokens_total");
+    collectCounter(this.agentCacheWriteTokens, "agent_cache_write_tokens_total");
     collectCounter(this.collaborationMessages, "collaboration_messages_total");
     collectCounter(this.collaborationConflicts, "collaboration_conflicts_total");
     collectCounter(this.collaborationTaskSuccess, "collaboration_task_success_total");
@@ -222,6 +244,10 @@ export class MetricsRegistry {
     this.agentTurns.reset();
     this.agentToolCalls.reset();
     this.agentTokensUsed.reset();
+    this.agentInputTokens.reset();
+    this.agentOutputTokens.reset();
+    this.agentCacheReadTokens.reset();
+    this.agentCacheWriteTokens.reset();
     this.collaborationMessages.reset();
     this.collaborationConflicts.reset();
     this.collaborationTaskSuccess.reset();
