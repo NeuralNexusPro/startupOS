@@ -325,6 +325,16 @@ export interface CanonicalValidationResult {
   issues: CanonicalValidationIssue[];
 }
 
+export interface CanonicalActionValidationInput {
+  ontology: CanonicalOntology;
+  ontologyId: string;
+  ontologyVersion: string;
+  actionId: string;
+  conceptId: string;
+  currentStateId?: string;
+  permissions: readonly string[];
+}
+
 /**
  * Single interview question
  */
