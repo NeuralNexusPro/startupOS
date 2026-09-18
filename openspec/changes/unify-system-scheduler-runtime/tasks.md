@@ -3,7 +3,7 @@
 ## 1. Proposal 与隔离实施
 
 - [x] 1.1 【串行；依赖：无；角色：Proposal编排者；写入范围：`openspec/changes/unify-system-scheduler-runtime/`】完成Proposal、spec、design和tasks，并以OpenSpec strict validation通过作为证据。
-- [ ] 1.2 【串行；依赖：1.1；角色：Proposal编排者；写入范围：Git refs/worktree metadata】创建独立Task branch/worktree，记录基线和洁净状态。
+- [x] 1.2 【串行；依赖：1.1；角色：Proposal编排者；写入范围：Git refs/worktree metadata】已创建`task/unify-system-scheduler-runtime`与`/private/tmp/startupos-task-unify-system-scheduler-runtime`，基线`5b48eb7`且初始状态洁净。
 
 ## 2. 统一 Scheduler Runtime
 
