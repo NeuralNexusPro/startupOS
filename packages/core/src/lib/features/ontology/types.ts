@@ -43,6 +43,68 @@ export interface CanonicalFactReference extends CanonicalConceptReference {
   factVersion: string;
 }
 
+export interface CanonicalDecisionReference extends CanonicalOntologyReference {
+  decisionId: string;
+  decisionVersion: string;
+}
+
+export interface CanonicalExecutionContextReference {
+  contextInstanceId: string;
+  projectId: string;
+  taskId: string;
+  sessionId: string;
+  branchId: string;
+  runId: string;
+  workItemId: string;
+  attemptId: string;
+  contractId: string;
+  contractHash: string;
+  ontology: CanonicalOntologyReference;
+}
+
+export interface CanonicalCheckpointReference {
+  contextInstanceId: string;
+  attemptId: string;
+  cursor: string;
+  revision: number;
+  leaseEpoch: number;
+  createdAt: Date;
+}
+
+export interface CanonicalContextSnapshot {
+  context: CanonicalExecutionContextReference;
+  objectBindings: Record<string, string>;
+  factRefs: CanonicalFactReference[];
+  decisionRefs: CanonicalDecisionReference[];
+  sourceRefs: CanonicalSourceReference[];
+  allowedActionIds: string[];
+  revision: number;
+  checkpoint?: CanonicalCheckpointReference;
+}
+
+export type CanonicalContextProjectionKind =
+  | 'plan'
+  | 'goal'
+  | 'task'
+  | 'agent'
+  | 'skill'
+  | 'fact'
+  | 'decision'
+  | 'outcome'
+  | 'gap';
+
+export interface CanonicalContextProjectionRecord {
+  id: string;
+  kind: CanonicalContextProjectionKind;
+  context: CanonicalExecutionContextReference;
+  revision: number;
+  factRefs?: CanonicalFactReference[];
+  decisionRefs?: CanonicalDecisionReference[];
+  sourceRefs?: CanonicalSourceReference[];
+  payload?: Record<string, unknown>;
+  createdAt: Date;
+}
+
 export interface CanonicalDomain {
   id: string;
   name: string;
