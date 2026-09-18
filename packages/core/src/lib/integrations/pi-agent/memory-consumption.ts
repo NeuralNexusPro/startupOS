@@ -19,7 +19,10 @@ interface BuildPromptMemorySectionsOptions extends PromptMemoryContract {
   knowledgeHeading?: string;
   patternsHeading?: string;
   maxStableMemoryChars?: number;
+  maxCatalogChars?: number;
 }
+
+export const DEFAULT_COGNITIVE_CATALOG_MAX_CHARS = 1600;
 
 export function buildPromptMemorySections(
   options: BuildPromptMemorySectionsOptions,
@@ -35,13 +38,19 @@ export function buildPromptMemorySections(
       )}`
     : '';
 
-  const knowledgeSection = options.knowledgeMd
-    ? `\n### ${options.knowledgeHeading ?? 'Knowledge Base Snapshot'}\n\n${options.knowledgeMd}`
-    : '';
+  const knowledgeSection = buildCognitiveCatalogSection(
+    options.knowledgeMd,
+    options.knowledgeHeading ?? 'Knowledge Base Snapshot',
+    'Knowledge.md',
+    options.maxCatalogChars,
+  );
 
-  const patternsSection = options.patternsMd
-    ? `\n### ${options.patternsHeading ?? 'Experience Patterns Snapshot'}\n\n${options.patternsMd}`
-    : '';
+  const patternsSection = buildCognitiveCatalogSection(
+    options.patternsMd,
+    options.patternsHeading ?? 'Experience Patterns Snapshot',
+    'Patterns.md',
+    options.maxCatalogChars,
+  );
 
   return {
     coreMemorySection,
@@ -49,6 +58,34 @@ export function buildPromptMemorySections(
     knowledgeSection,
     patternsSection,
   };
+}
+
+export function renderMarkdownHeadingCatalog(
+  markdown: string,
+  maxChars = DEFAULT_COGNITIVE_CATALOG_MAX_CHARS,
+): string {
+  if (maxChars <= 0 || !markdown.trim()) return '';
+
+  return markdown
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => /^#{2,4}\s+\S/.test(line))
+    .join('\n')
+    .slice(0, maxChars)
+    .trimEnd();
+}
+
+function buildCognitiveCatalogSection(
+  markdown: string | null | undefined,
+  heading: string,
+  fileName: 'Knowledge.md' | 'Patterns.md',
+  maxChars = DEFAULT_COGNITIVE_CATALOG_MAX_CHARS,
+): string {
+  if (!markdown?.trim()) return '';
+
+  const catalog = renderMarkdownHeadingCatalog(markdown, maxChars);
+  const emptyCatalog = '（目录中暂无二至四级标题）';
+  return `\n### ${heading}\n\n**目录索引：**\n\`\`\`markdown\n${catalog || emptyCatalog}\n\`\`\`\n\n需要详情时，使用 \`read_file\` 读取 \`${fileName}\` 全文。`;
 }
 
 export function toStableMemoryExcerpt(memoryMd: string, maxChars: number): string {
