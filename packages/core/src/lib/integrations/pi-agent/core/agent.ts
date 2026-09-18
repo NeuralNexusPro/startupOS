@@ -526,7 +526,7 @@ export class OriginOSAgent {
 					});
 				};
 				updateEstimate();
-				const lastUserIndex = messages.findLastIndex((message) => message.role === 'user');
+				const lastUserIndex = messages.map((message) => message.role).lastIndexOf('user');
 				const lastUserMessage = messages[lastUserIndex];
 				const query = getMessageText(lastUserMessage);
 				if (!query || !lastUserMessage || !this.turnContextProvider) return withSessionContext;
@@ -538,7 +538,7 @@ export class OriginOSAgent {
 					const sameTurn = cached?.message === lastUserMessage || (
 						timestamp !== undefined &&
 						cached?.index === lastUserIndex &&
-						cached.timestamp === timestamp
+						cached?.timestamp === timestamp
 					);
 					if (!sameTurn) {
 						this.turnContextCache = {
@@ -551,7 +551,7 @@ export class OriginOSAgent {
 					const recalledContext = await this.turnContextCache!.value;
 					if (!recalledContext.trim()) return withSessionContext;
 					updateEstimate(recalledContext);
-					const insertionIndex = withSessionContext.findLastIndex((message) => message.role === 'user');
+					const insertionIndex = withSessionContext.map((message) => message.role).lastIndexOf('user');
 					const recalledMessage: AgentMessage = {
 						role: 'user',
 						content: [{ type: 'text', text: recalledContext }],

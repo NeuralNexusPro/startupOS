@@ -7,7 +7,7 @@
 ## 2. 全量验证
 
 - [x] 2.1（依赖：1.1；可并行；角色：QA subagent；写入：测试证据和必要测试修复）在隔离 Task branch/worktree 执行 M.14 测试矩阵，并记录目录预算、prompt hash、usage 聚合和旧会话兼容证据；证据：`evidence/qa.md` 的匿名 fixture、99 项针对性测试通过、目录预算/hash/usage 数值和两个非阻塞测试基线说明。
-- [ ] 2.2（依赖：1.1；可与 2.1 并行；角色：Architecture QA subagent；写入：验证证据）运行 Core/Web/Desktop build、lint、`pnpm lint:boundaries` 与 `node scripts/check-architecture-boundaries.cjs --self-test`；证据：完整命令及退出码。
+- [x] 2.2（依赖：1.1；可与 2.1 并行；角色：Architecture QA subagent；写入：验证证据）已运行 Core/Web/Desktop build、type-check、lint、架构边界与适用 worker/package 校验；修复 M.14 新增 `findLastIndex` 对 ES2021 插件构建的兼容回归。Core、Web build、lint、边界和 worker/package 校验通过；Web type-check 与 Desktop build 仍被 M.14 前已有的 ontology 6 个严格类型错误阻塞。证据：`evidence/task-2.2-architecture-qa.md`。
 
 ## 3. 文档、合并与清理
 
