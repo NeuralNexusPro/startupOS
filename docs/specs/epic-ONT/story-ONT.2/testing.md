@@ -7,3 +7,11 @@
 - operation intent/accepted 历史保留且 latest 返回 accepted。
 - 非法 projectId 在访问磁盘前拒绝。
 - 运行定向 Vitest、core tsc、lint、边界扫描、自测、OpenSpec strict validation 和 diff check。
+
+## 2026-09-18 验证结果
+
+- 定向 Vitest：1 file、5 tests 全部通过。
+- core TypeScript 编译通过。
+- `pnpm lint`：0 error，仅既有 warning。
+- 架构边界：880 个生产文件 0 诊断；43 个导入用例 × 2 个 CWD 自测通过。
+- OpenSpec strict validation 与 diff check 通过。

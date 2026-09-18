@@ -1,7 +1,7 @@
 # Story ONT.2：Ontology Store 与 DataFile/JSONL 存储
 
 **Epic:** ONT  
-**状态:** 🟡 In Progress  
+**状态:** ✅ Done
 **Owner:** Architecture / Core  
 **Task:** ONT2-T1  
 **最后更新:** 2026-09-18
@@ -12,11 +12,11 @@
 
 ## 验收摘要
 
-- [ ] DataFile 快照原子替换并保留 createdAt。
-- [ ] facts/operations/projections/migrations 分流追加 JSONL。
-- [ ] 同实例并发追加不丢行，尾部截断可恢复，中间损坏报错。
-- [ ] Date 往返、projectId 路径隔离和 operation 最新回执查询通过。
-- [ ] 不迁移旧数据，不宣称跨进程事务。
+- [x] DataFile 快照原子替换并保留 createdAt。
+- [x] facts/operations/projections/migrations 分流追加 JSONL。
+- [x] 同实例并发追加不丢行，尾部截断可恢复，中间损坏报错。
+- [x] Date 往返、projectId 路径隔离和 operation 最新回执查询通过。
+- [x] 不迁移旧数据，不宣称跨进程事务。
 
 ## 文档
 
