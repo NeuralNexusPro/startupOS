@@ -35,7 +35,7 @@ beforeEach(() => {
   mocks.connect.mockResolvedValue(undefined);
   mocks.mailboxOpen.mockResolvedValue({});
   mocks.encrypt.mockReturnValue(Buffer.from('encrypted-test-value'));
-  new PerceptionPluginHostService({} as ChannelMessageIngress, directory);
+  new PerceptionPluginHostService({} as ChannelMessageIngress, directory, undefined, { every: vi.fn(), cancel: vi.fn() });
   store = new PerceptionConnectorConfigStore(directory);
   provision = mocks.handle.mock.calls.find(([channel]) => channel === IPC_CHANNELS.PERCEPTION_PLUGIN_PROVISION)![1] as Provision;
 });
