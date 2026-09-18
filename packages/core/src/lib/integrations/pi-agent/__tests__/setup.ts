@@ -6,6 +6,7 @@
 // Mock @originos/pi-agent-adapter module
 vi.mock("@originos/pi-agent-adapter", () => ({
 	Agent: class MockAgent {
+		options?: unknown;
 		state: {
 			systemPrompt: "",
 			model: { provider: "anthropic", id: "test" },
@@ -17,6 +18,7 @@ vi.mock("@originos/pi-agent-adapter", () => ({
 		_listeners = new Set<(event: any) => void>();
 
 		constructor(config?: unknown) {
+			this.options = config;
 			if (config?.initialState) {
 				this.state = { ...this.state, ...config.initialState };
 			}

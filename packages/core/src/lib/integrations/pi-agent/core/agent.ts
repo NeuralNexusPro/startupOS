@@ -508,6 +508,7 @@ export class OriginOSAgent {
 		const thinkingLevel = modelReasoning === false ? "off" : (this.config.thinkingLevel ?? "low");
 
 		this.agent = new Agent({
+			sessionId: this.sessionId,
 			initialState: {
 				systemPrompt: this.config.systemPrompt,
 				model: this.config.model,
