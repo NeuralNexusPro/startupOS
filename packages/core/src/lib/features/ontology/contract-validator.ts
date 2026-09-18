@@ -27,7 +27,12 @@ function result(issues: CanonicalValidationIssue[]): CanonicalValidationResult {
 }
 
 function referenceKey(reference: FactTypeReference): string {
-  return [reference.ontologyId, reference.ontologyVersion, reference.conceptId, reference.factTypeId].join('\0');
+  return JSON.stringify([
+    reference.ontologyId,
+    reference.ontologyVersion,
+    reference.conceptId,
+    reference.factTypeId,
+  ]);
 }
 
 function indexOntology(ontology: CanonicalOntology): OntologyIndexes {
@@ -146,7 +151,12 @@ function validateContract(
   const permissions = new Set(contract.permissions);
   contract.actions.forEach((binding, index) => {
     const path = `${basePath}actions[${index}]`;
-    const key = `${binding.concept.ontologyId}\0${binding.concept.ontologyVersion}\0${binding.concept.conceptId}\0${binding.actionId}`;
+    const key = JSON.stringify([
+      binding.concept.ontologyId,
+      binding.concept.ontologyVersion,
+      binding.concept.conceptId,
+      binding.actionId,
+    ]);
     if (seenActions.has(key)) {
       issues.push(issue('DUPLICATE_REFERENCE', path, `Duplicate action binding: ${binding.actionId}`));
     } else {

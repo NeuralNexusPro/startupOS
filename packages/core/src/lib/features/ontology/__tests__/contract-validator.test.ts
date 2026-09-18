@@ -179,4 +179,44 @@ describe('canonical contract validator', () => {
       expect.objectContaining({ code: 'REQUIRED_INPUT_UNBOUND', path: 'nodes[0].contract.inputs[0]' }),
     ]);
   });
+
+  it('keeps NUL-containing reference fields distinct', () => {
+    const model = ontology();
+    model.concepts.push({
+      id: 'order\0part',
+      domainId: 'sales',
+      name: 'Order part',
+      type: 'entity',
+      attributes: {},
+      createdAt: instant,
+      updatedAt: instant,
+    });
+    model.factTypes.push(
+      { id: 'part\0tail', conceptId: 'order', name: 'Part tail', propertyIds: [] },
+      { id: 'tail', conceptId: 'order\0part', name: 'Tail', propertyIds: [] },
+    );
+    const first = { ontologyId: 'orders', ontologyVersion: '3', conceptId: 'order', factTypeId: 'part\0tail' };
+    const second = { ontologyId: 'orders', ontologyVersion: '3', conceptId: 'order\0part', factTypeId: 'tail' };
+    const contract = skill();
+    contract.inputs = [
+      { factType: first, required: true },
+      { factType: second, required: false },
+    ];
+    expect(validateCanonicalContract(model, contract).issues).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'DUPLICATE_REFERENCE' }),
+    ]));
+
+    const value: CanonicalContractFlow = {
+      nodes: [
+        { id: 'source', kind: 'skill', contract: { ...skill(), inputs: [], outputs: [{ factType: second, required: true }] } },
+        { id: 'target', kind: 'skill', contract },
+      ],
+      edges: [{ fromNodeId: 'source', toNodeId: 'target', factType: first }],
+      externalInputs: [second],
+    };
+    expect(validateCanonicalContractFlow(model, value).issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'OUTPUT_NOT_PRODUCED', path: 'edges[0].factType' }),
+      expect.objectContaining({ code: 'REQUIRED_INPUT_UNBOUND', path: 'nodes[1].contract.inputs[0]' }),
+    ]));
+  });
 });
