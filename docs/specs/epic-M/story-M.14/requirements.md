@@ -4,11 +4,11 @@
 **版本:** 1.0
 **最后更新:** 2026-09-18
 
-## 背景
+## 实施前背景
 
-当前四条 Agent 链路的上下文策略不一致：Project Agent 已只注入 `Knowledge.md` / `Patterns.md` 目录，但普通 Agent、RoleAgent 和协作 Agent 仍可能注入全文。RoleAgent 还把阶段与记忆放在 system prompt 前部；Tool.md 或阶段变化会重新拼接整个 prompt。`CognitiveManager.prefetch()` 已存在，却没有接到实际 turn 输入。
+实施前四条 Agent 链路的上下文策略不一致：Project Agent 已只注入 `Knowledge.md` / `Patterns.md` 目录，但普通 Agent、RoleAgent 和协作 Agent 仍可能注入全文。RoleAgent 还把阶段与记忆放在 system prompt 前部；Tool.md 或阶段变化会重新拼接整个 prompt。`CognitiveManager.prefetch()` 已存在，却没有接到实际 turn 输入。
 
-Pi AI 已提供 `cacheRetention`、`sessionId` 和 `usage.cacheRead/cacheWrite`。OriginOS 当前包装层没有明确传入稳定 session id，也没有用统一指标验证缓存效果。问题应在现有 prompt 与认知生命周期上修正，无需自行实现 KV cache。
+Pi AI 已提供 `cacheRetention`、`sessionId` 和 `usage.cacheRead/cacheWrite`。OriginOS 当时的包装层没有明确传入稳定 session id，也没有用统一指标验证缓存效果。问题应在现有 prompt 与认知生命周期上修正，无需自行实现 KV cache。
 
 ## 功能需求
 
