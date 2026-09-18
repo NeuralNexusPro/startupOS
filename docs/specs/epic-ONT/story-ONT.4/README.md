@@ -1,7 +1,7 @@
 # Story ONT.4：Validator、Rule 与 Action Gate
 
 **Epic:** ONT
-**状态:** 🚧 In Progress
+**状态:** ✅ Done
 **Owner:** Architecture / Core
 **Task:** ONT4-T1
 **最后更新:** 2026-09-18
@@ -12,10 +12,10 @@
 
 ## 验收摘要
 
-- [ ] canonical 集合稳定 ID 唯一且引用完整。
-- [ ] Action Gate 校验 ontology ID/version、Action/Concept、状态和权限。
-- [ ] 失败包含稳定错误码与字段路径，不抛出普通业务异常。
-- [ ] 校验纯函数无写盘、无输入修改，不执行 Rule 或 Action。
+- [x] canonical 集合稳定 ID 唯一且引用完整。
+- [x] Action Gate 校验 ontology ID/version、Action/Concept、状态和权限。
+- [x] 失败包含稳定错误码与字段路径，不抛出普通业务异常。
+- [x] 校验纯函数无写盘、无输入修改，不执行 Rule 或 Action。
 
 ## 文档
 

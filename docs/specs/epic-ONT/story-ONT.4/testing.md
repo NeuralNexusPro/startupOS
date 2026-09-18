@@ -14,3 +14,12 @@
 自动化命令：定向 Vitest、core TypeScript 编译、`pnpm lint`、`pnpm lint:boundaries`、架构 self-test、OpenSpec strict validation。
 
 测试使用内存 fixture，无用户数据和文件系统。无法自动化项：下游 UI/API 映射不属于本 Task。剩余风险：Rule expression 尚无稳定 schema，因此本轮仅验证引用。
+
+## 2026-09-18 验证结果
+
+- Ontology 定向 Vitest：3 files、26 tests 全部通过；其中 validator 13 tests。
+- Core TypeScript 编译通过。
+- `pnpm lint`：0 error，仅 2983 条既有 warning。
+- 架构边界：882 个生产文件 0 诊断；43 个导入用例 × 2 个 CWD 自测通过。
+- OpenSpec strict validation 与 `git diff --check` 通过。
+- Action 跨概念输入 FactType 正例通过；未对 `Projection.propertyMappings` 猜测未冻结引用语义。

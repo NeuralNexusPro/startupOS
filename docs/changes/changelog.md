@@ -2,6 +2,14 @@
 
 ---
 
+## 2026-09-18 — feat：Canonical Ontology Validator 与 Action Gate
+
+**类型**：feat
+**影响模块**：`packages/core/src/lib/features/ontology/`, `docs/specs/epic-ONT/`, `AGENTS.md`
+**摘要**：完成 ONT4-T1。Core 统一校验 canonical ontology 的集合 ID、交叉引用和状态归属，并在无副作用 Action Gate 中校验本体版本、Action/Concept、当前状态和权限；失败通过稳定错误码与字段路径返回。Rule expression、Facts 查询和 Action 提交保留给后续明确边界。
+
+---
+
 ## 2026-09-18 — feat：旧本体模型安全迁移与只读兼容投影
 
 **类型**：feat
