@@ -5,7 +5,7 @@
  * 提供 prefetch / sync_turn / system_prompt_block 方法。
  */
 
-import type { CognitiveProvider, TurnCognitiveData } from '../../../lib/shared/cognitive';
+import { formatCommunicationSource, type CognitiveProvider, type TurnCognitiveData } from '../../../lib/shared/cognitive';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
@@ -108,6 +108,8 @@ export class MemoryProvider implements CognitiveProvider {
       userMessage: data.userMessage,
       assistantMessage: data.assistantMessage,
       toolCalls: data.toolCalls,
+      timestamp: data.timestamp,
+      source: data.source,
     });
   }
 
@@ -137,7 +139,7 @@ export class MemoryProvider implements CognitiveProvider {
       this.persistKnowledgeCandidates(this.lastConsolidation.knowledgeCandidates);
       await this.knowledgeConsumer?.ingestCandidates(this.lastConsolidation.knowledgeCandidates);
     }
-    this.retainStableUserMemory(result.stableMemory);
+    this.retainStableUserMemory(result.stableMemoryEvidence);
     this.refreshMentalModels();
     if (this.cognitionRouting && this.core.ownerCognition) {
       await new CognitionCandidateRouter(this.cognitionRouting.consumers)
@@ -151,23 +153,27 @@ export class MemoryProvider implements CognitiveProvider {
     if (this.core.ownerCognition) this.mentalModels.refreshWorldModel(this.core.ownerCognition);
   }
 
-  private retainStableUserMemory(memories: string[]): void {
+  private retainStableUserMemory(memories: ConsolidationResult['stableMemoryEvidence']): void {
     const bank = this.core.userCognition;
     const context = this.cognitionRouting?.context;
     if (!bank || !context) return;
     const observations = new ObservationEngine();
-    for (const content of memories) {
+    for (const memory of memories) {
+      const content = memory.content;
+      const sourceId = memory.source?.sessionId ?? this.sessionId;
+      const observedAt = memory.source?.observedAt ?? new Date(memory.timestamp).toISOString();
       observations.fold(bank, {
         kind: 'observation',
         content,
         confidence: 0.9,
         tags: ['user-profile', 'explicit-preference'],
         evidence: {
-          id: createHash('sha256').update(`${this.sessionId}\0user-preference\0${content}`).digest('hex'),
+          id: createHash('sha256').update(`${sourceId}\0${memory.source?.messageId ?? memory.turnNumber}\0user-preference\0${content}`).digest('hex'),
           source: 'user_confirmation',
-          sourceId: this.sessionId,
+          sourceId,
           excerpt: content,
-          observedAt: new Date().toISOString(),
+          observedAt,
+          communicationSource: memory.source,
         },
       }, context.policy);
     }
@@ -202,7 +208,7 @@ export class MemoryProvider implements CognitiveProvider {
     const reflection = archivalTexts.filter((item) => item.includes('失败场景:') || item.includes('[NEGATIVE]'));
 
     return {
-      recent_history: recallResults.map((result) => `Turn #${result.turnNumber} [${result.score.toFixed(2)}]: ${result.summary}`),
+      recent_history: recallResults.map((result) => `Source ${formatCommunicationSource(result.source)}\nTurn #${result.turnNumber} [${result.score.toFixed(2)}]: ${result.summary}`),
       stable_memory,
       pattern,
       reflection,

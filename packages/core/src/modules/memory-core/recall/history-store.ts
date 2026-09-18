@@ -7,12 +7,14 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import type { CommunicationSource } from '../../../lib/shared/cognitive';
 
 export interface TurnRecord {
   turnNumber: number;
   userMessage: string;
   assistantMessage?: string;
   toolCalls?: Array<{ name: string; params?: unknown; result: string; success: boolean }>;
+  source?: CommunicationSource;
 }
 
 export interface RecallEntry extends TurnRecord {
@@ -50,7 +52,7 @@ export class HistoryStore {
     }) + '\n', 'utf-8');
   }
 
-  /** 读取目录下所有 session 的记录，按 turnNumber 排序 */
+  /** 读取目录下所有 session 的记录，按原始时间和稳定来源排序 */
   readAll(): RecallEntry[] {
     if (!fs.existsSync(this.historyDir)) return [];
     try {
@@ -62,13 +64,13 @@ export class HistoryStore {
         for (const line of lines) {
           try {
             const parsed = JSON.parse(line) as Record<string, unknown>;
-            entries.push((parsed['data'] ?? parsed) as RecallEntry);
+            entries.push(this.restoreEntry(parsed, path.basename(file, '.jsonl')));
           } catch {
             // skip corrupted lines
           }
         }
       }
-      entries.sort((a, b) => a.turnNumber - b.turnNumber);
+      entries.sort(compareEntries);
       return entries;
     } catch {
       return [];
@@ -86,7 +88,7 @@ export class HistoryStore {
       for (const line of lines) {
         try {
           const parsed = JSON.parse(line) as Record<string, unknown>;
-          entries.push((parsed['data'] ?? parsed) as RecallEntry);
+          entries.push(this.restoreEntry(parsed, this.sessionId));
         } catch {
           // skip corrupted lines
         }
@@ -111,4 +113,27 @@ export class HistoryStore {
       fs.renameSync(legacySingleFile, destination);
     }
   }
+
+  private restoreEntry(parsed: Record<string, unknown>, sessionId: string): RecallEntry {
+    const entry = (parsed['data'] ?? parsed) as RecallEntry;
+    const wrappedAt = typeof parsed['createdAt'] === 'string' ? Date.parse(parsed['createdAt']) : Number.NaN;
+    const timestamp = Number.isFinite(entry.timestamp) ? entry.timestamp : (Number.isFinite(wrappedAt) ? wrappedAt : 0);
+    return {
+      ...entry,
+      timestamp,
+      source: entry.source ? { ...entry.source, sessionId: entry.source.sessionId || sessionId } : { sessionId },
+    };
+  }
+}
+
+function compareEntries(a: RecallEntry, b: RecallEntry): number {
+  return observedTimestamp(a) - observedTimestamp(b)
+    || (a.source?.sessionId ?? '').localeCompare(b.source?.sessionId ?? '')
+    || (a.source?.messageId ?? '').localeCompare(b.source?.messageId ?? '')
+    || a.turnNumber - b.turnNumber;
+}
+
+function observedTimestamp(entry: RecallEntry): number {
+  const observedAt = entry.source?.observedAt ? Date.parse(entry.source.observedAt) : Number.NaN;
+  return Number.isFinite(observedAt) ? observedAt : entry.timestamp;
 }

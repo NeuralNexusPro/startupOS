@@ -1,3 +1,5 @@
+import type { CommunicationSource } from './types';
+
 export type CognitionScope = 'user' | 'agent' | 'project';
 
 export type CognitionKind =
@@ -14,6 +16,7 @@ export interface EvidenceRef {
   sourceId: string;
   excerpt: string;
   observedAt: string;
+  communicationSource?: CommunicationSource;
 }
 
 export interface CognitionRecord {

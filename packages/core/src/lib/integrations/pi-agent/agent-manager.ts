@@ -12,6 +12,7 @@ import { createRuntimeModel } from './server-config';
 import { setToolContext, removeToolContext, getToolContextManager, type ToolExecutionContext } from './tools/context';
 import { bindToolsToSession } from './tools/bind-session';
 import { detectCorrections } from './cognitive/pattern/correction-detector';
+import { getChannelMessageSource } from './channel-message-source';
 import type { RuntimeLLMConfig } from './llm-config';
 import type { AgentSession } from '../../../types/agent';
 import type { MemoryOwnershipContext, ObservationContext } from '../../shared/cognitive/cognition-types';
@@ -405,11 +406,12 @@ export class AgentManager {
   private subscribeInProcessCognitive(
     agent: OriginOSAgent,
     cognitiveManager: { on_turn_end: (data: any) => Promise<void> },
-    _sessionId: string
+    sessionId: string
   ): void {
     let turnCounter = 0;
     let lastUserMessage = '';
     let lastAssistantMessage = '';
+    let lastSource = undefined as ReturnType<typeof getChannelMessageSource>;
 
     const extractText = (content: unknown): string => {
       if (typeof content === 'string') return content;
@@ -436,6 +438,7 @@ export class AgentManager {
         const text = extractText(event.message?.content) || '';
         if (role === 'user' && text) {
           lastUserMessage = text;
+          lastSource = getChannelMessageSource();
         }
         if (role === 'assistant' && text) {
           lastAssistantMessage = text;
@@ -446,6 +449,9 @@ export class AgentManager {
         const assistantMsg = lastAssistantMessage || extractText((event.message as any)?.content) || '';
         const userMsg = lastUserMessage;
         const corrections: unknown[] = detectCorrections(userMsg);
+        const now = Date.now();
+        const source = getChannelMessageSource() ?? lastSource ?? { sessionId, observedAt: new Date(now).toISOString() };
+        const observedAt = source.observedAt ? Date.parse(source.observedAt) : Number.NaN;
         cognitiveManager.on_turn_end({
           turnNumber: ++turnCounter,
           userMessage: userMsg,
@@ -457,10 +463,12 @@ export class AgentManager {
             toolChainLength: event.toolResults?.length ?? 0,
             userCorrections: corrections.length || undefined,
           },
-          timestamp: Date.now(),
+          timestamp: Number.isFinite(observedAt) ? observedAt : now,
+          source,
         }).catch(err => console.error('[AgentManager] Cognitive sync_turn error:', err));
         lastUserMessage = '';
         lastAssistantMessage = '';
+        lastSource = undefined;
       }
     });
   }

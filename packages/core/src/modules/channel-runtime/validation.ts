@@ -24,6 +24,7 @@ export function validateChannelInboundMessage(message: ChannelInboundMessage): C
     throw new Error('CHANNEL_CONVERSATION_KIND_INVALID');
   }
   if (!Number.isFinite(Date.parse(message.receivedAt))) throw new Error('CHANNEL_RECEIVED_AT_INVALID');
+  if (message.occurredAt !== undefined && !Number.isFinite(Date.parse(message.occurredAt))) throw new Error('CHANNEL_OCCURRED_AT_INVALID');
   const text = message.content.text ?? '';
   const attachments = message.content.attachmentRefs ?? [];
   if (!text.trim() && attachments.length === 0) throw new Error('CHANNEL_CONTENT_EMPTY');

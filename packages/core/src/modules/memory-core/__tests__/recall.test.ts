@@ -62,7 +62,7 @@ describe('RecallMemory', () => {
         timestamp: 1,
       })}\n`);
 
-      expect(new HistoryStore(historyDir, 'default').readAll()[0]?.userMessage).toBe('legacy message');
+      expect(new HistoryStore(historyDir, 'default').readAll()[0]).toMatchObject({ userMessage: 'legacy message', source: { sessionId: 'legacy' } });
     });
 
     it('moves the legacy single history file without losing entries', () => {
@@ -73,7 +73,7 @@ describe('RecallMemory', () => {
 
       const history = new HistoryStore(path.join(memoryDir, 'history'), 'default');
 
-      expect(history.readAll()).toEqual([entry]);
+      expect(history.readAll()).toEqual([{ ...entry, source: { sessionId: 'default' } }]);
       expect(fs.existsSync(path.join(memoryDir, 'history.jsonl'))).toBe(false);
     });
 
@@ -89,6 +89,18 @@ describe('RecallMemory', () => {
       expect(fs.readFileSync(path.join(memoryDir, 'history.jsonl'), 'utf-8')).toBe('legacy source\n');
       expect(fs.readFileSync(path.join(historyDir, 'default.jsonl'), 'utf-8')).toBe('existing destination\n');
     });
+  });
+
+  it('keeps equal local turn numbers distinct and orders them by observed time', () => {
+    const historyDir = path.join(dir, 'memory', 'history');
+    const one = new HistoryStore(historyDir, 'session-one');
+    const two = new HistoryStore(historyDir, 'session-two');
+    two.append({ turnNumber: 1, userMessage: 'later', summary: 'later', timestamp: 1, source: { sessionId: 'session-two', messageId: 'm2', observedAt: '1970-01-01T00:00:00.020Z' } });
+    one.append({ turnNumber: 1, userMessage: 'earlier', summary: 'earlier', timestamp: 2, source: { sessionId: 'session-one', messageId: 'm1', observedAt: '1970-01-01T00:00:00.010Z' } });
+
+    expect(one.readAll().map((entry) => [entry.userMessage, entry.source?.sessionId])).toEqual([
+      ['earlier', 'session-one'], ['later', 'session-two'],
+    ]);
   });
 
   describe('searchKeyword', () => {

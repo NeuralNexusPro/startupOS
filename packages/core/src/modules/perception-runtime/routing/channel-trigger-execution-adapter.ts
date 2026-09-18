@@ -162,6 +162,7 @@ function toChannelInvocation(input: Parameters<TriggerExecutionPort['dispatch']>
         text: isImChannel(event.source) ? event.content.text : perceptionText(input),
         ...(event.content.attachmentRefs?.length ? { attachmentRefs: event.content.attachmentRefs } : {}),
       },
+      occurredAt: event.occurredAt,
       receivedAt: event.receivedAt,
       replyHandle: event.provenance.rawPayloadRef,
     },

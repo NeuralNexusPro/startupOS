@@ -26,6 +26,7 @@ export async function consolidateOwnedMemory(
       changes: [],
       reason: 'standalone skills do not own persistent cognition',
       stableMemory: [],
+      stableMemoryEvidence: [],
       patterns: [],
       knowledgeCandidates: [],
     };
