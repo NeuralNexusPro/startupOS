@@ -11,6 +11,7 @@ import { agentSessionService } from '@originos/core/lib/features/agent';
 import { agentManager } from '@originos/core/lib/features/agent/server';
 import { sanitizeAgentDisplayContent } from '@originos/core/lib/integrations/pi-agent/display-content';
 import { getVisibleStreamDelta, reconcileFinalStreamContent } from '@originos/core/lib/integrations/pi-agent/stream-dedupe';
+import { normalizeAgentTokenUsage, summarizeSessionTokenUsage } from '@originos/core/lib/integrations/pi-agent';
 import {
   assertSessionMessageOwnership,
   toRestoreAgentSessionError,
@@ -158,6 +159,7 @@ export async function POST(
     // Non-streaming: collect response and return
     try {
       let assistantContent = '';
+      const assistantUsages: NonNullable<AgentMessage['usage']>[] = [];
       let hasError = false;
       let errorMessage = '';
       let llmCallSuccessful = false;
@@ -195,6 +197,10 @@ export async function POST(
               if (extractedContent) {
                 assistantContent = reconcileFinalStreamContent(assistantContent, extractedContent);
               }
+            }
+            if ((event as any).message?.role === 'assistant') {
+              const usage = normalizeAgentTokenUsage((event as any).message?.usage);
+              if (usage) assistantUsages.push(usage);
             }
             llmCallSuccessful = true;
             break;
@@ -248,9 +254,13 @@ export async function POST(
       }
 
       // Save assistant message
+      const usage = summarizeSessionTokenUsage(assistantUsages.map((item) => ({ role: 'assistant', usage: item })));
+      const contextTokenEstimate = agent.getContextTokenEstimate();
       const updatedSession = await agentSessionService.addMessage(sessionId, {
         role: 'assistant',
         content: assistantContent,
+        ...(usage ? { usage } : {}),
+        contextTokenEstimate,
       }, projectId);
 
       const assistantMessage = updatedSession?.messages[updatedSession!.messages.length - 1];
@@ -533,6 +543,7 @@ function createInProcessEventStream(
   let assistantContent = '';
   let assistantMessageSent = false;
   let lastSentDelta = '';
+  const assistantUsages: NonNullable<AgentMessage['usage']>[] = [];
 
   return new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -607,6 +618,8 @@ function createInProcessEventStream(
             // Final assistant message — push to client
             case 'message_end':
               if ((event as any)['message']?.role === 'assistant') {
+                const messageUsage = normalizeAgentTokenUsage((event as any)['message'].usage);
+                if (messageUsage) assistantUsages.push(messageUsage);
                 const content = reconcileFinalStreamContent(
                   assistantContent,
                   extractTextContent((event as any)['message'].content)
@@ -614,7 +627,7 @@ function createInProcessEventStream(
                 if (content) {
                   send({
                     type: 'assistant_message',
-                    data: { content, isStreaming: false },
+                    data: { content, isStreaming: false, ...(messageUsage ? { usage: messageUsage } : {}) },
                   });
                   assistantMessageSent = true;
                 }
@@ -667,15 +680,19 @@ function createInProcessEventStream(
         await agent.prompt(userContent);
 
         // Save assistant message to session
+        const usage = summarizeSessionTokenUsage(assistantUsages.map((item) => ({ role: 'assistant', usage: item })));
+        const contextTokenEstimate = agent.getContextTokenEstimate();
         if (assistantContent) {
           const messageData: Omit<AgentMessage, 'id' | 'timestamp'> = {
             role: 'assistant',
             content: sanitizeAgentDisplayContent(assistantContent),
+            ...(usage ? { usage } : {}),
+            contextTokenEstimate,
           };
           await agentSessionService.addMessage(sessionId, messageData, projectId);
         }
 
-        send({ type: 'done', data: null });
+        send({ type: 'done', data: { ...(usage ? { usage } : {}), contextTokenEstimate } });
       } catch (error) {
         send({ type: 'error', data: { message: error instanceof Error ? error.message : 'Unknown error' } });
       } finally {

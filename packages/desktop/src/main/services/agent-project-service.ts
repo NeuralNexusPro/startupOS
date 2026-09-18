@@ -14,6 +14,8 @@ import type {
 import { persistentAgentManager } from '../../../../core/src/lib/features/agent/server/index';
 import { extractDisplayContent } from '../../../../core/src/lib/integrations/pi-agent/display-content';
 import { getVisibleStreamDelta } from '../../../../core/src/lib/integrations/pi-agent/stream-dedupe';
+import { normalizeAgentTokenUsage, summarizeSessionTokenUsage } from '../../../../core/src/lib/integrations/pi-agent';
+import type { AgentMessage } from '../../../../core/src/types/agent';
 import { applyAssistantMessageEnd } from './assistant-stream-state';
 import { persistRuntimeLLMConfig } from '../../../../core/src/lib/features/user-config';
 
@@ -163,6 +165,7 @@ export class AgentProjectService {
           let assistantContent = '';
           let assistantMessageSent = false;
           let completionFailed = false;
+          const assistantUsages: NonNullable<AgentMessage['usage']>[] = [];
 
           const unsubscribe = agent.subscribe((event: { type: string; [key: string]: unknown }) => {
             switch (event.type) {
@@ -210,6 +213,10 @@ export class AgentProjectService {
                   content?: unknown;
                   completionFailure?: boolean;
                 } | undefined;
+                const messageUsage = msg?.role === 'assistant'
+                  ? normalizeAgentTokenUsage((msg as { usage?: unknown }).usage)
+                  : undefined;
+                if (messageUsage) assistantUsages.push(messageUsage);
                 if (assistantMessageSent && !msg?.completionFailure) break;
                 if (msg?.role === 'assistant') {
                   const messageContent = extractTextContent(msg.content);
@@ -237,6 +244,7 @@ export class AgentProjectService {
                         sendToAllWindows(request.projectId, 'assistant_message', {
                           content: stripped,
                           isStreaming: false,
+                          ...(messageUsage ? { usage: messageUsage } : {}),
                         });
                       }
                     }
@@ -271,13 +279,15 @@ export class AgentProjectService {
           // Fire-and-forget: start processing, broadcast events, then signal done
           agent.handleMessage(actualContent, request.sessionId).then(() => {
             unsubscribe();
+            const usage = summarizeSessionTokenUsage(assistantUsages.map((item) => ({ role: 'assistant', usage: item })));
+            const contextTokenEstimate = agent.getAgent()?.getContextTokenEstimate();
             if (!assistantMessageSent && assistantContent) {
               const stripped = stripToolCodeBlocks(assistantContent);
               if (stripped) {
                 sendToAllWindows(request.projectId, 'assistant_message', { content: stripped, isStreaming: false });
               }
             }
-            sendToAllWindows(request.projectId, 'done', { content: assistantContent, failed: completionFailed });
+            sendToAllWindows(request.projectId, 'done', { content: assistantContent, failed: completionFailed, ...(usage ? { usage } : {}), ...(contextTokenEstimate ? { contextTokenEstimate } : {}) });
           }).catch((err: unknown) => {
             unsubscribe();
             sendToAllWindows(request.projectId, 'error', {

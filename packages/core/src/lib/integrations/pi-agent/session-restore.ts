@@ -1,6 +1,8 @@
 import type { RuntimeLLMConfig } from './llm-config';
 import { extractDisplayContent } from './display-content';
 import type { ProjectContext } from './types';
+import type { AgentContextTokenEstimate, AgentTokenUsage } from '../../../types/agent';
+import { normalizeAgentTokenUsage } from './token-usage';
 
 export const AGENT_SESSION_RESTORE_CONTRACT_VERSION = 1 as const;
 
@@ -31,6 +33,8 @@ export interface RestoreDisplayMessage {
   role: 'user' | 'assistant' | 'tool' | 'toolResult';
   content: string;
   timestamp?: number;
+  usage?: AgentTokenUsage;
+  contextTokenEstimate?: AgentContextTokenEstimate;
 }
 
 export interface RestoreAgentSessionResult {
@@ -162,12 +166,25 @@ function mapDisplayMessage(message: unknown): RestoreDisplayMessage | null {
     );
   }
   const normalizedId = typeof id === 'string' ? id : undefined;
+  const usage = normalizeAgentTokenUsage(message['usage']);
+  const contextTokenEstimate = message['contextTokenEstimate'];
+  const normalizedContextTokenEstimate = isRecord(contextTokenEstimate)
+    && contextTokenEstimate['estimated'] === true
+    && ['stableSystem', 'sessionContext', 'turnRecall', 'history', 'total'].every(
+      (field) => typeof contextTokenEstimate[field] === 'number'
+        && Number.isFinite(contextTokenEstimate[field])
+        && (contextTokenEstimate[field] as number) >= 0,
+    )
+      ? contextTokenEstimate as unknown as AgentContextTokenEstimate
+      : undefined;
 
   return {
     ...(normalizedId ? { id: normalizedId } : {}),
     role: role as RestoreDisplayMessage['role'],
     content,
     ...(typeof timestamp === 'number' ? { timestamp } : {}),
+    ...(usage ? { usage } : {}),
+    ...(normalizedContextTokenEstimate ? { contextTokenEstimate: normalizedContextTokenEstimate } : {}),
   };
 }
 

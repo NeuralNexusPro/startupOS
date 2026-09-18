@@ -644,6 +644,8 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
         role: m.role as 'user' | 'assistant',
         content: m.content,
         timestamp: m.timestamp || Date.now(),
+        usage: m.usage,
+        contextTokenEstimate: m.contextTokenEstimate,
       }));
   }, [piMessages]);
 

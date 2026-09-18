@@ -7,7 +7,7 @@
 ## 2. Token 数据链路
 
 - [x] 2.1（依赖：1.1；可并行；角色：Core subagent；写入：Core 公共消息类型、聚合/估算 helper、OriginOSAgent 与定向测试）已在隔离 Task branch/worktree 接通真实 usage、纯函数汇总和有标记的 context estimate；证据：本 Task commit，6 项定向测试、Core `tsc --noEmit` 与 `git diff --check` 通过。
-- [ ] 2.2（依赖：2.1；串行；角色：Desktop/Web subagent；写入：最终流事件、会话持久化、现有 Agent/RoleAgent/Skill/Project 会话 UI 与测试）在独立 Task branch/worktree 透传并展示会话汇总，不复制聚合逻辑；证据：提交哈希及 Web/Desktop 定向测试与构建通过。
+- [x] 2.2（依赖：2.1；串行；角色：Desktop/Web subagent；写入：最终流事件、会话持久化、现有 Agent/RoleAgent/Skill/Project 会话 UI 与测试）已在独立 Task branch/worktree 透传并展示会话汇总，不复制聚合逻辑；证据：本 Task commit，Core token/restore 30 项与 Web UI 1 项定向测试、Core `tsc --noEmit`、Web lint、boundaries 与架构 self-test 通过；Web/Desktop 全量 typecheck 仅保留既有 canonical ontology 与未构建插件包错误。
 - [ ] 2.3（依赖：2.1；可与 2.2 并行；角色：Collaboration subagent；写入：CostController、Metrics、worker usage 接线与定向测试）在独立 Task branch/worktree 使用真实 input/output/cache usage 并仅在 cost 缺失时估算；证据：提交哈希及协作成本/缓存分类测试通过。
 
 ## 3. 集成与验收
