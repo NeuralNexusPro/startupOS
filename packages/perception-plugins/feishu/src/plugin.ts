@@ -4,15 +4,19 @@ import type {
   PerceptionPluginRuntimeContext, PluginReplyEvent, PluginReplyReceipt,
 } from '@originos/core/modules/perception-runtime/plugins';
 import { normalizeFeishuMessage } from './normalizer';
+import { FeishuOfficeCapabilityProvider, type FeishuOfficeCli } from './office-capabilities';
 import type { FeishuApiClient, FeishuMarkdownStreamController, FeishuSdkFactory, FeishuSdkFactoryOptions, FeishuSdkMessageEvent, FeishuSdkRuntime } from './types';
 
 export const feishuManifest: PerceptionPluginManifest = {
   id: 'originos.feishu', name: '飞书机器人', version: '0.3.0', hostApi: '1.0', entry: '@originos/perception-plugin-feishu', source: 'feishu', transport: 'stream',
-  capabilities: ['inbound-events', 'outbound-reply', 'outbound-files', 'attachments'], permissions: ['credentials', 'events', 'health', 'replies'],
+  capabilities: ['inbound-events', 'outbound-reply', 'outbound-files', 'attachments', 'office-capabilities'], permissions: ['credentials', 'events', 'health', 'replies', 'office-capabilities'],
   configurationSchema: { version: '1.0', fields: [
     { key: 'appId', label: 'App ID', type: 'text', required: true, help: '飞书开放平台应用凭证中的 App ID' },
     { key: 'appSecret', label: 'App Secret', type: 'password', required: true, sensitive: true },
     { key: 'domain', label: '服务区域', type: 'select', defaultValue: 'feishu', options: [{ value: 'feishu', label: '飞书（中国）' }, { value: 'lark', label: 'Lark（国际）' }] },
+    { key: 'officeCapabilitiesEnabled', label: '启用飞书办公能力', type: 'boolean', defaultValue: false, help: '使用独立的 lark-cli 用户授权，不使用机器人 App Secret' },
+    { key: 'officeAllowedActorIds', label: '办公能力授权发送者 ID', type: 'text', defaultValue: '', help: '多个 ID 用逗号分隔；留空时全部拒绝' },
+    { key: 'officeWriteEnabled', label: '允许办公写操作', type: 'boolean', defaultValue: false, help: '仅对白名单发送者生效；破坏性操作仍禁止' },
   ] },
 };
 
@@ -21,15 +25,15 @@ interface RunningClient extends FeishuSdkRuntime { reconnectCount: number }
 
 function defaultSdkFactory(options: FeishuSdkFactoryOptions): FeishuSdkRuntime {
   const domain = options.domain === 'lark' ? lark.Domain.Lark : lark.Domain.Feishu;
-  const dispatcher = new lark.EventDispatcher({});
-  const client = new lark.Client({ appId: options.appId, appSecret: options.appSecret, domain });
+  const dispatcher = new lark.EventDispatcher({ logger: options.logger });
+  const client = new lark.Client({ appId: options.appId, appSecret: options.appSecret, domain, logger: options.logger });
   const ws = new lark.WSClient({
-    appId: options.appId, appSecret: options.appSecret, domain, autoReconnect: true, source: 'originos',
+    appId: options.appId, appSecret: options.appSecret, domain, logger: options.logger, autoReconnect: true, source: 'originos',
     onReady: options.onReady, onError: options.onError, onReconnecting: options.onReconnecting, onReconnected: options.onReconnected,
     handshakeTimeoutMs: 15_000, wsConfig: { pingTimeout: 10 },
   });
   const channel = lark.createLarkChannel({
-    appId: options.appId, appSecret: options.appSecret, domain, source: 'originos',
+    appId: options.appId, appSecret: options.appSecret, domain, logger: options.logger, source: 'originos',
     outbound: { streamThrottleMs: 250, streamThrottleChars: 24, streamInitialText: '正在思考…' },
   });
   return {
@@ -55,8 +59,11 @@ function defaultSdkFactory(options: FeishuSdkFactoryOptions): FeishuSdkRuntime {
 
 export class FeishuPerceptionPlugin implements PerceptionPlugin {
   readonly manifest = feishuManifest;
+  readonly officeCapabilities: FeishuOfficeCapabilityProvider;
   private readonly clients = new Map<string, RunningClient>();
-  constructor(private readonly createSdk: FeishuSdkFactory = defaultSdkFactory) {}
+  constructor(private readonly createSdk: FeishuSdkFactory = defaultSdkFactory, officeCli?: FeishuOfficeCli) {
+    this.officeCapabilities = new FeishuOfficeCapabilityProvider(officeCli);
+  }
 
   async provision(context: PerceptionPluginProvisionContext): Promise<PerceptionPluginProvisionResult> {
     if (!context.ports.credentials) throw new Error('FEISHU_CREDENTIAL_PORT_MISSING');
@@ -73,9 +80,9 @@ export class FeishuPerceptionPlugin implements PerceptionPlugin {
       const appId = setting(context, 'appId'); const credentials = await this.resolveCredentials(context); const domain = parseDomain(context.settings.domain);
       if (!appId || !isAppId(appId)) throw new Error('FEISHU_APP_ID_REQUIRED');
       const runtime = this.createSdk({
-        appId, appSecret: credentials.appSecret, domain,
+        appId, appSecret: credentials.appSecret, domain, logger: context.ports.log?.sdkLogger,
         onReady: () => { void this.report(context, 'healthy', 'connected'); },
-        onError: (error) => { void this.report(context, 'degraded', 'disconnected', safeCode(error)); },
+        onError: (error) => { context.ports.log?.write({ level: 'error', stage: 'connection.error', safeCode: safeCode(error), error }); void this.report(context, 'degraded', 'disconnected', safeCode(error)); },
         onReconnecting: () => { const client = this.clients.get(context.connectorId); if (client) client.reconnectCount += 1; void this.report(context, 'degraded', 'reconnecting'); },
         onReconnected: () => { void this.report(context, 'healthy', 'connected'); },
       });
@@ -96,20 +103,33 @@ export class FeishuPerceptionPlugin implements PerceptionPlugin {
 
   private async submit(context: PerceptionPluginRuntimeContext, api: FeishuApiClient, message: FeishuSdkMessageEvent): Promise<void> {
     if (!context.ports.events) return;
-    const event = normalizeFeishuMessage({ connectorId: context.connectorId, message });
-    const unregister = context.ports.replies?.register(event.provenance.rawPayloadRef, this.replyDelivery(context.connectorId, api, message.message.message_id, message.message.chat_id), { supportsFiles: true });
-    try { await context.ports.events.submit(event); }
-    catch { await context.ports.health?.report({ status: 'degraded', safeCode: 'FEISHU_EVENT_SUBMIT_FAILED' }); }
-    finally { unregister?.(); }
+    let unregister: (() => void) | undefined;
+    let submitted = false;
+    let eventId: string | undefined;
+    try {
+      const event = normalizeFeishuMessage({ connectorId: context.connectorId, message });
+      eventId = event.id;
+      unregister = context.ports.replies?.register(event.provenance.rawPayloadRef, this.replyDelivery(context, event.id, api, message.message.message_id, message.message.chat_id), { supportsFiles: true });
+      submitted = true;
+      await context.ports.events.submit(event);
+    } catch (error) {
+      if (!submitted) context.ports.log?.write({ level: 'error', stage: 'receive', safeCode: 'FEISHU_RECEIVE_FAILED', eventId, error });
+      await context.ports.health?.report({ status: 'degraded', safeCode: 'FEISHU_EVENT_SUBMIT_FAILED' });
+    } finally { unregister?.(); }
   }
 
-  private replyDelivery(connectorId: string, api: FeishuApiClient, messageId: string, chatId: string): (event: PluginReplyEvent) => Promise<PluginReplyReceipt> {
+  private replyDelivery(context: PerceptionPluginRuntimeContext, eventId: string, api: FeishuApiClient, messageId: string, chatId: string): (event: PluginReplyEvent) => Promise<PluginReplyReceipt> {
+    const connectorId = context.connectorId;
+    let sessionId: string | undefined;
+    const logFailure = (stage: string, error: unknown): void => {
+      context.ports.log?.write({ level: 'error', stage, safeCode: 'FEISHU_REPLY_FAILED', eventId, sessionId, error });
+    };
     const stream = new FeishuStreamQueue();
     const state: { delta: string; sentAssistant: boolean; task?: Promise<FeishuStreamOutcome> } = { delta: '', sentAssistant: false };
     const ensureStream = (): void => {
       if (state.task) return;
       state.task = api.streamReply(messageId, chatId, (controller) => stream.consume(controller))
-        .then((result) => ({ result }), (error: unknown) => ({ error }));
+        .then((result) => ({ result }), (error: unknown) => { logFailure('reply.stream', error); return { error }; });
     };
     const finishStream = async (fallbackContent: string): Promise<PluginReplyReceipt> => {
       stream.close();
@@ -118,7 +138,7 @@ export class FeishuPerceptionPlugin implements PerceptionPlugin {
       const fallback = await api.replyText(messageId, chatId, fallbackContent);
       return receipt(connectorId, fallback.messageId);
     };
-    return async (event) => {
+    const deliver = async (event: PluginReplyEvent): Promise<PluginReplyReceipt> => {
       if (event.type === 'file') {
         const assertActive = () => {
           event.signal?.throwIfAborted();
@@ -143,7 +163,7 @@ export class FeishuPerceptionPlugin implements PerceptionPlugin {
           stream.push({ type: 'set', content: event.content });
           return receipt(connectorId, 'streaming');
         }
-        const result = await safeMarkdownReply(api, messageId, chatId, event.content);
+        const result = await safeMarkdownReply(api, messageId, chatId, event.content, logFailure);
         return receipt(connectorId, result.messageId);
       }
       if (event.type === 'completed' && state.task) {
@@ -161,8 +181,13 @@ export class FeishuPerceptionPlugin implements PerceptionPlugin {
         stream.push({ type: 'set', content: finalContent });
         return finishStream(finalContent);
       }
-      const result = await safeMarkdownReply(api, messageId, chatId, content);
+      const result = await safeMarkdownReply(api, messageId, chatId, content, logFailure);
       return receipt(connectorId, result.messageId);
+    };
+    return async (event) => {
+      if (event.type === 'accepted') sessionId = event.sessionId;
+      try { return await deliver(event); }
+      catch (error) { logFailure('reply', error); throw error; }
     };
   }
 
@@ -174,6 +199,7 @@ export class FeishuPerceptionPlugin implements PerceptionPlugin {
   }
 
   private async report(context: PerceptionPluginRuntimeContext, status: 'healthy' | 'degraded', connectionState: 'connected' | 'reconnecting' | 'disconnected', code?: string): Promise<void> {
+    context.ports.log?.write({ level: status === 'healthy' ? 'info' : 'warn', stage: `connection.${connectionState}`, safeCode: code });
     const runtime = this.clients.get(context.connectorId);
     await context.ports.health?.report({ status, safeCode: code, detail: { connectionState, reconnectCount: runtime?.reconnectCount ?? 0, ...(status === 'healthy' ? { lastSuccessAt: new Date().toISOString() } : {}) } });
   }
@@ -222,9 +248,9 @@ class FeishuStreamQueue {
   }
 }
 
-async function safeMarkdownReply(api: FeishuApiClient, messageId: string, chatId: string, content: string): Promise<{ messageId: string }> {
+async function safeMarkdownReply(api: FeishuApiClient, messageId: string, chatId: string, content: string, logFailure: (stage: string, error: unknown) => void): Promise<{ messageId: string }> {
   try { return await api.replyMarkdown(messageId, chatId, content); }
-  catch { return api.replyText(messageId, chatId, content); }
+  catch (error) { logFailure('reply.markdown', error); return api.replyText(messageId, chatId, content); }
 }
 
 export const feishuPlugin = new FeishuPerceptionPlugin();

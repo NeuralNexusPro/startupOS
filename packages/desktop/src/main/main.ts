@@ -24,6 +24,7 @@ import { EntryExportService } from './services/entry-export-service';
 import { PerceptionPluginHostService } from './services/perception-plugin-host/perception-plugin-host-service';
 import { DesktopSchedulerService } from './services/desktop-scheduler-service';
 import { BufferedDailyLogWriter } from './services/daily-log-writer';
+import { createPluginLogSink } from './services/plugin-log-service';
 import { captureConsoleCall, serializeConsoleArgs } from './services/console-log-capture';
 import { processHealthMonitor } from './services/process-health-monitor';
 import { createDefaultDesktopChannelRuntime } from './services/channel-runtime-service';
@@ -64,6 +65,7 @@ const ipcServices: unknown[] = [];
 let llmLogCaptureInitialized = false;
 let desktopLogCaptureInitialized = false;
 let dailyLogWriter: BufferedDailyLogWriter | null = null;
+let pluginLogWriter: BufferedDailyLogWriter | null = null;
 let shutdownInProgress = false;
 let allowQuitAfterShutdown = false;
 
@@ -442,7 +444,13 @@ app.whenReady().then(() => {
   ipcServices.push(channelRuntime);
   ipcServices.push(new AgentSessionService(taskRuntimeIpc, channelRuntime.ingress));
   console.info('[ChannelRuntime] unified ingress initialized');
-  perceptionPluginHost = new PerceptionPluginHostService(channelRuntime.ingress);
+  pluginLogWriter = new BufferedDailyLogWriter({ logsDir: app.getPath('logs'),
+    onWriteFailure: () => console.warn('Plugin log storage unavailable'),
+    onDrop: () => console.warn('Plugin log capacity exceeded; records dropped'),
+  });
+  perceptionPluginHost = new PerceptionPluginHostService(channelRuntime.ingress, undefined, createPluginLogSink(pluginLogWriter, {
+    'originos.email': 'email', 'originos.wecom': 'wecom', 'originos.feishu': 'feishu', 'originos.dingtalk': 'dingtalk',
+  }));
   mainWindow = createWindow();
   windowManager.setMainWindow(mainWindow);
   windowManager.createDockWindow();
@@ -508,11 +516,13 @@ app.on('before-quit', (event) => {
   trayManager?.destroy();
   shortcutManager?.destroy();
   desktopSchedulerService?.stop();
-  perceptionPluginHost?.stop();
+  const pluginShutdown = perceptionPluginHost?.stop();
   rendererServerProcess?.kill();
   rendererServerProcess = null;
   void (async () => {
     try {
+      await pluginShutdown;
+      await pluginLogWriter?.dispose();
       await dailyLogWriter?.flush();
       await localAgentBridge?.shutdown();
       await agentManager.shutdown();

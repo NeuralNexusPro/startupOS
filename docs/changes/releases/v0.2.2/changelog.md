@@ -37,3 +37,27 @@
 **类型**：fix
 **影响模块**：Desktop Windows发布校验
 **摘要**：schedule-tools迁入业务层后，Windows校验仍要求旧路径和不存在的外置副本。校验改为实际ASAR业务工具路径，并保留真实缺包失败检查；运行时及打包内容保持不变。用于从修复后的dev重新构建发布0.2.2。
+
+## 2026-09-14 — docs：插件独立日志规划（非已发布功能）
+
+**类型**：docs
+**影响模块**：SENSE.12 / isolate-perception-plugin-logs
+**摘要**：新增独立日志、SDK出口、错误原因关联与脱敏的待实施Proposal及测试矩阵；不代表0.2.2已具备该功能。
+
+## 2026-09-14 — fix：插件独立日志与渠道失败诊断（本地完成，未发布）
+
+**类型**：fix
+**影响模块**：Core Plugin SDK/Host、channel-runtime/perception路由、Desktop日志、四个感知插件、钉钉SDK锁定补丁
+**摘要**：插件/SDK日志混入主日志且多层异常转换丢失原因，现按插件每日独立落盘，保留脱敏类别、HTTP状态和event/session/diagnosticId审计关联；修复飞书数组日志参数及钉钉错误被SDK吞掉、HTTP状态丢失的问题。232项集成回归、真实SDK与macOS包内Host/Worker验收通过；未远端发布，Windows安装运行待验，不承诺消除网络/模型服务失败。
+
+## 2026-09-14 — docs：IM完整消息透传方案（待批准）
+
+**类型**：docs
+**影响模块**：Story SENSE.12、OpenSpec fix-im-direct-reply-context
+**摘要**：根据用户明确的边界，规划让感知事件只做规则路由，原始正文及发送者ID/可用显示名、会话、来源和附件一起交给目标及模型；补齐IR01–IR07验收。方案严格校验通过，未修改应用源码，不代表已发布修复。
+
+## 2026-09-14 — fix：IM原文与发送者透传（本地修复，未发布）
+
+**类型**：fix
+**影响模块**：Core channel-runtime、perception路由、会话metadata
+**摘要**：移除IM入口的感知事件任务包装；原文、实际发送者ID/可用显示名、会话及附件共同到达Agent/Skill模型输入，历史会话与长任务等待回复使用同一边界。Core137、Desktop7、四插件73项回归通过，长任务补齐后11项定向复验通过；完整桌面构建及架构检查通过。包内验证与真实IM人工复测范围见Story SENSE.12 testing.md；未改写历史记忆，未远端发布。

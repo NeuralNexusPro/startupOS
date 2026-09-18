@@ -102,6 +102,7 @@ interface PerceptionEventV1 {
 | **SENSE.11** | 企业微信 Connector Provisioning 与运行闭环 | Critical | SENSE.2、SENSE.4、SENSE.8、SENSE.9 | ✅ Complete |
 | **SENSE.12** | Perception Plugin Host 与 Connector 插件化迁移 | Critical | SENSE.1–11 | 🚧 In Progress |
 | **SENSE.13** | 感知中心首页入口与连接状态面板 | High | SENSE.8、SENSE.9、SENSE.12 | ✅ Complete |
+| **[SENSE.14](story-SENSE.14/README.md)** | IM平台能力发现与Agent按需调用 | High | SENSE.12、Agent工具授权 | 📋 In Progress |
 
 ## 数据目录
 
@@ -145,3 +146,9 @@ SENSE.12 追加 Task SENSE12-T4（2026-09-13）：三平台当前 IM 会话文�
 SENSE12-T6：感知表单重建已修复，自动刷新限定事件页；详见Story SENSE.12。
 
 SENSE12-T5/T6联合交付：136项回归、完整桌面构建及实际包验收通过；测试包与模拟性能证据见Story testing.md。
+
+2026-09-14：SENSE.12 SENSE12-T7插件独立日志已实施；232项集成回归、真实SDK出口及macOS实际包Host/Worker验收通过。Windows安装运行待对应环境验证，本地测试包尚未发布远端；Epic整体状态不变。
+
+2026-09-14：SENSE12-T8已获批准并修复共享IM入口，保留原文及发送者/会话信息；回归通过，实际包验证与人工复测见Story testing.md。Epic整体状态不变。
+
+2026-09-14：新增待修复缺口[SENSE12-T9：共享记忆沟通来源元数据](story-SENSE.12/memory-source-context-gap.md)，关联Epic M。T8入口透传已实施，但不能据此认定记忆来源链路完整或第三方视角问题已解决；本缺口未实施、未验收。

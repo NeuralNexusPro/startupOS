@@ -151,6 +151,7 @@ export const IPC_CHANNELS = {
   DOCK_SET_MOUSE_IGNORE: 'dock:set-mouse-ignore',
   PERCEPTION_PLUGIN_CATALOG: 'perception:plugin:catalog',
   PERCEPTION_PLUGIN_PROVISION: 'perception:plugin:provision',
+  PERCEPTION_PLUGIN_CAPABILITY_STATUS: 'perception:plugin:capability-status',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

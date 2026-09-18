@@ -38,3 +38,11 @@ SENSE12-T5：共享派发器复用Node Readable进行有界预取，每组最多
 ## SENSE12-T6 配置表单与事件刷新
 
 SENSE12-T6：SenseCenter复用store现有引用计数刷新订阅，仅事件tab持有。顶部菜单仅首次load。五个无Hook列表采用render辅助函数，保持React表单类型与实例稳定，不新增状态或接口。
+
+## SENSE12-T7：独立诊断出口
+
+Desktop宿主拥有plugins/{插件名}/plugin-日期.log的异步文件写入，Core仅定义可选受控日志端口与错误诊断回调，插件通过公共SDK接入。Host绑定plugin/connector，调用级关联event/session，禁止全局当前插件变量。复用BufferedDailyLogWriter并补缓冲上限与故障可观测性。方案及脱敏、并发、恢复边界见[design](../../../../openspec/changes/isolate-perception-plugin-logs/design.md)。无数据库、反向依赖或业务状态新事实源；AGENTS v2.5.6已同步公共边界；钉钉使用pnpm锁定补丁注入实例logger，CJS/ESM和类型一致，飞书SDK数组参数由Host有界提取。
+
+## SENSE12-T8：数据与路由分离
+
+PerceptionRouter负责匹配、授权与目标选择；Trigger传原文及可用发送者/会话字段，Channel在模型边界只编码完整消息对象，不添加业务提示词。Gateway保存原文及独立消息metadata。复用Worker字符串协议，无平台SDK或数据库变更；依赖保持Desktop/Web到Core模块再到下层公共API。可选公共字段实施时同步AGENTS。完整决策见Proposal design.md。

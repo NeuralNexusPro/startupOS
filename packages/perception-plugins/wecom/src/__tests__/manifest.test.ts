@@ -9,7 +9,14 @@ describe('weComManifest', () => {
     expect(weComManifest.configurationSchema.fields).toEqual(expect.arrayContaining([
       expect.objectContaining({ key: 'botId', type: 'text', required: true }),
       expect.objectContaining({ key: 'secret', type: 'password', required: true, sensitive: true }),
+      expect.objectContaining({ key: 'officeCapabilitiesEnabled', type: 'boolean', defaultValue: false }),
+      expect.objectContaining({ key: 'officeAllowedActorIds', type: 'text', defaultValue: '' }),
+      expect.objectContaining({ key: 'officeWriteEnabled', type: 'boolean', defaultValue: false }),
     ]));
+    expect(weComManifest.capabilities).toContain('office-capabilities');
+    expect(weComManifest.capabilities).toContain('attachments');
+    expect(weComManifest.permissions).toContain('office-capabilities');
+    expect(weComManifest.permissions).toContain('attachments');
     expect(JSON.stringify(weComManifest)).not.toMatch(/secretRef|secret-1/);
   });
 });

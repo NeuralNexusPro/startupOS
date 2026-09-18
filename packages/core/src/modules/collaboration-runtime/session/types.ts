@@ -82,6 +82,7 @@ export type EventType =
   | "SUPERVISOR_WORKER_FAILED"
   | "SUPERVISOR_AGGREGATE"
   | "SUPERVISOR_TOOL_CALL"
+  | "HOST_TOOL_CALL"
   | "WORKER_BLOCK"
   // Story 9.33: Supervisor 决策事件
   | "SUPERVISOR_DECIDE"

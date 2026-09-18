@@ -11,7 +11,9 @@ const invocation: ChannelInvocation = {
 describe('CollaborationChannelRuntimeAdapter', () => {
   it('returns only aggregated user-visible project output', async () => {
     let listener: ((event: CollaborationChannelEvent) => Promise<void>) | undefined;
+    const order: string[] = [];
     const send = vi.fn(async () => {
+      order.push('send');
       await listener?.({ type: 'AGENT_THINKING', payload: { content: 'private' }, source: 'worker-1' });
       await listener?.({ type: 'TASK_STARTED', payload: { taskId: 'task-1', description: 'Research' }, source: 'worker-1' });
       await listener?.({ type: 'ASSISTANT_MESSAGE', payload: { content: 'Project result' }, source: 'supervisor' });
@@ -26,7 +28,7 @@ describe('CollaborationChannelRuntimeAdapter', () => {
     });
 
     const events: AgentOutputEvent[] = [];
-    for await (const event of adapter.invoke(invocation)) events.push(event);
+    for await (const event of adapter.invoke(invocation)) { events.push(event); if (event.type === 'accepted') order.push('accepted'); }
     expect(events).toEqual([
       { type: 'accepted', sessionId: 'session-1' },
       { type: 'tool_status', label: 'Research', state: 'running' },
@@ -35,6 +37,7 @@ describe('CollaborationChannelRuntimeAdapter', () => {
     ]);
     expect(JSON.stringify(events)).not.toContain('private');
     expect(send).toHaveBeenCalledWith('session-1', 'ship it', []);
+    expect(order.slice(0, 2)).toEqual(['accepted', 'send']);
   });
 
   it('maps project HITL and safe failures without leaking internal errors', async () => {

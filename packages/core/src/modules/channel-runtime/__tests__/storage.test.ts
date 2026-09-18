@@ -9,6 +9,23 @@ function root(): string { const value = fs.mkdtempSync(path.join(os.tmpdir(), 'o
 afterEach(() => { for (const value of roots.splice(0)) fs.rmSync(value, { recursive: true, force: true }); });
 
 describe('ChannelSessionBindingStore', () => {
+  it('separates conversation kinds, connections and legacy bindings across restart', async () => {
+    const directory = root();
+    const createSessionId = vi.fn(async () => `session-${createSessionId.mock.calls.length}`);
+    const input = { origin: 'wecom' as const, connectorId: 'one', conversationId: 'same-id', target: { kind: 'role-agent' as const, id: 'role' }, createSessionId };
+    const store = new ChannelSessionBindingStore(directory);
+    const legacy = await store.resolve(input);
+    const direct = await store.resolve({ ...input, conversationKind: 'direct' });
+    const group = await store.resolve({ ...input, conversationKind: 'group' });
+    const other = await store.resolve({ ...input, conversationKind: 'group', connectorId: 'two' });
+    expect(new Set([legacy, direct, group, other].map(binding => binding.sessionId)).size).toBe(4);
+    const restored = new ChannelSessionBindingStore(directory);
+    expect(await restored.resolve({ ...input, conversationKind: 'group' })).toEqual(group);
+    expect(restored.reset(input.origin, input.connectorId, input.conversationId, input.target, 'direct')).toBe(true);
+    expect(await restored.resolve({ ...input, conversationKind: 'group' })).toEqual(group);
+    expect((await restored.resolve(input)).sessionId).toBe(legacy.sessionId);
+  });
+
   it('reuses an active binding and isolates target changes', async () => {
     const createSessionId = vi.fn(async () => `session-${createSessionId.mock.calls.length}`);
     const store = new ChannelSessionBindingStore(root(), () => new Date('2026-09-04T10:00:00.000Z'));

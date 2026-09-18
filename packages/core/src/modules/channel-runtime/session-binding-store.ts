@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { ChannelOrigin, ChannelRuntimeTarget, ChannelSessionBinding } from './types';
+import type { ChannelInboundMessage, ChannelOrigin, ChannelRuntimeTarget, ChannelSessionBinding } from './types';
 import { ChannelDataFileStore } from './file-store';
 import { validateChannelRuntimeTarget } from './validation';
 
@@ -9,6 +9,7 @@ export interface ResolveBindingInput {
   origin: ChannelOrigin;
   connectorId: string;
   conversationId: string;
+  conversationKind?: ChannelInboundMessage['conversationKind'];
   target: ChannelRuntimeTarget;
   createSessionId(): Promise<string>;
   ttlMs?: number;
@@ -25,7 +26,7 @@ export class ChannelSessionBindingStore {
       throw new Error('CHANNEL_BINDING_TTL_INVALID');
     }
     const fingerprint = targetFingerprint(input.target);
-    const id = bindingId(input.origin, input.connectorId, input.conversationId, fingerprint);
+    const id = bindingId(input.origin, input.connectorId, input.conversationId, fingerprint, input.conversationKind);
     const active = this.pending.get(id);
     if (active) return active;
     const resolving = this.resolveExclusive(id, fingerprint, input);
@@ -50,6 +51,7 @@ export class ChannelSessionBindingStore {
     const timestamp = now.toISOString();
     const binding: ChannelSessionBinding = {
       id, origin: input.origin, connectorId: input.connectorId, conversationId: input.conversationId,
+      ...(input.conversationKind ? { conversationKind: input.conversationKind } : {}),
       targetFingerprint: fingerprint, sessionId, createdAt: timestamp, updatedAt: timestamp,
       expiresAt: new Date(now.getTime() + (input.ttlMs ?? 24 * 60 * 60 * 1_000)).toISOString(),
     };
@@ -57,8 +59,8 @@ export class ChannelSessionBindingStore {
     return binding;
   }
 
-  reset(origin: ChannelOrigin, connectorId: string, conversationId: string, target: ChannelRuntimeTarget): boolean {
-    const filePath = this.store(bindingId(origin, connectorId, conversationId, targetFingerprint(target))).filePath;
+  reset(origin: ChannelOrigin, connectorId: string, conversationId: string, target: ChannelRuntimeTarget, conversationKind?: ChannelInboundMessage['conversationKind']): boolean {
+    const filePath = this.store(bindingId(origin, connectorId, conversationId, targetFingerprint(target), conversationKind)).filePath;
     if (!fs.existsSync(filePath)) return false;
     fs.unlinkSync(filePath);
     return true;
@@ -81,6 +83,6 @@ export function targetFingerprint(target: ChannelRuntimeTarget): string {
   return `${target.kind}:${target.id}`;
 }
 
-function bindingId(origin: string, connectorId: string, conversationId: string, fingerprint: string): string {
-  return createHash('sha256').update(JSON.stringify([origin, connectorId, conversationId, fingerprint])).digest('hex');
+function bindingId(origin: string, connectorId: string, conversationId: string, fingerprint: string, conversationKind?: ChannelInboundMessage['conversationKind']): string {
+  return createHash('sha256').update(JSON.stringify([origin, connectorId, conversationId, fingerprint, ...(conversationKind ? [conversationKind] : [])])).digest('hex');
 }

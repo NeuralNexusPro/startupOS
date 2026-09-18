@@ -7,6 +7,7 @@ class FakeClient implements WeComBotClient {
   readonly listeners = new Map<string, (payload?: unknown) => void>();
   readonly connect = vi.fn();
   readonly disconnect = vi.fn();
+  readonly downloadFile = vi.fn(async () => ({ buffer: Buffer.from('file-content'), filename: 'report.pdf' }));
   readonly uploadMedia = vi.fn(async () => ({ media_id: 'media-test' }));
   readonly replyMedia = vi.fn(async () => ({}));
   readonly replyStream = vi.fn(async () => undefined);
@@ -75,6 +76,32 @@ describe('WeComPerceptionPlugin', () => {
     }));
   });
 
+  it('downloads a file message into host storage before submitting it', async () => {
+    const client = new FakeClient();
+    const plugin = new WeComPerceptionPlugin(() => client);
+    const base = context();
+    const store = vi.fn().mockResolvedValue('data/perception/attachments/connector-1/id/report.pdf');
+    const host = context({ ports: { ...base.ports, attachments: { store } } });
+    await plugin.start(host);
+
+    client.emit('message.file', { body: {
+      msgid: 'file-1', file: { url: 'https://download.example/file', aeskey: 'key' },
+    } });
+
+    await vi.waitFor(() => expect(host.ports.events?.submit).toHaveBeenCalledOnce());
+    expect(client.downloadFile).toHaveBeenCalledWith('https://download.example/file', 'key');
+    expect(store).toHaveBeenCalledWith('connector-1', {
+      fileName: 'report.pdf', bytes: Buffer.from('file-content'),
+    });
+    expect(host.ports.events?.submit).toHaveBeenCalledWith(expect.objectContaining({
+      sourceEventId: 'wecom-bot:file-1',
+      content: {
+        text: '[文件] report.pdf',
+        attachmentRefs: ['data/perception/attachments/connector-1/id/report.pdf'],
+      },
+    }));
+  });
+
   it('rejects missing settings with a redacted health code', async () => {
     const client = new FakeClient();
     const plugin = new WeComPerceptionPlugin(() => client);
@@ -124,6 +151,7 @@ describe('WeComPerceptionPlugin', () => {
     const unregister = vi.fn();
     const register = vi.fn((_handle: string, next: NonNullable<PerceptionPluginRuntimeContext['ports']['replies']>['register'] extends (...args: infer Args) => unknown ? Args[1] : never) => { deliver = next; return unregister; });
     const submit = vi.fn(async () => {
+      await deliver?.({ type: 'accepted', sessionId: 'session-one' });
       await deliver?.({ type: 'assistant_message', content: '真实回复' });
       await deliver?.({ type: 'completed', resultRef: 'session://one' });
       return [{ status: 'dispatched' as const }];
@@ -135,8 +163,9 @@ describe('WeComPerceptionPlugin', () => {
     client.emit('message.text', frame);
     await vi.waitFor(() => expect(unregister).toHaveBeenCalledOnce());
     expect(register).toHaveBeenCalledWith('wecom-ws://connector-1/request-2', expect.any(Function), { supportsFiles: true });
-    expect(client.replyStream).toHaveBeenNthCalledWith(1, frame, expect.any(String), '真实回复', false);
-    expect(client.replyStream).toHaveBeenNthCalledWith(2, frame, expect.any(String), '真实回复', true);
+    expect(client.replyStream).toHaveBeenNthCalledWith(1, frame, expect.any(String), '正在处理中…', false);
+    expect(client.replyStream).toHaveBeenNthCalledWith(2, frame, expect.any(String), '真实回复', false);
+    expect(client.replyStream).toHaveBeenNthCalledWith(3, frame, expect.any(String), '真实回复', true);
   });
 
   it('keeps cumulative delta content in the final WeCom stream frame', async () => {
@@ -148,6 +177,7 @@ describe('WeComPerceptionPlugin', () => {
       return vi.fn();
     });
     const submit = vi.fn(async () => {
+      await deliver?.({ type: 'accepted', sessionId: 'session-delta' });
       await deliver?.({ type: 'text_delta', delta: '你' });
       await deliver?.({ type: 'text_delta', delta: '好' });
       await deliver?.({ type: 'completed', resultRef: 'session://one' });
@@ -160,10 +190,11 @@ describe('WeComPerceptionPlugin', () => {
 
     client.emit('message.text', frame);
 
-    await vi.waitFor(() => expect(client.replyStream).toHaveBeenCalledTimes(3));
-    expect(client.replyStream).toHaveBeenNthCalledWith(1, frame, expect.any(String), '你', false);
-    expect(client.replyStream).toHaveBeenNthCalledWith(2, frame, expect.any(String), '你好', false);
-    expect(client.replyStream).toHaveBeenNthCalledWith(3, frame, expect.any(String), '你好', true);
+    await vi.waitFor(() => expect(client.replyStream).toHaveBeenCalledTimes(4));
+    expect(client.replyStream).toHaveBeenNthCalledWith(1, frame, expect.any(String), '正在处理中…', false);
+    expect(client.replyStream).toHaveBeenNthCalledWith(2, frame, expect.any(String), '你', false);
+    expect(client.replyStream).toHaveBeenNthCalledWith(3, frame, expect.any(String), '你好', false);
+    expect(client.replyStream).toHaveBeenNthCalledWith(4, frame, expect.any(String), '你好', true);
   });
 });
 

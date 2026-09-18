@@ -9,6 +9,9 @@
     "uuid": "^14.0.0",
     "zod": "^3.25.76"
   },
+  "devDependencies": {
+    "tsx": "^4.22.0"
+  },
   "exports": {
     ".": "./src/index.ts",
     "./lib/storage": "./src/lib/storage/index.ts",

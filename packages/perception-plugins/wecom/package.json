@@ -14,7 +14,15 @@
   },
   "dependencies": {
     "@originos/core": "workspace:*",
+    "@wecom/cli": "1.2.1",
     "@wecom/aibot-node-sdk": "1.0.6"
+  },
+  "optionalDependencies": {
+    "@wecom/cli-darwin-arm64": "1.2.1",
+    "@wecom/cli-darwin-x64": "1.2.1",
+    "@wecom/cli-linux-arm64": "1.2.1",
+    "@wecom/cli-linux-x64": "1.2.1",
+    "@wecom/cli-win32-x64": "1.2.1"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

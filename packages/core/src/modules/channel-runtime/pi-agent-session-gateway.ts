@@ -4,7 +4,8 @@ import type { LaunchContext, LaunchResult } from '../../lib/features/services/la
 import { getDataRoot } from '../../lib/paths';
 import type { AgentMessage, AgentSession } from '../../types/agent';
 import type { ChannelSessionMessageStorePort, ChannelSessionResolverPort, ResolvedChannelSession, RuntimeSourceEvent } from './runtime-adapter';
-import type { ChannelInvocation } from './types';
+import type { ChannelInvocation, ChannelMessageMetadata } from './types';
+import { isImChannel } from './types';
 import type { ChannelSessionProvisionerPort } from './binding-ingress';
 
 interface AgentRuntimeLike {
@@ -61,7 +62,7 @@ export class PiAgentChannelSessionGateway implements ChannelSessionProvisionerPo
           if (this.dependencies.executeMessage) {
             await this.dependencies.executeMessage(
               session,
-              input.message.content.text ?? '',
+              isImChannel(input.message.origin) ? message : input.message.content.text ?? '',
               promptChat,
             );
           } else {
@@ -74,12 +75,15 @@ export class PiAgentChannelSessionGateway implements ChannelSessionProvisionerPo
     };
   }
 
-  async appendUserMessage(sessionId: string, content: string, attachmentRefs: readonly string[]): Promise<void> {
+  async appendUserMessage(sessionId: string, content: string, attachmentRefs: readonly string[], channel?: ChannelMessageMetadata): Promise<void> {
     const projectId = this.requiredProjectId(sessionId);
     const saved = await this.dependencies.addMessage(sessionId, {
       role: 'user',
       content,
-      ...(attachmentRefs.length > 0 ? { metadata: { attachmentRefs: [...attachmentRefs] } } : {}),
+      ...(attachmentRefs.length > 0 || channel ? { metadata: {
+        ...(attachmentRefs.length > 0 ? { attachmentRefs: [...attachmentRefs] } : {}),
+        ...(channel ? { channel: { ...channel } } : {}),
+      } } : {}),
     }, projectId);
     if (!saved) throw new Error('CHANNEL_SESSION_MESSAGE_PERSIST_FAILED');
   }

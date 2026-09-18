@@ -17,6 +17,12 @@ export function validateChannelInboundMessage(message: ChannelInboundMessage): C
   assertId(message.connectorId, 'CHANNEL_CONNECTOR_ID_INVALID');
   assertId(message.conversationId, 'CHANNEL_CONVERSATION_ID_INVALID');
   assertId(message.actorId, 'CHANNEL_ACTOR_ID_INVALID');
+  if (message.actorDisplayName !== undefined && (typeof message.actorDisplayName !== 'string' || message.actorDisplayName.length > 1024)) {
+    throw new Error('CHANNEL_ACTOR_NAME_INVALID');
+  }
+  if (message.conversationKind !== undefined && !['direct', 'group', 'thread'].includes(message.conversationKind)) {
+    throw new Error('CHANNEL_CONVERSATION_KIND_INVALID');
+  }
   if (!Number.isFinite(Date.parse(message.receivedAt))) throw new Error('CHANNEL_RECEIVED_AT_INVALID');
   const text = message.content.text ?? '';
   const attachments = message.content.attachmentRefs ?? [];

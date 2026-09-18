@@ -26,3 +26,13 @@ SENSE12-T5：模型输出速度超过渠道确认速度时，以合并文本持�
 ## SENSE12-T6 配置表单与事件刷新
 
 SENSE12-T6：停留在配置页时所选平台及草稿保持，事件页每5秒更新，离开停止。配置与健康数据可通过刷新按钮更新；取消重开按默认值初始化。
+
+## SENSE12-T7：诊断日志
+
+无新增UI。用户在应用日志目录的plugins/wecom、plugins/feishu、plugins/dingtalk、plugins/email查看每日plugin-YYYY-MM-DD.log。IM继续安全错误提示；诊断记录保留关联ID，审计可关联，禁止向IM显示堆栈/日志路径或凭据。
+
+日志包含stage、safeCode和可用的eventId/sessionId/diagnosticId；使用diagnosticId关联感知审计。未知供应商文本不会原样记录，正常退出flush，强制结束进程可能丢失尚未写入的缓冲。
+
+## SENSE12-T8：IM处理方式
+
+成员消息经规则命中后，由目标按自身角色/Skill处理原始内容及发送者信息。普通催促不再由感知入口改写为分析任务；明确要求代拟时允许目标正常代拟。无新增UI，消息投递失败仍按已有安全错误处理。已有历史误判不静默删除，需原群原会话复测。

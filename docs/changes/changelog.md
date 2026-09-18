@@ -2,6 +2,30 @@
 
 ---
 
+## 2026-09-17 — fix：角色与技能历史会话显示内容标题
+
+**类型**：fix
+**影响模块**：`packages/core/src/lib/features/agent/`, `packages/web/src/components/skills/`, `packages/web/src/components/os/agent-dialog/`
+**摘要**：Agent与Skill会话从完整历史中选择最具体的用户任务生成简短标题，降低“创建文件夹”“帮我打开”等操作性短句权重，优先保留“9月工作计划”、具体待办或工作主题；忽略启动语、问候和“继续”等无主题消息。旧会话打开历史菜单时即时重新提炼，无需迁移。
+
+---
+
+## 2026-09-17 — fix：接收企业微信文件消息
+
+**类型**：fix
+**影响模块**：`packages/perception-plugins/wecom/`, `packages/core/src/modules/perception-runtime/plugins/`, `packages/desktop/src/main/services/perception-plugin-host/`
+**摘要**：企业微信手机端发送的文件现在通过官方 SDK 下载解密，由 Host 限制大小、净化文件名并落入感知附件目录，再以受控 `data/...` 路径交给对应 Agent；文件字节、下载地址和解密密钥不进入事件或诊断日志。
+
+---
+
+## 2026-09-16 — feat：企业微信办公能力发现与受控调用
+
+**类型**：feat
+**影响模块**：`packages/core/src/modules/perception-runtime/`, `packages/core/src/lib/features/agent/`, `packages/perception-plugins/wecom/`, `packages/desktop/`, `packages/web/src/components/os/sense-center/`
+**摘要**：接入企微、飞书、钉钉官方CLI动态日程／待办目录，Agent及协作Worker按当前IM调用上下文发现与调用，Desktop按发送者白名单约束授权；感知中心展示能力、授权和读写范围且不新增5秒配置轮询。企业微信真实授权环境已完成日程和待办闭环并清理测试对象；飞书、钉钉当前未授权，仅完成真实目录发现，不虚报业务联调。
+
+---
+
 ## 2026-09-10 — refactor：清退旧记忆运行时
 
 **类型**：refactor
@@ -1957,3 +1981,63 @@ SENSE12-T3：首次启用后台本可启动，但UI快照不自动刷新；增�
 **类型**：fix
 **影响模块**：Desktop Windows发布校验
 **摘要**：schedule-tools迁入业务层后，Windows校验仍要求旧路径和不存在的外置副本。校验改为实际ASAR业务工具路径，并保留真实缺包失败检查；运行时及打包内容保持不变。用于从修复后的dev重新构建发布0.2.2。
+
+## 2026-09-14 — docs：感知插件日志独立记录方案
+
+**类型**：docs
+**影响模块**：SENSE.12 / isolate-perception-plugin-logs
+**摘要**：规划四插件独立每日日志及CHANNEL_RUNTIME_FAILED诊断关联，补齐PL01–PL08验收；尚未批准实施或发布。
+
+## 2026-09-14 — fix：插件独立日志与渠道失败诊断（本地完成，未发布）
+
+**类型**：fix
+**影响模块**：Core Plugin SDK/Host、channel-runtime/perception路由、Desktop日志、四个感知插件、钉钉SDK锁定补丁
+**摘要**：插件/SDK日志混入主日志且多层异常转换丢失原因，现按插件每日独立落盘，保留脱敏类别、HTTP状态和event/session/diagnosticId审计关联；修复飞书数组日志参数及钉钉错误被SDK吞掉、HTTP状态丢失的问题。232项集成回归、真实SDK与macOS包内Host/Worker验收通过；未远端发布，Windows安装运行待验，不承诺消除网络/模型服务失败。
+
+## 2026-09-14 — docs：IM完整消息透传方案（待批准）
+
+**类型**：docs
+**影响模块**：Story SENSE.12、OpenSpec fix-im-direct-reply-context
+**摘要**：根据用户明确的边界，规划让感知事件只做规则路由，原始正文及发送者ID/可用显示名、会话、来源和附件一起交给目标及模型；补齐IR01–IR07验收。方案严格校验通过，未修改应用源码，不代表已发布修复。
+
+## 2026-09-14 — fix：IM原文与发送者透传（本地修复，未发布）
+
+**类型**：fix
+**影响模块**：Core channel-runtime、perception路由、会话metadata
+**摘要**：移除IM入口的感知事件任务包装；原文、实际发送者ID/可用显示名、会话及附件共同到达Agent/Skill模型输入，历史会话与长任务等待回复使用同一边界。Core137、Desktop7、四插件73项回归通过，长任务补齐后11项定向复验通过；完整桌面构建及架构检查通过。包内验证与真实IM人工复测范围见Story SENSE.12 testing.md；未改写历史记忆，未远端发布。
+
+## 2026-09-14 — docs：记录共享记忆沟通来源缺口 SENSE12-T9
+
+**类型**：docs
+**影响模块**：Story SENSE.12 / Epic M
+**摘要**：按用户要求登记待修复项，覆盖渠道、连接、群／单聊、会话、发送者和原消息证据在记录、提炼、召回、恢复中的丢失及错归属。记忆继续共享，附修复要求与待执行验收；同步T8状态说明，未新增应用修复或发布。见[缺口记录](../specs/epic-SENSE/story-SENSE.12/memory-source-context-gap.md)。
+
+## 2026-09-14 — fix：会话绑定区分群聊与单聊
+
+**类型**：fix
+**影响模块**：Core channel-runtime / SENSE12-T8
+**摘要**：绑定键增加conversationKind，避免同连接同外部ID的不同会话类型复用会话；恢复与reset保留类型归属。类型化消息不复用旧无类型绑定，旧历史和共享记忆保留。原文透传修复已获用户测试反馈；记忆来源缺口SENSE12-T9仍待修复。本地dev提交，不推送或发布远端。
+
+## 2026-09-14 — release：准备 v0.2.3
+
+用户授权推送dev并正式发布。现有正式版本为v0.2.2，本次递增patch到v0.2.3，使用Desktop Release构建Windows、macOS ARM64/x64并在成功后发布到七牛、官网更新源和GitHub Release。版本说明见[ v0.2.3 ](releases/v0.2.3/changelog.md)；该记录为发布准备，最终构建和发布状态以CI为准。
+
+## 2026-09-15 — docs：规划 SENSE.14 IM平台能力发现
+
+**类型**：docs
+**影响模块**：Epic SENSE / SENSE.14 / discover-im-sdk-capabilities
+**摘要**：规划可信SDK／工具服务能力目录到Agent按需发现和授权调用的闭环，日程与待办仅作代表性验收，避免逐项硬编码Core工具。补齐Story六份文档、OpenSpec提案/设计/规范/工作包，明确三平台来源实证、身份边界、生命周期及实际包验证。仅规划，未实施或发布。见[Story SENSE.14](../specs/epic-SENSE/story-SENSE.14/README.md)。
+
+### 2026-09-15 · SENSE.14 实施第一批（未发布）
+
+- 实现可选Plugin能力契约、Host按需发现/执行授权边界与异步DataFile目录/调用记录。
+- 新增跨重启去重、撤权、并发和生命周期测试；办公平台provider、Agent/Worker、管理UI及真实授权联调尚未接通。
+- 企微消息被Channel接纳后立即发送“正在处理中…”流式首帧，真实内容到达后原位更新；首帧失败仅记插件日志，不中断Agent执行。
+- 2026-09-16：钉钉插件接入官方`dws` 1.0.61动态Schema与独立用户OAuth profile绑定，真实二进制发现日历／待办93项；当前环境未登录，未执行钉钉业务操作。
+- 2026-09-17：飞书插件接入官方`lark-cli` 1.0.95动态Schema与独立用户OAuth profile绑定，真实二进制发现日历／任务49项；当前环境未配置profile，未执行飞书业务操作。三平台provider已完成，联合验收仍保留未授权平台的真实操作项。
+
+## 2026-09-17 — release：准备 v0.2.4
+
+**类型**：release
+**影响模块**：IM办公能力、企业微信附件、Agent/Skill历史会话、感知中心、桌面发布
+**摘要**：完成SENSE.14平台能力发现与调用链路，补齐企微移动端附件输入和处理中状态；修复Agent/Skill历史会话重复标题并兼容旧会话重算。版本递增到0.2.4，由Desktop Release构建Windows、macOS ARM64/x64并发布到七牛、官网更新源和GitHub Release。

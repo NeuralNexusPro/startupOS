@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { createRequire } = require('node:module');
+const { execFileSync } = require('node:child_process');
 const asar = require('@electron/asar');
 const {
   verifyAsarRuntime: verifyPiTaskAsarRuntime,
@@ -27,6 +28,7 @@ const perceptionPluginPackages = [
 const perceptionRuntimeDependencies = [
   '@larksuiteoapi/node-sdk',
   '@wecom/aibot-node-sdk',
+  '@wecom/cli',
   'imapflow',
   'mailparser',
 ];
@@ -56,6 +58,12 @@ async function verifyApp(appPath) {
   }
 
   const entries = asar.listPackage(asarPath, { isPack: true }).map(normalizeAsarEntry);
+  const executablePath = path.join(appPath, 'Contents', 'MacOS', 'OriginOS CE');
+  const executableArchitectures = execFileSync('/usr/bin/lipo', ['-archs', executablePath], {
+    encoding: 'utf8',
+  }).trim().split(/\s+/);
+  const isArm64 = executableArchitectures.includes('arm64');
+  const wecomCliPlatform = isArm64 ? 'darwin-arm64' : 'darwin-x64';
   const requiredEntries = [
     'dist-electron/core/src/lib/integrations/pi-agent/core/agent.js',
     'dist-electron/core/src/lib/features/skills/service.js',
@@ -71,6 +79,7 @@ async function verifyApp(appPath) {
     ...perceptionPluginPackages.map((dependency) => `node_modules/${dependency}/package.json`),
     ...perceptionRuntimeDependencies.map((dependency) => `node_modules/${dependency}/package.json`),
     'node_modules/archiver/index.js',
+    `node_modules/@wecom/cli-${wecomCliPlatform}/package.json`,
   ];
 
   for (const entry of requiredEntries) {
@@ -104,7 +113,7 @@ async function verifyApp(appPath) {
       fail('archiver runtime does not expose ZipArchive');
     }
     for (const dependency of perceptionRuntimeDependencies) {
-      smokeRequire.resolve(dependency);
+      smokeRequire.resolve(dependency === '@wecom/cli' ? `${dependency}/package.json` : dependency);
     }
     for (const pluginPackage of perceptionPluginPackages) {
       const pluginModule = smokeRequire(pluginPackage);
@@ -132,10 +141,13 @@ async function verifyApp(appPath) {
         fail(`bundled skill resource missing: ${path.relative(repoRoot, skillPath)}`);
       }
     }
-    const outputDirectory = path.basename(path.dirname(appPath));
+    const workerCapabilityProxy = path.join(resourcesDir, 'agent-worker', 'core', 'lib', 'integrations', 'pi-agent', 'channel-office-capabilities.js');
+    if (!fs.existsSync(workerCapabilityProxy)) fail(`Worker capability proxy missing: ${path.relative(repoRoot, workerCapabilityProxy)}`);
+    const wecomCliBinary = path.join(resourcesDir, 'app.asar.unpacked', 'node_modules', '@wecom', `cli-${wecomCliPlatform}`, 'bin', 'wecom-cli');
+    if (!fs.existsSync(wecomCliBinary)) fail(`WeCom CLI binary missing: ${path.relative(repoRoot, wecomCliBinary)}`);
     const piTaskReport = await verifyPiTaskAsarRuntime({
       asarPath,
-      platform: outputDirectory === 'mac-arm64' ? 'macos-arm64' : 'macos-x64',
+      platform: isArm64 ? 'macos-arm64' : 'macos-x64',
     });
     console.log('[verify-mac-package] pi task runtime ok', {
       hash: piTaskReport.hash,

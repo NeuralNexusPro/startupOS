@@ -204,3 +204,20 @@ it.each([false, true])('gates file registration with declared capability (%s) an
   expect(register).toHaveBeenCalledWith('handle', expect.any(Function), { supportsFiles: supported });
   await host.stop(definition.id, 'wecom-main'); expect(remove).toHaveBeenCalledOnce();
 });
+
+
+it('injects an SDK logger and pins concurrent connector records to the owning plugin', async () => {
+  const write = vi.fn();
+  const registry = new PerceptionPluginRegistry();
+  registry.register({ plugin: plugin(manifest(), { start: async context => {
+    expect(context.ports.log?.sdkLogger).toBeDefined();
+    context.ports.log?.sdkLogger?.error('[sdk]', new Error('HTTP 401 secret'));
+    context.ports.log?.write({ level: 'info', stage: 'connection.ready' });
+  } }), approvedPermissions: [] });
+  const host = new PerceptionPluginHost(registry, { ...ports(), log: { write } });
+  await Promise.all([host.start('originos.perception.wecom', 'one'), host.start('originos.perception.wecom', 'two')]);
+  expect(write.mock.calls).toHaveLength(6);
+  for (const connector of ['one', 'two']) {
+    expect(write.mock.calls.filter(call => call[0] === 'originos.perception.wecom' && call[1] === connector)).toHaveLength(3);
+  }
+});

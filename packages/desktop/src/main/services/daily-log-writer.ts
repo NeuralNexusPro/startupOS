@@ -2,7 +2,8 @@ import { appendFileSync, mkdirSync } from 'node:fs';
 import { appendFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 
-export type LogChannel = 'desktop' | 'llm';
+export type PluginLogChannel = 'plugin:email' | 'plugin:wecom' | 'plugin:feishu' | 'plugin:dingtalk';
+export type LogChannel = 'desktop' | 'llm' | PluginLogChannel;
 
 export interface DailyLogWriterOptions {
   logsDir: string;
@@ -40,6 +41,12 @@ export class DailyLogWriter {
   }
 
   resolvePath(channel: LogChannel, at: Date = this.now()): string {
+    if (channel.startsWith('plugin:')) {
+      const plugin = channel.slice(7);
+      if (!['email', 'wecom', 'feishu', 'dingtalk'].includes(plugin)) throw new Error('INVALID_PLUGIN_LOG_CHANNEL');
+      return path.join(this.logsDir, 'plugins', plugin, `plugin-${formatLocalDate(at)}.log`);
+    }
+    if (channel !== 'desktop' && channel !== 'llm') throw new Error('INVALID_LOG_CHANNEL');
     return path.join(this.logsDir, `${channel}-${formatLocalDate(at)}.log`);
   }
 
@@ -49,7 +56,7 @@ export class DailyLogWriter {
     }
 
     try {
-      this.ensureDirectory(this.logsDir);
+      this.ensureDirectory(path.dirname(this.resolvePath(channel)));
       this.appendFile(this.resolvePath(channel), line);
       return true;
     } catch {
@@ -62,6 +69,9 @@ export interface BufferedDailyLogWriterOptions {
   logsDir: string;
   now?: () => Date;
   flushDelayMs?: number;
+  maxQueuedBytes?: number;
+  onWriteFailure?: () => void;
+  onDrop?: () => void;
   maxBytes?: number;
   appendFile?: (filePath: string, content: string) => Promise<void>;
   ensureDirectory?: (directoryPath: string) => Promise<void>;
@@ -83,6 +93,15 @@ export class BufferedDailyLogWriter {
   private timer: NodeJS.Timeout | null = null;
   private writeChain: Promise<void> = Promise.resolve();
   private disposed = false;
+  private queuedBytes = 0;
+  private dropped = 0;
+  private failures = 0;
+  private readonly maxQueuedBytes: number;
+  private readonly onWriteFailure?: () => void;
+  private readonly onDrop?: () => void;
+  status(): { queuedBytes: number; dropped: number; failures: number } {
+    return { queuedBytes: this.queuedBytes, dropped: this.dropped, failures: this.failures };
+  }
 
   constructor(options: BufferedDailyLogWriterOptions) {
     this.logsDir = path.resolve(options.logsDir);
@@ -90,6 +109,9 @@ export class BufferedDailyLogWriter {
       logsDir: this.logsDir,
       now: options.now,
     });
+    this.maxQueuedBytes = options.maxQueuedBytes ?? 1024 * 1024;
+    this.onWriteFailure = options.onWriteFailure;
+    this.onDrop = options.onDrop;
     this.flushDelayMs = options.flushDelayMs ?? 100;
     this.maxBytes = options.maxBytes ?? 64 * 1024;
     this.appendFile = options.appendFile ?? ((filePath, content) => appendFile(filePath, content, 'utf8'));
@@ -109,7 +131,14 @@ export class BufferedDailyLogWriter {
       return !this.disposed;
     }
 
+    const bytes = Buffer.byteLength(line, 'utf8');
+    if (this.queuedBytes + bytes > this.maxQueuedBytes) {
+      this.dropped += 1;
+      if (this.dropped === 1) { try { this.onDrop?.(); } catch { /* isolated */ } }
+      return false;
+    }
     const filePath = this.resolvePath(channel);
+    this.queuedBytes += bytes;
     const chunks = this.pending.get(filePath) ?? [];
     chunks.push(line);
     this.pending.set(filePath, chunks);
@@ -135,6 +164,7 @@ export class BufferedDailyLogWriter {
       return this.writeChain;
     }
 
+    const batchBytes = this.pendingBytes;
     const batch = Array.from(this.pending, ([filePath, chunks]) => ({
       filePath,
       content: chunks.join(''),
@@ -143,17 +173,22 @@ export class BufferedDailyLogWriter {
     this.pendingBytes = 0;
     this.writeChain = this.writeChain
       .then(async () => {
-        await this.ensureDirectory(this.logsDir);
         for (const entry of batch) {
-          await this.appendFile(entry.filePath, entry.content);
+          try {
+            await this.ensureDirectory(path.dirname(entry.filePath));
+            await this.appendFile(entry.filePath, entry.content);
+          } catch {
+            this.failures += 1;
+            if (this.failures === 1) { try { this.onWriteFailure?.(); } catch { /* no recursive logging */ } }
+          }
         }
       })
-      .catch(() => undefined);
+      .finally(() => { this.queuedBytes -= batchBytes; });
     return this.writeChain;
   }
 
   async dispose(): Promise<void> {
-    await this.flush();
     this.disposed = true;
+    await this.flush();
   }
 }

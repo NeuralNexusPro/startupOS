@@ -13,10 +13,10 @@ const FIELD_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9._-]{0,63}$/;
 const SOURCES = new Set(['email', 'wecom', 'feishu', 'dingtalk']);
 const TRANSPORTS = new Set(['poll', 'webhook', 'stream']);
 const CAPABILITIES = new Set<PerceptionPluginCapability>([
-  'inbound-events', 'outbound-reply', 'outbound-files', 'callback-handshake', 'encrypted-payload', 'attachments',
+  'inbound-events', 'outbound-reply', 'outbound-files', 'callback-handshake', 'encrypted-payload', 'attachments', 'office-capabilities',
 ]);
 const PERMISSIONS = new Set<PerceptionPluginPermission>([
-  'credentials', 'events', 'network', 'schedule', 'state', 'health', 'audit', 'replies',
+  'credentials', 'events', 'network', 'schedule', 'state', 'health', 'audit', 'replies', 'attachments', 'office-capabilities',
 ]);
 const FIELD_TYPES = new Set(['text', 'password', 'number', 'boolean', 'select']);
 

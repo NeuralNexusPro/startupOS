@@ -1,6 +1,6 @@
 {
   "name": "originos",
-  "version": "0.2.2",
+  "version": "0.2.4",
   "private": true,
   "description": "An AI-native desktop OS prototype with Next.js, Electron, and multi-agent collaboration",
   "author": "Archersado <archersado@hotmail.com>",
@@ -30,7 +30,8 @@
   "pnpm": {
     "patchedDependencies": {
       "@earendil-works/pi-agent-core@0.80.10": "patches/@earendil-works__pi-agent-core@0.80.10.patch",
-      "@earendil-works/pi-coding-agent@0.80.10": "patches/@earendil-works__pi-coding-agent@0.80.10.patch"
+      "@earendil-works/pi-coding-agent@0.80.10": "patches/@earendil-works__pi-coding-agent@0.80.10.patch",
+      "dingtalk-stream@2.1.7-beta.1": "patches/dingtalk-stream@2.1.7-beta.1.patch"
     }
   },
   "scripts": {

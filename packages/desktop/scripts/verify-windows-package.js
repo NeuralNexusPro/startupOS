@@ -46,6 +46,7 @@ const perceptionPluginPackages = [
 const perceptionRuntimeDependencies = [
   '@larksuiteoapi/node-sdk',
   '@wecom/aibot-node-sdk',
+  '@wecom/cli',
   'imapflow',
   'mailparser',
 ];
@@ -135,6 +136,7 @@ async function verifyAsar() {
     ...perceptionPluginPackages.map((dependency) => `node_modules/${dependency}/package.json`),
     ...perceptionRuntimeDependencies.map((dependency) => `node_modules/${dependency}/package.json`),
     ...piAiRuntimeDependencies.map((dependency) => `node_modules/${dependency}/package.json`),
+    'node_modules/@wecom/cli-win32-x64/package.json',
   ];
 
   for (const entry of requiredEntries) {
@@ -186,7 +188,7 @@ async function verifyAsar() {
     smokeRequire.resolve(dependency);
   }
   for (const dependency of perceptionRuntimeDependencies) {
-    smokeRequire.resolve(dependency);
+    smokeRequire.resolve(dependency === '@wecom/cli' ? `${dependency}/package.json` : dependency);
   }
   for (const pluginPackage of perceptionPluginPackages) {
     const pluginModule = smokeRequire(pluginPackage);
@@ -259,9 +261,11 @@ function verifyResources() {
     ...bundledSkillEntries,
     'agent-worker/agent-worker.mjs',
     'agent-worker/agent-worker-module-specifier.mjs',
+    'agent-worker/core/lib/integrations/pi-agent/channel-office-capabilities.js',
     'agent-worker/core/lib/integrations/pi-agent/tools/loop-detector.js',
     'app.asar.unpacked/node_modules/onnxruntime-node/bin/napi-v6/win32/x64/onnxruntime_binding.node',
     'app.asar.unpacked/node_modules/onnxruntime-node/bin/napi-v6/win32/x64/onnxruntime.dll',
+    'app.asar.unpacked/node_modules/@wecom/cli-win32-x64/bin/wecom-cli.exe',
   ];
 
   for (const relativePath of requiredFiles) {
@@ -286,9 +290,11 @@ function verifyWindowsZip() {
     ...bundledSkillEntries.map((entry) => `resources/${entry}`),
     'resources/agent-worker/agent-worker.mjs',
     'resources/agent-worker/agent-worker-module-specifier.mjs',
+    'resources/agent-worker/core/lib/integrations/pi-agent/channel-office-capabilities.js',
     'resources/agent-worker/core/lib/integrations/pi-agent/tools/loop-detector.js',
     'resources/app.asar.unpacked/node_modules/onnxruntime-node/bin/napi-v6/win32/x64/onnxruntime_binding.node',
     'resources/app.asar.unpacked/node_modules/onnxruntime-node/bin/napi-v6/win32/x64/onnxruntime.dll',
+    'resources/app.asar.unpacked/node_modules/@wecom/cli-win32-x64/bin/wecom-cli.exe',
   ];
   const missing = requiredSuffixes.filter(
     (suffix) => !names.some((name) => name === suffix || name.endsWith(`/${suffix}`)),

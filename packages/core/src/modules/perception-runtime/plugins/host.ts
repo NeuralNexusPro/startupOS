@@ -1,3 +1,4 @@
+import { PluginCapabilitySession, type PluginCapabilityActor, type PluginCapabilityConnectionStatus, type PluginCapabilityInvocation, type PluginCapabilityPolicyPort } from './capabilities';
 import type { JsonValue } from '../protocol/types';
 import { assertSafePerceptionId } from '../protocol/validation';
 import type {
@@ -11,10 +12,12 @@ import type {
 } from './types';
 import { PerceptionPluginRegistry } from './registry';
 import { assertPluginEvent } from './validation';
+import { createPluginSdkLogger, writePluginLog } from './logging';
 
 interface PluginInstance {
   context: PerceptionPluginRuntimeContext;
   status: PerceptionPluginInstanceStatus;
+  capabilities?: PluginCapabilitySession;
 }
 
 function instanceKey(pluginId: string, connectorId: string): string { return `${pluginId}:${connectorId}`; }
@@ -24,7 +27,8 @@ export class PerceptionPluginHost {
   private readonly replyRegistrations = new Map<string, Set<() => void>>();
   private readonly scheduledKeys = new Map<string, Set<string>>();
 
-  constructor(private readonly registry: PerceptionPluginRegistry, private readonly ports: PerceptionPluginHostPorts) {}
+  constructor(private readonly registry: PerceptionPluginRegistry, private readonly ports: PerceptionPluginHostPorts,
+    private readonly capabilityOptions?: { dataRoot: string; policy: PluginCapabilityPolicyPort }) {}
 
   private context(pluginId: string, connectorId: string, settings: Readonly<Record<string, JsonValue>>): PerceptionPluginRuntimeContext {
     const entry = this.registry.get(pluginId);
@@ -32,6 +36,10 @@ export class PerceptionPluginHost {
     assertSafePerceptionId(connectorId, 'connector id');
     const approved = new Set<PerceptionPluginPermission>(entry.approvedPermissions);
     const exposed: { -readonly [Key in keyof PerceptionPluginRuntimePorts]: PerceptionPluginRuntimePorts[Key] } = {};
+    if (this.ports.log) {
+      exposed.log = { write: record => { try { this.ports.log?.write(pluginId, connectorId, record); } catch { /* isolated diagnostics */ } } };
+      exposed.log.sdkLogger = createPluginSdkLogger(exposed.log);
+    }
     if (approved.has('credentials')) {
       exposed.credentials = {
         bind: async (requestedConnectorId, name, secret) => {
@@ -75,13 +83,24 @@ export class PerceptionPluginHost {
     }
     if (approved.has('health')) exposed.health = { report: (health) => this.ports.health.report({ ...health, pluginId, connectorId }) };
     if (approved.has('audit')) exposed.audit = this.ports.audit;
+    if (approved.has('attachments') && this.ports.attachments) {
+      exposed.attachments = {
+        store: async (requestedConnectorId, file) => {
+          if (requestedConnectorId !== connectorId) throw new Error('Plugin attachment scope mismatch');
+          return this.ports.attachments!.store(connectorId, file);
+        },
+      };
+    }
     if (approved.has('replies') && this.ports.replies) {
       const key = instanceKey(pluginId, connectorId);
       const registrations = this.replyRegistrations.get(key) ?? new Set<() => void>();
       this.replyRegistrations.set(key, registrations);
       exposed.replies = { register: (handle, deliver, options) => {
         if (this.replyRegistrations.get(key) !== registrations) throw new Error('IM_FILE_REPLY_UNAVAILABLE');
-        const unregister = this.ports.replies!.register(handle, deliver, {
+        const unregister = this.ports.replies!.register(handle, async event => {
+          try { return await deliver(event); }
+          catch (error) { writePluginLog(exposed.log, { level: 'error', stage: 'delivery', error }); throw error; }
+        }, {
           supportsFiles: options?.supportsFiles === true && entry.plugin.manifest.capabilities.includes('outbound-files'),
         });
         const remove = () => { registrations.delete(remove); unregister(); };
@@ -94,8 +113,11 @@ export class PerceptionPluginHost {
         submit: async (event, options) => {
           try {
             assertPluginEvent(event, entry.plugin.manifest, connectorId);
-            return await this.ports.events.submit(event, options);
+            const result = await this.ports.events.submit(event, options);
+            writePluginLog(exposed.log, { level: 'info', stage: 'event.dispatched', eventId: event.id });
+            return result;
           } catch (error) {
+            writePluginLog(exposed.log, { level: 'error', stage: 'event.submit', eventId: event.id, error });
             await this.safeAudit(pluginId, connectorId, 'plugin.event.rejected', { safeCode: 'PLUGIN_EVENT_REJECTED' });
             throw error;
           }
@@ -117,7 +139,9 @@ export class PerceptionPluginHost {
     try {
       await entry.plugin.start(context);
       instance.status = { pluginId, connectorId, state: 'running' };
-    } catch {
+      writePluginLog(context.ports.log, { level: 'info', stage: 'lifecycle.started' });
+    } catch (error) {
+      writePluginLog(context.ports.log, { level: 'error', stage: 'lifecycle.start', safeCode: 'PLUGIN_START_FAILED', error });
       instance.status = { pluginId, connectorId, state: 'failed', safeCode: 'PLUGIN_START_FAILED' };
       await this.safeAudit(pluginId, connectorId, 'plugin.start.failed', { safeCode: 'PLUGIN_START_FAILED' });
     }
@@ -129,7 +153,8 @@ export class PerceptionPluginHost {
     if (!entry) throw new Error(`Plugin not registered: ${pluginId}`);
     if (!entry.plugin.provision) return { settings };
     const context = this.context(pluginId, connectorId, settings);
-    return entry.plugin.provision(Object.freeze({ ...context, secrets: Object.freeze({ ...secrets }) }));
+    try { return await entry.plugin.provision(Object.freeze({ ...context, secrets: Object.freeze({ ...secrets }) })); }
+    catch (error) { writePluginLog(context.ports.log, { level: 'error', stage: 'lifecycle.provision', error }); throw error; }
   }
 
   async stop(pluginId: string, connectorId: string): Promise<PerceptionPluginInstanceStatus> {
@@ -140,11 +165,14 @@ export class PerceptionPluginHost {
     if (!entry) throw new Error(`Plugin not registered: ${pluginId}`);
     for (const remove of this.replyRegistrations.get(key) ?? []) remove();
     this.replyRegistrations.delete(key);
+    instance.capabilities?.close();
     instance.status = { pluginId, connectorId, state: 'stopping' };
     try {
       await entry.plugin.stop(instance.context);
       instance.status = { pluginId, connectorId, state: 'stopped' };
-    } catch {
+      writePluginLog(instance.context.ports.log, { level: 'info', stage: 'lifecycle.stopped' });
+    } catch (error) {
+      writePluginLog(instance.context.ports.log, { level: 'error', stage: 'lifecycle.stop', safeCode: 'PLUGIN_STOP_FAILED', error });
       instance.status = { pluginId, connectorId, state: 'failed', safeCode: 'PLUGIN_STOP_FAILED' };
       await this.safeAudit(pluginId, connectorId, 'plugin.stop.failed', { safeCode: 'PLUGIN_STOP_FAILED' });
     }
@@ -170,6 +198,43 @@ export class PerceptionPluginHost {
     const plugin = this.registry.get(pluginId)?.plugin;
     if (!plugin?.handleWebhook) throw new Error('Plugin does not support webhooks');
     return plugin.handleWebhook(instance.context, request);
+  }
+
+  private capabilitySession(pluginId: string, connectorId: string): PluginCapabilitySession {
+    const instance = this.instances.get(instanceKey(pluginId, connectorId));
+    const entry = this.registry.get(pluginId);
+    if (!entry?.plugin.officeCapabilities || !entry.plugin.manifest.capabilities.includes('office-capabilities')) throw new Error('IM_CAPABILITY_UNSUPPORTED');
+    if (!instance || instance.status.state !== 'running' || instance.context.settings['officeCapabilitiesEnabled'] !== true ||
+      !entry.approvedPermissions.includes('office-capabilities') || !this.capabilityOptions) throw new Error('IM_CAPABILITY_UNAVAILABLE');
+    return instance.capabilities ??= new PluginCapabilitySession(instance.context, entry.plugin.officeCapabilities,
+      this.capabilityOptions.policy, this.capabilityOptions.dataRoot);
+  }
+
+  async discoverCapabilities(pluginId: string, connectorId: string, actor: PluginCapabilityActor, query?: string, name?: string) {
+    try { return await this.capabilitySession(pluginId, connectorId).discover(actor, query, name); }
+    catch (error) { throw new Error(error instanceof Error && /^IM_CAPABILITY_[A-Z_]+$/.test(error.message) ? error.message : 'IM_CAPABILITY_DISCOVERY_FAILED'); }
+  }
+
+  async inspectCapabilities(pluginId: string, connectorId: string): Promise<PluginCapabilityConnectionStatus> {
+    try { return { connectorId, ...await this.capabilitySession(pluginId, connectorId).inspect() }; }
+    catch (error) {
+      const code = error instanceof Error ? error.message : '';
+      if (code === 'IM_CAPABILITY_UNAVAILABLE') return { connectorId, state: 'disabled' };
+      return { connectorId, state: 'sync_failed' };
+    }
+  }
+
+  async invokeCapability(pluginId: string, connectorId: string, actor: PluginCapabilityActor, input: PluginCapabilityInvocation): Promise<JsonValue> {
+    try {
+      const result = await this.capabilitySession(pluginId, connectorId).invoke(actor, input);
+      await this.safeAudit(pluginId, connectorId, 'plugin.capability.completed', { eventId: actor.eventId, sessionId: actor.sessionId, callId: input.callId, name: input.name });
+      return result;
+    } catch (error) {
+      await this.safeAudit(pluginId, connectorId, 'plugin.capability.failed', { eventId: actor.eventId, sessionId: actor.sessionId, callId: input.callId, name: input.name });
+      // Never expose an SDK error body (which may contain tokens or business data).
+      const safeCode = error instanceof Error && /^IM_CAPABILITY_[A-Z_]+$/.test(error.message) ? error.message : 'IM_CAPABILITY_FAILED';
+      throw new Error(safeCode);
+    }
   }
 
   private async safeAudit(pluginId: string, connectorId: string, action: string, detail: JsonValue): Promise<void> {

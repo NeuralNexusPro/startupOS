@@ -169,8 +169,8 @@ export default function AgentDialogContent({ agentId, agentName, agentType: prop
   const displayMessages: Message[] = messages;
 
   // Load session history for this agent
-  const loadSessionHistory = useCallback(async () => {
-    setIsLoadingHistory(true);
+  const loadSessionHistory = useCallback(async (showLoading = true) => {
+    if (showLoading) setIsLoadingHistory(true);
     try {
       const result = await listAgentSessions(agentId);
       if (result.success && (result.data as { sessions?: unknown[] })?.sessions) {
@@ -186,7 +186,7 @@ export default function AgentDialogContent({ agentId, agentName, agentType: prop
     } catch (error) {
       console.error('Failed to load session history:', error);
     } finally {
-      setIsLoadingHistory(false);
+      if (showLoading) setIsLoadingHistory(false);
     }
   }, [agentId]);
 
@@ -597,7 +597,11 @@ export default function AgentDialogContent({ agentId, agentName, agentType: prop
               {/* Session history button */}
               <div className="native-no-drag relative">
                 <button
-                  onClick={() => setShowHistory(!showHistory)}
+                  onClick={() => {
+                    const opening = !showHistory;
+                    setShowHistory(opening);
+                    if (opening) void loadSessionHistory(false);
+                  }}
                   className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-gray-100/20 transition-colors"
                   title="历史会话"
                 >

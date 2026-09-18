@@ -93,9 +93,14 @@ export class PerceptionRouter {
         ...(dispatched.responseText ? { responseText: dispatched.responseText } : {}),
         ...(dispatched.responseTexts?.length ? { responseTexts: dispatched.responseTexts } : {}),
       };
-    } catch {
+    } catch (error) {
       this.leases.fail(acquired.lease.id);
-      this.appendAudit('lease.failed', event, rule.id, { leaseId: acquired.lease.id });
+      const detail: Record<string, string> = { leaseId: acquired.lease.id };
+      for (const key of ['diagnosticId', 'safeCode', 'sessionId'] as const) {
+        const value: unknown = error && typeof error === 'object' ? Object.getOwnPropertyDescriptor(error, key)?.value : undefined;
+        if (typeof value === 'string' && /^[A-Za-z0-9_.:-]{1,160}$/.test(value)) detail[key] = value;
+      }
+      this.appendAudit('lease.failed', event, rule.id, detail);
       return { ruleId: rule.id, status: 'failed', leaseId: acquired.lease.id };
     }
   }

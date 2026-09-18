@@ -76,8 +76,9 @@ describe('PiAgentChannelSessionGateway', () => {
     });
     await gateway.provision(invocation({ kind: 'agent', id: 'agent-1' }));
     const resolved = await gateway.resolve(invocation({ kind: 'agent', id: 'agent-1' }, 'session-1'));
-    await resolved.runtime.prompt('task reply');
-    expect(executeMessage).toHaveBeenCalledWith(session, 'hello', expect.any(Function));
+    const message = JSON.stringify({ text: 'task reply', sender: { id: 'user-1' } });
+    await resolved.runtime.prompt(message);
+    expect(executeMessage).toHaveBeenCalledWith(session, message, expect.any(Function));
     expect(prompt).not.toHaveBeenCalled();
   });
 

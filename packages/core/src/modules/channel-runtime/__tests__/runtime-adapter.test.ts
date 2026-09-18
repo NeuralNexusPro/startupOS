@@ -58,7 +58,7 @@ describe('StreamingSessionRuntimeAdapter', () => {
       { type: 'assistant_message', content: 'hello' },
       { type: 'completed', resultRef: 'session://session-1' },
     ]);
-    expect(appendUserMessage).toHaveBeenCalledWith('session-1', 'hello', []);
+    expect(appendUserMessage).toHaveBeenCalledWith('session-1', 'hello', [], undefined);
     expect(appendAssistantMessage).toHaveBeenCalledWith('session-1', 'hello');
     expect(JSON.stringify(events)).not.toContain('private');
   });
@@ -93,5 +93,39 @@ describe('StreamingSessionRuntimeAdapter', () => {
     await expect(iterator.next()).resolves.toMatchObject({ done: true });
     expect(abort).toHaveBeenCalledOnce();
     releasePrompt?.();
+  });
+});
+
+
+describe('runtime diagnostic cleanup', () => {
+  it.each(['resolve', 'persist.user', 'subscribe', 'prompt', 'persist.output'])('records %s without leaking the error into output', async failure => {
+    const onDiagnostic = vi.fn(); const unsubscribe = vi.fn(); const abort = vi.fn();
+    let listener: ((event: RuntimeSourceEvent) => Promise<void>) | undefined;
+    const fail = (stage: string) => { if (stage === failure) throw new Error('HTTP 402 private body'); };
+    const adapter = new StreamingSessionRuntimeAdapter({ resolve: async () => {
+      fail('resolve'); return { sessionId: 's', resultRef: 'session://s', runtime: {
+        subscribe: next => { fail('subscribe'); listener = next; return unsubscribe; }, abort,
+        prompt: async () => { fail('prompt'); await listener?.({ type: 'message_end', message: { role: 'assistant', content: 'reply' } }); },
+      } };
+    } }, { appendUserMessage: async () => fail('persist.user'), appendAssistantMessage: async () => fail('persist.output') }, { portCapacity: 1 });
+    const events: AgentOutputEvent[] = [];
+    for await (const event of adapter.invoke({ ...invocation, onDiagnostic })) events.push(event);
+    expect(onDiagnostic).toHaveBeenCalledOnce();
+    expect(onDiagnostic.mock.calls[0]?.[0]).toMatchObject({ stage: failure, eventId: 'message-1' });
+    expect(events.at(-1)).toMatchObject({ type: 'failed', diagnosticId: onDiagnostic.mock.calls[0]?.[0].diagnosticId });
+    expect(events.some(event => event.type === 'completed')).toBe(false);
+    expect(JSON.stringify(events)).not.toContain('private');
+    if (failure !== 'resolve') expect(abort).toHaveBeenCalledOnce();
+    if (['prompt', 'persist.output'].includes(failure)) expect(unsubscribe).toHaveBeenCalledOnce();
+    await adapter.cancel('s');
+    if (failure !== 'resolve') expect(abort).toHaveBeenCalledOnce();
+  });
+  it('does not start a prompt after consumer closes during user persistence', async () => {
+    let release!: () => void; const prompt = vi.fn(); const subscribe = vi.fn(() => vi.fn()); const abort = vi.fn();
+    const adapter = new StreamingSessionRuntimeAdapter({ resolve: async () => ({ sessionId: 's', resultRef: 's', runtime: { prompt, subscribe, abort } }) },
+      { appendUserMessage: () => new Promise<void>(resolve => { release = resolve; }), appendAssistantMessage: async () => undefined });
+    const stream = adapter.invokePackets(invocation);
+    await stream.next(); await stream.return(undefined); release(); await Promise.resolve();
+    expect(prompt).not.toHaveBeenCalled(); expect(subscribe).not.toHaveBeenCalled(); expect(abort).toHaveBeenCalledOnce();
   });
 });

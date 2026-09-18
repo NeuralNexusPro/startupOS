@@ -27,6 +27,7 @@ import { selectExecutionMode, type ExecutionMode } from "../../../modules/collab
 import { type SubTask } from "../../../modules/collaboration-runtime/engine/supervisor";
 import { getGlobalSpawner, type AgentProcess } from "../../../modules/collaboration-runtime/sandbox";
 import { runtimeLLMConfigToWorkerModel, type RuntimeLLMConfig } from "../../../lib/integrations/pi-agent/llm-config";
+import { executeChannelOfficeCapabilityProxy } from "../../../lib/integrations/pi-agent/channel-office-capabilities";
 
 import type { EventStore } from "../../../modules/collaboration-runtime/session/event-store";
 import type { CollaborationTopology, RuntimeEvent } from "../../../modules/collaboration-runtime/session/types";
@@ -1270,6 +1271,20 @@ export async function executeSupervisorDag(
 
           const workerEvents: RuntimeEvent[] = [];
           const captureWorkerEvent = (ev: RuntimeEvent): void => {
+            if (ev.type === "HOST_TOOL_CALL" && ev.source === workerId) {
+              const toolCallId = typeof ev.payload?.["toolCallId"] === "string" ? ev.payload["toolCallId"] : "";
+              const toolName = typeof ev.payload?.["toolName"] === "string" ? ev.payload["toolName"] : "";
+              const workerProc = spawner.get(workerId);
+              if (!toolCallId || !workerProc) return;
+              void executeChannelOfficeCapabilityProxy(ev.sessionId, toolName, toolCallId, ev.payload?.["args"])
+                .then(result => workerProc.sendToolResult(toolCallId, JSON.stringify({ ok: true, result })))
+                .catch((error: unknown) => {
+                  const code = error instanceof Error && /^IM_CAPABILITY_[A-Z_]+$/.test(error.message)
+                    ? error.message : "IM_CAPABILITY_FAILED";
+                  workerProc.sendToolResult(toolCallId, JSON.stringify({ ok: false, code }));
+                });
+              return;
+            }
             if (ev.type === "HITL_ESCALATE" && ev.source === workerId) {
               // 直连路径：bridge 直接 emit HUMAN_REVIEW_REQUEST，不依赖 Supervisor LLM 中转
               workerEvents.push(ev);

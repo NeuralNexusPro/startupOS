@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
 import {
   ChannelDeliveryStore,
@@ -12,6 +13,7 @@ import type { ChannelReplyFile, PluginReplyEvent, PluginReplyPort, PluginReplyRe
 type ReplyDelivery = (event: PluginReplyEvent) => Promise<PluginReplyReceipt>;
 
 export class PluginReplyDeliveryService implements ChannelDeliveryPort, PluginReplyPort {
+  private readonly diagnostic = new AsyncLocalStorage<(error: unknown) => void>();
   private readonly deliveries = new Map<string, { deliver: ReplyDelivery; supportsFiles: boolean; controller: AbortController }>();
   private readonly fileRequests = new Map<string, Promise<void>>();
   private readonly receipts: ChannelDeliveryStore;
@@ -69,8 +71,8 @@ export class PluginReplyDeliveryService implements ChannelDeliveryPort, PluginRe
 
   canDeliver(replyHandle: string): boolean { return this.deliveries.has(replyHandle); }
 
-  async dispatch(input: { connectorId: string; replyHandle: string; packets: AsyncIterable<FlowPacket<AgentOutputEvent>> }): Promise<DeliveryReceipt[]> {
-    return this.dispatcher.dispatch(input);
+  async dispatch(input: { connectorId: string; replyHandle: string; packets: AsyncIterable<FlowPacket<AgentOutputEvent>>; onDiagnostic?: (error: unknown) => void }): Promise<DeliveryReceipt[]> {
+    return this.diagnostic.run(input.onDiagnostic ?? (() => undefined), () => this.dispatcher.dispatch(input));
   }
 
   async deliver(replyHandle: string, event: AgentOutputEvent): Promise<DeliveryReceipt> {
@@ -79,6 +81,7 @@ export class PluginReplyDeliveryService implements ChannelDeliveryPort, PluginRe
     if (event.type === 'artifact_changed') {
       return { messageId: 'internal', connectorId: 'internal', status: 'delivered', attempt: 1 };
     }
-    return delivery.deliver(event);
+    try { return await delivery.deliver(event); }
+    catch (error) { try { this.diagnostic.getStore()?.(error); } catch { /* isolated */ } throw error; }
   }
 }

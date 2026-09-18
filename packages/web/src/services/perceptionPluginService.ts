@@ -6,6 +6,7 @@ import { getIpcRenderer, isElectron } from '@originos/core/lib/integrations/elec
 import type {
   JsonValue,
   PerceptionPluginManifest,
+  PluginCapabilityConnectionStatus,
 } from '@originos/core/modules/perception-runtime';
 
 export interface PluginProvisionInput {
@@ -35,4 +36,12 @@ export async function provisionPerceptionPlugin(
   >(IPC_CHANNELS.PERCEPTION_PLUGIN_PROVISION, input);
   if (!response.success)
     throw new Error(response.error?.code ?? 'PLUGIN_PROVISION_FAILED');
+}
+export async function listPerceptionCapabilityStatuses(): Promise<PluginCapabilityConnectionStatus[]> {
+  if (!isElectron()) return [];
+  const response = await getIpcRenderer().invoke<IpcResponse<PluginCapabilityConnectionStatus[]>>(
+    IPC_CHANNELS.PERCEPTION_PLUGIN_CAPABILITY_STATUS
+  );
+  if (!response.success || !response.data) throw new Error(response.error?.code ?? 'PLUGIN_CAPABILITY_STATUS_FAILED');
+  return response.data;
 }

@@ -2,6 +2,10 @@ export const CHANNEL_PROTOCOL_VERSION = '1.0' as const;
 
 export type ChannelOrigin = 'originos-ui' | 'email' | 'wecom' | 'feishu' | 'dingtalk';
 
+export function isImChannel(origin: ChannelOrigin): boolean {
+  return origin === 'wecom' || origin === 'feishu' || origin === 'dingtalk';
+}
+
 export type ChannelRuntimeTarget =
   | { kind: 'agent' | 'role-agent'; id: string }
   | { kind: 'project-agent'; id: string; projectId: string }
@@ -20,10 +24,15 @@ export interface ChannelInboundMessage {
   connectorId: string;
   conversationId: string;
   actorId: string;
+  actorDisplayName?: string;
+  conversationKind?: 'direct' | 'group' | 'thread';
   content: ChannelMessageContent;
   replyHandle?: string;
   receivedAt: string;
 }
+
+export type ChannelMessageMetadata = Pick<ChannelInboundMessage,
+  'origin' | 'connectorId' | 'actorId' | 'actorDisplayName' | 'conversationId' | 'conversationKind'>;
 
 export type AgentOutputEvent =
   | { type: 'accepted'; sessionId: string }
@@ -34,7 +43,7 @@ export type AgentOutputEvent =
   | { type: 'hitl_request'; requestId: string; summary: string }
   | { type: 'completed'; resultRef: string }
   | { type: 'cancelled' }
-  | { type: 'failed'; safeCode: string };
+  | { type: 'failed'; safeCode: string; diagnosticId?: string };
 
 export type FlowPacketKind = 'data' | 'complete' | 'error' | 'control';
 
@@ -51,7 +60,18 @@ export interface FlowPacket<T> {
 
 export type FlowPacketStream<T> = AsyncIterable<FlowPacket<T>>;
 
+export interface ChannelRuntimeDiagnostic {
+  stage: string;
+  safeCode: string;
+  diagnosticId: string;
+  eventId: string;
+  sessionId?: string;
+  error: unknown;
+}
+
 export interface ChannelInvocation {
+  /** Host-local callback; never serialized into an Agent prompt or worker request. */
+  onDiagnostic?: (diagnostic: ChannelRuntimeDiagnostic) => void;
   message: ChannelInboundMessage;
   target: ChannelRuntimeTarget;
   sessionId?: string;
@@ -97,6 +117,7 @@ export interface ChannelSessionBinding {
   origin: ChannelOrigin;
   connectorId: string;
   conversationId: string;
+  conversationKind?: ChannelInboundMessage['conversationKind'];
   targetFingerprint: string;
   sessionId: string;
   createdAt: string;

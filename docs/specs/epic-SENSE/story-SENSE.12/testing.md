@@ -169,3 +169,78 @@ TC13通过实际macOS arm64 ASAR验收：业务初始化注册send_file，真实
 lint0错误2966既有警告，架构869文件0诊断，自测43×2和OpenSpec strict通过。日志/private/tmp/perception-stream-final-{core,desktop,plugins,web,build,pack,lint,boundaries,selftest,spec}.log及/private/tmp/perception-stream-asar-{benchmark,file,worker}.log；旧对照/private/tmp/stream-baseline-asar.log。测试脚本/private/tmp/originos-stream-benchmark.cjs、originos-verify-im-file-package.cjs、originos-verify-im-file-worker.cjs。
 
 测试包：/Users/archersado/workspace/startupOS/release/perception-stream-fixes-20260913/mac-arm64/OriginOS CE.app。退出旧应用后打开此包；配置页等待10秒应保留平台与草稿，仅事件页自动刷新；企微发起长回复观察更新及结束速度。未发送真实IM消息/文件，真实平台收件、权限及网络仍需人工验证，Windows未验证。本地包未签名公证。其他Story未完成工作保持独立跟踪。
+
+## SENSE12-T7：插件独立日志（2026-09-14，已执行）
+
+| Case / AC | Given / When | Then |
+|---|---|---|
+| PL01 / AC1 | 四插件、同插件多连接并发记录 | 仅写各自plugins目录的每日日志，归属正确且desktop/llm无重复插件诊断 |
+| PL02 / AC1 | 默认SDK工厂鉴权、DNS、重连或回复失败 | 独立日志有安全原因，默认console不再泄漏；不能只mock工厂 |
+| PL03 / AC2 | prompt或回复投递失败 | 可区分执行/投递阶段，关联event/session/diagnosticId；IM仍安全，终态不重复 |
+| PL04 / AC2 | resolve、用户/助手消息持久化失败 | 会话缺失也能定位；失败清理资源，无假成功或未处理拒绝 |
+| PL05 / AC3 | 错误含嵌套凭据、URL、正文、大对象或伪造路径 | 秘密/正文不落盘，长度有界，拒绝越界和跨插件归属 |
+| PL06 / AC4 | 写盘不可用、SDK日志风暴 | 消息不受影响，缓冲有界且失败/丢弃可观测，无递归日志 |
+| PL07 / AC4 | 跨午夜、正常退出和重启 | 正确日期追加，退出flush；强退缓冲损失明确 |
+| PL08 / AC2/4 | 实际桌面包运行临时插件并触发Worker错误 | 日志端口/模块存在，错误传回宿主并落入插件日志；原desktop/llm功能仍可用 |
+
+自动化：各包现有vitest运行受影响日志writer/Host/channel-runtime/路由/四插件测试；pnpm lint、pnpm lint:boundaries、node scripts/check-architecture-boundaries.cjs --self-test，以及core/desktop类型检查。临时目录和伪凭据覆盖安全负例，不发送真实IM消息。实际macOS包做PL08；Windows需对应runner/本机验证，无法执行须记录明确人工步骤和未验证风险。应用实现后建立Story验证goal，逐case附命令和结果。
+
+### 执行结果与复现
+
+- PL01/05/06/07：真实临时目录验证四插件、多连接隔离、脱敏、日期轮转、重启追加、退出flush、写盘失败和缓冲上限；`plugin-log-service.test.ts`、`daily-log-writer.test.ts`、Core `plugin-logging.test.ts`和Host测试通过。
+- PL02：企微、飞书使用编译后的默认工厂及真实SDK；仅用本地无效URL或HTTP transport stub触发错误。钉钉运行真实CJS/ESM子进程及默认DWClient，验证无默认console泄漏、debug关闭、SDK错误被接收；邮箱保持ImapFlow协议日志关闭并记录受控连接/poll错误。没有发送真实IM消息。
+- PL03/04：真实BindingIngress、RuntimeAdapter、Trigger、ReplyDispatcher和文件审计覆盖入口、prompt、投递以及消息持久化失败；同一diagnosticId关联安全原因和event/session，失败不会记作完成。
+- PL08：完整`build:app`、macOS ARM64实际app.asar验证通过；包内Electron启动真实Worker，在初始化前发送prompt产生错误，再由包内Host临时插件、Runtime、路由和文件审计验证四插件落盘与诊断关联。包内四插件可加载，原desktop/llm日志回归通过。
+
+集成测试共232项：四插件73、Core渠道与感知133、Desktop日志/回复/Windows打包检查脚本26。关键Core改动（runtime-adapter、plugin logging、trigger adapter）覆盖率：行/语句95.52%，分支80.26%，函数85.71%；不代表全仓覆盖率。类型检查和完整构建通过；lint为0 errors / 2968既有warnings；架构扫描871生产文件零诊断，自测43用例×2工作目录通过。
+
+复现命令（仓库根目录，先按锁文件安装依赖）：
+
+```bash
+pnpm --filter @originos/perception-plugin-email --filter @originos/perception-plugin-wecom --filter @originos/perception-plugin-feishu --filter @originos/perception-plugin-dingtalk test
+pnpm exec vitest run src/modules/channel-runtime/__tests__ src/modules/perception-runtime/__tests__ --root packages/core
+pnpm exec vitest run src/main/services/__tests__/daily-log-writer.test.ts src/main/services/__tests__/plugin-log-service.test.ts src/main/services/__tests__/plugin-diagnostic-routing.test.ts src/main/services/__tests__/plugin-reply-delivery-service.test.ts src/main/services/__tests__/console-log-capture.test.ts scripts/__tests__/verify-windows-package.test.mjs --root packages/desktop
+pnpm --filter @originos/desktop build:app
+node packages/perception-plugins/wecom/scripts/check-sdk-logging.cjs
+node packages/perception-plugins/feishu/scripts/check-sdk-logging.cjs
+node packages/perception-plugins/dingtalk/src/__tests__/sdk-logging.cjs
+pnpm lint
+pnpm lint:boundaries
+node scripts/check-architecture-boundaries.cjs --self-test
+```
+
+本地未签名包使用`CSC_IDENTITY_AUTO_DISCOVERY=false ORIGINOS_SKIP_MAC_NOTARIZE=1 pnpm exec electron-builder --config electron-builder.yml --config.mac.forceCodeSigning=false --mac --arm64 --dir --publish never`（desktop目录），随后执行`pnpm --filter @originos/desktop verify:mac-package`。仅命令行覆盖本地签名要求，仓库发布配置不变。
+
+产物及证据保存在仓库根`release/plugin-logs-20260914/`：`OriginOS CE.app`和`evidence/`。证据包含final-plugins/core/desktop、coverage、real-sdk、types、lint、boundaries/selftest、build、pack、package-verify、package-smoke日志及`originos-verify-plugin-logs-package.cjs`。可用包内可执行文件配合`ELECTRON_RUN_AS_NODE=1`运行该脚本，唯一参数为包内app.asar路径。
+
+剩余人工验证：本机为macOS，不能验证Windows安装、真实平台鉴权/网络和远端IM展示。在Windows runner构建后运行`pnpm --filter @originos/desktop verify:win-package`；安装后分别启用四插件、触发一次受控连接或执行失败，检查应用日志目录`plugins/{source}/plugin-日期.log`及感知审计的diagnosticId，再正常退出、重启确认同日追加。不要把脚本级Windows检查通过等同于Windows运行验证。正常退出已测flush，强退可能损失未落盘缓冲；不记录正文和任意供应商错误文本，未知错误只保留受限堆栈/类别。本次未发布远端。
+
+## SENSE12-T8：原始IM消息与发送者（本地自动化及包验证通过，真实IM待人工复测）
+
+| Case / AC | Given / When | Then |
+|---|---|---|
+| IR01 / AC1 | 三个IM命中规则，输入问候/催促/明确代拟请求 | Invocation及会话正文等于原文，模型输入解码后的text逐字符相等，无内部事件任务说明 |
+| IR02 / AC2 | 发送者ID和可用显示名、群ID/类型、附件俱全 | 目标及模型收到同一完整消息；metadata保存正确发送者/会话/附件，非仅审计可见 |
+| IR03 / AC2 | 两连接、两群成员交错消息，或缺少显示名 | 归属无串线；缺失显示名不猜测为所有者或其他成员 |
+| IR04 / AC1/2 | 原文含空白、换行、表情、伪造封套或规则指令 | 原文保留且编码边界有效，不能改变宿主origin/actor；授权拒绝时不执行目标 |
+| IR05 / AC3 | 恢复已有第三方分析历史；或无当前回复句柄 | 新消息仍走完整消息透传，历史不删除，投递不假报成功 |
+| IR06 / AC3/4 | 非IM/UI、流式、文件回复及运行/投递失败 | 既有行为/安全失败/独立日志关联不回归，无新模型调用 |
+| IR07 / AC1–4 | 实际包Worker接收完整IM消息；原群原会话人工复测 | 跨进程原文与发送者俱全；普通问候/催促由目标直接处理，代拟仅按明确请求，无新增错误 |
+
+自动化：Core channel-runtime/perception-runtime相关vitest，Gateway真实metadata存储与绑定集成，Desktop回复及四插件回归；core/desktop类型检查、pnpm lint、pnpm lint:boundaries、node scripts/check-architecture-boundaries.cjs --self-test。用合成成员ID/显示名和临时目录，不使用真实凭据或自动发送平台消息。按用户最新规约直接记录验证结果，不另建测试goal。
+
+IR01–IR06：Core渠道/感知137项通过；补齐长任务分支后Gateway及IM上下文11项复验通过。新增三渠道集成测试穿过Trigger、BindingIngress、Runtime和Gateway，真实JSON保存及重建会话后核对原文、成员切换、可选显示名、附件和历史保留；验证错误封套不能改变结构化发送者。Desktop诊断/回复7项及四插件73项回归通过。Core类型检查通过，lint为0 errors / 2968既有warnings，架构871生产文件零诊断，自测43×2通过。
+
+命令沿用T7列出的Core、四插件和架构检查；Desktop本轮仅运行plugin-diagnostic-routing、plugin-reply-delivery-service两个文件。定向复验为`pnpm exec vitest run src/modules/channel-runtime/__tests__/im-message-context.test.ts src/modules/channel-runtime/__tests__/pi-agent-session-gateway.test.ts --root packages/core`。日志：`/private/tmp/im-context-{tests,gateway-tests,desktop-tests,plugin-tests,types,lint,boundaries,selftest}.log`。本轮未重新统计覆盖率，不将T7覆盖率作为T8结果。
+
+包内脚本验证实际Worker收到的模型输入包含未改写text与对应sender/conversation，并验证原安全错误链路；单元测试固定回复不能替代模型效果验证。人工由用户在原会话分别发送“在吗”“怎么回复这么慢”和“帮我拟一条回复”，核对处理方按当前发言人请求响应。历史记忆可能仍带有错误推断，不默认删除；平台未授权或Windows环境不可用时明确记为未验证并提供步骤，不把macOS脚本结果当作所有平台运行通过。
+
+### SENSE12-T8 包内验收与交付
+
+2026-09-14提交dev前补强验收：绑定类型隔离覆盖同外部ID的群聊/单聊、不同连接、旧无类型绑定、重启恢复及定向reset。Core channel-runtime/perception-runtime共138项通过；lint 0 errors / 2968既有warnings，架构871生产文件零诊断，自测43×2通过。日志`/private/tmp/im-dev-commit-{tests,lint,boundaries,selftest}.log`。用户已反馈原文透传测试可用；本次绑定补强未重新构建测试包，SENSE12-T9仍为待修复缺口。
+
+完整`pnpm --filter @originos/desktop build:app`通过，包含Desktop类型检查和18个Worker运行模块验证；使用T7记录的本地未签名打包命令生成macOS ARM64包。`verify:mac-package`通过，真实包内Electron/Worker依次接收企微、飞书、钉钉完整输入，核对原文空白/换行/表情、发送者ID/显示名和群会话。仅替换OriginOSAgent.prompt模型请求入口，真实Worker初始化及命令传输均执行；没有调用外部模型或发送IM。包内错误脚本同时验证真实Worker错误、四插件日志、审计关联和脱敏，全部通过。
+
+测试包：`release/im-context-20260914/OriginOS CE.app`；日志及可复现脚本保存在同目录`evidence/`，含im-context-{build,pack,package-verify,package-smoke,package-errors}.log。用包内Electron可执行文件并设置`ELECTRON_RUN_AS_NODE=1`运行evidence/originos-verify-im-context.cjs（唯一参数为包内Contents/Resources/app.asar），可重复输入验证；错误验证脚本同样调用。
+
+IR07跨进程部分通过，真实模型措辞及原群会话人工复测仍待用户执行，不据此声称彻底消除第三方视角。退出旧应用，打开新包，在原群原会话分别发送“在吗”“怎么回复这么慢”和“帮我拟一条回复”；前两条应按发言人的当前请求处理，第三条可正常代拟。旧会话/记忆未清理；Windows运行、真实平台网络及收件效果未验证。未远端推送或发布。

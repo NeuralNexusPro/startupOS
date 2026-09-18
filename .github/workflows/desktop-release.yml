@@ -399,10 +399,25 @@ jobs:
             gh release edit "$RELEASE_TAG" \
               --title "OriginOS CE v${VERSION}" \
               --notes-file "$CHANGELOG"
-            gh release upload "$RELEASE_TAG" "${ASSETS[@]}" --clobber
           else
-            gh release create "$RELEASE_TAG" "${ASSETS[@]}" \
+            gh release create "$RELEASE_TAG" \
               "${CREATE_ARGS[@]}" \
               --title "OriginOS CE v${VERSION}" \
               --notes-file "$CHANGELOG"
           fi
+
+          for asset in "${ASSETS[@]}"; do
+            if gh release upload "$RELEASE_TAG" "$asset" --clobber; then
+              continue
+            fi
+
+            asset_name="$(basename "$asset")"
+            local_size="$(stat -c '%s' "$asset")"
+            remote_size="$(gh release view "$RELEASE_TAG" --json assets \
+              --jq ".assets[] | select(.name == \"$asset_name\") | .size" | tail -1)"
+            if [[ "$remote_size" != "$local_size" ]]; then
+              echo "GitHub release asset upload failed: $asset_name (local=$local_size remote=${remote_size:-missing})" >&2
+              exit 1
+            fi
+            echo "GitHub already received complete asset after client upload error: $asset_name"
+          done
