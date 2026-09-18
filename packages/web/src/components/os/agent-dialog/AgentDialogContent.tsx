@@ -155,6 +155,8 @@ export default function AgentDialogContent({ agentId, agentName, agentType: prop
         content: msg.content,
         timestamp: msg.timestamp,
         isStreaming: msg.isStreaming,
+        usage: msg.usage,
+        contextTokenEstimate: msg.contextTokenEstimate,
       }))
     // Hide only the user-side system trigger message
     .filter((msg: any) => {

@@ -17,6 +17,7 @@ import { getChannelMessageSource } from './channel-message-source';
 import { SleepComputeScheduler } from './cognitive/sleep-compute';
 import { createRuntimeModel } from './server-config';
 import type { RuntimeLLMConfig } from './llm-config';
+import { normalizeAgentTokenUsage } from './token-usage';
 import type { AgentTool } from '@originos/pi-agent-adapter';
 import fs from 'fs/promises';
 import path from 'path';
@@ -339,8 +340,19 @@ export class PersistentAgent {
 
 			if (event.type === 'agent_end' && event.messages?.length > 0) {
 				try {
+					const lastAssistantIndex = event.messages.map((message: { role?: string }) => message.role).lastIndexOf('assistant');
+					const contextTokenEstimate = this.agent?.getContextTokenEstimate();
+					const messages = event.messages.map((message: { role?: string; usage?: unknown }, index: number) => {
+						const { usage: rawUsage, ...rest } = message;
+						const usage = message.role === 'assistant' ? normalizeAgentTokenUsage(rawUsage) : undefined;
+						return {
+							...rest,
+							...(usage ? { usage } : {}),
+							...(index === lastAssistantIndex && contextTokenEstimate ? { contextTokenEstimate } : {}),
+						};
+					});
 					await this.config.sessionPersistence.updateSession(persistentSessionId, {
-						messages: event.messages,
+						messages,
 						status: 'completed',
 					}, this.projectId);
 				} catch (err) {

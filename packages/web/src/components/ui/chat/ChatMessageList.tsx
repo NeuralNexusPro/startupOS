@@ -1,7 +1,9 @@
 'use client';
 
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useMemo } from 'react';
 import { Loader2, Wrench } from 'lucide-react';
+import type { AgentContextTokenEstimate, AgentTokenUsage } from '@originos/core/types';
+import { summarizeSessionTokenUsage } from '@originos/core/lib/integrations/pi-agent';
 import { cn } from '@originos/core/lib/utils';
 import { sanitizeAgentDisplayContent } from '@originos/core/lib/integrations/pi-agent/display-content';
 import ToolExecutionFrame, { type ToolExecution } from '@/components/ui/chat/ToolExecutionFrame';
@@ -13,6 +15,8 @@ import { MarkdownContent, normalizeAskUserQuestion, parseAskUserQuestion, remove
 
 export interface ChatMessageItem extends ChatMessageData {
   id?: string;
+  usage?: AgentTokenUsage;
+  contextTokenEstimate?: AgentContextTokenEstimate;
 }
 
 export interface ChatMessageListProps {
@@ -92,6 +96,12 @@ export function ChatMessageList({
   const lastScrollTimeRef = useRef(0);
   const isNearBottomRef = useRef(true);
   const pendingScrollFrameRef = useRef<number | null>(null);
+  const usageKey = messages.flatMap((message) => message.usage
+    ? [`${message.usage.input}:${message.usage.output}:${message.usage.cacheRead}:${message.usage.cacheWrite}:${message.usage.totalTokens}`]
+    : []).join('|');
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- usageKey changes only on session load/message_end.
+  const tokenUsage = useMemo(() => summarizeSessionTokenUsage(messages), [usageKey]);
+  const contextEstimate = [...messages].reverse().find((message) => message.contextTokenEstimate)?.contextTokenEstimate;
 
   const SCROLL_THROTTLE_MS = 100;
   const BOTTOM_THRESHOLD_PX = 80;
@@ -232,6 +242,19 @@ export function ChatMessageList({
           </div>
         );
       })}
+
+      {tokenUsage && (
+        <details className="ml-4 text-xs text-gray-500">
+          <summary className="cursor-pointer select-none">
+            Token {tokenUsage.totalTokens.toLocaleString()} · 输入 {tokenUsage.input.toLocaleString()} · 输出 {tokenUsage.output.toLocaleString()} · 缓存读 {tokenUsage.cacheRead.toLocaleString()} · 缓存写 {tokenUsage.cacheWrite.toLocaleString()}
+          </summary>
+          {contextEstimate && (
+            <div className="mt-1 pl-3 text-gray-400">
+              上下文估算 {contextEstimate.total.toLocaleString()} · 系统 {contextEstimate.stableSystem.toLocaleString()} · 会话 {contextEstimate.sessionContext.toLocaleString()} · 召回 {contextEstimate.turnRecall.toLocaleString()} · 历史 {contextEstimate.history.toLocaleString()}
+            </div>
+          )}
+        </details>
+      )}
 
       {/* Thinking indicator (no streaming content yet) */}
       {showThinkingIndicator && (
