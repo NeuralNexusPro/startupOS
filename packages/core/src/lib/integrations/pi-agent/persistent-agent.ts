@@ -13,6 +13,7 @@ import { setToolContext, removeToolContext, getToolContextManager } from './tool
 import { bindToolsToSession } from './tools/bind-session';
 import { CognitiveManager } from './cognitive';
 import { detectCorrections } from './cognitive/pattern/correction-detector';
+import { getChannelMessageSource } from './channel-message-source';
 import { SleepComputeScheduler } from './cognitive/sleep-compute';
 import { createRuntimeModel } from './server-config';
 import type { RuntimeLLMConfig } from './llm-config';
@@ -363,6 +364,9 @@ export class PersistentAgent {
 					};
 				});
 
+				const now = Date.now();
+				const source = getChannelMessageSource() ?? { sessionId: persistentSessionId, observedAt: new Date(now).toISOString() };
+				const observedAt = source.observedAt ? Date.parse(source.observedAt) : Number.NaN;
 				this.cognitiveManager?.on_turn_end({
 					turnNumber: ++this.turnCounter,
 					userMessage: lastUser ?? '',
@@ -374,7 +378,8 @@ export class PersistentAgent {
 						toolChainLength: toolResults.length,
 						userCorrections: detectCorrections(lastUser ?? '').length || undefined,
 					},
-					timestamp: Date.now(),
+					timestamp: Number.isFinite(observedAt) ? observedAt : now,
+					source,
 				});
 			}
 
