@@ -155,8 +155,8 @@ describe('buildCollaborationPrompt', () => {
       toolMd: `---\nallowedTools: ['read_file']\n---\n## Tools`,
       tasteMd: '风格：简洁',
       memoryMd: '历史：已完成调研',
-      knowledgeMd: '知识：园区调研方法',
-      patternsMd: '模式：先核对数据再执行',
+      knowledgeMd: '## 园区调研方法\n\n知识正文不应注入',
+      patternsMd: '## 先核对数据再执行\n\n模式正文不应注入',
       installedSkills: [],
       allowedTools: ['read_file'],
       workingDirectory: '/test/dir',
@@ -197,9 +197,11 @@ describe('buildCollaborationPrompt', () => {
     expect(prompt).toContain('Long-term Stable Memory');
     expect(prompt).toContain('历史：已完成调研');
     expect(prompt).toContain('Knowledge Base Snapshot');
-    expect(prompt).toContain('知识：园区调研方法');
+    expect(prompt).toContain('## 园区调研方法');
+    expect(prompt).not.toContain('知识正文不应注入');
     expect(prompt).toContain('Experience Patterns Snapshot');
-    expect(prompt).toContain('模式：先核对数据再执行');
+    expect(prompt).toContain('## 先核对数据再执行');
+    expect(prompt).not.toContain('模式正文不应注入');
   });
 
   it('Layer 3 包含 Process.md 处理流程', () => {

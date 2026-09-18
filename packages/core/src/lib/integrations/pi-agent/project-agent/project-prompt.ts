@@ -85,72 +85,14 @@ function buildLayer2_StateMemory(ctx: ProjectContext): string {
   const memorySections = buildPromptMemorySections({
     memoryBlocks: ctx.memoryBlocks,
     memoryMd: ctx.memoryMd,
+    knowledgeMd: ctx.knowledgeMd,
+    patternsMd: ctx.patternsMd,
     stableMemoryHeading: 'Long-term Stable Memory',
+    knowledgeHeading: 'Knowledge Base',
+    patternsHeading: 'Experience Patterns',
   });
-  const knowledgeSection = ctx.knowledgeMd ? buildKnowledgeLazySection(ctx.knowledgeMd) : '';
-  const patternsSection = ctx.patternsMd ? buildPatternsLazySection(ctx.patternsMd) : '';
 
-  return `## Project State & Memory\n\n${statusSection}${memorySections.coreMemorySection}${memorySections.stableMemorySection}${knowledgeSection}${patternsSection}`;
-}
-
-function buildPatternsLazySection(patternsMd: string): string {
-  // 只提取标题作为索引，不注入全文
-  const headings = patternsMd
-    .split('\n')
-    .filter(line => /^(#{2,4})\s/.test(line))
-    .map(line => line.trim())
-    .join('\n');
-
-  return `\
-### Experience Patterns
-
-你有一份经验模式文件 \`Patterns.md\`，包含从历史实践中提炼的最佳路径和失败教训。
-
-**目录索引：**
-\`\`\`
-${headings || '（尚无经验，待积累）'}
-\`\`\`
-
-**重要：** 当你需要规划工具调用链或解决复杂任务时，**必须先调用 \`read_file\` 读取 \`Patterns.md\` 全文**，参考其中的 Positive 最佳实践和 Negative 避免路径，再决定工具组合方案。`;
-}
-
-function buildKnowledgeLazySection(knowledgeMd: string): string {
-  // 从 Knowledge.md 中提取实体列表作为索引，不注入全文
-  const entityLines: string[] = [];
-  let currentType = '';
-  for (const line of knowledgeMd.split('\n')) {
-    const headingMatch = line.match(/^#{1,3}\s+(.+)$/);
-    if (headingMatch?.[1]) {
-      const heading = headingMatch[1];
-      if (heading.startsWith('Entities') || heading.startsWith('Relations')) {
-        continue;
-      }
-      if (line.startsWith('###')) {
-        currentType = heading;
-        continue;
-      }
-    }
-    const entityMatch = line.match(/^- \*\*(.+?)\*\*/);
-    if (entityMatch && currentType) {
-      entityLines.push(`  - ${entityMatch[1]} (${currentType})`);
-    }
-  }
-
-  const tocContent = entityLines.length > 0
-    ? entityLines.join('\n')
-    : '（尚无知识，待积累）';
-
-  return `\
-### Knowledge Base
-
-你有一份知识索引文件 \`Knowledge.md\`，记录了从对话中提取的实体、概念及其关系。
-
-**实体索引：**
-\`\`\`
-${tocContent}
-\`\`\`
-
-**重要：** 当你在认知事物、回答领域相关问题或需要参考业务知识时，**调用 \`read_file\` 读取 \`Knowledge.md\` 全文**以获取详细信息。`;
+  return `## Project State & Memory\n\n${statusSection}${memorySections.coreMemorySection}${memorySections.stableMemorySection}${memorySections.knowledgeSection}${memorySections.patternsSection}`;
 }
 
 function buildLayer3_ThinkingLoop(): string {
