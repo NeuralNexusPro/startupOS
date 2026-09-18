@@ -21,5 +21,5 @@
 
 ## 4. 合并与清理
 
-- [ ] 4.1 【串行；依赖：3.4；角色：Proposal 编排者；写入范围：`dev` 分支】把 Proposal integration branch 合并到 `dev`，保留主工作区中无关的 supervisor 修复，并以最终提交图和工作区状态作为完成证据。
-- [ ] 4.2 【串行；依赖：4.1；角色：Proposal 编排者；写入范围：Git worktree 元数据】删除已合并的 Task/Proposal worktree 和临时分支，确认 `git worktree list` 无残留作为完成证据。
+- [x] 4.1 【串行；依赖：3.4；角色：Proposal 编排者；写入范围：`dev` 分支】Proposal已通过merge commit `5c01929` 合并到`dev`；主工作区原有的supervisor未提交修复仍保持独立。
+- [x] 4.2 【串行；依赖：4.1；角色：Proposal 编排者；写入范围：Git worktree 元数据】Task与Proposal临时worktree及分支已删除；`git worktree list`仅保留主工作区和原有语义执行规划worktree。
