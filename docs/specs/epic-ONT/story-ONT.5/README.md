@@ -1,7 +1,7 @@
 # Story ONT.5：OSDK Facts / Actions API
 
 **Epic:** ONT
-**状态:** 🟡 In Progress（ONT5-T1）
+**状态:** ✅ Done
 **Owner:** Architecture / Core
 **Task:** ONT5-T1
 **最后更新:** 2026-09-18
@@ -12,11 +12,11 @@
 
 ## 验收摘要
 
-- [ ] facts 查询绑定当前 ontology identity/version 与 FactType。
-- [ ] Action 提交在写入前完成 Gate、输入/输出与 revision 校验。
-- [ ] operationId 重试不重复写入，并可恢复未完成 intent。
-- [ ] accepted 回执包含稳定事实引用和审计 metadata。
-- [ ] 未支持 Rule expression 明确拒绝。
+- [x] facts 查询绑定当前 ontology identity/version 与 FactType。
+- [x] Action 提交在写入前完成 Gate、输入/输出与 revision 校验。
+- [x] operationId 重试不重复写入，并可恢复未完成 intent。
+- [x] accepted 回执包含稳定事实引用和审计 metadata。
+- [x] 未支持 Rule expression 明确拒绝。
 
 ## 文档
 

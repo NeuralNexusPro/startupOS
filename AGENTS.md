@@ -379,6 +379,12 @@ interface Instance {
 - Action Gate 在任何副作用前校验 ontology ID/version、Action/Concept、当前业务状态和精确权限集合，并返回结构化 `CanonicalValidationResult`
 - ONT Validator 是无状态纯函数，不读取或写入 Facts、不执行 `Rule.expression`、不提交 Action；事实查询、revision 和操作回执由后续 OSDK/Action 提交边界负责
 
+**Ontology Facts / Actions OSDK：**
+- 类型化 facts 查询与 Action 事实接纳统一通过 ontology feature 公共 OSDK；下游不得绕过 ontology ID/version、FactType、权限和 revision 门控直接拼接业务写入
+- Action 提交按 `operationId` 记录 intent、缺失 facts 与 accepted 回执；相同请求幂等恢复，不同请求复用 ID 必须结构化拒绝
+- OSDK 不解释 `Rule.expression`、不调用外部副作用、不更新 instance 状态；有 Rule 且无确定性 evaluator 时必须在写入前拒绝
+- facts JSONL 与 operations JSONL 分别是事实和操作回执的持久来源；审计 metadata 只用于追踪，不得参与授权或成为业务状态事实源
+
 ### 2. 项目访谈模块架构
 
 **访谈流程（强制）：**

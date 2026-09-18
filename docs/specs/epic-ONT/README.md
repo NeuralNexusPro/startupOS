@@ -3,10 +3,10 @@
 **Epic 编号:** ONT  
 **Epic 名称:** Ontology Core 语义底座  
 **优先级:** Critical  
-**状态:** Planning  
+**状态:** In Progress
 **Owner:** Architecture / Core  
 **创建日期:** 2026-07-27  
-**最后更新:** 2026-09-14
+**最后更新:** 2026-09-18
 
 ---
 
@@ -218,7 +218,7 @@ Skill/Agent contract 是 ONT 暴露给 P2 和 collaboration-runtime 的协议。
 | ONT.2 | Ontology Store 与 DataFile/JSONL 存储 | Done | Critical | core storage adapter、data-root 解析、atomic write、append-only facts |
 | ONT.3 | 旧模型迁移与兼容投影 | Done | Critical | 已提供 `Domain/Concept/Instance`、`business-model.json`、`OntologyModel` 的安全迁移与只读投影 |
 | ONT.4 | Validator、Rule、Action Gate | Done | Critical | 已提供引用/状态归属校验与 ontology version、Action、权限结构化门控 |
-| ONT.5 | OSDK Facts / Actions API | In Progress（ONT5-T1） | Critical | 类型化 facts 查询、Action submit、版本/修订检查、幂等恢复与审计 metadata |
+| ONT.5 | OSDK Facts / Actions API | Done | Critical | 已提供类型化 facts 查询、Action submit、版本/修订检查、幂等恢复与审计 metadata |
 | ONT.6 | Skill / Agent Contract Validation API | Planning | High | P2 可消费的 contract DTO、SOP I/O 连通性校验、权限校验 |
 | ONT.7 | Context Projection Protocol | In Progress（T1 Done） | High | 已定义最小 runtime projection DTO；append/query API 待后续工作包 |
 | ONT.8 | Cross-package Adapters 与端到端验证 | Planning | High | Web API adapter、Desktop IPC adapter、P2/runtime integration tests |
@@ -307,7 +307,7 @@ ONT.1、ONT.2、ONT.4 是架构门。下游 P2、Epic 9、Epic C/M/T 不得复�
 | 运行门控 | 匹配评分为主 | collaboration-runtime 消费 OSDK / Action gate |
 | Context Graph | 未形成统一协议 | ONT 定义 projection protocol，下游 runtime 写入 |
 
-ONT.1、ONT.2、ONT.3、ONT.4 已完成；ONT.7 已完成最小协议，其他 Story 仍处于规划阶段。
+ONT.1、ONT.2、ONT.3、ONT.4、ONT.5 已完成；ONT.7 已完成最小协议，其他 Story 仍处于规划阶段。
 
 ---
 
