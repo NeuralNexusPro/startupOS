@@ -20,5 +20,5 @@
 
 ## 4. 合并与清理
 
-- [ ] 4.1 【串行；依赖：3.4；角色：Proposal编排者；写入范围：`dev`】合并Proposal branch到`dev`，保留主工作区无关supervisor修改。
-- [ ] 4.2 【串行；依赖：4.1；角色：Proposal编排者；写入范围：Git worktree metadata】删除已合并Task/Proposal worktree与临时分支并核对worktree列表。
+- [x] 4.1 【串行；依赖：3.4；角色：Proposal编排者；写入范围：`dev`】已通过`b54e8c8`合并Proposal branch到`dev`，主工作区无关supervisor修改保持未提交。
+- [x] 4.2 【串行；依赖：4.1；角色：Proposal编排者；写入范围：Git worktree metadata】已删除Task/Proposal worktree与临时分支并prune；其他既有worktree保持不变。
