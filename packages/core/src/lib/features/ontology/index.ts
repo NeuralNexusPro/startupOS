@@ -12,3 +12,4 @@ export * from './canonical-ontology-store';
 export * from './legacy-migration';
 export * from './validator';
 export * from './ontology-osdk';
+export * from './contract-validator';
