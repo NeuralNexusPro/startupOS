@@ -105,7 +105,7 @@
 | **M.11** | 用 Memory Core 统一 history-to-cognition 管线并替代 Dream | Critical | Governance | ⬜ Pending |
 | **M.12** | Hindsight-inspired 全局用户认知与 Agent 世界模型分域 | Critical | Governance | ✅ Complete |
 | **M.13** | 旧记忆机制清退（Dream / MemoryTracker / Adapter） | Critical | Governance | ✅ Complete |
-| **M.14** | 渐进式 Agent 上下文、KV Cache 与 Token 统计 | Critical | Governance | 📋 Planning |
+| **M.14** | 渐进式 Agent 上下文、KV Cache 与 Token 统计 | Critical | Governance | ✅ Complete |
 
 ---
 
@@ -393,6 +393,8 @@ src/lib/integrations/pi-agent/cognitive/pattern-provider.ts  # 修改 prefetch +
 删除已退出主架构但仍残留或双写的 Dream、MemoryTracker、MemoryBlockManager 与 MemoryAdapter；保留旧数据的一次性安全迁移，所有 Agent 统一通过 MemoryCore。详见 [story-M.13](./story-M.13/README.md)。
 
 #### Story M.14: 渐进式 Agent 上下文、KV Cache 与 Token 统计
+**状态:** ✅ Complete
+
 统一普通 Agent、RoleAgent、Project Agent 与协作 Agent 的认知上下文策略：稳定 system prompt 不承载认知正文，会话上下文只保留有界目录，Pattern/Knowledge 在当前 turn 按需召回；复用 Pi AI 的 session prompt-cache 和真实 usage，在现有会话中展示 Token 汇总。详见 [story-M.14](./story-M.14/README.md)。
 
 ---

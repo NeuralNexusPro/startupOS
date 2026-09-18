@@ -35,6 +35,21 @@
 | M14-IT-10 | 集成 | Agent/Skill 会话 UI | 消息完成后更新汇总，delta 不触发统计更新 |
 | M14-IT-11 | 集成 | collaboration worker | CostController/Metrics 收到真实 input/output/cache usage |
 
+## 执行结果
+
+**状态：** ✅ Complete（2026-09-18）
+
+| 范围 | 结果 |
+|---|---|
+| 目录、stable prefix、prefetch、ownership、恢复、usage、共享 UI、协作 observability | 99 项针对性自动化通过 |
+| 匿名大样本 | `Knowledge.md` 52,559 字符、`Patterns.md` 52,399 字符；四条链路均无全文注入，目录单文件预算 1,600 字符 |
+| 前缀稳定 | 普通 Agent 仅改变 Memory 与工作目录后 stable hash 不变，session context 按预期变化 |
+| recall 预算 | 三组各 5,000 字符输入输出为完整边界内 6,000 字符 |
+| usage 聚合 | 匿名消息汇总为 input 150、output 30、cacheRead 35、cacheWrite 12、totalTokens 180；仅旧消息时 unavailable |
+| 构建与架构 | Core 类型检查、Web 生产构建、lint、4 个感知插件、adapter、边界扫描、架构 self-test、worker/package 校验通过 |
+
+Web 全仓 `type-check` 与 Desktop build 仍被 `canonical-ontology-store.ts` 和 `ontology-osdk.ts` 中 **6 个 M.14 之前已存在的严格类型错误**阻塞。这两个文件自 M.14 开始前未变化，因此不把阻塞计为 M.14 回归，也不将 Desktop build 记录为通过。完整命令与匿名数值见 [QA 证据](../../../../openspec/changes/archive/2026-09-18-m14-context-integration-verification/evidence/qa.md) 和 [架构 QA 证据](../../../../openspec/changes/archive/2026-09-18-m14-context-integration-verification/evidence/task-2.2-architecture-qa.md)。
+
 ## 性能验证
 
 准备包含长 `Patterns.md` 和 `Knowledge.md` 的真实匿名样本，对四条 Agent 链路记录：
@@ -51,14 +66,18 @@
 ## 验证命令
 
 ```bash
-pnpm --filter @originos/core test
-pnpm --filter @originos/core build
+pnpm exec tsc -p packages/core/tsconfig.json --noEmit
+pnpm --filter @originos/web build
 pnpm lint
 pnpm lint:boundaries
 node scripts/check-architecture-boundaries.cjs --self-test
+node packages/desktop/scripts/verify-agent-worker-runtime.js
+pnpm --filter @originos/desktop test:pi-task-runtime-package
 ```
 
-## 人工检查
+针对性 Vitest 命令与逐项退出码保存在上述 OpenSpec QA 证据中。真实 provider 的缓存命中率取决于账号、模型和供应商实现；验收只要求稳定 session id 和 `cacheRead/cacheWrite` 透传，不以延迟推断命中。
+
+## 发布前体验建议
 
 - 打开同一 Agent 历史会话连续发送两个不同任务，确认回复不被无关 Pattern 带偏。
 - 在 RoleAgent 阶段切换后继续对话，确认上下文和工具正常。

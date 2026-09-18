@@ -350,6 +350,43 @@ describe('usePiAgent stream isolation', () => {
     });
   });
 
+  it('attaches provider usage only when the active stream completes', async () => {
+    const { result } = renderHook(() => usePiAgent());
+
+    await act(async () => {
+      await result.current.initialize('session-usage', projectContext, {});
+      void result.current.sendMessageStream('anonymous request');
+    });
+    await waitFor(() => expect(sendAgentMessageStreamMock).toHaveBeenCalledOnce());
+    const streamId = (sendAgentMessageStreamMock.mock.calls[0]?.[0] as { streamId?: string }).streamId;
+
+    await act(async () => {
+      emitAgentEvent({
+        sessionId: 'session-usage', streamId, type: 'text_delta', data: { delta: 'partial' },
+      });
+    });
+    expect(result.current.messages.find((message) => message.role === 'assistant')?.usage).toBeUndefined();
+
+    await act(async () => {
+      emitAgentEvent({
+        sessionId: 'session-usage', streamId, type: 'done',
+        data: {
+          content: 'complete',
+          usage: { input: 12, output: 3, cacheRead: 4, cacheWrite: 1, totalTokens: 15 },
+          contextTokenEstimate: {
+            stableSystem: 2, sessionContext: 1, turnRecall: 1, history: 2, total: 6, estimated: true,
+          },
+        },
+      });
+    });
+
+    await waitFor(() => expect(result.current.messages.find((message) => message.role === 'assistant')).toMatchObject({
+      usage: { input: 12, output: 3, cacheRead: 4, cacheWrite: 1, totalTokens: 15 },
+      contextTokenEstimate: { total: 6, estimated: true },
+    }));
+    expect(result.current.messages.filter((message) => message.role === 'assistant')).toHaveLength(1);
+  });
+
   it('TC-U3 commits only the newest restore when responses complete out of order', async () => {
     const restoreA = deferred<{
       success: boolean;
