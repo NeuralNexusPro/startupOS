@@ -6,7 +6,7 @@
 
 ## 2. Pi 缓存关联实现
 
-- [ ] 2.1（依赖：1.1；串行；角色：Pi Runtime subagent；写入：`core/agent.ts` 与直接测试）在隔离 Task branch/worktree 将已有 OriginOS session id 传给底层 Pi Agent，保留默认 cache retention；证据：提交哈希及同会话稳定、跨会话隔离、不支持 provider 兼容测试通过。
+- [x] 2.1（依赖：1.1；串行；角色：Pi Runtime subagent；写入：`core/agent.ts` 与直接测试）在隔离 Task branch/worktree 将已有 OriginOS session id 传给底层 Pi Agent，保留默认 cache retention；证据：同会话稳定、跨会话隔离且未注入 provider 私有缓存选项的定向测试通过，提交哈希见 Task branch。
 
 ## 3. 集成与验收
 
