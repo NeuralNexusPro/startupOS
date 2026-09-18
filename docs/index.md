@@ -1,6 +1,6 @@
 # OriginOS 文档索引
 
-**最后更新:** 2026-09-14
+**最后更新:** 2026-09-18
 
 ---
 
@@ -130,7 +130,9 @@
 | M.9 | 语义检索能力补齐 | 📋 Planning | Critical | [specs/epic-M/story-M.9/README.md](./specs/epic-M/story-M.9/README.md) |
 | M.10 | 文档与协作场景对齐 | 📋 Planning | High | [specs/epic-M/story-M.10/README.md](./specs/epic-M/story-M.10/README.md) |
 | M.11 | 用 Memory Core 统一 history-to-cognition 管线并替代 Dream | 📋 Planning | Critical | [specs/epic-M/story-M.11/README.md](./specs/epic-M/story-M.11/README.md) |
+| M.12 | Hindsight-inspired 全局用户认知与 Agent 世界模型分域 | ✅ Complete | Critical | [specs/epic-M/story-M.12/README.md](./specs/epic-M/story-M.12/README.md) |
 | M.13 | 旧记忆机制清退 | ✅ Complete | Critical | [specs/epic-M/story-M.13/README.md](./specs/epic-M/story-M.13/README.md) |
+| M.14 | 渐进式 Agent 上下文、KV Cache 与 Token 统计 | ✅ Complete | Critical | [specs/epic-M/story-M.14/README.md](./specs/epic-M/story-M.14/README.md) |
 
 ### Epic T Stories 详览
 

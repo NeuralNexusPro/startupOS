@@ -11,5 +11,5 @@
 
 ## 3. 文档、合并与清理
 
-- [ ] 3.1（依赖：2.1、2.2；串行；角色：Documentation subagent；写入：Story、Epic、AGENTS.md、changelog 与 OpenSpec capability specs）在隔离 Task branch/worktree同步最终公共边界、验收结果和状态；证据：文档提交哈希与索引检查通过。
+- [x] 3.1（依赖：2.1、2.2；串行；角色：Documentation subagent；写入：Story、Epic、AGENTS.md、changelog 与 OpenSpec capability specs）已在隔离 Task branch/worktree 同步最终公共边界、验收结果和状态；M14-T1 至 T5 的 5 个 capability specs 已幂等写入主规格，M.14 新增链接检查和 OpenSpec strict validation 通过；证据：Task 分支文档提交。
 - [ ] 3.2（依赖：3.1；串行；角色：Integration owner；写入：Git refs 与 OpenSpec archives）逐项核对 Story verification goal、strict validate 全部 M.14 changes，合并到 `dev`、归档 changes 并清理所有 Task/Proposal worktree；证据：dev merge commit、归档目录、验证记录和干净 worktree 清单。

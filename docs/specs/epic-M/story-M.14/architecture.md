@@ -4,18 +4,18 @@
 **版本:** 1.0
 **最后更新:** 2026-09-18
 
-## 现状结论
+## 实施结论
 
-| 链路 | 当前行为 | 缺口 |
-|---|---|---|
-| 普通 Agent | `buildAgentSystemPrompt()` 注入完整 Knowledge/Patterns | 上下文膨胀 |
-| RoleAgent | `buildPromptMemorySections()` 注入完整 Knowledge/Patterns；动态 State 位于前部 | 上下文膨胀且前缀易失效 |
-| Project Agent | 已提取标题目录并提示 `read_file` | 可复用基线，但目录构建仍需统一预算 |
-| 协作 Agent | 注入完整 Knowledge/Patterns，Data/Process 与动态记忆混排 | worker 重复消耗且前缀不稳定 |
+| 链路 | 已实施行为 |
+|---|---|
+| 普通 Agent | stable system 与 session context 分离；后者只含 Core/Stable Memory、有界目录和工作目录。 |
+| RoleAgent | 身份、思维循环、工具、风格、权限和安全保持稳定；阶段、Memory、工作目录和认知目录位于 session context。 |
+| Project Agent | 复用共享目录与 prompt boundary，不再维护私有目录实现。 |
+| 协作 Agent | supervisor/worker 使用相同目录、session 边界和 owner-aware turn prefetch。 |
 
-现有 `CognitiveManager.prefetch()` 未接入实际 turn。Pi AI 0.80.10 已原生支持 `sessionId`、`cacheRetention` 和 `cacheRead/cacheWrite`，因此 Core 不实现缓存算法。
+`CognitiveManager.prefetchContext()` 已接入实际 turn。Pi AI 继续原生处理 provider cache；Core 只传稳定内部 `sessionId` 并保留真实 `usage.cacheRead/cacheWrite`。
 
-## 目标结构
+## 当前结构
 
 ```text
 模型请求
@@ -149,7 +149,7 @@ Session 汇总是纯函数，不创建 TokenUsageManager，也不把统计写入
 ## 性能预算
 
 - system prompt 中 Knowledge/Patterns 正文字符数：0。
-- 目录和 turn recall 均有硬上限；具体默认值在实施时以现有真实数据基线确定并固化为常量。
+- Knowledge 与 Pattern 目录各最多 1,600 字符；turn recall 单 Provider 最多 2,000 字符，含边界的聚合块最多 6,000 字符。
 - prefetch 失败或超时不阻塞回复；首版复用 Provider 现有查询，不新增额外 LLM 调用。
 - Token 统计不订阅流式 delta；单次 message_end 处理和 session 聚合不增加模型调用。
 

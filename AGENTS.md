@@ -1,7 +1,7 @@
 # OriginOS 架构规约 (AGENTS.md)
 
-**版本：** 2.5.7
-**日期：** 2026-09-14
+**版本：** 2.5.8
+**日期：** 2026-09-18
 **状态：** 强制执行
 
 ---
@@ -480,11 +480,11 @@ interface OntologySkill {
 **RoleAgent 7 层 System Prompt（`system-prompt.ts`）：**
 
 1. **角色身份**（Agent.md 全文）
-2. **状态与记忆**（阶段名 + 行为特征 + Memory.md + Knowledge.md + Patterns.md）
+2. **状态与记忆**（会话上下文：阶段、Core/Stable Memory、Knowledge/Pattern 有界目录）
 3. **思维循环指令**（5 步思考流程）
 4. **工具箱**（已安装技能清单 + registry 驱动系统工具列表，含描述）
 5. **风格指南**（Taste.md，无内容时跳过）
-6. **工作目录 + 权限授权**
+6. **工作目录（会话上下文）+ 权限授权（稳定策略）**
 7. **安全约束**（固定 section）
 
 **RoleAgent 工作目录文件：**
@@ -529,11 +529,11 @@ turn_end hook
 **Project Agent 7 层 System Prompt（`project-prompt.ts`）：**
 
 1. **身份**（Agent.md 全文）
-2. **状态与记忆**（Memory.md + business-model.json + Knowledge.md + Patterns.md）
+2. **状态与记忆**（会话上下文：Core/Stable Memory、business-model.json、Knowledge/Pattern 有界目录）
 3. **思维循环指令**（5 步思考流程，project-agent 版本）
 4. **工具箱**（已安装技能 + registry 驱动系统工具列表，`project` scope）
 5. **风格指南**（Taste.md，无内容时跳过）
-6. **工作目录 + 权限授权**
+6. **工作目录（会话上下文）+ 权限授权（稳定策略）**
 7. **安全约束**（固定 section）
 
 **Project Agent 工作目录文件：**
@@ -549,7 +549,7 @@ turn_end hook
 
 **Project Agent 通过 `packages/core/src/lib/features/agent/persistent-agent-manager.ts` 启动，在 `startAgent()` 时加载 `ProjectContext`，构建 7 层 prompt，传入 `PersistentAgent`。**
 
-**Frozen Snapshot 模式**：Knowledge.md 和 Patterns.md 在 Agent 启动时加载到 system prompt（Layer 2: StateMemory），中途生成的知识只写入磁盘，不修改内存中的快照，保持 LLM prefix cache 稳定。
+**会话冻结与渐进认知边界**：Core/Stable Memory、阶段、项目状态、工作目录和 Knowledge/Pattern 有界目录可在会话启动或恢复时组成只读 session context；`Knowledge.md` 与 `Patterns.md` 正文不得进入 stable system prompt。Archival/Cognitive 内容在每个用户 turn 按当前 owner/session 调用 `CognitiveManager.prefetchContext()` 有界召回，作为低信任参考附加到该 turn，不改写 stable system prompt 或持久化用户原文。
 
 ### 4. 认知系统架构
 
@@ -570,25 +570,28 @@ turn_end hook
 | `on_turn_end` | 记录实践日志到 JSONL | 轻量（只写磁盘） |
 | `on_session_end` | 批量分析日志 → 提取知识 + 沉淀模式 | 重量（LLM 分析） |
 | 每 N 轮（可选） | 增量分析最近未处理的日志 | 重量（LLM 分析） |
-| Agent 启动 | 加载 Knowledge.md + Patterns.md 快照到 prompt | 轻量（读文件） |
+| Agent 启动/恢复 | 冻结 Core Memory/session context，并只生成 Knowledge/Pattern 有界目录 | 轻量（读文件） |
+| 每个用户 turn | 按当前 owner/session 预取有界 Archival/Cognitive 片段 | 轻量（失败安全降级） |
 
-**Frozen Snapshot 模式（借鉴 hermes-agent MemoryManager）：**
+**会话冻结与渐进认知模式：**
 
 ```
-Agent 启动
-  └─ 加载 knowledge/ 快照 → Knowledge.md → Layer 2: StateMemory
-  └─ 加载 patterns/ 快照 → Patterns.md → Layer 2: StateMemory
+Agent 启动 / 恢复
+  ├─ stable system prompt：身份、规则、安全与工具协议
+  └─ readonly session context：Core/Stable Memory、阶段、工作目录、Knowledge/Pattern 有界目录
+
+当前用户 turn
+  └─ CognitiveManager.prefetchContext(rawUserQuery)
+      ├─ 绑定当前 owner/session
+      ├─ 按 Provider 与总预算截断
+      └─ 作为 reference 注入当前 turn；不写 stable system 或用户原文
 
 每轮 (on_turn_end)
   └─ 记录实践日志 → practice/turns/turn-{N}.json
 
 Session 结束 / 每 N 轮 (on_session_end)
   ├─ 批量分析实践日志 → 提取新知识
-  │   ├─ 创建/更新 knowledge/wiki/ 实体页面
-  │   └─ 创建/更新 knowledge/ontology/ 本体知识
   └─ 提炼经验模式 → 沉淀到 patterns/
-      ├─ 更新 patterns/registry.json
-      └─ 生成 pattern-{id}.md
 ```
 
 **认知管理器（CognitiveManager）设计（借鉴 hermes-agent Provider 模式）：**
@@ -615,7 +618,7 @@ CognitiveManager
 - Agent/Project 维度知识隔离
 - 模式有效性评估：工具调用链越短→效率越高，用户纠正次数越多→效果越差
 
-**RoleAgent/Project Agent 通过 7 层 System Prompt 的 Layer 2: StateMemory 注入 Knowledge.md 和 Patterns.md 快照。**
+**RoleAgent/Project Agent 通过公共 prompt boundary 分离 stable system 与只读 session context。Core/Stable Memory 可随会话上下文冻结；Knowledge/Patterns 只提供有界目录，正文与当前任务相关片段由 owner-aware turn prefetch 或现有工具按需读取。**
 
 **Agent 工作目录（CWD）优先级（`bash-tools.ts`，从高到低）：**
 
