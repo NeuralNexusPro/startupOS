@@ -17,4 +17,4 @@
 ## 4. 规格同步与交付
 
 - [x] 4.1 更新 Story/Epic、AGENTS、changelog 与主 capability spec；依赖：3.2；并行性：串行；写入范围：对应文档、AGENTS、本 tasks、`openspec/specs/ontology-contract-validation/`；负责角色：Proposal 集成者；必需测试：strict 与 diff check；完成证据：Story/AGENTS/changelog 和主 spec 已同步，strict 通过。
-- [ ] 4.2 合并到 `dev`、post-merge smoke、归档并清理 worktree/branch；依赖：4.1；并行性：串行；写入范围：Git/OpenSpec archive；负责角色：Integration Maintainer；必需测试：ontology Vitest、Core 编译、spec strict、状态审计；完成证据：merge/archive commit 和 worktree 清单。
+- [x] 4.2 合并到 `dev`、post-merge smoke、归档并清理 worktree/branch；依赖：4.1；并行性：串行；写入范围：Git/OpenSpec archive；负责角色：Integration Maintainer；必需测试：ontology Vitest、Core 编译、spec strict、状态审计；完成证据：dev merge `7c9a215`；post-merge ontology 41/41、Core 编译与 strict 通过；归档和清理随最终提交完成。
