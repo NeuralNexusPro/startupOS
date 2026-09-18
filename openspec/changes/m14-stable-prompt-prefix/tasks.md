@@ -6,7 +6,7 @@
 
 ## 2. Prompt 边界实现
 
-- [ ] 2.1（依赖：1.1；串行；角色：Pi Runtime subagent；写入：现有 prompt builders、launcher/Agent 配置边界与定向测试）在隔离 Task branch/worktree 拆分稳定 system prompt 与冻结 session context，并用 Node crypto 产生安全 hash；证据：提交哈希及四条 Agent 链路稳定性、恢复、权限变化测试通过。
+- [x] 2.1（依赖：1.1；串行；角色：Pi Runtime subagent；写入：现有 prompt builders、launcher/Agent 配置边界与定向测试）在隔离 Task branch/worktree 拆分稳定 system prompt 与冻结 session context，并用 Node crypto 产生安全 hash；证据：提交哈希及四条 Agent 链路稳定性、恢复、权限变化测试通过。
 
 ## 3. 集成与验收
 
