@@ -4,7 +4,7 @@ import { ChatMessageList } from '../chat/ChatMessageList';
 
 describe('ChatMessageList token usage', () => {
   it('summarizes completed assistant usage and keeps legacy sessions quiet', () => {
-    const { rerender } = render(
+    const { container, rerender } = render(
       <ChatMessageList
         messages={[
           { role: 'user', content: 'hello' },
@@ -29,6 +29,13 @@ describe('ChatMessageList token usage', () => {
               cacheWrite: 2,
               totalTokens: 32,
             },
+            contextTokenEstimate: {
+              total: 100,
+              stableSystem: 20,
+              sessionContext: 30,
+              turnRecall: 10,
+              history: 40,
+            },
           },
         ]}
         isLoading={false}
@@ -39,6 +46,9 @@ describe('ChatMessageList token usage', () => {
     expect(
       screen.getByText('Token 48 · 输入 30 · 输出 6 · 缓存读 9 · 缓存写 3')
     ).toBeTruthy();
+    expect(screen.getByText(/Token 48/).closest('.overflow-y-auto')).toBeNull();
+    expect(container.querySelector('.overflow-y-auto')).toBeTruthy();
+    expect(screen.getByText(/上下文估算 100/)).toBeTruthy();
 
     rerender(
       <ChatMessageList

@@ -51,6 +51,12 @@
 - [x] 用匿名大型 Patterns/Knowledge fixture 对比修改前后的输入规模与缓存 usage。
 - [x] 实施完成后更新 AGENTS.md 中“Frozen Snapshot”描述：Core Memory 可冻结，Archival 内容渐进加载。
 
+### M14-T7：会话顶部 Token 汇总
+
+- [x] 按 `m14-token-usage-window-header` 将既有会话级 Token 汇总从消息滚动区移至宿主窗体消息区上方。
+- [x] 复用 `summarizeSessionTokenUsage` 与既有 message usage；不新增 store、持久化字段、IPC 或统计页面。
+- [x] 覆盖有真实 usage 时顶部显示、旧会话隐藏、详情可展开，以及消息区不重复展示。
+
 ## 实施结果
 
 | Task | OpenSpec change | 结果 |
@@ -61,6 +67,7 @@
 | M14-T4 | `m14-pi-prompt-cache` | 底层 Pi Agent 接收稳定内部 `sessionId`，复用 provider-neutral cache 行为。 |
 | M14-T5 | `m14-token-usage-statistics` | usage 随最终消息进入既有 session JSON；纯函数汇总、共享 UI 和协作 observability 已接通。 |
 | M14-T6 | `m14-context-integration-verification` | 匿名矩阵 99 项通过；文档、主 capability specs 与公共架构边界完成同步。 |
+| M14-T7 | `m14-token-usage-window-header` | 汇总在消息滚动区外的窗体顶部显示；复用既有 usage 聚合，旧会话隐藏。 |
 
 实施没有新增 Prompt Manager、缓存服务、向量库、tokenizer 或统计存储。
 

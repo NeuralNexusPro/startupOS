@@ -146,6 +146,8 @@ interface AgentContextTokenEstimate {
 
 Session 汇总是纯函数，不创建 TokenUsageManager，也不把统计写入 Memory Core。
 
+会话 UI 将该纯函数结果作为宿主消息区上方的可选顶部内容渲染；`ChatMessageList` 只渲染消息、状态和任务内容。没有真实 usage 时不渲染顶部区域，详情继续使用原生 `details/summary` 展示并标记上下文值为估算。
+
 ## 性能预算
 
 - system prompt 中 Knowledge/Patterns 正文字符数：0。

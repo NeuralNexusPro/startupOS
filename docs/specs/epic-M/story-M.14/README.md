@@ -1,7 +1,7 @@
 # Story M.14：渐进式 Agent 上下文、KV Cache 与 Token 统计
 
 **Epic:** M — Memory Core 记忆核心
-**状态:** ✅ Complete
+**状态:** 🟢 Done
 **优先级:** 🔴 Critical
 **创建日期:** 2026-09-18
 **完成日期:** 2026-09-18
@@ -20,6 +20,7 @@
 - [x] Pi runtime 传递稳定 session id，并使用其现有 provider prompt-cache 能力；不在 Core 实现模型 KV 缓存。
 - [x] 每个 assistant message 保留 provider 返回的 input/output/cacheRead/cacheWrite/reasoning/cost，并可按会话聚合；旧会话不伪造数据。
 - [x] Agent 与 Skill 现有会话界面显示本会话 Token 汇总和上下文分区估算，无需新增独立统计页面。
+- [x] M14-T7 将该会话级汇总移至消息窗体顶部；消息滚动区和单条消息不重复显示，旧会话无真实 usage 时保持隐藏。
 - [x] 会话恢复后仍可按相同 ownership 召回，并且不会把其他 Agent、Project 或用户的认知内容注入当前会话。
 
 ## 完成结果
@@ -29,6 +30,7 @@
 - 每个用户 turn 按 owner/session 预取，单 Provider 最多 2,000 字符、总块最多 6,000 字符，失败 1.5 秒超时并安全降级。
 - Pi Agent 使用稳定内部 session id；provider usage 随最终 assistant message 写入既有会话 JSON，并由消息纯函数汇总。
 - Agent、RoleAgent、Project Agent、Skill 共用现有会话组件显示 Token 汇总；协作 CostController/Metrics 消费真实 input/output/cache usage。
+- M14-T7 将汇总固定在消息窗体顶部；消息滚动区不重复渲染，旧会话保持隐藏，详情仍显示估算标识。
 - M.14 针对性自动化共 99 项通过；Core 类型检查、Web 生产构建、lint、架构边界及 worker/package 校验通过。Web 全仓 type-check 与 Desktop build 仍被 M.14 之前已存在的 ontology 6 个严格类型错误阻塞，未记为通过。
 
 验证证据见 [OpenSpec QA](../../../../openspec/changes/archive/2026-09-18-m14-context-integration-verification/evidence/qa.md) 与 [架构 QA](../../../../openspec/changes/archive/2026-09-18-m14-context-integration-verification/evidence/task-2.2-architecture-qa.md)。

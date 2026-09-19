@@ -54,7 +54,7 @@ Agent 上下文必须按以下级别组织：
 - Web、Desktop、普通 Agent、RoleAgent、Project Agent、Skill 与协作 worker 不得在流式映射或会话持久化时丢弃 usage。
 - 每条 assistant message 可选持久化 provider usage 和上下文分区估算；Session 汇总从消息计算，不维护第二份累计账本。
 - 上下文分区只使用现有字符启发式估算，必须标记为“估算”；不得增加 tokenizer 依赖。
-- Agent/Skill 现有会话界面以紧凑区域展示本会话 input/output/cacheRead/cacheWrite/total；cost 和 reasoning 仅在 provider 返回时展示。
+- Agent/Skill 现有会话界面在消息窗体顶部以紧凑区域展示本会话 input/output/cacheRead/cacheWrite/total；该区域不属于消息滚动区，也不得在单条消息中重复展示。cost 和 reasoning 仅在 provider 返回时展示。
 - 旧会话缺少 usage 时显示“无统计数据”，不得把恢复运行时补的零 usage 当作真实消耗。
 - 协作运行时复用真实 provider usage 更新现有 CostController/Metrics，停止用固定比例推算 input/output；配额语义保持现有定义。
 
@@ -94,7 +94,7 @@ Agent 上下文必须按以下级别组织：
 
 - **Given:** provider 为一个 assistant message 返回 usage。
 - **When:** 消息流结束、保存会话并再次打开。
-- **Then:** 逐消息 usage 保持一致，会话汇总等于各消息字段之和，界面显示真实值。
+- **Then:** 逐消息 usage 保持一致，会话汇总等于各消息字段之和，并在消息窗体顶部显示真实值。
 - **And:** 缺失字段保持 unavailable；上下文分区值明确标记为估算。
 
 ## 非功能需求

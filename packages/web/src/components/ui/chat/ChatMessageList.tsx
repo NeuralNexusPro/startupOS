@@ -3,7 +3,7 @@
 import { useRef, useEffect, useMemo } from 'react';
 import { Loader2, Wrench } from 'lucide-react';
 import type { AgentContextTokenEstimate, AgentTokenUsage } from '@originos/core/types';
-import { summarizeSessionTokenUsage } from '@originos/core/lib/integrations/pi-agent';
+import { summarizeSessionTokenUsage } from '@originos/core/lib/integrations/pi-agent/token-usage';
 import { cn } from '@originos/core/lib/utils';
 import { sanitizeAgentDisplayContent } from '@originos/core/lib/integrations/pi-agent/display-content';
 import ToolExecutionFrame, { type ToolExecution } from '@/components/ui/chat/ToolExecutionFrame';
@@ -166,11 +166,24 @@ export function ChatMessageList({
   const showThinkingIndicator = isThinking && (!hasStreamingMsg);
 
   return (
-    <div
-      ref={listRef}
-      onScroll={handleScroll}
-      className={cn('min-h-0 flex-1 overflow-y-auto px-4 py-5 space-y-4 bg-transparent', className)}
-    >
+    <div className={cn('flex min-h-0 flex-1 flex-col', className)}>
+      {tokenUsage && (
+        <details className="shrink-0 border-b border-gray-200/60 px-4 py-2 text-xs text-gray-500">
+          <summary className="cursor-pointer select-none">
+            Token {tokenUsage.totalTokens.toLocaleString()} · 输入 {tokenUsage.input.toLocaleString()} · 输出 {tokenUsage.output.toLocaleString()} · 缓存读 {tokenUsage.cacheRead.toLocaleString()} · 缓存写 {tokenUsage.cacheWrite.toLocaleString()}
+          </summary>
+          {contextEstimate && (
+            <div className="mt-1 pl-3 text-gray-400">
+              上下文估算 {contextEstimate.total.toLocaleString()} · 系统 {contextEstimate.stableSystem.toLocaleString()} · 会话 {contextEstimate.sessionContext.toLocaleString()} · 召回 {contextEstimate.turnRecall.toLocaleString()} · 历史 {contextEstimate.history.toLocaleString()}
+            </div>
+          )}
+        </details>
+      )}
+      <div
+        ref={listRef}
+        onScroll={handleScroll}
+        className="min-h-0 flex-1 overflow-y-auto space-y-4 bg-transparent px-4 py-5"
+      >
       {/* Empty state */}
       {messages.length === 0 && !isLoading && !isThinking && (
         emptyState || (
@@ -243,19 +256,6 @@ export function ChatMessageList({
         );
       })}
 
-      {tokenUsage && (
-        <details className="ml-4 text-xs text-gray-500">
-          <summary className="cursor-pointer select-none">
-            Token {tokenUsage.totalTokens.toLocaleString()} · 输入 {tokenUsage.input.toLocaleString()} · 输出 {tokenUsage.output.toLocaleString()} · 缓存读 {tokenUsage.cacheRead.toLocaleString()} · 缓存写 {tokenUsage.cacheWrite.toLocaleString()}
-          </summary>
-          {contextEstimate && (
-            <div className="mt-1 pl-3 text-gray-400">
-              上下文估算 {contextEstimate.total.toLocaleString()} · 系统 {contextEstimate.stableSystem.toLocaleString()} · 会话 {contextEstimate.sessionContext.toLocaleString()} · 召回 {contextEstimate.turnRecall.toLocaleString()} · 历史 {contextEstimate.history.toLocaleString()}
-            </div>
-          )}
-        </details>
-      )}
-
       {/* Thinking indicator (no streaming content yet) */}
       {showThinkingIndicator && (
         <div className="flex justify-start gap-2 items-start">
@@ -316,6 +316,7 @@ export function ChatMessageList({
       )}
 
       {footerContent}
+      </div>
     </div>
   );
 }

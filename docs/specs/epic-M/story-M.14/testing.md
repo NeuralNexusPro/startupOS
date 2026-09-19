@@ -34,6 +34,7 @@
 | M14-IT-09 | 集成 | 历史会话恢复 | 新会话统计保持；旧会话显示 unavailable 而非零 |
 | M14-IT-10 | 集成 | Agent/Skill 会话 UI | 消息完成后更新汇总，delta 不触发统计更新 |
 | M14-IT-11 | 集成 | collaboration worker | CostController/Metrics 收到真实 input/output/cache usage |
+| M14-IT-12 | 组件 | Agent/Skill 会话顶部汇总 | 有 usage 时仅在消息区上方显示；旧会话隐藏，详情可展开，消息滚动区不重复展示（2026-09-19 定向 Vitest 1/1 通过） |
 
 ## 执行结果
 
