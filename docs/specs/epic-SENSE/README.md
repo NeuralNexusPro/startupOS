@@ -103,6 +103,7 @@ interface PerceptionEventV1 {
 | **SENSE.12** | Perception Plugin Host 与 Connector 插件化迁移 | Critical | SENSE.1–11 | 🚧 In Progress |
 | **SENSE.13** | 感知中心首页入口与连接状态面板 | High | SENSE.8、SENSE.9、SENSE.12 | ✅ Complete |
 | **[SENSE.14](story-SENSE.14/README.md)** | IM平台能力发现与Agent按需调用 | High | SENSE.12、Agent工具授权 | 📋 In Progress |
+| **[SENSE.15](story-SENSE.15/README.md)** | Jev 受限决策路由 | High | SENSE.7、SENSE.8、SENSE.9、SENSE.12 | 📋 Planning |
 
 ## 数据目录
 
