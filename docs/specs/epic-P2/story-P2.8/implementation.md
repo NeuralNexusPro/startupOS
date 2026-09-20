@@ -19,24 +19,23 @@
 
 ### 1. 公共类型
 
-- [ ] 在 solution 公共类型中定义 execution contract、DesignGap 和版本引用。
-- [ ] 明确 design model 与 runtime contract 的字段映射。
-- [ ] 将 legacy `executionMode` 标记为设计元数据兼容字段。
+- [x] 在 solution 公共类型中定义 execution contract、DesignGap 和版本引用。
+- [x] 明确 design model 与 runtime contract 的字段映射。
+- [x] 将 `modelingDimension` 限定为设计来源元数据；公共 runtime contract 不包含 `executionMode`。
 
 ### 2. 设计校验器
 
-- [ ] 实现 schema 和版本状态校验。
-- [ ] 实现拓扑连通、依赖和环检查。
-- [ ] 实现 Agent/Skill 能力与引用检查。
-- [ ] 实现 I/O 兼容、verifier/evidence、权限、预算和 HITL 检查。
-- [ ] 输出稳定、可定位的 `DesignGap[]`。
+- [x] 实现 schema 和版本状态校验。
+- [x] 实现拓扑连通、依赖和环检查。
+- [x] 实现 Agent/Skill 引用检查并复用 ontology 公共语义校验器。
+- [x] 实现 I/O 兼容、verifier/evidence、权限、预算和 HITL 检查。
+- [x] 输出稳定、可定位的 `DesignGap[]`。
 
 ### 3. 契约编译器
 
-- [ ] 规范化 solution 输入和排序。
-- [ ] 编译冻结 topology、node contracts 和 policies。
-- [ ] 保证相同输入产生相同 JSON 和 hash。
-- [ ] 禁止通过 LLM 或默认值补齐阻断字段。
+- [x] 规范化对象键并编译冻结 topology、node contracts 和 policies。
+- [x] 保证相同规范化输入产生相同 JSON 和 hash。
+- [x] 禁止通过 LLM 或默认值补齐阻断字段。
 
 ### 4. 发布与存储
 
@@ -50,7 +49,7 @@
 
 - [ ] 按 solutionId/version 精确读取。
 - [ ] 不提供隐式 latest 替换。
-- [ ] 导出供 collaboration runtime 注入的公共接口。
+- [x] 导出供 collaboration runtime 注入的公共接口。
 - [ ] 禁止 runtime 访问编译器或 solution UI。
 
 ### 6. 解决方案 UI
@@ -108,8 +107,8 @@
 
 ## 变更历史
 
-| 日期 | 变更 |
-|------|------|
+| 日期       | 变更         |
+| ---------- | ------------ |
 | 2026-07-28 | 初始实施方案 |
 
 ## 2026-09-14：项目语义执行规划补充

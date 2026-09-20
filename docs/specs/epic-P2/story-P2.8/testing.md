@@ -10,24 +10,24 @@
 
 ## 自动化测试矩阵
 
-| ID | 层级 | 场景 | 预期结果 |
-|----|------|------|---------|
-| TC-U1 | Unit | 相同规范化方案重复编译 | JSON 与 contractHash 完全一致 |
-| TC-U2 | Unit | 拓扑含断链、未知节点或非法环 | 返回可定位 DesignGap，禁止发布 |
-| TC-U3 | Unit | 上游输出与下游输入不兼容 | I/O 门控失败 |
-| TC-U4 | Unit | 节点缺失 verifier/evidence schema | 验证门控失败，不填默认 passed |
-| TC-U5 | Unit | 权限超出 Agent 工具权限 | 权限门控失败 |
-| TC-U6 | Unit | 读取后正文被篡改 | hash 校验失败 |
-| TC-I1 | Integration | confirmed solution 完整发布 | 原子生成 approved contract |
-| TC-I2 | Integration | draft solution 尝试发布 | 拒绝发布 |
-| TC-I3 | Integration | 已发布版本再次写入 | 拒绝覆盖，原文件和 hash 不变 |
-| TC-I4 | Integration | v1.0 与 v1.1 并存，读取 v1.0 | 精确返回 v1.0，不使用 latest |
-| TC-I5 | Integration | legacy manifest 显式迁移 | 经完整门控后发布或返回 DesignGap |
-| TC-C1 | Component | 发布检查存在阻断项 | 显示分类错误并禁用发布 |
-| TC-C2 | Component | 发布成功 | 显示只读 contractId/version/hash |
-| TC-E1 | E2E | 编辑、检查、确认、发布 | 完成设计态闭环，发布后只读 |
-| TC-E2 | E2E | 修改已发布方案 | 要求创建新版本，不修改旧契约 |
-| TC-A1 | Architecture | 扫描 runtime 公共 API | 无 Workflow 创建、编辑、选择或编译接口 |
+| ID    | 层级         | 场景                              | 预期结果                               |
+| ----- | ------------ | --------------------------------- | -------------------------------------- |
+| TC-U1 | Unit         | 相同规范化方案重复编译            | JSON 与 contractHash 完全一致          |
+| TC-U2 | Unit         | 拓扑含断链、未知节点或非法环      | 返回可定位 DesignGap，禁止发布         |
+| TC-U3 | Unit         | 上游输出与下游输入不兼容          | I/O 门控失败                           |
+| TC-U4 | Unit         | 节点缺失 verifier/evidence schema | 验证门控失败，不填默认 passed          |
+| TC-U5 | Unit         | 权限超出 Agent 工具权限           | 权限门控失败                           |
+| TC-U6 | Unit         | 读取后正文被篡改                  | hash 校验失败                          |
+| TC-I1 | Integration  | confirmed solution 完整发布       | 原子生成 approved contract             |
+| TC-I2 | Integration  | draft solution 尝试发布           | 拒绝发布                               |
+| TC-I3 | Integration  | 已发布版本再次写入                | 拒绝覆盖，原文件和 hash 不变           |
+| TC-I4 | Integration  | v1.0 与 v1.1 并存，读取 v1.0      | 精确返回 v1.0，不使用 latest           |
+| TC-I5 | Integration  | legacy manifest 显式迁移          | 经完整门控后发布或返回 DesignGap       |
+| TC-C1 | Component    | 发布检查存在阻断项                | 显示分类错误并禁用发布                 |
+| TC-C2 | Component    | 发布成功                          | 显示只读 contractId/version/hash       |
+| TC-E1 | E2E          | 编辑、检查、确认、发布            | 完成设计态闭环，发布后只读             |
+| TC-E2 | E2E          | 修改已发布方案                    | 要求创建新版本，不修改旧契约           |
+| TC-A1 | Architecture | 扫描 runtime 公共 API             | 无 Workflow 创建、编辑、选择或编译接口 |
 
 ## Given/When/Then
 
@@ -99,24 +99,30 @@
 - [ ] 架构测试证明 runtime 不包含 Workflow 设计能力。
 - [ ] 验证 Goal 完成并保存 evidence。
 
+## 2026-09-20 公共契约验收证据
+
+- `pnpm --filter @originos/core exec vitest run src/lib/features/solution/__tests__/execution-contract.test.ts`：5/5 通过，覆盖确定性 hash、运行时冻结、confirmed gate、结构化缺口、ontology I/O 连通和篡改检测。
+- `pnpm --filter @originos/core exec tsc --noEmit --pretty false`：通过。
+- `node scripts/check-architecture-boundaries.cjs --self-test`：43 个导入用例 × 2 个 CWD 通过。
+- 本轮冻结公共契约与读取端口；文件持久化、撤销写入、UI/E2E 和 80% 覆盖率 Goal 仍属于后续实施，未伪报完成。
+
 ## 变更历史
 
-| 日期 | 变更 |
-|------|------|
+| 日期       | 变更         |
+| ---------- | ------------ |
 | 2026-07-28 | 初始测试设计 |
 
 ## 2026-09-14：项目语义执行规划补充
 
 以下全部待执行。
 
-| ID | 场景 | 预期 |
-|---|---|---|
-| SC01 | 未确认概念/对象歧义 | 定位DesignGap，不发布 |
-| SC02 | 下游所需状态无法由上游达到 | 语义连通性失败 |
-| SC03 | 相同模型重复编译 | 上下文及contractHash一致 |
-| SC04 | 本体版本/Action权限/新鲜度策略变化 | 新版本与新hash |
-| SC05 | 发布后被9.42精确读取 | 保留访谈证据、语义类型及模板引用 |
-| SC06 | v2发布时v1仍运行 | v1不热更新 |
-
+| ID   | 场景                               | 预期                             |
+| ---- | ---------------------------------- | -------------------------------- |
+| SC01 | 未确认概念/对象歧义                | 定位DesignGap，不发布            |
+| SC02 | 下游所需状态无法由上游达到         | 语义连通性失败                   |
+| SC03 | 相同模型重复编译                   | 上下文及contractHash一致         |
+| SC04 | 本体版本/Action权限/新鲜度策略变化 | 新版本与新hash                   |
+| SC05 | 发布后被9.42精确读取               | 保留访谈证据、语义类型及模板引用 |
+| SC06 | v2发布时v1仍运行                   | v1不热更新                       |
 
 完整依赖、状态所有权及验收场景见[主线规划](../../epic-ONT/project-semantic-execution-plan.md)。
