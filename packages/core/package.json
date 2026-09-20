@@ -60,6 +60,7 @@
     "./lib/integrations/*/hooks": "./src/lib/integrations/*/hooks.ts",
     "./lib/integrations/*/services/*": "./src/lib/integrations/*/services/*.ts",
     "./lib/integrations/pi-agent/display-content": "./src/lib/integrations/pi-agent/display-content.ts",
+    "./lib/integrations/pi-agent/token-usage": "./src/lib/integrations/pi-agent/token-usage.ts",
     "./lib/integrations/*/*": "./src/lib/integrations/*/*.ts",
     "./lib/integrations/electron/*": "./src/lib/integrations/electron/*.ts",
     "./lib/shared/*": "./src/lib/shared/*.ts",

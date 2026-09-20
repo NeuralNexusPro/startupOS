@@ -83,9 +83,9 @@ function decodeOntology(stored: StoredOntology): CanonicalOntology {
 function isDataFile(value: unknown): value is DataFile<unknown> {
   if (!value || typeof value !== 'object') return false;
   const file = value as Record<string, unknown>;
-  return typeof file.version === 'string'
-    && typeof file.createdAt === 'string'
-    && typeof file.updatedAt === 'string'
+  return typeof file['version'] === 'string'
+    && typeof file['createdAt'] === 'string'
+    && typeof file['updatedAt'] === 'string'
     && 'data' in file;
 }
 
@@ -246,9 +246,10 @@ export class CanonicalOntologyStore {
     const lastNonEmpty = lines.findLastIndex((line) => line.trim().length > 0);
     const records: T[] = [];
     for (let index = 0; index <= lastNonEmpty; index += 1) {
-      if (!lines[index].trim()) continue;
+      const line = lines[index];
+      if (!line?.trim()) continue;
       try {
-        records.push(JSON.parse(lines[index]) as T);
+        records.push(JSON.parse(line) as T);
       } catch (error) {
         if (index === lastNonEmpty) break;
         throw new Error(`Invalid JSONL at ${filePath}:${index + 1}`, { cause: error });
