@@ -99,10 +99,10 @@ export class PiAgentChannelSessionGateway implements ChannelSessionProvisionerPo
     if (!saved) throw new Error('CHANNEL_SESSION_MESSAGE_PERSIST_FAILED');
   }
 
-  async appendAssistantMessage(sessionId: string, content: string): Promise<void> {
+  async appendAssistantMessage(sessionId: string, content: string, usage?: AgentMessage['usage']): Promise<void> {
     const saved = await this.dependencies.addMessage(
       sessionId,
-      { role: 'assistant', content },
+      { role: 'assistant', content, ...(usage ? { usage } : {}) },
       this.requiredProjectId(sessionId),
     );
     if (!saved) throw new Error('CHANNEL_SESSION_MESSAGE_PERSIST_FAILED');

@@ -7,7 +7,7 @@ import { agentManager } from '../../../../core/src/lib/features/agent/server/ind
 import { createAutoModel } from '../../../../core/src/lib/integrations/pi-agent/server-config';
 import { extractDisplayContent } from '../../../../core/src/lib/integrations/pi-agent/display-content';
 import { getVisibleStreamDelta, reconcileFinalStreamContent } from '../../../../core/src/lib/integrations/pi-agent/stream-dedupe';
-import { normalizeAgentTokenUsage, summarizeSessionTokenUsage } from '../../../../core/src/lib/integrations/pi-agent';
+import { normalizeAgentTokenUsage, summarizeSessionTokenUsage } from '../../../../core/src/lib/integrations/pi-agent/token-usage';
 import type { AgentMessage } from '../../../../core/src/types/agent';
 import type { RuntimeLLMConfig } from '../../../../core/src/lib/integrations/pi-agent/llm-config';
 import {

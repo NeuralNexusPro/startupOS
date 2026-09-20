@@ -26,7 +26,7 @@ describe('UI Channel stream adapter', () => {
         yield { protocolVersion: '1.0', flowId: 'flow-1', packetId: 'p1', sequence: 1, port: 'runtime.output', kind: 'data', emittedAt: '2026-09-05T10:00:00.000Z', payload: { type: 'text_delta', delta: 'hello' } };
         yield { protocolVersion: '1.0', flowId: 'flow-1', packetId: 'p2', sequence: 2, port: 'runtime.output', kind: 'data', emittedAt: '2026-09-05T10:00:00.000Z', payload: { type: 'tool_status', label: 'search', state: 'running' } };
         yield { protocolVersion: '1.0', flowId: 'flow-1', packetId: 'p2b', sequence: 3, port: 'runtime.output', kind: 'data', emittedAt: '2026-09-05T10:00:00.000Z', payload: { type: 'artifact_changed', filename: 'manifest.json', filePath: '/data/solutions/demo/manifest.json', artifactType: 'solution' } };
-        yield { protocolVersion: '1.0', flowId: 'flow-1', packetId: 'p3', sequence: 3, port: 'runtime.output', kind: 'data', emittedAt: '2026-09-05T10:00:00.000Z', payload: { type: 'assistant_message', content: 'hello' } };
+        yield { protocolVersion: '1.0', flowId: 'flow-1', packetId: 'p3', sequence: 3, port: 'runtime.output', kind: 'data', emittedAt: '2026-09-05T10:00:00.000Z', payload: { type: 'assistant_message', content: 'hello', usage: { input: 10, output: 2, cacheRead: 1, cacheWrite: 0, totalTokens: 13 } } };
         yield { protocolVersion: '1.0', flowId: 'flow-1', packetId: 'p4', sequence: 4, port: 'runtime.output', kind: 'complete', emittedAt: '2026-09-05T10:00:00.000Z', payload: { type: 'completed', resultRef: 'session://session-1' } };
       },
     };
@@ -36,7 +36,7 @@ describe('UI Channel stream adapter', () => {
     expect(send).toHaveBeenCalledWith(expect.objectContaining({ type: 'tool_start', data: { toolName: 'search' } }));
     expect(send).toHaveBeenCalledWith(expect.objectContaining({ type: 'artifact_changed', data: { filename: 'manifest.json', filePath: '/data/solutions/demo/manifest.json', artifactType: 'solution' } }));
     expect(send).toHaveBeenCalledWith(expect.objectContaining({ type: 'assistant_message', data: { content: 'hello', isStreaming: false } }));
-    expect(send).toHaveBeenCalledWith(expect.objectContaining({ type: 'done', data: { content: 'hello', failed: false } }));
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ type: 'done', data: { content: 'hello', failed: false, usage: { input: 10, output: 2, cacheRead: 1, cacheWrite: 0, totalTokens: 13 } } }));
   });
 
   it('maps safe failure and cancellation to terminal renderer events', async () => {

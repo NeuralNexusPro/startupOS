@@ -38,7 +38,7 @@ export type ChannelMessageMetadata = Pick<ChannelInboundMessage,
 export type AgentOutputEvent =
   | { type: 'accepted'; sessionId: string }
   | { type: 'text_delta'; delta: string }
-  | { type: 'assistant_message'; content: string }
+  | { type: 'assistant_message'; content: string; usage?: AgentTokenUsage }
   | { type: 'tool_status'; label: string; state: 'running' | 'completed' | 'failed' }
   | { type: 'artifact_changed'; filename: string; filePath: string; artifactType: 'solution' }
   | { type: 'hitl_request'; requestId: string; summary: string }
@@ -125,3 +125,4 @@ export interface ChannelSessionBinding {
   updatedAt: string;
   expiresAt: string;
 }
+import type { AgentTokenUsage } from '../../types/agent';
