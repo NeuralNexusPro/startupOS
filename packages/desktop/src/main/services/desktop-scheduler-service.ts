@@ -1,11 +1,10 @@
+import { showNativeSystemNotification, type NativeNotificationRequest } from './native-notification-service';
 import {
   DefaultSchedulerActionRunner,
   SchedulerService,
   type ScheduledTask,
   type ScheduledTaskRun,
 } from '../../../../core/src/modules/scheduler';
-import { getNotificationManager, NotificationType } from '../../../../core/src/lib/integrations/pi-agent/notification-system';
-import { showNativeSystemNotification } from './native-notification-service';
 
 const DEFAULT_POLL_INTERVAL_MS = 1_000;
 const DEFAULT_USER_SCAN_INTERVAL_MS = 30_000;
@@ -96,31 +95,55 @@ export class DesktopSchedulerService {
 
 class DesktopSchedulerActionRunner extends DefaultSchedulerActionRunner {
   override async run(task: ScheduledTask): Promise<unknown> {
-    if (task.action.type !== 'system' || task.action.command !== 'notify') {
-      return super.run(task);
+    const result = await super.run(task);
+    const request = getNativeNotificationRequest(task);
+    if (!request) {
+      return result;
     }
 
-    const payload = task.action.payload ?? {};
-    const message = typeof payload['message'] === 'string' ? payload['message'] : task.title;
-    const notification = await getNotificationManager().createNotification(
-      NotificationType.SYSTEM_MESSAGE,
-      task.title,
-      message,
-      { scheduleTaskId: task.id, ...payload }
-    );
-    const nativeNotification = await showNativeSystemNotification({
-      title: task.title,
-      body: message,
-      activationTarget: payload['activationTarget'],
-    });
+    const nativeNotification = await showNativeSystemNotification(request);
 
     return {
-      handled: true,
-      command: task.action.command,
-      notificationId: notification.id,
+      ...(result as Record<string, unknown>),
       nativeNotification,
     };
   }
+}
+
+export function getNativeNotificationRequest(task: ScheduledTask): NativeNotificationRequest | null {
+  if (task.action.type === 'system' && task.action.command === 'notify') {
+    const payload = task.action.payload ?? {};
+    return {
+      title: task.title,
+      body: typeof payload['message'] === 'string' ? payload['message'] : task.title,
+      activationTarget: payload['activationTarget'],
+    };
+  }
+  if (task.action.type === 'agent') {
+    return {
+      title: `定时角色任务: ${task.title}`,
+      body: `需要启动角色 ${task.action.agentName}: ${task.action.prompt}`,
+      activationTarget: {
+        entryType: 'agent',
+        entryId: task.action.agentName,
+        title: task.action.agentName,
+        initialMessage: task.action.prompt,
+      },
+    };
+  }
+  if (task.action.type === 'skill') {
+    return {
+      title: `定时技能任务: ${task.title}`,
+      body: `需要启动技能 ${task.action.skillName}${task.action.prompt ? `: ${task.action.prompt}` : ''}`,
+      activationTarget: {
+        entryType: 'skill',
+        entryId: task.action.skillName,
+        title: task.action.skillName,
+        ...(task.action.prompt ? { initialMessage: task.action.prompt } : {}),
+      },
+    };
+  }
+  return null;
 }
 
 function summarizeRun(run: ScheduledTaskRun): Record<string, string> {
