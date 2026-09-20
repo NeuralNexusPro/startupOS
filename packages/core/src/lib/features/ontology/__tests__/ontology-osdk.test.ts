@@ -192,22 +192,36 @@ describe('CanonicalOntologyOSDK', () => {
       revision: 2,
       payload: { marker: 'later tie' },
     }));
-    await store.appendProjection('project-1', projection({
-      id: 'other-work-item',
-      context: { ...projection().context, workItemId: 'work-2' },
-    }));
-    await store.appendProjection('project-1', projection({
-      id: 'other-attempt',
-      context: { ...projection().context, attemptId: 'attempt-2' },
-    }));
+    await store.appendProjection('project-1', projection({ id: 'projection-1', revision: 1 }));
+    for (const [id, context] of Object.entries({
+      context: { contextInstanceId: 'context-2' },
+      task: { taskId: 'task-2' },
+      session: { sessionId: 'session-2' },
+      branch: { branchId: 'branch-2' },
+      run: { runId: 'run-2' },
+      workItem: { workItemId: 'work-2' },
+      attempt: { attemptId: 'attempt-2' },
+    })) {
+      await store.appendProjection('project-1', projection({
+        id: `other-${id}`,
+        context: { ...projection().context, ...context },
+      }));
+    }
+    await store.appendProjection('project-1', projection({ id: 'other-kind', kind: 'goal' }));
 
     const result = await osdk.queryProjections({
       projectId: 'project-1', ontologyId: 'orders', ontologyVersion: '3',
+      contextInstanceId: 'context-1',
       taskId: 'task-1', sessionId: 'session-1', branchId: 'branch-1', runId: 'run-1',
       workItemId: 'work-1', attemptId: 'attempt-1', kind: 'outcome', latestOnly: true,
     });
     expect(result.ok && result.projections.map(({ id }) => id)).toEqual(['projection-2', 'projection-1']);
     expect(result.ok && result.projections[1]?.payload).toEqual({ marker: 'later tie' });
+
+    const revision = await osdk.queryProjections({
+      projectId: 'project-1', ontologyId: 'orders', ontologyVersion: '3', revision: 1,
+    });
+    expect(revision.ok && revision.projections.every(({ revision: value }) => value === 1)).toBe(true);
 
     const stale = await osdk.queryProjections({ projectId: 'project-1', ontologyId: 'orders', ontologyVersion: '2' });
     expect(stale).toEqual({ ok: false, issues: [expect.objectContaining({ code: 'ONTOLOGY_VERSION_MISMATCH' })] });
@@ -215,27 +229,29 @@ describe('CanonicalOntologyOSDK', () => {
 
   it('resolves only exact canonical facts and fails closed without changing JSONL', async () => {
     await store.appendFact('project-1', fact());
+    const factsPath = path.join(root, 'ontology', 'project-1-facts.jsonl');
+    const projectionsPath = path.join(root, 'ontology', 'project-1-projections.jsonl');
+    const before = await Promise.all([fs.readFile(factsPath, 'utf8'), fs.readFile(projectionsPath, 'utf8').catch(() => '')]);
     const valid = projection();
     const resolved = await osdk.resolveProjection({
       projectId: 'project-1', ontologyId: 'orders', ontologyVersion: '3', projection: valid,
     });
     expect(resolved.ok && resolved.facts).toEqual([fact()]);
 
-    const factsPath = path.join(root, 'ontology', 'project-1-facts.jsonl');
-    const projectionsPath = path.join(root, 'ontology', 'project-1-projections.jsonl');
-    const before = await Promise.all([fs.readFile(factsPath, 'utf8'), fs.readFile(projectionsPath, 'utf8').catch(() => '')]);
-    const rejected = await osdk.resolveProjection({
-      projectId: 'project-1', ontologyId: 'orders', ontologyVersion: '3',
-      projection: projection({ factRefs: [{ ...fact().ref, ontologyVersion: '2' }] }),
-    });
-    expect(rejected).toEqual({ ok: false, issues: [expect.objectContaining({ code: 'ONTOLOGY_REFERENCE_MISMATCH' })] });
+    const cases: Array<[CanonicalFactRecord['ref'], string]> = [
+      [{ ...fact().ref, ontologyVersion: '2' }, 'ONTOLOGY_REFERENCE_MISMATCH'],
+      [{ ...fact().ref, conceptId: 'other-concept' }, 'INVALID_CONCEPT_BINDING'],
+      [{ ...fact().ref, factId: 'missing' }, 'FACT_NOT_FOUND'],
+      [{ ...fact().ref, factVersion: '2' }, 'FACT_NOT_FOUND'],
+    ];
+    for (const [ref, code] of cases) {
+      const rejected = await osdk.resolveProjection({
+        projectId: 'project-1', ontologyId: 'orders', ontologyVersion: '3',
+        projection: projection({ factRefs: [ref] }),
+      });
+      expect(rejected).toEqual({ ok: false, issues: [expect.objectContaining({ code })] });
+    }
     expect(await Promise.all([fs.readFile(factsPath, 'utf8'), fs.readFile(projectionsPath, 'utf8').catch(() => '')])).toEqual(before);
-
-    const wrongOwner = await osdk.resolveProjection({
-      projectId: 'project-1', ontologyId: 'orders', ontologyVersion: '3',
-      projection: projection({ factRefs: [{ ...fact().ref, conceptId: 'other-concept' }] }),
-    });
-    expect(wrongOwner).toEqual({ ok: false, issues: [expect.objectContaining({ code: 'INVALID_CONCEPT_BINDING' })] });
   });
 
   it('rejects gate, input, output and revision failures before writing operations', async () => {
