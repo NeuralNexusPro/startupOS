@@ -4,10 +4,10 @@
 
 依赖：无。写入范围：`packages/core/src/types/perception.ts`、`packages/core/src/lib/integrations/jev/**`、对应 Core 测试与 package export。负责 subagent：Core/Integration。完成证据：提交、改动文件清单、专项测试输出与无新增依赖证明。
 
-- [ ] 1.1 在独立 `proposal-task/add-jev-perception-decisions-w1-contract` 分支/worktree 定义 direct/Jev 规则联合类型、Provider summary、decision request/answer/receipt/port，并以 typecheck 验证历史 direct fixture 仍可编译
-- [ ] 1.2 实现基于原生 `fetch` 的 Jev adapter、3 秒总 deadline、一次有界 429/529 退避和安全错误映射，并通过 200/401/422/429/529/timeout/网络失败单测
-- [ ] 1.3 实现固定五问请求与 Choice/Score/Noul 严格响应校验，并以目录外 choice、缺失概率、NaN、越界及概率和异常 fixture 验证全部失败关闭
-- [ ] 1.4 实现 Provider `baseUrl` 信任边界校验并验证生产 HTTPS、禁止 userinfo/私网/非 HTTP(S)、开发显式 loopback 例外
+- [x] 1.1 在独立 `proposal-task/add-jev-perception-decisions-w1-contract` 分支/worktree 定义 direct/Jev 规则联合类型、Provider summary、decision request/answer/receipt/port，并以 typecheck 验证历史 direct fixture 仍可编译
+- [x] 1.2 实现基于原生 `fetch` 的 Jev adapter、3 秒总 deadline、一次有界 429/529 退避和安全错误映射，并通过 200/401/422/429/529/timeout/网络失败单测
+- [x] 1.3 实现固定五问请求与 Choice/Score/Noul 严格响应校验，并以目录外 choice、缺失概率、NaN、越界及概率和异常 fixture 验证全部失败关闭
+- [x] 1.4 实现 Provider `baseUrl` 信任边界校验并验证生产 HTTPS、禁止 userinfo/私网/非 HTTP(S)、开发显式 loopback 例外
 
 ## 2. S15-W2 Provider 安全配置（依赖 W1；可与 W3 并行）
 

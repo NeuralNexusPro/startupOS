@@ -73,17 +73,74 @@ export interface PerceptionTriggerTarget {
   id: string;
   skillOwnership?: SkillCognitionOwnership;
 }
-export interface PerceptionTriggerRule {
+export type PerceptionDecisionCandidate =
+  | { key: 'ignore'; action: 'ignore' }
+  | { key: 'notify_user'; action: 'notify_user' }
+  | { key: string; action: 'dispatch'; target: PerceptionTriggerTarget };
+export interface JevDecisionRuleConfig {
+  catalogVersion: '1.0';
+  policyVersion: '1.0';
+  candidates: PerceptionDecisionCandidate[];
+}
+export interface PerceptionRuleBase {
   id: string;
   enabled: boolean;
   sources: PerceptionSource[];
   eventTypes: PerceptionEventType[];
   conditions: TriggerFilterCondition[];
-  target: PerceptionTriggerTarget;
   execution: { requireHitl: boolean; maxAttempts: number };
   createdAt: string;
   updatedAt: string;
 }
+export type PerceptionTriggerRule = PerceptionRuleBase & (
+  | { routingMode?: 'direct'; target: PerceptionTriggerTarget; decision?: never }
+  | { routingMode: 'jev'; decision: JevDecisionRuleConfig; target?: never }
+);
+export interface JevProviderSummary {
+  enabled: boolean;
+  baseUrl: string;
+  model: string;
+  credentialConfigured: boolean;
+  credentialSource?: 'environment' | 'secure-store';
+  updatedAt?: string;
+}
+export interface JevDecisionRequest {
+  state: JsonValue;
+  candidateKeys: string[];
+  catalogVersion: '1.0';
+}
+export interface JevChoiceAnswer { choice: string; confidence: number; probabilities: Record<string, number> }
+export interface JevScoreAnswer { score: number; confidence: number; probabilities: Record<string, number> }
+export interface JevDecisionAnswer {
+  providerModel?: string;
+  routeTarget: JevChoiceAnswer;
+  urgency: JevScoreAnswer;
+  risk: JevScoreAnswer;
+  needsHitl: number;
+  retainAsEvidence: number;
+}
+export interface JevDecisionReceipt {
+  id: string;
+  eventId: string;
+  ruleId: string;
+  catalogVersion: string;
+  policyVersion: string;
+  providerModel?: string;
+  candidateKeys: string[];
+  answers?: JevDecisionAnswer;
+  threshold: 0.8;
+  status: 'pending' | 'auto-executed' | 'user-executed' | 'ignored' | 'failed';
+  reason?: string;
+  selectedKey?: string;
+  leaseId?: string;
+  resultRef?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+export interface PerceptionDecisionPort {
+  decide(request: JevDecisionRequest): Promise<JevDecisionAnswer>;
+}
+export type JevDecisionPort = PerceptionDecisionPort;
 export interface PerceptionTargetAuthorization {
   authorized: boolean;
   reason?: string;
