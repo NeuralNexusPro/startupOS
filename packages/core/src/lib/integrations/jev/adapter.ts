@@ -35,6 +35,7 @@ export interface JevAdapterOptions {
   environment?: 'development' | 'production';
   allowDevelopmentLoopback?: boolean;
   fetch?: typeof fetch;
+  resolveHostname?: (hostname: string) => Promise<readonly string[]>;
   timeoutMs?: number;
   retryDelayMs?: number;
 }
@@ -65,18 +66,37 @@ export function normalizeJevBaseUrl(
 export class JevHttpAdapter implements PerceptionDecisionPort {
   private readonly endpoint: string;
   private readonly fetcher: typeof fetch;
+  private readonly hostname: string;
+  private readonly resolveHostname: NonNullable<JevAdapterOptions['resolveHostname']>;
   private readonly timeoutMs: number;
   private readonly retryDelayMs: number;
 
   constructor(private readonly options: JevAdapterOptions) {
-    this.endpoint = `${normalizeJevBaseUrl(options.baseUrl, options)}/v1/systemone`;
+    const baseUrl = normalizeJevBaseUrl(options.baseUrl, options);
+    this.endpoint = `${baseUrl}/v1/systemone`;
+    this.hostname = new URL(baseUrl).hostname.replace(/^\[|\]$/g, '').toLowerCase();
     this.fetcher = options.fetch ?? fetch;
+    this.resolveHostname = options.resolveHostname ?? resolveHostname;
     this.timeoutMs = Math.min(options.timeoutMs ?? JEV_DECISION_TIMEOUT_MS, JEV_DECISION_TIMEOUT_MS);
     this.retryDelayMs = options.retryDelayMs ?? 100;
   }
 
   async decide(request: JevDecisionRequest): Promise<JevDecisionAnswer> {
     const startedAt = Date.now();
+    if (!(this.options.environment === 'development' && this.options.allowDevelopmentLoopback && isLoopback(this.hostname))) {
+      let addresses: readonly string[];
+      try {
+        addresses = await within(this.resolveHostname(this.hostname), this.timeoutMs);
+      } catch (error) {
+        if (error instanceof JevError) throw error;
+        if (isAbortError(error)) throw new JevError('JEV_TIMEOUT');
+        throw new JevError('JEV_NETWORK_ERROR');
+      }
+      if (addresses.length === 0) throw new JevError('JEV_NETWORK_ERROR');
+      if (addresses.some((address) => isLoopback(address) || isPrivateHost(address))) {
+        throw new JevError('JEV_INVALID_BASE_URL');
+      }
+    }
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const remaining = this.timeoutMs - (Date.now() - startedAt);
       if (remaining <= 0) throw new JevError('JEV_TIMEOUT');
@@ -231,4 +251,19 @@ function mappedIpv4(hostname: string): string | undefined {
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function resolveHostname(hostname: string): Promise<string[]> {
+  const { lookup } = await import('node:dns/promises');
+  return (await lookup(hostname, { all: true, verbatim: true })).map(({ address }) => address);
+}
+
+function within<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new DOMException('Timed out', 'TimeoutError')), timeoutMs);
+    promise.then(
+      (value) => { clearTimeout(timeout); resolve(value); },
+      (error: unknown) => { clearTimeout(timeout); reject(error); },
+    );
+  });
 }
