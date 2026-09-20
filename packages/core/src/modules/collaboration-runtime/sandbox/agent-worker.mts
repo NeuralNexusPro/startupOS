@@ -1265,6 +1265,12 @@ class AgentWorker {
     // Supervisor 使用 escalate_to_human 进行 HITL，移除 ask_user_question 避免直接返回 YAML 绕过挂起机制
     const allAgentTools = getAgentTools().filter((t: { name: string }) => t.name !== "ask_user_question");
 
+    // 文件工具从全局工具上下文读取边界；Supervisor 也必须显式注入项目工作目录。
+    const { setToolContext, getToolContextManager } = await runtimeImport("lib/integrations/pi-agent/tools/context");
+    const toolContext = { sessionId: this.agentId, workingDirectory: this.workingDirectory };
+    setToolContext(this.agentId, toolContext);
+    getToolContextManager().setDefaultContext(toolContext);
+
     // 6. 创建 OriginOSAgent（对齐 initializeOriginOSAgent 的构造签名）
     const agent = new OriginOSAgent({
       sessionId: this.agentId,

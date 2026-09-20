@@ -14,7 +14,7 @@ import type {
 import { persistentAgentManager } from '../../../../core/src/lib/features/agent/server/index';
 import { extractDisplayContent } from '../../../../core/src/lib/integrations/pi-agent/display-content';
 import { getVisibleStreamDelta } from '../../../../core/src/lib/integrations/pi-agent/stream-dedupe';
-import { normalizeAgentTokenUsage, summarizeSessionTokenUsage } from '../../../../core/src/lib/integrations/pi-agent';
+import { normalizeAgentTokenUsage, summarizeSessionTokenUsage } from '../../../../core/src/lib/integrations/pi-agent/token-usage';
 import type { AgentMessage } from '../../../../core/src/types/agent';
 import { applyAssistantMessageEnd } from './assistant-stream-state';
 import { persistRuntimeLLMConfig } from '../../../../core/src/lib/features/user-config';

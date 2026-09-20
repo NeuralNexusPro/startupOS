@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { SchedulerService } from '../../../../../core/src/modules/scheduler';
 import type { ScheduleStore } from '../../../../../core/src/modules/scheduler/schedule-store';
-import { DesktopSchedulerService } from '../desktop-scheduler-service';
+import { DesktopSchedulerService, getNativeNotificationRequest } from '../desktop-scheduler-service';
 
 const memoryStore = (): ScheduleStore => ({
   listTasks: vi.fn(async () => []),
@@ -65,5 +66,31 @@ describe('DesktopSchedulerService', () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(store.listTasks).toHaveBeenCalledTimes(2);
     await service.stop();
+  });
+
+  it('maps visible scheduled actions to native notifications', () => {
+    const task = {
+      id: 'task-1',
+      title: '每日整理',
+      status: 'enabled',
+      trigger: { type: 'once', runAt: '2026-09-20T10:00:00.000Z' },
+      action: { type: 'skill', skillName: '待办整理', prompt: '整理今天的待办' },
+      timezone: 'Asia/Shanghai',
+      nextRunAt: '2026-09-20T10:00:00.000Z',
+      createdAt: '2026-09-20T09:00:00.000Z',
+      updatedAt: '2026-09-20T09:00:00.000Z',
+    } as const;
+
+    expect(getNativeNotificationRequest(task)).toEqual({
+      title: '定时技能任务: 每日整理',
+      body: '需要启动技能 待办整理: 整理今天的待办',
+      activationTarget: {
+        entryType: 'skill',
+        entryId: '待办整理',
+        title: '待办整理',
+        initialMessage: '整理今天的待办',
+      },
+    });
+    expect(getNativeNotificationRequest({ ...task, action: { type: 'system-tool', toolName: 'get_current_time', input: {} } })).toBeNull();
   });
 });
