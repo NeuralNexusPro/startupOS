@@ -9,6 +9,7 @@ import {
   CanonicalOntologyOSDK,
   CanonicalOntologyStore,
   type CanonicalActionSubmission,
+  type CanonicalContextProjectionRecord,
   type CanonicalFactRecord,
   type CanonicalOntology,
 } from '../index';
@@ -103,6 +104,24 @@ function submission(overrides: Partial<CanonicalActionSubmission> = {}): Canonic
     }],
     expectedRevision: 0,
     audit: { actorId: 'actor-1', runId: 'run-1', workItemId: 'work-1' },
+    ...overrides,
+  };
+}
+
+function projection(overrides: Partial<CanonicalContextProjectionRecord> = {}): CanonicalContextProjectionRecord {
+  return {
+    id: 'projection-1',
+    kind: 'task',
+    context: {
+      contextInstanceId: 'context-1', projectId: 'project-1', taskId: 'task-1', sessionId: 'session-1', branchId: 'branch-1',
+      runId: 'run-1', workItemId: 'work-1', attemptId: 'attempt-1', contractId: 'contract-1', contractHash: 'sha256:contract',
+      ontology: { ontologyId: 'orders', ontologyVersion: '3' },
+    },
+    revision: 1,
+    factRefs: [fact().ref],
+    decisionRefs: [{ ontologyId: 'orders', ontologyVersion: '3', decisionId: 'decision-1', decisionVersion: '1' }],
+    sourceRefs: [{ sourceType: 'runtime', sourceId: 'run-1' }],
+    createdAt: instant,
     ...overrides,
   };
 }
@@ -237,5 +256,62 @@ describe('CanonicalOntologyOSDK', () => {
     expect(result).toEqual({ ok: false, issues: [expect.objectContaining({ code: 'RULE_EVALUATION_UNAVAILABLE' })] });
     expect(await store.readOperations('project-1')).toEqual([]);
     expect(await store.readFacts('project-1')).toHaveLength(1);
+  });
+
+  it('appends, filters and resolves context projections without changing references', async () => {
+    await store.appendFact('project-1', fact());
+    const record = projection();
+    expect(await osdk.appendContextProjection({ projectId: 'project-1', projection: record })).toEqual({ ok: true, projection: record });
+    await osdk.appendContextProjection({
+      projectId: 'project-1',
+      projection: projection({
+        id: 'projection-2',
+        context: { ...record.context, contextInstanceId: 'context-2', attemptId: 'attempt-2' },
+      }),
+    });
+    const filtered = await osdk.queryContextProjections({ projectId: 'project-1', contextInstanceId: 'context-1', attemptId: 'attempt-1', kind: 'task', revision: 1 });
+    expect(filtered.ok && filtered.projections).toEqual([record]);
+    const resolved = await osdk.resolveContextProjection({ projectId: 'project-1', projection: record });
+    expect(resolved.ok && resolved.facts).toEqual([fact()]);
+    expect(resolved.ok && resolved.projection.decisionRefs).toEqual(record.decisionRefs);
+    expect((await store.readProjections('project-1'))[0]?.createdAt).toEqual(instant);
+  });
+
+  it('keeps historical projections queryable after an ontology upgrade', async () => {
+    await store.appendFact('project-1', fact());
+    const record = projection();
+    await osdk.appendContextProjection({ projectId: 'project-1', projection: record });
+    await store.writeOntology('project-1', { ...ontology(), version: '4' });
+
+    const result = await osdk.queryContextProjections({
+      projectId: 'project-1', contextInstanceId: 'context-1', attemptId: 'attempt-1',
+    });
+    expect(result.ok && result.projections).toEqual([record]);
+  });
+
+  it('rejects invalid projection writes and handles idempotent projection ids', async () => {
+    await store.appendFact('project-1', fact());
+    const record = projection();
+    const invalid = await osdk.appendContextProjection({ projectId: 'project-1', projection: projection({ revision: -1 }) });
+    const missing = await osdk.appendContextProjection({ projectId: 'project-1', projection: projection({ factRefs: [{ ...fact().ref, factVersion: 'missing' }] }) });
+    expect(invalid).toEqual({ ok: false, issues: [expect.objectContaining({ code: 'INVALID_REVISION' })] });
+    expect(missing).toEqual({ ok: false, issues: [expect.objectContaining({ code: 'FACT_REFERENCE_NOT_FOUND' })] });
+    expect(await store.readProjections('project-1')).toEqual([]);
+    expect(await osdk.appendContextProjection({ projectId: 'project-1', projection: record })).toEqual({ ok: true, projection: record });
+    expect(await osdk.appendContextProjection({ projectId: 'project-1', projection: record })).toEqual({ ok: true, projection: record });
+    const conflict = await osdk.appendContextProjection({ projectId: 'project-1', projection: projection({ payload: { changed: true } }) });
+    expect(conflict).toEqual({ ok: false, issues: [expect.objectContaining({ code: 'PROJECTION_CONFLICT' })] });
+    expect(await store.readProjections('project-1')).toHaveLength(1);
+  });
+
+  it('resolves only the exact historical fact and never writes a missing reference', async () => {
+    await store.appendFact('project-1', fact());
+    await store.appendFact('project-1', fact({ ref: { ...fact().ref, factVersion: '2' }, revision: 2, value: { total: 99 } }));
+    const result = await osdk.resolveContextProjection({
+      projectId: 'project-1', projection: projection({ factRefs: [{ ...fact().ref, factVersion: '2' }, { ...fact().ref, factId: 'missing' }] }),
+    });
+    expect(result.ok && result.facts).toEqual([fact({ ref: { ...fact().ref, factVersion: '2' }, revision: 2, value: { total: 99 } })]);
+    expect(await store.readFacts('project-1')).toHaveLength(2);
+    expect(await store.readProjections('project-1')).toEqual([]);
   });
 });

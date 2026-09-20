@@ -4,6 +4,13 @@ import { CanonicalOntologyStore } from './canonical-ontology-store';
 import type {
   CanonicalActionSubmission,
   CanonicalActionSubmissionResult,
+  CanonicalContextProjectionAppendRequest,
+  CanonicalContextProjectionAppendResult,
+  CanonicalContextProjectionQuery,
+  CanonicalContextProjectionQueryResult,
+  CanonicalContextProjectionResolveRequest,
+  CanonicalContextProjectionResolveResult,
+  CanonicalContextProjectionRecord,
   CanonicalFactQuery,
   CanonicalFactQueryResult,
   CanonicalFactRecord,
@@ -24,6 +31,12 @@ function sameFactRef(left: CanonicalFactReference, right: CanonicalFactReference
     && left.factTypeId === right.factTypeId
     && left.factId === right.factId
     && left.factVersion === right.factVersion;
+}
+
+const PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+function validProjectId(projectId: string): boolean {
+  return PROJECT_ID.test(projectId) && !projectId.includes('..');
 }
 
 function stableValue(value: unknown): unknown {
@@ -51,6 +64,7 @@ function operationFingerprint(record: CanonicalOperationRecord): string | undefi
 
 export class CanonicalOntologyOSDK {
   private submissionTail: Promise<void> = Promise.resolve();
+  private projectionTail: Promise<void> = Promise.resolve();
 
   constructor(private readonly store = new CanonicalOntologyStore()) {}
 
@@ -107,6 +121,110 @@ export class CanonicalOntologyOSDK {
       facts: [...latest.values()]
         .sort((left, right) => left.fact.acceptedAt.getTime() - right.fact.acceptedAt.getTime() || left.index - right.index)
         .map(({ fact }) => fact),
+    };
+  }
+
+  appendContextProjection(request: CanonicalContextProjectionAppendRequest): Promise<CanonicalContextProjectionAppendResult> {
+    const result = this.projectionTail.then(() => this.appendContextProjectionExclusive(request));
+    this.projectionTail = result.then(() => undefined, () => undefined);
+    return result;
+  }
+
+  private async appendContextProjectionExclusive(
+    request: CanonicalContextProjectionAppendRequest,
+  ): Promise<CanonicalContextProjectionAppendResult> {
+    const { projectId, projection } = request;
+    const issues: CanonicalValidationIssue[] = [];
+    if (!validProjectId(projectId)) {
+      issues.push(issue('INVALID_PROJECT_ID', 'projectId', 'Project ID must be a safe project identifier'));
+    }
+    if (projection.context.projectId !== projectId) {
+      issues.push(issue('PROJECT_ID_MISMATCH', 'projection.context.projectId', `Expected project ${projectId}`));
+    }
+    if (!Number.isSafeInteger(projection.revision) || projection.revision < 0) {
+      issues.push(issue('INVALID_REVISION', 'projection.revision', 'Projection revision must be a non-negative safe integer'));
+    }
+    if (issues.length) return { ok: false, issues };
+
+    const existing = await this.store.readProjections(projectId);
+    const duplicate = existing.find(({ id }) => id === projection.id);
+    if (duplicate) {
+      return JSON.stringify(stableValue(duplicate)) === JSON.stringify(stableValue(projection))
+        ? { ok: true, projection: duplicate }
+        : { ok: false, issues: [issue('PROJECTION_CONFLICT', 'projection.id', `Projection ${projection.id} has different content`)] };
+    }
+
+    const stored = await this.store.readOntology(projectId);
+    if (!stored) return { ok: false, issues: [issue('ONTOLOGY_NOT_FOUND', 'projectId', `No ontology for project ${projectId}`)] };
+    const ontology = stored.data;
+    const validation = validateCanonicalOntology(ontology);
+    if (!validation.valid) return { ok: false, issues: validation.issues };
+    if (ontology.projectId !== projectId) {
+      issues.push(issue('PROJECT_ID_MISMATCH', 'projectId', `Expected project ${ontology.projectId}`));
+    }
+    if (projection.context.ontology.ontologyId !== ontology.id) {
+      issues.push(issue('ONTOLOGY_ID_MISMATCH', 'projection.context.ontology.ontologyId', `Expected ontology ${ontology.id}`));
+    }
+    if (projection.context.ontology.ontologyVersion !== ontology.version) {
+      issues.push(issue('ONTOLOGY_VERSION_MISMATCH', 'projection.context.ontology.ontologyVersion', `Expected ontology version ${ontology.version}`));
+    }
+
+    const facts = await this.store.readFacts(projectId);
+    projection.factRefs?.forEach((ref, index) => {
+      if (ref.ontologyId !== projection.context.ontology.ontologyId || ref.ontologyVersion !== projection.context.ontology.ontologyVersion) {
+        issues.push(issue('FACT_REFERENCE_MISMATCH', `projection.factRefs[${index}]`, 'Fact reference must match the projection ontology'));
+      } else if (!facts.some(({ ref: factRef }) => sameFactRef(factRef, ref))) {
+        issues.push(issue('FACT_REFERENCE_NOT_FOUND', `projection.factRefs[${index}]`, `Fact ${ref.factId} at version ${ref.factVersion} was not found`));
+      }
+    });
+    projection.decisionRefs?.forEach((ref, index) => {
+      if (ref.ontologyId !== projection.context.ontology.ontologyId || ref.ontologyVersion !== projection.context.ontology.ontologyVersion) {
+        issues.push(issue('DECISION_REFERENCE_MISMATCH', `projection.decisionRefs[${index}]`, 'Decision reference must match the projection ontology'));
+      }
+    });
+    if (issues.length) return { ok: false, issues };
+
+    await this.store.appendProjection(projectId, projection);
+    return { ok: true, projection };
+  }
+
+  async queryContextProjections(query: CanonicalContextProjectionQuery): Promise<CanonicalContextProjectionQueryResult> {
+    const issues: CanonicalValidationIssue[] = [];
+    if (!validProjectId(query.projectId)) issues.push(issue('INVALID_PROJECT_ID', 'projectId', 'Project ID must be a safe project identifier'));
+    if (!query.contextInstanceId) issues.push(issue('CONTEXT_INSTANCE_REQUIRED', 'contextInstanceId', 'contextInstanceId is required'));
+    if (!query.attemptId) issues.push(issue('ATTEMPT_REQUIRED', 'attemptId', 'attemptId is required'));
+    if (query.revision !== undefined && (!Number.isSafeInteger(query.revision) || query.revision < 0)) {
+      issues.push(issue('INVALID_REVISION', 'revision', 'Revision must be a non-negative safe integer'));
+    }
+    if (issues.length) return { ok: false, issues };
+
+    const projections = (await this.store.readProjections(query.projectId)).filter((projection) => (
+      projection.context.projectId === query.projectId
+      && projection.context.contextInstanceId === query.contextInstanceId
+      && projection.context.attemptId === query.attemptId
+      && (query.kind === undefined || projection.kind === query.kind)
+      && (query.revision === undefined || projection.revision === query.revision)
+    ));
+    return { ok: true, projections };
+  }
+
+  async resolveContextProjection(
+    request: CanonicalContextProjectionResolveRequest,
+  ): Promise<CanonicalContextProjectionResolveResult> {
+    if (!validProjectId(request.projectId)) {
+      return { ok: false, issues: [issue('INVALID_PROJECT_ID', 'projectId', 'Project ID must be a safe project identifier')] };
+    }
+    if (request.projection.context.projectId !== request.projectId) {
+      return { ok: false, issues: [issue('PROJECT_ID_MISMATCH', 'projection.context.projectId', `Expected project ${request.projectId}`)] };
+    }
+    const facts = await this.store.readFacts(request.projectId);
+    return {
+      ok: true,
+      projection: request.projection,
+      facts: (request.projection.factRefs ?? []).flatMap((ref) => {
+        const fact = facts.find(({ ref: storedRef }) => sameFactRef(storedRef, ref));
+        return fact ? [fact] : [];
+      }),
     };
   }
 

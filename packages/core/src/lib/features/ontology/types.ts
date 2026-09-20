@@ -366,6 +366,40 @@ export type CanonicalFactQueryResult =
   | { ok: true; facts: CanonicalFactRecord[] }
   | { ok: false; issues: CanonicalValidationIssue[] };
 
+export interface CanonicalContextProjectionAppendRequest {
+  projectId: string;
+  projection: CanonicalContextProjectionRecord;
+}
+
+export type CanonicalContextProjectionAppendResult =
+  | { ok: true; projection: CanonicalContextProjectionRecord }
+  | { ok: false; issues: CanonicalValidationIssue[] };
+
+export interface CanonicalContextProjectionQuery {
+  projectId: string;
+  contextInstanceId: string;
+  attemptId: string;
+  kind?: CanonicalContextProjectionKind;
+  revision?: number;
+}
+
+export type CanonicalContextProjectionQueryResult =
+  | { ok: true; projections: CanonicalContextProjectionRecord[] }
+  | { ok: false; issues: CanonicalValidationIssue[] };
+
+export interface CanonicalContextProjectionResolveRequest {
+  projectId: string;
+  projection: CanonicalContextProjectionRecord;
+}
+
+export type CanonicalContextProjectionResolveResult =
+  | {
+    ok: true;
+    projection: CanonicalContextProjectionRecord;
+    facts: CanonicalFactRecord[];
+  }
+  | { ok: false; issues: CanonicalValidationIssue[] };
+
 export interface CanonicalActionOutputDraft {
   factId: string;
   factTypeId: string;
