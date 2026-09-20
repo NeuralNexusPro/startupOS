@@ -1,10 +1,10 @@
 # Story ONT.7：Context Projection Protocol
 
 **Epic:** ONT  
-**状态:** 🟡 In Progress（ONT7-T1 Done）
+**状态:** 🟡 In Progress（ONT7-T1 Done，ONT7-T2 实施中）
 **Owner:** Architecture / Core  
-**Task:** ONT7-T1  
-**最后更新:** 2026-09-18
+**Task:** ONT7-T1、ONT7-T2
+**最后更新:** 2026-09-20
 
 ## User Story
 
@@ -17,8 +17,11 @@
 - [x] projection 覆盖九类最小运行语义。
 - [x] checkpoint 可表达 cursor、revision、attempt 和 lease epoch。
 - [x] ONT7-T1 不实现存储、调度或自动恢复。
+- [ ] ONT7-T2 通过公共 OSDK 提供 projection append/query/resolver。
+- [ ] append 在写盘前校验 project、当前 ontology/version、引用和 revision，并支持同 id 幂等重试。
+- [ ] query 严格隔离 context/attempt，resolver 只解析 ONT 自有 fact 引用且不产生回写。
 
-完整 Story 仍需后续工作包实现 projection append/query 与持久化适配。
+ONT7-T2 的实施范围、接口、边界和验证命令已写入本 Story；研发任务为 ARCH-201。
 
 ## 文档
 
