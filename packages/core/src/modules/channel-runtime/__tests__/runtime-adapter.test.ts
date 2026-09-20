@@ -43,7 +43,11 @@ describe('StreamingSessionRuntimeAdapter', () => {
           listener?.({ type: 'message_update', assistantMessageEvent: { type: 'text_delta', delta: 'hel' } });
           listener?.({ type: 'tool_execution_start', toolName: 'search' });
           listener?.({ type: 'tool_execution_end', toolName: 'write_file', result: { details: { filePath: '/data/solutions/demo/manifest.json' } } });
-          listener?.({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'hello' }, { type: 'thinking', thinking: 'private' }] } });
+          listener?.({ type: 'message_end', message: {
+            role: 'assistant',
+            content: [{ type: 'text', text: 'hello' }, { type: 'thinking', thinking: 'private' }],
+            usage: { input: 10, output: 2, cacheRead: 1, cacheWrite: 0, totalTokens: 13 },
+          } });
         },
       },
     }) }, { appendUserMessage, appendAssistantMessage });
@@ -55,11 +59,11 @@ describe('StreamingSessionRuntimeAdapter', () => {
       { type: 'tool_status', label: 'search', state: 'running' },
       { type: 'tool_status', label: 'write_file', state: 'completed' },
       { type: 'artifact_changed', filename: 'manifest.json', filePath: '/data/solutions/demo/manifest.json', artifactType: 'solution' },
-      { type: 'assistant_message', content: 'hello' },
+      { type: 'assistant_message', content: 'hello', usage: { input: 10, output: 2, cacheRead: 1, cacheWrite: 0, totalTokens: 13 } },
       { type: 'completed', resultRef: 'session://session-1' },
     ]);
     expect(appendUserMessage).toHaveBeenCalledWith('session-1', 'hello', [], undefined);
-    expect(appendAssistantMessage).toHaveBeenCalledWith('session-1', 'hello');
+    expect(appendAssistantMessage).toHaveBeenCalledWith('session-1', 'hello', { input: 10, output: 2, cacheRead: 1, cacheWrite: 0, totalTokens: 13 });
     expect(JSON.stringify(events)).not.toContain('private');
   });
 
