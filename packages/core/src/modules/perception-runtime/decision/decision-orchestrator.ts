@@ -42,10 +42,40 @@ export class DecisionOrchestrator {
     });
     if (!reserved.created) return recover(reserved.receipt, candidates);
 
+    return this.request(event, rule, candidates, id);
+  }
+
+  async retry(event: PerceptionEventV1, rule: JevRule, candidates: readonly AuthorizedDecisionCandidate[]): Promise<DecisionOutcome> {
+    const id = this.receipts.stableId(event.id, rule.id, rule.decision.catalogVersion);
+    const receipt = this.receipts.get(id);
+    if (!receipt) throw new Error('DECISION_NOT_FOUND');
+    if (receipt.status === 'ignored' || receipt.status === 'auto-executed' || receipt.status === 'user-executed') {
+      return recover(receipt, candidates);
+    }
+    return this.request(event, rule, candidates, id);
+  }
+
+  get(id: string): JevDecisionReceipt | null { return this.receipts.get(id) }
+  listPending(): JevDecisionReceipt[] { return this.receipts.listPending() }
+
+  ignore(id: string): Promise<JevDecisionReceipt> {
+    return this.receipts.update(id, (current) => ({
+      ...current, status: 'ignored', reason: undefined, selectedKey: 'ignore', updatedAt: new Date().toISOString(),
+    }));
+  }
+
+  select(id: string, selectedKey: string): Promise<JevDecisionReceipt> {
+    return this.receipts.update(id, (current) => ({
+      ...current, selectedKey, reason: 'USER_DISPATCH_READY', updatedAt: new Date().toISOString(),
+    }));
+  }
+
+  private async request(event: PerceptionEventV1, rule: JevRule, candidates: readonly AuthorizedDecisionCandidate[], id: string): Promise<DecisionOutcome> {
     if (!candidates.some(({ candidate }) => candidate.action === 'dispatch')) {
       return { action: 'pending', receipt: await this.defer(id, 'NO_AUTHORIZED_CANDIDATE'), requested: false };
     }
 
+    const request = buildDecisionRequest(event, candidates, this.hashSalt);
     let answer;
     try {
       answer = await this.decisions.decide(request);
@@ -55,7 +85,7 @@ export class DecisionOrchestrator {
     const policy = evaluateDecisionPolicy(answer, candidates.map(({ candidate }) => candidate), rule.execution.requireHitl);
     if (policy.action === 'pending') {
       const receipt = await this.receipts.update(id, (current) => ({
-        ...current, answers: answer, providerModel: answer.providerModel, reason: policy.reason, updatedAt: new Date().toISOString(),
+        ...current, answers: answer, providerModel: answer.providerModel, status: 'pending', reason: policy.reason, updatedAt: new Date().toISOString(),
       }));
       return { action: 'pending', receipt, requested: true };
     }
@@ -67,15 +97,15 @@ export class DecisionOrchestrator {
       return { action: 'ignored', receipt, requested: true };
     }
     const receipt = await this.receipts.update(id, (current) => ({
-      ...current, answers: answer, providerModel: answer.providerModel, reason: 'AUTO_DISPATCH_READY',
+      ...current, answers: answer, providerModel: answer.providerModel, status: 'pending', reason: 'AUTO_DISPATCH_READY',
       selectedKey: policy.selectedKey, updatedAt: new Date().toISOString(),
     }));
     return { action: 'dispatch', receipt, target: policy.candidate.target, requested: true };
   }
 
-  complete(id: string, leaseId: string, resultRef: string): Promise<JevDecisionReceipt> {
+  complete(id: string, leaseId: string, resultRef: string, status: 'auto-executed' | 'user-executed' = 'auto-executed'): Promise<JevDecisionReceipt> {
     return this.receipts.update(id, (current) => ({
-      ...current, status: 'auto-executed', reason: undefined, leaseId, resultRef, updatedAt: new Date().toISOString(),
+      ...current, status, reason: undefined, leaseId, resultRef, updatedAt: new Date().toISOString(),
     }));
   }
 

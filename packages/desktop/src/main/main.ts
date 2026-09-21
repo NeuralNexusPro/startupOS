@@ -435,7 +435,8 @@ app.whenReady().then(() => {
   ipcServices.push(new OntologyService());
   ipcServices.push(new UserRegistryService());
   ipcServices.push(new MiscService());
-  ipcServices.push(new JevProviderService());
+  const jevProviderService = new JevProviderService();
+  ipcServices.push(jevProviderService);
   ipcServices.push(new OntologyDataService());
   ipcServices.push(new CollaborationService());
   const taskRuntimeIpc = new AgentTaskRuntimeIpcController();
@@ -455,7 +456,7 @@ app.whenReady().then(() => {
   }), {
     every: (key, intervalMs, task) => desktopSchedulerService?.every(key, intervalMs, task),
     cancel: key => desktopSchedulerService?.cancel(key),
-  });
+  }, jevProviderService.decisions);
   mainWindow = createWindow();
   windowManager.setMainWindow(mainWindow);
   windowManager.createDockWindow();

@@ -26,6 +26,12 @@ interface StoredJevProviderConfig {
   secretRef?: string;
 }
 
+export interface JevProviderSnapshot {
+  baseUrl: string;
+  model: string;
+  apiKey: string;
+}
+
 export class JevProviderConfigError extends Error {
   constructor(readonly code: 'INVALID_PROVIDER_CONFIG' | 'SECURE_STORAGE_UNAVAILABLE' | 'JEV_NOT_CONFIGURED') {
     super(code);
@@ -79,8 +85,18 @@ export class JevProviderConfigService {
   }
 
   async resolveApiKey(): Promise<string> {
+    return this.resolveApiKeyFor(this.read());
+  }
+
+  async getSnapshot(): Promise<JevProviderSnapshot> {
+    const config = this.read();
+    if (!config.enabled) throw new JevProviderConfigError('JEV_NOT_CONFIGURED');
+    return { baseUrl: config.baseUrl, model: config.model, apiKey: await this.resolveApiKeyFor(config) };
+  }
+
+  private async resolveApiKeyFor(config: StoredJevProviderConfig): Promise<string> {
     if (this.environmentApiKey) return this.environmentApiKey;
-    const ref = this.read().secretRef;
+    const ref = config.secretRef;
     if (!ref || !this.options.credentials) throw new JevProviderConfigError('JEV_NOT_CONFIGURED');
     return this.options.credentials.resolve(ref);
   }

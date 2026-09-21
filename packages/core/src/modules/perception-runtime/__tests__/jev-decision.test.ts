@@ -8,6 +8,7 @@ import {
   DecisionReceiptStore,
   ExecutionLeaseStore,
   PerceptionAuditStore,
+  PerceptionEventStore,
   PerceptionRouter,
   TriggerRuleStore,
   buildDecisionRequest,
@@ -172,5 +173,78 @@ describe('PerceptionRouter Jev integration', () => {
     const router = new PerceptionRouter(dataRoot, { list: () => [direct] }, { authorize: async () => ({ authorized: false, reason: 'denied' }) }, { dispatch });
     expect(await router.route(event())).toEqual([{ ruleId: 'direct-rule', status: 'denied', reason: 'denied' }]);
     expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it('serializes concurrent manual choices through the same decision lease and restores the first result', async () => {
+    const dataRoot = root();
+    const eventValue = event();
+    const secondTarget = { key: 'project:project-2', action: 'dispatch' as const, target: { kind: 'project' as const, id: 'project-2' } };
+    const ruleValue = { ...rule(), decision: { ...rule().decision, candidates: [...rule().decision.candidates, secondTarget] } };
+    new PerceptionEventStore(dataRoot).save(eventValue);
+    new TriggerRuleStore(dataRoot).save(ruleValue);
+    let finish!: () => void;
+    const dispatch = vi.fn(() => new Promise<{ resultRef: string }>((resolve) => { finish = () => resolve({ resultRef: 'perception://session/manual-1' }); }));
+    const orchestrator = new DecisionOrchestrator({ decide: async () => ({
+      ...answer(0.8),
+      routeTarget: { choice: 'project:project-1', confidence: 0.8, probabilities: { ignore: 0.02, notify_user: 0.02, 'project:project-1': 0.48, 'project:project-2': 0.48 } },
+    }) }, new DecisionReceiptStore(dataRoot), 'stable-salt');
+    const router = new PerceptionRouter(dataRoot, new TriggerRuleStore(dataRoot), { authorize: async () => ({ authorized: true }) }, { dispatch }, undefined, orchestrator);
+    expect(await router.route(eventValue)).toMatchObject([{ status: 'pending' }]);
+    const decisionId = orchestrator.listPending()[0]!.id;
+    const first = router.resolveDecision(decisionId, 'project:project-1');
+    const second = router.resolveDecision(decisionId, 'project:project-2');
+    await vi.waitFor(() => expect(dispatch).toHaveBeenCalledOnce());
+    finish();
+    const results = await Promise.all([first, second]);
+    expect(results).toEqual([
+      expect.objectContaining({ status: 'dispatched', resultRef: 'perception://session/manual-1' }),
+      expect.objectContaining({ status: 'duplicate', resultRef: 'perception://session/manual-1' }),
+    ]);
+    expect(orchestrator.get(decisionId)).toMatchObject({ status: 'user-executed', selectedKey: 'project:project-1', resultRef: 'perception://session/manual-1' });
+    expect(new ExecutionLeaseStore(dataRoot).list()).toHaveLength(1);
+  });
+
+  it('reauthorizes manual choices and keeps the receipt pending when the target was revoked', async () => {
+    const dataRoot = root();
+    const eventValue = event();
+    const ruleValue = rule();
+    new PerceptionEventStore(dataRoot).save(eventValue);
+    new TriggerRuleStore(dataRoot).save(ruleValue);
+    let authorized = true;
+    const orchestrator = new DecisionOrchestrator({ decide: async () => answer(0.8) }, new DecisionReceiptStore(dataRoot), 'stable-salt');
+    const dispatch = vi.fn();
+    const router = new PerceptionRouter(dataRoot, new TriggerRuleStore(dataRoot), { authorize: async () => ({ authorized }) }, { dispatch }, undefined, orchestrator);
+    await router.route(eventValue);
+    authorized = false;
+    const decisionId = orchestrator.listPending()[0]!.id;
+    expect(await router.resolveDecision(decisionId, 'project:project-1')).toMatchObject({ status: 'pending', reason: 'TARGET_NOT_AUTHORIZED' });
+    expect(orchestrator.get(decisionId)).toMatchObject({ status: 'pending', reason: 'TARGET_NOT_AUTHORIZED' });
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it('keeps pending truth unchanged when the advisory notification fails', async () => {
+    const dataRoot = root();
+    const orchestrator = new DecisionOrchestrator({ decide: async () => answer(0.8) }, new DecisionReceiptStore(dataRoot), 'stable-salt');
+    const notify = vi.fn(async () => { throw new Error('native notification failed'); });
+    const router = new PerceptionRouter(dataRoot, { list: () => [rule()] }, { authorize: async () => ({ authorized: true }) }, { dispatch: vi.fn() }, undefined, orchestrator, { notify });
+    expect(await router.route(event())).toMatchObject([{ status: 'pending' }]);
+    expect(notify).toHaveBeenCalledOnce();
+    expect(orchestrator.listPending()[0]).toMatchObject({ status: 'pending', reason: 'LOW_CONFIDENCE' });
+  });
+
+  it('does not block a direct event from another connector while Jev is failing', async () => {
+    const dataRoot = root();
+    let reject!: (error: Error) => void;
+    const decisions = { decide: vi.fn(() => new Promise<JevDecisionAnswer>((_resolve, fail) => { reject = fail; })) };
+    const direct = { ...rule(), id: 'rule-direct', sources: ['wecom' as const], eventTypes: ['message.received' as const], routingMode: 'direct' as const, decision: undefined, target: { kind: 'project' as const, id: 'project-1' } } as unknown as PerceptionTriggerRule;
+    const dispatch = vi.fn(async () => ({ resultRef: 'direct-result' }));
+    const router = new PerceptionRouter(dataRoot, { list: () => [rule(), direct] }, { authorize: async () => ({ authorized: true }) }, { dispatch }, undefined, new DecisionOrchestrator(decisions, new DecisionReceiptStore(dataRoot), 'stable-salt'));
+    const jev = router.route(event());
+    await vi.waitFor(() => expect(decisions.decide).toHaveBeenCalledOnce());
+    const directEvent = { ...event(), id: 'event-2', source: 'wecom' as const, sourceEventId: 'message-2', connectorId: 'wecom-main', type: 'message.received' as const };
+    await expect(router.route(directEvent)).resolves.toMatchObject([{ status: 'dispatched', resultRef: 'direct-result' }]);
+    reject(Object.assign(new Error('provider down'), { code: 'JEV_NETWORK_ERROR' }));
+    await expect(jev).resolves.toMatchObject([{ status: 'pending', reason: 'JEV_NETWORK_ERROR' }]);
+    expect(dispatch).toHaveBeenCalledOnce();
   });
 });

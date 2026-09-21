@@ -13,6 +13,9 @@ import { FileSystemPerceptionTargetRegistry } from '../../../../../core/src/lib/
 import {
   ChannelTriggerExecutionAdapter,
   ConnectorHealthStore,
+  AtomicDataFileStore,
+  DecisionOrchestrator,
+  DecisionReceiptStore,
   ExternalTriggerGrantStore,
   FileTargetAuthorizationPort,
   PerceptionConnectorConfigStore,
@@ -26,6 +29,7 @@ import {
   type PerceptionPluginWebhookRequest,
   type PerceptionPluginWebhookResult,
   type PluginSchedulePort,
+  type PerceptionDecisionPort,
 } from '../../../../../core/src/modules/perception-runtime';
 import type { ChannelMessageIngress } from '../../../../../core/src/modules/channel-runtime';
 import { SafeStorageWeComCredentialAdapter } from '../perception-wecom/safe-storage-wecom-credential-adapter';
@@ -39,6 +43,7 @@ import type {
   PerceptionPluginManifest,
 } from '../../../../../core/src/modules/perception-runtime';
 import { FilePluginStateAdapter } from './file-plugin-state-adapter';
+import { showNativeSystemNotification, type NativeNotificationResult } from '../native-notification-service';
 
 const BUNDLED_CATALOG = [
   {
@@ -118,11 +123,14 @@ export class PerceptionPluginHostService {
   private active = new Map<string, string>();
   private reconciling = false;
   private generation = 0;
+  private router?: PerceptionRouter;
   constructor(
     private readonly channelIngress: ChannelMessageIngress,
     private readonly dataRoot = getDataRoot(),
     private readonly logs: PluginLogSink | undefined,
-    private readonly schedule: PluginSchedulePort
+    private readonly schedule: PluginSchedulePort,
+    private readonly decisions?: PerceptionDecisionPort,
+    private readonly notify: (request: { title: string; body?: string; activationTarget?: unknown }) => Promise<NativeNotificationResult> = showNativeSystemNotification,
   ) {
     this.configs = new PerceptionConnectorConfigStore(dataRoot);
     this.replies = new PluginReplyDeliveryService(dataRoot);
@@ -141,6 +149,35 @@ export class PerceptionPluginHostService {
       } },
     });
     this.registerProvisioningIpc();
+    this.registerDecisionIpc();
+  }
+  private registerDecisionIpc(): void {
+    ipcMain.handle(IPC_CHANNELS.PERCEPTION_DECISION_PENDING, async (): Promise<IpcResponse<unknown>> =>
+      this.runDecision(() => this.router?.listPendingDecisions() ?? []));
+    ipcMain.handle(IPC_CHANNELS.PERCEPTION_DECISION_RESOLVE, async (_event, input: { decisionId?: string; candidateKey?: string }): Promise<IpcResponse<unknown>> =>
+      this.runDecision(async () => {
+        if (!input || typeof input.decisionId !== 'string' || typeof input.candidateKey !== 'string') throw new Error('INVALID_DECISION_REQUEST');
+        await this.requireRouter().resolveDecision(input.decisionId, input.candidateKey);
+        return this.requireRouter().getDecision(input.decisionId);
+      }));
+    ipcMain.handle(IPC_CHANNELS.PERCEPTION_DECISION_RETRY, async (_event, input: { decisionId?: string }): Promise<IpcResponse<unknown>> =>
+      this.runDecision(async () => {
+        if (!input || typeof input.decisionId !== 'string') throw new Error('INVALID_DECISION_REQUEST');
+        await this.requireRouter().retryDecision(input.decisionId);
+        return this.requireRouter().getDecision(input.decisionId);
+      }));
+  }
+  private requireRouter(): PerceptionRouter {
+    if (!this.router || !this.decisions) throw new Error('RUNTIME_UNAVAILABLE');
+    return this.router;
+  }
+  private async runDecision<T>(action: () => T | Promise<T>): Promise<IpcResponse<T>> {
+    try { return { success: true, data: await action(), timestamp: new Date().toISOString() }; }
+    catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      const code = /^[A-Z][A-Z0-9_]{2,64}$/.test(message) ? message : 'DECISION_ACTION_FAILED';
+      return { success: false, error: { code, message: code }, timestamp: new Date().toISOString() };
+    }
   }
   private registerProvisioningIpc(): void {
     ipcMain.handle(
@@ -346,6 +383,9 @@ export class PerceptionPluginHostService {
         },
       }
     );
+    const orchestrator = this.decisions
+      ? new DecisionOrchestrator(this.decisions, new DecisionReceiptStore(this.dataRoot), decisionHashSalt(this.dataRoot))
+      : undefined;
     const router = new PerceptionRouter(
       this.dataRoot,
       new TriggerRuleStore(this.dataRoot),
@@ -353,8 +393,24 @@ export class PerceptionPluginHostService {
         grants,
         new FileSystemPerceptionTargetRegistry(this.dataRoot)
       ),
-      execution
+      execution,
+      undefined,
+      orchestrator,
+      { notify: async ({ receipt, event }) => {
+        let shown = false;
+        try {
+          shown = (await this.notify({
+            title: '感知事件需要确认',
+            body: `来源：${event.source} · 原因：${receipt.reason ?? '需要人工选择'}`,
+            activationTarget: { type: 'perception-decision', decisionId: receipt.id },
+          })).shown;
+        } catch { /* A safe diagnostic is emitted below. */ }
+        if (!shown) this.logs?.write(PLUGIN_IDS[event.source] ?? event.source, event.connectorId, {
+          level: 'warn', stage: 'decision.notification', eventId: event.id, safeCode: 'DECISION_NOTIFICATION_FAILED',
+        });
+      } },
     );
+    this.router = router;
     const state = new FilePluginStateAdapter(this.dataRoot);
     return {
       log: this.logs,
@@ -487,4 +543,10 @@ export class PerceptionPluginHostService {
       replies: this.replies,
     };
   }
+}
+
+function decisionHashSalt(dataRoot: string): string {
+  const store = new AtomicDataFileStore<{ hashSalt: string }>(path.join(dataRoot, 'perception', 'decision-runtime.json'));
+  if (store.exists()) return store.read().data.hashSalt;
+  return store.write({ hashSalt: randomUUID() }).data.hashSalt;
 }

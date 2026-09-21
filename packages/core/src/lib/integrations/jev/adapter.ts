@@ -148,38 +148,38 @@ export function buildJevRequest(model: string, request: JevDecisionRequest) {
 
 export function parseJevResponse(value: unknown, candidateKeys: readonly string[]): JevDecisionAnswer {
   const root = record(value);
-  const answers = record(root.answers);
+  const answers = record(root['answers']);
   if (!sameKeys(answers, ANSWER_KEYS)) throw new JevError('JEV_INVALID_RESPONSE');
-  const routeTarget = choiceAnswer(answers.route_target, candidateKeys);
-  const urgency = scoreAnswer(answers.urgency);
-  const risk = scoreAnswer(answers.risk);
+  const routeTarget = choiceAnswer(answers['route_target'], candidateKeys);
+  const urgency = scoreAnswer(answers['urgency']);
+  const risk = scoreAnswer(answers['risk']);
   return {
-    ...(typeof root.model === 'string' ? { providerModel: root.model } : {}),
+    ...(typeof root['model'] === 'string' ? { providerModel: root['model'] } : {}),
     routeTarget,
     urgency,
     risk,
-    needsHitl: noulAnswer(answers.needs_hitl),
-    retainAsEvidence: noulAnswer(answers.retain_as_evidence),
+    needsHitl: noulAnswer(answers['needs_hitl']),
+    retainAsEvidence: noulAnswer(answers['retain_as_evidence']),
   };
 }
 
 function choiceAnswer(value: unknown, keys: readonly string[]): JevChoiceAnswer {
   const answer = record(value);
-  if (typeof answer.choice !== 'string' || !keys.includes(answer.choice)) throw new JevError('JEV_INVALID_RESPONSE');
-  return { choice: answer.choice, confidence: probability(answer.confidence), probabilities: distribution(answer.probabilities, keys) };
+  if (typeof answer['choice'] !== 'string' || !keys.includes(answer['choice'])) throw new JevError('JEV_INVALID_RESPONSE');
+  return { choice: answer['choice'], confidence: probability(answer['confidence']), probabilities: distribution(answer['probabilities'], keys) };
 }
 
 function scoreAnswer(value: unknown): JevScoreAnswer {
   const answer = record(value);
-  if (typeof answer.score !== 'number' || !Number.isFinite(answer.score) || answer.score < 0 || answer.score > 1) {
+  if (typeof answer['score'] !== 'number' || !Number.isFinite(answer['score']) || answer['score'] < 0 || answer['score'] > 1) {
     throw new JevError('JEV_INVALID_RESPONSE');
   }
-  return { score: answer.score, confidence: probability(answer.confidence), probabilities: distribution(answer.probabilities, SCORE_KEYS) };
+  return { score: answer['score'], confidence: probability(answer['confidence']), probabilities: distribution(answer['probabilities'], SCORE_KEYS) };
 }
 
 function noulAnswer(value: unknown): number {
   const answer = record(value);
-  return probability(answer.noul);
+  return probability(answer['noul']);
 }
 
 function distribution(value: unknown, keys: readonly string[]): Record<string, number> {
@@ -235,8 +235,9 @@ function isPrivateHost(hostname: string): boolean {
   if (hostname === '::' || hostname.startsWith('fe8') || hostname.startsWith('fe9') || hostname.startsWith('fea') || hostname.startsWith('feb') || hostname.startsWith('fc') || hostname.startsWith('fd')) return true;
   const octets = (mappedIpv4(hostname) ?? hostname).split('.').map(Number);
   if (octets.length !== 4 || octets.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return false;
-  return octets[0] === 0 || octets[0] === 10 || octets[0] === 100 && octets[1] >= 64 && octets[1] <= 127 || octets[0] === 169 && octets[1] === 254
-    || octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31 || octets[0] === 192 && octets[1] === 168;
+  const [first, second] = octets as [number, number, number, number];
+  return first === 0 || first === 10 || first === 100 && second >= 64 && second <= 127 || first === 169 && second === 254
+    || first === 172 && second >= 16 && second <= 31 || first === 192 && second === 168;
 }
 
 function mappedIpv4(hostname: string): string | undefined {
