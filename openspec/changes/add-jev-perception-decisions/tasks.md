@@ -13,10 +13,10 @@
 
 依赖：W1 公共契约。写入范围：Core 非敏感 Provider config、`packages/desktop/src/main/services/**jev**`、IPC protocol/preload/service、`packages/web/src/components/os/settings/**` 与专用 service；不得修改应用其他凭据路径。负责 subagent：Desktop/Security。完成证据：提交、safeStorage/环境凭据/重启测试、浏览器存储与日志负面扫描。
 
-- [ ] 2.1 在独立 `proposal-task/add-jev-perception-decisions-w2-provider` 分支/worktree 实现非敏感 Jev Provider DataFile 与只返回 summary 的读写契约，并验证 API Key/密文/secretRef 不出现在读取结果
-- [ ] 2.2 实现 Desktop `safeStorage` 凭据 adapter、`TYPESAFE_API_KEY` 服务端解析和无安全存储拒绝策略，并通过保存、覆盖、保留、清除、重启恢复与 0600 文件权限测试
-- [ ] 2.3 增加窄 Provider IPC/Web service 边界及 body/错误映射，验证 renderer/API Route 不记录或回显 key，非 Electron 且无 SecretProvider 时返回 `SECURE_STORAGE_UNAVAILABLE`
-- [ ] 2.4 在现有 `SettingsDialog` 增加独立 Jev section，不扩展 `LLMProviderType` 且不写 localStorage，并通过启停、空 key 保留、清除确认、错误提示与键盘可访问组件测试
+- [x] 2.1 在独立 `proposal-task/add-jev-perception-decisions-w2-provider` 分支/worktree 实现非敏感 Jev Provider DataFile 与只返回 summary 的读写契约，并验证 API Key/密文/secretRef 不出现在读取结果
+- [x] 2.2 实现 Desktop `safeStorage` 凭据 adapter、`TYPESAFE_API_KEY` 服务端解析和无安全存储拒绝策略，并通过保存、覆盖、保留、清除、重启恢复与 0600 文件权限测试
+- [x] 2.3 增加窄 Provider IPC/Web service 边界及 body/错误映射，验证 renderer/API Route 不记录或回显 key，非 Electron 且无 SecretProvider 时返回 `SECURE_STORAGE_UNAVAILABLE`
+- [x] 2.4 在现有 `SettingsDialog` 增加独立 Jev section，不扩展 `LLMProviderType` 且不写 localStorage，并通过启停、空 key 保留、清除确认、错误提示与键盘可访问组件测试
 
 ## 3. S15-W3 决策编排、回执与 Router（依赖 W1；可与 W2 并行）
 
