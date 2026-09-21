@@ -1,6 +1,7 @@
 'use client';
 import { useAgentTaskRuntime } from '@/components/os/agent-dialog/use-agent-task-runtime';
 import { AgentTaskCard } from '@/components/os/agent-dialog/AgentTaskCard';
+import { AgentTaskDraftCard } from '@/components/os/agent-dialog/AgentTaskDraftCard';
 import { shouldShowAgentTaskPanel } from '@/components/os/agent-dialog/agent-task-panel-visibility';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -13,6 +14,10 @@ import { v4 as uuidv4 } from 'uuid';
 import { AppWindowManager } from '@/services/AppWindowManager';
 import { WorkspaceWindow } from '@/components/os/workspace';
 import { EntryExportButton } from '@/components/os/EntryExportButton';
+import {
+  createAgentTaskRequestId,
+  type AgentTaskDraftInput,
+} from '@/services/agent-task-runtime';
 import {
   createSessionTransitionGuard,
   shouldAutoStartSession,
@@ -306,6 +311,7 @@ export function SkillDialog({
   } = usePiAgent();
 
   const taskRuntime = useAgentTaskRuntime({ sessionId: runtimeSessionId || '', enabled: isInitialized && !isRestoring && !switchingSessionId });
+  const [taskDraft, setTaskDraft] = useState<AgentTaskDraftInput | null>(null);
 
   const getEffectiveConfig = useSettingsStore((s) => s.getEffectiveConfig);
 
@@ -644,6 +650,22 @@ export function SkillDialog({
     abort();
   }, [abort]);
 
+  useEffect(() => {
+    setTaskDraft(null);
+  }, [runtimeSessionId]);
+
+  const openTaskDraft = useCallback(() => {
+    if (taskRuntime.hasActiveTask || taskDraft) return;
+    taskRuntime.clearError();
+    setTaskDraft({ requestId: createAgentTaskRequestId(), title: '', objective: '', acceptanceCriteria: [''] });
+  }, [taskDraft, taskRuntime]);
+
+  const submitTaskDraft = useCallback(async () => {
+    if (!taskDraft) return;
+    const created = await taskRuntime.create(taskDraft);
+    if (created) setTaskDraft(null);
+  }, [taskDraft, taskRuntime]);
+
   const handleQuestionAnswer = useCallback((messageIndex: number | string, selectedLabels: string[]) => {
     setAnsweredQuestions(prev => new Set(prev).add(messageIndex));
     handleSendMessage(selectedLabels.join(', '));
@@ -938,7 +960,9 @@ export function SkillDialog({
           </div>
         ) : (
           <ChatMessageList
-            footerContent={shouldShowAgentTaskPanel(taskRuntime.snapshot, taskRuntime.hasActiveTask) ? (
+            footerContent={taskDraft ? (
+              <AgentTaskDraftCard draft={taskDraft} submitting={taskRuntime.pendingAction === 'create'} error={taskRuntime.error} onChange={setTaskDraft} onCancel={() => setTaskDraft(null)} onSubmit={() => void submitTaskDraft()} />
+            ) : shouldShowAgentTaskPanel(taskRuntime.snapshot, taskRuntime.hasActiveTask) ? (
               <AgentTaskCard snapshot={taskRuntime.snapshot!} error={taskRuntime.error} pendingAction={taskRuntime.pendingAction} onControl={(action) => void taskRuntime.control(action)} />
             ) : undefined}
             messages={skillMessages.filter(m => m.role !== 'system') as import('@/components/ui/chat').ChatMessageItem[]}
@@ -976,6 +1000,8 @@ export function SkillDialog({
         onRemoveFile={handleSkillRemoveFile}
         uploadError={skillUploadError}
         uploading={skillUploading}
+        onCreateTask={openTaskDraft}
+        createTaskDisabled={taskRuntime.loading || taskRuntime.hasActiveTask || Boolean(taskDraft) || Boolean(taskRuntime.pendingAction)}
       />
       {taskRuntime.error && <div role="alert" className="px-4 py-2 text-sm text-red-600">任务功能暂不可用：{taskRuntime.error}</div>}
       {uiState.errorMessage && (

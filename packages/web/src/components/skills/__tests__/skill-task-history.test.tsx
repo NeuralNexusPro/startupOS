@@ -21,7 +21,7 @@ vi.mock('@/services/agent-task-runtime', () => ({
     version: 1, sessionId,
     execution: { schemaVersion: 1, mode: sessionId === 'history' ? 'task_running' : 'chat', status: sessionId === 'history' ? mocks.status : 'idle', draft: { objective: '原任务进度', acceptanceCriteria: [] }, bridgeEpoch: 1, expectedRevision: 7, expectedCursor: 'saved-cursor', continuationCount: 2, noProgressCount: 0, updatedAt: '2026-09-12T00:00:00Z' },
   }),
-  runAgentTaskControl: (...args: unknown[]) => mocks.control(...args), submitAgentTaskDraft: vi.fn(),
+  createAgentTaskRequestId: () => 'task-request', runAgentTaskControl: (...args: unknown[]) => mocks.control(...args), submitAgentTaskDraft: vi.fn(),
 }));
 vi.mock('@originos/core/lib/integrations/pi-agent/client', () => ({ normalizeRuntimeLLMConfig: () => ({}) }));
 vi.mock('@/store/settingsStore', () => ({ useSettingsStore: () => () => ({}) }));
@@ -29,7 +29,7 @@ vi.mock('@/services/AppWindowManager', () => ({ AppWindowManager: {} }));
 vi.mock('@/components/os/workspace', () => ({ WorkspaceWindow: () => null }));
 vi.mock('@/components/os/EntryExportButton', () => ({ EntryExportButton: () => null }));
 vi.mock('@/lib/hooks/use-file-upload', () => ({ useFileUpload: () => ({}) }));
-vi.mock('@/components/ui/chat-input-bar', () => ({ ChatInputBar: () => null }));
+vi.mock('@/components/ui/chat-input-bar', () => ({ ChatInputBar: ({ onCreateTask }: { onCreateTask?: () => void }) => onCreateTask ? <button onClick={onCreateTask}>创建长程任务</button> : null }));
 vi.mock('@/components/ui/chat', () => ({ ChatMessageList: ({ footerContent }: { footerContent?: ReactNode }) => <div>{footerContent}</div> }));
 vi.mock('@originos/core/lib/integrations/electron/services/agent-session', () => ({ getAgentContent: vi.fn() }));
 vi.mock('@originos/core/lib/integrations/electron/services/skill', () => ({
@@ -63,4 +63,12 @@ it('shows waiting history without automatically resuming or retrying', async () 
   await waitFor(() => expect(screen.getByText('等待用户')).toBeTruthy());
   expect(mocks.control).not.toHaveBeenCalled();
   expect(screen.queryByRole('button', { name: '恢复' })).toBeNull();
+});
+
+
+it('offers long-running task creation from a Skill session', async () => {
+  render(<SkillDialog skillName="demo" />);
+  await waitFor(() => expect(screen.getByRole('button', { name: '创建长程任务' })).toBeTruthy());
+  fireEvent.click(screen.getByRole('button', { name: '创建长程任务' }));
+  expect(screen.getByLabelText('任务草稿')).toBeTruthy();
 });
