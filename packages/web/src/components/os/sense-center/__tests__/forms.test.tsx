@@ -127,4 +127,38 @@ describe('RuleWizard', () => {
     fireEvent.click(screen.getByRole('button', { name: '保存规则' }));
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ id: initial.id, createdAt: initial.createdAt, enabled: true })));
   });
+
+  it('creates a Jev rule from multiple authorized candidates with the fixed threshold', async () => {
+    const onSave = vi.fn<[PerceptionTriggerRule], Promise<void>>(async () => undefined);
+    const grants = [
+      { target: { kind: 'project' as const, id: 'project-1' }, enabled: true, createdAt: now, updatedAt: now },
+      { target: { kind: 'role-agent' as const, id: 'assistant' }, enabled: true, createdAt: now, updatedAt: now },
+    ];
+    render(<RuleWizard connectors={[connector]} grants={grants} jevProvider={{ enabled: true, baseUrl: 'https://api.typesafe.ai', model: 'jev-latest', credentialConfigured: true }} onSave={onSave} onCancel={vi.fn()} />);
+    fireEvent.click(screen.getByLabelText('Jev 决策'));
+    expect(screen.getByText('仅置信度严格高于 0.8 且无需人工确认时自动执行；0.8 也需要确认。')).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText(/project\/project-1/));
+    fireEvent.click(screen.getByLabelText(/role-agent\/assistant/));
+    fireEvent.click(screen.getByLabelText('创建后立即启用'));
+    fireEvent.click(screen.getByRole('button', { name: '创建并启用' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ routingMode: 'jev', decision: { catalogVersion: '1.0', policyVersion: '1.0', candidates: [
+      { key: 'ignore', action: 'ignore' }, { key: 'notify_user', action: 'notify_user' },
+      { key: 'project:project-1', action: 'dispatch' }, { key: 'role-agent:assistant', action: 'dispatch' },
+    ] } });
+  });
+
+  it('blocks enabled Jev rules without a configured provider but allows a disabled draft', async () => {
+    const onSave = vi.fn<[PerceptionTriggerRule], Promise<void>>(async () => undefined);
+    const grants = [{ target: { kind: 'project' as const, id: 'project-1' }, enabled: true, createdAt: now, updatedAt: now }];
+    render(<RuleWizard connectors={[connector]} grants={grants} jevProvider={{ enabled: false, baseUrl: 'https://api.typesafe.ai', model: 'jev-latest', credentialConfigured: false }} onSave={onSave} onCancel={vi.fn()} />);
+    fireEvent.click(screen.getByLabelText('Jev 决策'));
+    fireEvent.click(screen.getByLabelText(/project\/project-1/));
+    fireEvent.click(screen.getByLabelText('创建后立即启用'));
+    expect(screen.getByRole('alert')).toHaveTextContent('Jev 决策模型未配置或未启用');
+    expect(screen.getByRole('button', { name: '创建并启用' })).toBeDisabled();
+    fireEvent.click(screen.getByLabelText('创建后立即启用'));
+    fireEvent.click(screen.getByRole('button', { name: '保存为停用规则' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ routingMode: 'jev', enabled: false })));
+  });
 });
