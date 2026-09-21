@@ -22,11 +22,11 @@
 
 依赖：W1 公共契约。写入范围：`packages/core/src/modules/perception-runtime/decision/**`、router/rule validation/storage export 与专项测试；不写 Desktop/Web。负责 subagent：Runtime。完成证据：提交、策略矩阵与 direct 路由回归输出、receipt 无敏感内容断言。
 
-- [ ] 3.1 在独立 `proposal-task/add-jev-perception-decisions-w3-runtime` 分支/worktree 实现 deterministic state redaction/hash/truncation 与版本化候选目录，并验证 secret、附件字节、raw payload 和完整外部 ID 不进入请求
-- [ ] 3.2 实现 Jev rule 校验、最多 20 个候选、重复/保留 key 防护和历史 direct 默认解析，并通过规则边界与无迁移回归测试
-- [ ] 3.3 实现 `DecisionReceiptStore`、稳定 decision id、终态恢复与新增脱敏 audit actions，并验证 DataFile 恢复、完整概率留档和 audit 不参与授权
-- [ ] 3.4 实现 `confidence > 0.8`、`needs_hitl < 0.5`、rule HITL、ignore/notify/dispatch 策略表，并以 0.81/0.80/缺失/NaN/HITL 全矩阵测试验证
-- [ ] 3.5 将可选 DecisionOrchestrator 插入 `PerceptionRouter` 的授权后/lease 前，验证无授权候选不调用 Jev、dispatch 复用既有 lease/execution、direct 路由与 Connector 接纳回归不变
+- [x] 3.1 在独立 `proposal-task/add-jev-perception-decisions-w3-runtime` 分支/worktree 实现 deterministic state redaction/hash/truncation 与版本化候选目录，并验证 secret、附件字节、raw payload 和完整外部 ID 不进入请求
+- [x] 3.2 实现 Jev rule 校验、最多 20 个候选、重复/保留 key 防护和历史 direct 默认解析，并通过规则边界与无迁移回归测试
+- [x] 3.3 实现 `DecisionReceiptStore`、稳定 decision id、终态恢复与新增脱敏 audit actions，并验证 DataFile 恢复、完整概率留档和 audit 不参与授权
+- [x] 3.4 实现 `confidence > 0.8`、`needs_hitl < 0.5`、rule HITL、ignore/notify/dispatch 策略表，并以 0.81/0.80/缺失/NaN/HITL 全矩阵测试验证
+- [x] 3.5 将可选 DecisionOrchestrator 插入 `PerceptionRouter` 的授权后/lease 前，验证无授权候选不调用 Jev、dispatch 复用既有 lease/execution、direct 路由与 Connector 接纳回归不变
 
 ## 4. S15-W4 Desktop 装配与人工解决（依赖 W2、W3；串行）
 
