@@ -155,6 +155,9 @@ export const IPC_CHANNELS = {
   PERCEPTION_PLUGIN_CATALOG: 'perception:plugin:catalog',
   PERCEPTION_PLUGIN_PROVISION: 'perception:plugin:provision',
   PERCEPTION_PLUGIN_CAPABILITY_STATUS: 'perception:plugin:capability-status',
+  PERCEPTION_DECISION_PENDING: 'perception:decision:pending',
+  PERCEPTION_DECISION_RESOLVE: 'perception:decision:resolve',
+  PERCEPTION_DECISION_RETRY: 'perception:decision:retry',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

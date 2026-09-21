@@ -74,7 +74,7 @@ export interface PluginEventPort {
 }
 
 export interface PluginEventDispatchResult {
-  status: 'denied' | 'duplicate' | 'dispatched' | 'failed';
+  status: 'denied' | 'duplicate' | 'dispatched' | 'failed' | 'pending' | 'ignored';
   responseText?: string;
   responseTexts?: string[];
 }

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import fs from 'node:fs';
 import path from 'node:path';
 import type { JevDecisionReceipt } from '../../../types/perception';
 import { assertSafePerceptionId } from '../protocol/validation';
@@ -20,6 +21,19 @@ export class DecisionReceiptStore {
     const receipt = store.read().data;
     validateReceipt(receipt);
     return receipt;
+  }
+
+  listPending(): JevDecisionReceipt[] {
+    if (!fs.existsSync(this.directory)) return [];
+    return fs.readdirSync(this.directory)
+      .filter((name) => name.endsWith('.json'))
+      .flatMap((name) => {
+        try {
+          const receipt = this.get(name.slice(0, -5));
+          return receipt && (receipt.status === 'pending' || receipt.status === 'failed') ? [receipt] : [];
+        } catch { return []; }
+      })
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   }
 
   save(receipt: JevDecisionReceipt): JevDecisionReceipt {
