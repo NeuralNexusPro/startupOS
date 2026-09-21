@@ -13,6 +13,7 @@ import {
   subscribeToUpdateEvents,
   type UpdateState,
 } from '@originos/core/lib/integrations/electron/services/auto-update';
+import { JevProviderSection } from './JevProviderSection';
 
 interface SettingsDialogProps {
   open: boolean;
@@ -300,6 +301,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               <p className="text-[10px] leading-4 text-red-200/80">{mappingError}</p>
             ) : null}
           </div>
+          <JevProviderSection />
           <UpdateSettingsSection
             state={updateState}
             busy={updateBusy}
