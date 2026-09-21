@@ -198,7 +198,7 @@ export class WeComPerceptionPlugin implements PerceptionPlugin {
       const replyHandle = event.provenance.rawPayloadRef;
       if (context.ports.replies) {
         const streamId = `perception-${event.id}`;
-        const replyState = { content: '', started: false };
+        const replyState = { content: '', sentContent: '', started: false };
         unregisterReply = context.ports.replies.register(
           replyHandle,
           async (output) => {
@@ -260,7 +260,7 @@ export class WeComPerceptionPlugin implements PerceptionPlugin {
     client: WeComBotClient,
     frame: WeComFrame,
     streamId: string,
-    state: { content: string; started: boolean },
+    state: { content: string; sentContent: string; started: boolean },
     output: PluginReplyEvent
   ): Promise<PluginReplyReceipt> {
     if (output.type === 'accepted') {
@@ -282,18 +282,23 @@ export class WeComPerceptionPlugin implements PerceptionPlugin {
       await client.replyMedia(frame, 'file', uploaded.media_id);
     } else if (output.type === 'text_delta') {
       const content = limitReply(`${state.content}${output.delta}`);
-      await client.replyStream(frame, streamId, content, false);
+      if (!state.sentContent || content.length - state.sentContent.length >= 160) {
+        await client.replyStream(frame, streamId, content, false);
+        state.sentContent = content;
+      }
       state.content = content;
       state.started = true;
     } else if (output.type === 'assistant_message') {
       const content = limitReply(output.content);
       await client.replyStream(frame, streamId, content, false);
       state.content = content;
+      state.sentContent = content;
       state.started = true;
     } else if (output.type === 'hitl_request') {
       const content = limitReply(`需要人工确认：${output.summary}`);
       await client.replyStream(frame, streamId, content, false);
       state.content = content;
+      state.sentContent = content;
       state.started = true;
     } else if (output.type === 'completed') {
       await client.replyStream(frame, streamId, state.content || '处理完成', true);

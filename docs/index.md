@@ -1,6 +1,6 @@
 # OriginOS 文档索引
 
-**最后更新:** 2026-08-28
+**最后更新:** 2026-09-18
 
 ---
 
@@ -12,6 +12,7 @@
 |------|------|------|
 | **PRD v2.0** | [product/PRD-Main.md](./product/PRD-Main.md) | **核心 PRD - 融入 EEOIP/ECO 认知系统理论** |
 | 架构文档 | [design/os-framework.md](./design/os-framework.md) | OS 框架设计 |
+| 项目语义执行规划 | [主线与实施路线](./specs/epic-ONT/project-semantic-execution-plan.md) | 访谈→上下文契约→任务协作→看板→恢复，Planning |
 | Epic 索引 | [specs/](./specs/) | Epic 索引 |
 
 ### 规约文档
@@ -88,6 +89,7 @@
 8. 📋 **Epic A2UI** (生成式交互卡片协议) - 通过 Agent-to-UI 协议承载图表、表格、表单、确认卡等生成式 UI
 9. 📋 **Epic SENSE** (感知层与外部事件触发器) - 邮箱、企业微信、飞书、钉钉事件接入与 Agent 唤醒
    - [Story SENSE.14：IM平台能力发现与Agent按需调用](specs/epic-SENSE/story-SENSE.14/README.md) — In Progress；可信SDK／工具目录、按需发现、授权调用与跨进程验收。
+   - [Story SENSE.15：Jev 受限决策路由](specs/epic-SENSE/story-SENSE.15/README.md) — In Review；安全 Provider 配置、授权候选决策、严格 confidence/HITL 门禁与人工恢复。
 
 ### Epic 文档
 
@@ -129,7 +131,9 @@
 | M.9 | 语义检索能力补齐 | 📋 Planning | Critical | [specs/epic-M/story-M.9/README.md](./specs/epic-M/story-M.9/README.md) |
 | M.10 | 文档与协作场景对齐 | 📋 Planning | High | [specs/epic-M/story-M.10/README.md](./specs/epic-M/story-M.10/README.md) |
 | M.11 | 用 Memory Core 统一 history-to-cognition 管线并替代 Dream | 📋 Planning | Critical | [specs/epic-M/story-M.11/README.md](./specs/epic-M/story-M.11/README.md) |
+| M.12 | Hindsight-inspired 全局用户认知与 Agent 世界模型分域 | ✅ Complete | Critical | [specs/epic-M/story-M.12/README.md](./specs/epic-M/story-M.12/README.md) |
 | M.13 | 旧记忆机制清退 | ✅ Complete | Critical | [specs/epic-M/story-M.13/README.md](./specs/epic-M/story-M.13/README.md) |
+| M.14 | 渐进式 Agent 上下文、KV Cache 与 Token 统计 | ✅ Complete | Critical | [specs/epic-M/story-M.14/README.md](./specs/epic-M/story-M.14/README.md) |
 
 ### Epic T Stories 详览
 

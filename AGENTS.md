@@ -1,7 +1,7 @@
 # OriginOS 架构规约 (AGENTS.md)
 
-**版本：** 2.5.7
-**日期：** 2026-09-14
+**版本：** 2.5.8
+**日期：** 2026-09-18
 **状态：** 强制执行
 
 ---
@@ -367,6 +367,29 @@ interface Instance {
 - 所有本体数据存储在 `{project-root}/data/ontology/` 目录
 - 每个项目一个独立的 JSON 文件
 
+**旧模型迁移约束：**
+- `packages/core/src/lib/features/ontology/` 是旧 `Ontology`、访谈 `OntologyModel` 与 `business-model.json` 转换的唯一业务实现；Web/Desktop 禁止复制转换逻辑
+- 迁移必须由调用方显式触发，先支持无写入 dry-run；禁止在读取、启动或升级过程中静默迁移
+- 正式迁移必须保留源文件原始字节备份、拒绝覆盖已有 canonical ontology，并记录 started/completed/failed/rolled_back 审计状态
+- 回滚只允许删除本次迁移新建且此后未修改的 canonical 快照；旧源文件和备份始终保留
+- legacy compatibility projection 仅供读取，不得成为第二写入事实源
+
+**Canonical Validator 与 Action Gate：**
+- canonical ontology 的唯一性、交叉引用和状态归属校验统一由 `packages/core/src/lib/features/ontology/` 公共 API 提供；下游不得复制规则
+- Action Gate 在任何副作用前校验 ontology ID/version、Action/Concept、当前业务状态和精确权限集合，并返回结构化 `CanonicalValidationResult`
+- ONT Validator 是无状态纯函数，不读取或写入 Facts、不执行 `Rule.expression`、不提交 Action；事实查询、revision 和操作回执由后续 OSDK/Action 提交边界负责
+
+**Ontology Facts / Actions OSDK：**
+- 类型化 facts 查询与 Action 事实接纳统一通过 ontology feature 公共 OSDK；下游不得绕过 ontology ID/version、FactType、权限和 revision 门控直接拼接业务写入
+- Action 提交按 `operationId` 记录 intent、缺失 facts 与 accepted 回执；相同请求幂等恢复，不同请求复用 ID 必须结构化拒绝
+- OSDK 不解释 `Rule.expression`、不调用外部副作用、不更新 instance 状态；有 Rule 且无确定性 evaluator 时必须在写入前拒绝
+- facts JSONL 与 operations JSONL 分别是事实和操作回执的持久来源；审计 metadata 只用于追踪，不得参与授权或成为业务状态事实源
+
+**Agent / Skill 语义契约校验：**
+- Agent/Skill contract 与 SOP facts 连通性统一通过 ontology feature 公共纯函数校验；P2 不得复制 FactType、Action binding 或权限规则
+- contract 必须绑定当前 ontology ID/version；FactType 与 flow edge 使用完整 ontology/version/concept/factType 引用精确匹配，不按名称或相似度猜测
+- 每个 required input 必须由兼容入边或显式 external input 提供；validator 只证明静态语义连通，不负责 DAG 环、调度或运行时产出
+
 ### 2. 项目访谈模块架构
 
 **访谈流程（强制）：**
@@ -457,11 +480,11 @@ interface OntologySkill {
 **RoleAgent 7 层 System Prompt（`system-prompt.ts`）：**
 
 1. **角色身份**（Agent.md 全文）
-2. **状态与记忆**（阶段名 + 行为特征 + Memory.md + Knowledge.md + Patterns.md）
+2. **状态与记忆**（会话上下文：阶段、Core/Stable Memory、Knowledge/Pattern 有界目录）
 3. **思维循环指令**（5 步思考流程）
 4. **工具箱**（已安装技能清单 + registry 驱动系统工具列表，含描述）
 5. **风格指南**（Taste.md，无内容时跳过）
-6. **工作目录 + 权限授权**
+6. **工作目录（会话上下文）+ 权限授权（稳定策略）**
 7. **安全约束**（固定 section）
 
 **RoleAgent 工作目录文件：**
@@ -506,11 +529,11 @@ turn_end hook
 **Project Agent 7 层 System Prompt（`project-prompt.ts`）：**
 
 1. **身份**（Agent.md 全文）
-2. **状态与记忆**（Memory.md + business-model.json + Knowledge.md + Patterns.md）
+2. **状态与记忆**（会话上下文：Core/Stable Memory、business-model.json、Knowledge/Pattern 有界目录）
 3. **思维循环指令**（5 步思考流程，project-agent 版本）
 4. **工具箱**（已安装技能 + registry 驱动系统工具列表，`project` scope）
 5. **风格指南**（Taste.md，无内容时跳过）
-6. **工作目录 + 权限授权**
+6. **工作目录（会话上下文）+ 权限授权（稳定策略）**
 7. **安全约束**（固定 section）
 
 **Project Agent 工作目录文件：**
@@ -526,7 +549,7 @@ turn_end hook
 
 **Project Agent 通过 `packages/core/src/lib/features/agent/persistent-agent-manager.ts` 启动，在 `startAgent()` 时加载 `ProjectContext`，构建 7 层 prompt，传入 `PersistentAgent`。**
 
-**Frozen Snapshot 模式**：Knowledge.md 和 Patterns.md 在 Agent 启动时加载到 system prompt（Layer 2: StateMemory），中途生成的知识只写入磁盘，不修改内存中的快照，保持 LLM prefix cache 稳定。
+**会话冻结与渐进认知边界**：Core/Stable Memory、阶段、项目状态、工作目录和 Knowledge/Pattern 有界目录可在会话启动或恢复时组成只读 session context；`Knowledge.md` 与 `Patterns.md` 正文不得进入 stable system prompt。Archival/Cognitive 内容在每个用户 turn 按当前 owner/session 调用 `CognitiveManager.prefetchContext()` 有界召回，作为低信任参考附加到该 turn，不改写 stable system prompt 或持久化用户原文。
 
 ### 4. 认知系统架构
 
@@ -547,25 +570,28 @@ turn_end hook
 | `on_turn_end` | 记录实践日志到 JSONL | 轻量（只写磁盘） |
 | `on_session_end` | 批量分析日志 → 提取知识 + 沉淀模式 | 重量（LLM 分析） |
 | 每 N 轮（可选） | 增量分析最近未处理的日志 | 重量（LLM 分析） |
-| Agent 启动 | 加载 Knowledge.md + Patterns.md 快照到 prompt | 轻量（读文件） |
+| Agent 启动/恢复 | 冻结 Core Memory/session context，并只生成 Knowledge/Pattern 有界目录 | 轻量（读文件） |
+| 每个用户 turn | 按当前 owner/session 预取有界 Archival/Cognitive 片段 | 轻量（失败安全降级） |
 
-**Frozen Snapshot 模式（借鉴 hermes-agent MemoryManager）：**
+**会话冻结与渐进认知模式：**
 
 ```
-Agent 启动
-  └─ 加载 knowledge/ 快照 → Knowledge.md → Layer 2: StateMemory
-  └─ 加载 patterns/ 快照 → Patterns.md → Layer 2: StateMemory
+Agent 启动 / 恢复
+  ├─ stable system prompt：身份、规则、安全与工具协议
+  └─ readonly session context：Core/Stable Memory、阶段、工作目录、Knowledge/Pattern 有界目录
+
+当前用户 turn
+  └─ CognitiveManager.prefetchContext(rawUserQuery)
+      ├─ 绑定当前 owner/session
+      ├─ 按 Provider 与总预算截断
+      └─ 作为 reference 注入当前 turn；不写 stable system 或用户原文
 
 每轮 (on_turn_end)
   └─ 记录实践日志 → practice/turns/turn-{N}.json
 
 Session 结束 / 每 N 轮 (on_session_end)
   ├─ 批量分析实践日志 → 提取新知识
-  │   ├─ 创建/更新 knowledge/wiki/ 实体页面
-  │   └─ 创建/更新 knowledge/ontology/ 本体知识
   └─ 提炼经验模式 → 沉淀到 patterns/
-      ├─ 更新 patterns/registry.json
-      └─ 生成 pattern-{id}.md
 ```
 
 **认知管理器（CognitiveManager）设计（借鉴 hermes-agent Provider 模式）：**
@@ -592,7 +618,7 @@ CognitiveManager
 - Agent/Project 维度知识隔离
 - 模式有效性评估：工具调用链越短→效率越高，用户纠正次数越多→效果越差
 
-**RoleAgent/Project Agent 通过 7 层 System Prompt 的 Layer 2: StateMemory 注入 Knowledge.md 和 Patterns.md 快照。**
+**RoleAgent/Project Agent 通过公共 prompt boundary 分离 stable system 与只读 session context。Core/Stable Memory 可随会话上下文冻结；Knowledge/Patterns 只提供有界目录，正文与当前任务相关片段由 owner-aware turn prefetch 或现有工具按需读取。**
 
 **Agent 工作目录（CWD）优先级（`bash-tools.ts`，从高到低）：**
 
@@ -636,6 +662,13 @@ CognitiveManager
 - Desktop独立写入应用日志目录`plugins/{email|wecom|feishu|dingtalk}/plugin-YYYY-MM-DD.log`；插件诊断不重复进入desktop/llm日志，使用独立有界异步缓冲与退出flush。
 - 渠道失败按调用关联eventId/sessionId/diagnosticId，感知审计保存诊断引用；日志不得成为业务状态事实源，日志故障不得触发业务重试。
 - 不记录消息正文、附件字节或凭据；错误按安全类别、HTTP状态、受限源码位置摘要，未知SDK文本不直接落盘。SDK默认日志必须接入实例级受控出口。
+
+### Jev 感知决策边界（SENSE.15）
+
+- Jev 只能在当前存在且已授权的候选目标中决策；调用前和人工确认时均重新校验授权，最多 20 个候选。
+- 仅 `route_target.confidence > 0.8`、规则无需 HITL 且 Jev 未要求 HITL 时自动执行；失败、无效响应和边界值一律进入人工处理，不默认路由。
+- 自动与人工执行复用现有 `ExecutionLease` 和 dispatch；决策回执存于 `data/perception/decisions/`，非敏感 Provider 配置存于 `data/model-providers/jev.json`。
+- Jev API Key 仅由 Desktop safeStorage 或服务端 `TYPESAFE_API_KEY` 持有；renderer、配置 JSON、日志、审计和回执不得读取或保存明文。
 
 ---
 

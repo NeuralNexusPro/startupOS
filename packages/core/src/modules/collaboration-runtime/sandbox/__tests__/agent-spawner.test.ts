@@ -29,6 +29,39 @@ describe("AgentSpawner — Stdio Protocol", () => {
     }
   });
 
+  it("records normalized worker usage once per assistant message", () => {
+    spawner.recordUsageEvent({
+      id: "usage-1",
+      sessionId: "session-1",
+      seq: 1,
+      type: "MESSAGE_SENT",
+      payload: {
+        usage: {
+          input: 80,
+          output: 20,
+          cacheRead: 40,
+          cacheWrite: 10,
+          totalTokens: 150,
+          cost: { input: 0.1, output: 0.2, cacheRead: 0.01, cacheWrite: 0.02, total: 0.33 },
+        },
+      },
+      source: "agent-1",
+      timestamp: new Date().toISOString(),
+    });
+
+    expect(spawner.getCostReport("session-1")).toMatchObject({
+      totalTokens: 150,
+      providerCostUsd: 0.33,
+      estimatedCostUsd: 0,
+      agentBreakdown: {
+        "agent-1": { inputTokens: 80, outputTokens: 20, cacheReadTokens: 40, cacheWriteTokens: 10 },
+      },
+    });
+    expect(spawner.getTokenMetrics("session-1")).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "agent_cache_read_tokens_total", value: 40 }),
+    ]));
+  });
+
   it("prevents duplicate spawn for same agentId", async () => {
     try {
       await spawner.spawn(

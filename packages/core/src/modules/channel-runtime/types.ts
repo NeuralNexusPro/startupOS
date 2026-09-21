@@ -28,16 +28,17 @@ export interface ChannelInboundMessage {
   conversationKind?: 'direct' | 'group' | 'thread';
   content: ChannelMessageContent;
   replyHandle?: string;
+  occurredAt?: string;
   receivedAt: string;
 }
 
 export type ChannelMessageMetadata = Pick<ChannelInboundMessage,
-  'origin' | 'connectorId' | 'actorId' | 'actorDisplayName' | 'conversationId' | 'conversationKind'>;
+  'id' | 'origin' | 'connectorId' | 'actorId' | 'actorDisplayName' | 'conversationId' | 'conversationKind' | 'occurredAt' | 'receivedAt'>;
 
 export type AgentOutputEvent =
   | { type: 'accepted'; sessionId: string }
   | { type: 'text_delta'; delta: string }
-  | { type: 'assistant_message'; content: string }
+  | { type: 'assistant_message'; content: string; usage?: AgentTokenUsage }
   | { type: 'tool_status'; label: string; state: 'running' | 'completed' | 'failed' }
   | { type: 'artifact_changed'; filename: string; filePath: string; artifactType: 'solution' }
   | { type: 'hitl_request'; requestId: string; summary: string }
@@ -124,3 +125,4 @@ export interface ChannelSessionBinding {
   updatedAt: string;
   expiresAt: string;
 }
+import type { AgentTokenUsage } from '../../types/agent';

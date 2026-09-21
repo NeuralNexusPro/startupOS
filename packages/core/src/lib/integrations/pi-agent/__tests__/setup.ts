@@ -6,6 +6,7 @@
 // Mock @originos/pi-agent-adapter module
 vi.mock("@originos/pi-agent-adapter", () => ({
 	Agent: class MockAgent {
+		options?: unknown;
 		state: {
 			systemPrompt: "",
 			model: { provider: "anthropic", id: "test" },
@@ -17,12 +18,16 @@ vi.mock("@originos/pi-agent-adapter", () => ({
 		_listeners = new Set<(event: any) => void>();
 
 		constructor(config?: unknown) {
+			this.options = config;
 			if (config?.initialState) {
 				this.state = { ...this.state, ...config.initialState };
 			}
 			// Store convertToLlm function if needed
 			if (config?.convertToLlm) {
 				this.convertToLlm = config.convertToLlm;
+			}
+			if (config?.transformContext) {
+				this.transformContext = config.transformContext;
 			}
 			if (config?.streamFn) {
 				this.streamFn = config.streamFn;
@@ -40,6 +45,7 @@ vi.mock("@originos/pi-agent-adapter", () => ({
 		_listeners: Set<(event: any) => void>;
 
 		convertToLlm?: (messages: any[]) => any[];
+		transformContext?: (messages: any[]) => Promise<any[]>;
 		streamFn?: (model: any, context: any, options?: any) => any;
 
 		prompt = vi.fn(async (message?: string) => {

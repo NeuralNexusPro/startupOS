@@ -98,6 +98,25 @@ describe("OriginOSAgent", () => {
 			expect(agent.state.sessionId).toBe("custom-session-456");
 		});
 
+		it("passes stable isolated session ids to Pi Agent without provider cache options", () => {
+			const first = new OriginOSAgent({ ...basicConfig, sessionId: "session-a" });
+			const resumed = new OriginOSAgent({ ...basicConfig, sessionId: "session-a" });
+			const other = new OriginOSAgent({ ...basicConfig, sessionId: "session-b" });
+			const options = [first, resumed, other].map((instance) =>
+				(instance as unknown as { agent: { options: Record<string, unknown> } }).agent.options
+			);
+
+			expect(options.map((value) => value.sessionId)).toEqual([
+				"session-a",
+				"session-a",
+				"session-b",
+			]);
+			for (const value of options) {
+				expect(value).not.toHaveProperty("cacheRetention");
+				expect(value).not.toHaveProperty("cache_control");
+			}
+		});
+
 		it("should store project context in state", () => {
 			agent = new OriginOSAgent(basicConfig);
 
@@ -176,16 +195,25 @@ describe("OriginOSAgent", () => {
 			expect(receivedEvents.some((event) => event.message?.completionFailure)).toBe(false);
 		});
 
-		it("injects OS, architecture, shell, path, and syntax constraints", () => {
+		it("injects runtime details through transient session context", async () => {
 			agent = new OriginOSAgent(basicConfig);
 			const internalAgent = (agent as any).agent;
 			const prompt = internalAgent.state.systemPrompt;
+			const transformed = await internalAgent.transformContext([]);
+			const sessionContext = transformed[0]?.content?.[0]?.text ?? "";
 
 			expect(prompt).toContain("You are a helpful assistant");
-			expect(prompt).toContain("## Runtime Environment");
-			expect(prompt).toContain(`Architecture: ${process.arch}`);
-			expect(prompt).toContain("Default command shell:");
-			expect(prompt).toContain("Native path separator:");
+			expect(prompt).not.toContain("## Runtime Environment");
+			expect(sessionContext).toContain("## Runtime Environment");
+			expect(sessionContext).toContain(`Architecture: ${process.arch}`);
+			expect(sessionContext).toContain("Default command shell:");
+			expect(sessionContext).toContain("Native path separator:");
+
+			agent.appendSessionContext("late memory");
+			const appended = await internalAgent.transformContext([]);
+			const appendedText = appended[0]?.content?.[0]?.text ?? "";
+			expect(appendedText).toContain("late memory");
+			expect(appendedText.match(/## Runtime Environment/g)).toHaveLength(1);
 		});
 
 		it("automatically continues an incomplete stop without hiding assistant text", async () => {
@@ -252,7 +280,7 @@ describe("OriginOSAgent", () => {
 			expect(receivedEvents.filter((event) => event.type === "agent_end")).toHaveLength(1);
 			const recoveryMessage = promptSpy.mock.calls[1]?.[0];
 			expect(recoveryMessage?.role).toBe("user");
-			expect(recoveryMessage?.content?.[0]?.text).toContain("Runtime Environment");
+			expect(recoveryMessage?.content?.[0]?.text).not.toContain("Runtime Environment");
 			expect(recoveryMessage?.content?.[0]?.text).toContain("execute_command");
 		});
 

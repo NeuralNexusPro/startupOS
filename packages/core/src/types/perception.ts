@@ -40,7 +40,8 @@ export interface ExecutionLease {
 }
 export interface PerceptionAuditEntry {
   id: string;
-  action: 'inbox.accepted' | 'inbox.rejected' | 'event.created' | 'event.duplicate' | 'rule.matched' | 'target.denied' | 'lease.acquired' | 'lease.completed' | 'lease.failed' | 'trigger.dispatched';
+  action: 'inbox.accepted' | 'inbox.rejected' | 'event.created' | 'event.duplicate' | 'rule.matched' | 'target.denied' | 'lease.acquired' | 'lease.completed' | 'lease.failed' | 'trigger.dispatched'
+    | 'decision.requested' | 'decision.pending' | 'decision.resolved' | 'decision.failed';
   occurredAt: string; connectorId?: string; eventId?: string; detail?: JsonValue;
 }
 export interface PerceptionTargetResultSummary {
@@ -73,17 +74,81 @@ export interface PerceptionTriggerTarget {
   id: string;
   skillOwnership?: SkillCognitionOwnership;
 }
-export interface PerceptionTriggerRule {
+export type PerceptionDecisionCandidate =
+  | { key: 'ignore'; action: 'ignore' }
+  | { key: 'notify_user'; action: 'notify_user' }
+  | { key: string; action: 'dispatch'; target: PerceptionTriggerTarget };
+export interface JevDecisionRuleConfig {
+  catalogVersion: '1.0';
+  policyVersion: '1.0';
+  candidates: PerceptionDecisionCandidate[];
+  /** User-authored natural-language guidance for this rule's Jev decisions. */
+  cognitiveGuidance?: string;
+}
+export interface PerceptionRuleBase {
   id: string;
   enabled: boolean;
   sources: PerceptionSource[];
   eventTypes: PerceptionEventType[];
   conditions: TriggerFilterCondition[];
-  target: PerceptionTriggerTarget;
   execution: { requireHitl: boolean; maxAttempts: number };
   createdAt: string;
   updatedAt: string;
 }
+export type PerceptionTriggerRule = PerceptionRuleBase & (
+  | { routingMode?: 'direct'; target: PerceptionTriggerTarget; decision?: never }
+  | { routingMode: 'jev'; decision: JevDecisionRuleConfig; target?: never }
+);
+export interface JevProviderSummary {
+  enabled: boolean;
+  baseUrl: string;
+  model: string;
+  credentialConfigured: boolean;
+  credentialSource?: 'environment' | 'secure-store';
+  updatedAt?: string;
+}
+export interface JevDecisionRequest {
+  state: JsonValue;
+  candidateKeys: string[];
+  candidateCriteria?: Record<string, JsonValue>;
+  catalogVersion: '1.0';
+  pendingChoiceFeedback?: boolean;
+}
+export interface JevChoiceAnswer { choice: string; confidence: number; probabilities: Record<string, number> }
+export interface JevScoreAnswer { score: number; confidence: number; probabilities: Record<string, number> }
+export interface JevDecisionAnswer {
+  providerModel?: string;
+  routeTarget: JevChoiceAnswer;
+  needsUserAttention?: number;
+  deliveryMode?: JevChoiceAnswer;
+  urgency: JevScoreAnswer;
+  risk: JevScoreAnswer;
+  needsHitl: number;
+  retainAsEvidence: number;
+  isChoiceFeedback?: number;
+}
+export interface JevDecisionReceipt {
+  id: string;
+  eventId: string;
+  ruleId: string;
+  catalogVersion: string;
+  policyVersion: string;
+  providerModel?: string;
+  candidateKeys: string[];
+  answers?: JevDecisionAnswer;
+  threshold: 0.8;
+  status: 'pending' | 'auto-executed' | 'user-executed' | 'ignored' | 'failed';
+  reason?: string;
+  selectedKey?: string;
+  leaseId?: string;
+  resultRef?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+export interface PerceptionDecisionPort {
+  decide(request: JevDecisionRequest): Promise<JevDecisionAnswer>;
+}
+export type JevDecisionPort = PerceptionDecisionPort;
 export interface PerceptionTargetAuthorization {
   authorized: boolean;
   reason?: string;
@@ -95,6 +160,16 @@ export interface TargetAuthorizationPort {
 export interface PerceptionTargetExistencePort {
   exists(target: PerceptionTriggerTarget): Promise<boolean>;
 }
+export interface PerceptionTargetProfile {
+  name: string;
+  description?: string;
+  domain?: string;
+  tags?: string[];
+  owner?: { kind: 'project' | 'role-agent'; name: string; description?: string };
+}
+export interface PerceptionTargetProfilePort {
+  describe(target: PerceptionTriggerTarget): Promise<PerceptionTargetProfile | undefined>;
+}
 export interface PerceptionTriggerExecutionContext {
   connectorId: string;
   eventId: string;
@@ -102,6 +177,7 @@ export interface PerceptionTriggerExecutionContext {
   leaseId: string;
   rawPayloadRef: string;
   requireHitl: boolean;
+  targetLabel?: string;
   cognitionOwner: { kind: 'project' | 'role-agent'; id: string } | { kind: 'ephemeral' };
 }
 export interface TriggerExecutionResult { resultRef: string; sessionId?: string; responseText?: string; responseTexts?: string[] }

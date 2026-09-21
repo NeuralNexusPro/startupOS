@@ -13,9 +13,11 @@ import { setToolContext, removeToolContext, getToolContextManager } from './tool
 import { bindToolsToSession } from './tools/bind-session';
 import { CognitiveManager } from './cognitive';
 import { detectCorrections } from './cognitive/pattern/correction-detector';
+import { getChannelMessageSource } from './channel-message-source';
 import { SleepComputeScheduler } from './cognitive/sleep-compute';
 import { createRuntimeModel } from './server-config';
 import type { RuntimeLLMConfig } from './llm-config';
+import { normalizeAgentTokenUsage } from './token-usage';
 import type { AgentTool } from '@originos/pi-agent-adapter';
 import fs from 'fs/promises';
 import path from 'path';
@@ -206,6 +208,7 @@ export interface PersistentAgentConfig {
 	skillDefinition: SkillDefinition;
 	workspaceFiles?: WorkspaceContextFile[];
 	builtSystemPrompt?: string;
+	builtSessionContext?: string;
 	cognitiveManager?: CognitiveManager;
 	sleepScheduler?: SleepComputeScheduler;
 }
@@ -243,6 +246,7 @@ export class PersistentAgent {
 	private skillDefinition: SkillDefinition;
 	private workspaceFiles: WorkspaceContextFile[];
 	private builtSystemPrompt?: string;
+	private builtSessionContext?: string;
 	private cognitiveManager?: CognitiveManager;
 	private sleepScheduler?: SleepComputeScheduler;
 	private isRunning = false;
@@ -260,6 +264,7 @@ export class PersistentAgent {
 		this.skillDefinition = config.skillDefinition;
 		this.workspaceFiles = config.workspaceFiles ?? [];
 		this.builtSystemPrompt = config.builtSystemPrompt;
+		this.builtSessionContext = config.builtSessionContext;
 		this.cognitiveManager = config.cognitiveManager;
 		this.sleepScheduler = config.sleepScheduler;
 	}
@@ -288,12 +293,17 @@ export class PersistentAgent {
 		this.agent = await createOriginOSAgent({
 			sessionId: `persistent-${this.projectId}`,
 			systemPrompt,
+			sessionContext: this.builtSessionContext,
 			variables: {
 				projectId: this.projectId,
 				projectName: this.agentDefinition.name,
 			},
 			llmConfig,
 		});
+		const cognitiveManager = this.cognitiveManager;
+		if (cognitiveManager) {
+			this.agent.setTurnContextProvider((query) => cognitiveManager.prefetchContext(query));
+		}
 
 		// 3. 注册工具（从 Tool.md）
 		const persistentSessionId = `persistent-${this.projectId}`;
@@ -330,8 +340,19 @@ export class PersistentAgent {
 
 			if (event.type === 'agent_end' && event.messages?.length > 0) {
 				try {
+					const lastAssistantIndex = event.messages.map((message: { role?: string }) => message.role).lastIndexOf('assistant');
+					const contextTokenEstimate = this.agent?.getContextTokenEstimate();
+					const messages = event.messages.map((message: { role?: string; usage?: unknown }, index: number) => {
+						const { usage: rawUsage, ...rest } = message;
+						const usage = message.role === 'assistant' ? normalizeAgentTokenUsage(rawUsage) : undefined;
+						return {
+							...rest,
+							...(usage ? { usage } : {}),
+							...(index === lastAssistantIndex && contextTokenEstimate ? { contextTokenEstimate } : {}),
+						};
+					});
 					await this.config.sessionPersistence.updateSession(persistentSessionId, {
-						messages: event.messages,
+						messages,
 						status: 'completed',
 					}, this.projectId);
 				} catch (err) {
@@ -363,6 +384,9 @@ export class PersistentAgent {
 					};
 				});
 
+				const now = Date.now();
+				const source = getChannelMessageSource() ?? { sessionId: persistentSessionId, observedAt: new Date(now).toISOString() };
+				const observedAt = source.observedAt ? Date.parse(source.observedAt) : Number.NaN;
 				this.cognitiveManager?.on_turn_end({
 					turnNumber: ++this.turnCounter,
 					userMessage: lastUser ?? '',
@@ -374,7 +398,8 @@ export class PersistentAgent {
 						toolChainLength: toolResults.length,
 						userCorrections: detectCorrections(lastUser ?? '').length || undefined,
 					},
-					timestamp: Date.now(),
+					timestamp: Number.isFinite(observedAt) ? observedAt : now,
+					source,
 				});
 			}
 
@@ -509,6 +534,7 @@ export class PersistentAgent {
 		skillDef?: SkillDefinition,
 		workspaceFiles?: WorkspaceContextFile[],
 		builtSystemPrompt?: string,
+		builtSessionContext?: string,
 	): Promise<void> {
 		console.log(`[PersistentAgent] Reloading configuration for project: ${this.projectId}`);
 
@@ -518,6 +544,7 @@ export class PersistentAgent {
 		if (skillDef) this.skillDefinition = skillDef;
 		if (workspaceFiles) this.workspaceFiles = workspaceFiles;
 		if (builtSystemPrompt !== undefined) this.builtSystemPrompt = builtSystemPrompt;
+		if (builtSessionContext !== undefined) this.builtSessionContext = builtSessionContext;
 
 		if (!this.agent) {
 			throw new Error('Agent is not initialized');
@@ -526,6 +553,7 @@ export class PersistentAgent {
 		// 重新构建 system prompt 和工具
 		const systemPrompt = this.builtSystemPrompt ?? this.buildSystemPrompt();
 		this.agent.setSystemPrompt(systemPrompt);
+		this.agent.setSessionContext(this.builtSessionContext ?? '');
 
 		const tools = bindToolsToSession(this.buildTools(), `persistent-${this.projectId}`);
 		this.agent.setTools(tools as AgentTool<any>[]);

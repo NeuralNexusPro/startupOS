@@ -12,6 +12,7 @@ import { createRuntimeModel } from './server-config';
 import { setToolContext, removeToolContext, getToolContextManager, type ToolExecutionContext } from './tools/context';
 import { bindToolsToSession } from './tools/bind-session';
 import { detectCorrections } from './cognitive/pattern/correction-detector';
+import { getChannelMessageSource } from './channel-message-source';
 import type { RuntimeLLMConfig } from './llm-config';
 import type { AgentSession } from '../../../types/agent';
 import type { MemoryOwnershipContext, ObservationContext } from '../../shared/cognitive/cognition-types';
@@ -20,6 +21,7 @@ import {
   type AgentTaskRuntimeSnapshotV1,
   type AgentTaskRuntimePersistenceV1,
 } from './task-runtime';
+import { loadFrozenSessionContext } from './session-prompt-context';
 
 type CognitiveSessionEndManager = {
   on_session_end: (messages: unknown[]) => Promise<void>;
@@ -29,6 +31,7 @@ export type AgentMemoryOwnership = Omit<MemoryOwnershipContext, 'workingDirector
 
 export interface InProcessAgentOptions {
   systemPrompt?: string;
+  sessionContext?: string;
   agentType?: string;
   agentBaseDir?: string;
   outputDir?: string;
@@ -153,6 +156,9 @@ export class AgentManager {
         entry.agent.setSystemPrompt(options.systemPrompt);
         entry.baseSystemPrompt = options.systemPrompt;
       }
+      if (options?.sessionContext !== undefined && entry.agent.isInitialized()) {
+        entry.agent.setSessionContext(options.sessionContext);
+      }
 
       // Apply llmConfig if provided (launcher may have created agent without it)
       if (options?.llmConfig && entry.agent.isInitialized()) {
@@ -250,11 +256,16 @@ export class AgentManager {
 
   private async restoreAgentRuntimeOnce(session: AgentSession): Promise<RestoredAgentRuntime> {
     const hadRuntime = this.hasAgent(session.sessionId);
+    const sessionContext = await loadFrozenSessionContext({
+      agentType: session.agentType,
+      workingDirectory: session.projectContext.currentPath,
+    });
     const agent = await this.getOrCreateAgent(
       session.sessionId,
       session.projectContext.projectId,
       {
         systemPrompt: session.systemPrompt || undefined,
+        sessionContext,
         agentType: session.agentType,
         agentBaseDir: session.projectContext.currentPath,
         outputDir: session.projectContext.outputDir,
@@ -296,11 +307,16 @@ export class AgentManager {
       return restoredAgent;
     }
 
+    const sessionContext = await loadFrozenSessionContext({
+      agentType: session.agentType,
+      workingDirectory: session.projectContext.currentPath,
+    });
     return this.getOrCreateAgent(
       session.sessionId,
       session.projectContext.projectId,
       {
         systemPrompt: session.systemPrompt || undefined,
+        sessionContext,
         agentType: session.agentType,
         agentBaseDir: session.projectContext.currentPath,
         outputDir: session.projectContext.outputDir,
@@ -346,6 +362,7 @@ export class AgentManager {
     const agent = createOriginOSAgent({
       sessionId,
       systemPrompt: options?.systemPrompt,
+      sessionContext: options?.sessionContext,
       variables: {
         projectId,
         projectName: options?.agentType || 'Agent Session',
@@ -371,7 +388,8 @@ export class AgentManager {
       if (options.memoryOwnership && !options.observationContext) throw new Error('Explicit memory ownership requires observationContext');
       if (!this.dependencies?.integrateMemory) throw new Error('Agent business memory integration is required');
       const { cognitiveManager, memoryProvider } = await this.dependencies.integrateMemory(agent, sessionId, { ...options, agentBaseDir: options.agentBaseDir });
-      this.injectMemoryIntoSystemPrompt(agent, memoryProvider);
+      agent.setTurnContextProvider((query) => cognitiveManager.prefetchContext(query));
+      this.injectMemoryIntoSessionContext(agent, memoryProvider);
       this.subscribeInProcessCognitive(agent, cognitiveManager, sessionId);
       this.setCognitiveManager(agent, cognitiveManager);
     }
@@ -379,21 +397,15 @@ export class AgentManager {
     return agent;
   }
 
-  /**
-   * 将 Memory 快照注入 system prompt
-   */
-  private injectMemoryIntoSystemPrompt(
+  /** 将 Memory 快照追加到冻结会话上下文。 */
+  private injectMemoryIntoSessionContext(
     agent: OriginOSAgent,
     memoryProvider: { system_prompt_block: () => Promise<string> }
   ): void {
     memoryProvider.system_prompt_block()
       .then(block => {
         if (block) {
-          const existing = (agent as any).agent?.state?.systemPrompt ?? '';
-          const augmented = existing
-            ? existing + '\n\n---\n\n# Core Memory\n\n' + block
-            : block;
-          (agent as any).setSystemPrompt?.(augmented);
+          agent.appendSessionContext(`# Core Memory\n\n${block}`);
         }
       })
       .catch(err => console.warn('[AgentManager] Failed to inject memory into prompt:', err));
@@ -405,11 +417,12 @@ export class AgentManager {
   private subscribeInProcessCognitive(
     agent: OriginOSAgent,
     cognitiveManager: { on_turn_end: (data: any) => Promise<void> },
-    _sessionId: string
+    sessionId: string
   ): void {
     let turnCounter = 0;
     let lastUserMessage = '';
     let lastAssistantMessage = '';
+    let lastSource = undefined as ReturnType<typeof getChannelMessageSource>;
 
     const extractText = (content: unknown): string => {
       if (typeof content === 'string') return content;
@@ -436,6 +449,7 @@ export class AgentManager {
         const text = extractText(event.message?.content) || '';
         if (role === 'user' && text) {
           lastUserMessage = text;
+          lastSource = getChannelMessageSource();
         }
         if (role === 'assistant' && text) {
           lastAssistantMessage = text;
@@ -446,6 +460,9 @@ export class AgentManager {
         const assistantMsg = lastAssistantMessage || extractText((event.message as any)?.content) || '';
         const userMsg = lastUserMessage;
         const corrections: unknown[] = detectCorrections(userMsg);
+        const now = Date.now();
+        const source = getChannelMessageSource() ?? lastSource ?? { sessionId, observedAt: new Date(now).toISOString() };
+        const observedAt = source.observedAt ? Date.parse(source.observedAt) : Number.NaN;
         cognitiveManager.on_turn_end({
           turnNumber: ++turnCounter,
           userMessage: userMsg,
@@ -457,10 +474,12 @@ export class AgentManager {
             toolChainLength: event.toolResults?.length ?? 0,
             userCorrections: corrections.length || undefined,
           },
-          timestamp: Date.now(),
+          timestamp: Number.isFinite(observedAt) ? observedAt : now,
+          source,
         }).catch(err => console.error('[AgentManager] Cognitive sync_turn error:', err));
         lastUserMessage = '';
         lastAssistantMessage = '';
+        lastSource = undefined;
       }
     });
   }

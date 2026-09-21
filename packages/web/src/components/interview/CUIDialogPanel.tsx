@@ -5,12 +5,15 @@ import { ChatMessageList } from '@/components/ui/chat';
 import { ChatInputBar, type UploadedFileDisplay } from '@/components/ui/chat-input-bar';
 import { useFileUpload, type UploadedFile } from '@/lib/hooks/use-file-upload';
 import type { ToolExecution } from '@/components/ui/chat/ToolExecutionFrame';
+import type { AgentContextTokenEstimate, AgentTokenUsage } from '@originos/core/types';
 
 interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: number;
   isStreaming?: boolean;
+  usage?: AgentTokenUsage;
+  contextTokenEstimate?: AgentContextTokenEstimate;
 }
 
 interface CUIDialogPanelProps {

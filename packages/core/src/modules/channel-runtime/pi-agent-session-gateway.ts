@@ -1,4 +1,5 @@
 import { withChannelFileWorkingDirectory } from '../../lib/integrations/pi-agent/channel-file-reply';
+import { withChannelMessageSource } from '../../lib/integrations/pi-agent/channel-message-source';
 import path from 'node:path';
 import type { LaunchContext, LaunchResult } from '../../lib/features/services/launcher';
 import { getDataRoot } from '../../lib/paths';
@@ -57,7 +58,17 @@ export class PiAgentChannelSessionGateway implements ChannelSessionProvisionerPo
       sessionId: session.sessionId,
       resultRef: `session://${session.sessionId}`,
       runtime: {
-        prompt: (message) => withChannelFileWorkingDirectory(session.projectContext.currentPath, async () => {
+        prompt: (message) => withChannelMessageSource({
+          origin: input.message.origin,
+          connectorId: input.message.connectorId,
+          conversationKind: input.message.conversationKind,
+          conversationId: input.message.conversationId,
+          actorId: input.message.actorId,
+          actorDisplayName: input.message.actorDisplayName,
+          sessionId: session.sessionId,
+          messageId: input.message.id,
+          observedAt: input.message.occurredAt ?? input.message.receivedAt,
+        }, () => withChannelFileWorkingDirectory(session.projectContext.currentPath, async () => {
           const promptChat = () => runtime.prompt(message);
           if (this.dependencies.executeMessage) {
             await this.dependencies.executeMessage(
@@ -68,7 +79,7 @@ export class PiAgentChannelSessionGateway implements ChannelSessionProvisionerPo
           } else {
             await promptChat();
           }
-        }),
+        })),
         subscribe: (listener) => runtime.subscribe((event) => { void listener(event as RuntimeSourceEvent); }),
         abort: () => runtime.abort(),
       },
@@ -88,10 +99,10 @@ export class PiAgentChannelSessionGateway implements ChannelSessionProvisionerPo
     if (!saved) throw new Error('CHANNEL_SESSION_MESSAGE_PERSIST_FAILED');
   }
 
-  async appendAssistantMessage(sessionId: string, content: string): Promise<void> {
+  async appendAssistantMessage(sessionId: string, content: string, usage?: AgentMessage['usage']): Promise<void> {
     const saved = await this.dependencies.addMessage(
       sessionId,
-      { role: 'assistant', content },
+      { role: 'assistant', content, ...(usage ? { usage } : {}) },
       this.requiredProjectId(sessionId),
     );
     if (!saved) throw new Error('CHANNEL_SESSION_MESSAGE_PERSIST_FAILED');

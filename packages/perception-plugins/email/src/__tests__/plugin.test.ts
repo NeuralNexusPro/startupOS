@@ -121,11 +121,15 @@ describe('Email perception plugin', () => {
       lastUid: 42,
     });
   });
-  it('records swallowed poll errors and keeps scheduling when the sink fails', async () => {
+  it('reports and rejects scheduled poll errors so the runtime can back off', async () => {
     const host = context(undefined, { write: vi.fn(() => { throw new Error('sink unavailable'); }) });
     const failure = new Error('authentication failed body=PRIVATE');
+    mailboxOpen.mockResolvedValue({ uidValidity: '1', uidNext: 1, exists: 0 });
+    fetchMessages.mockReturnValue([]);
+    await new EmailPerceptionPlugin().start(host);
     connect.mockRejectedValue(failure);
-    await expect(new EmailPerceptionPlugin().start(host)).resolves.toBeUndefined();
+    const scheduledPoll = vi.mocked(host.ports.schedule!.every).mock.calls[0]?.[2];
+    await expect(scheduledPoll?.()).rejects.toBe(failure);
     expect(host.ports.log?.write).toHaveBeenCalledWith({ level: 'error', stage: 'mail.poll', safeCode: 'MAIL_AUTH_FAILED', error: failure });
     expect(host.ports.health?.report).toHaveBeenCalledWith({ status: 'degraded', safeCode: 'MAIL_AUTH_FAILED' });
     expect(host.ports.schedule?.every).toHaveBeenCalledOnce();
@@ -135,7 +139,7 @@ describe('Email perception plugin', () => {
     fetchMessages.mockReturnValue([{ uid: 42, envelope: { from: [{ address: 'sender@example.com' }] } }]);
     const host = context({ uidValidity: '1', lastUid: 41 }, { write: vi.fn() });
     host.ports.events!.submit = vi.fn().mockRejectedValue(new Error('disk failure'));
-    await new EmailPerceptionPlugin().start(host);
+    await expect(new EmailPerceptionPlugin().start(host)).resolves.toBeUndefined();
     expect(host.ports.state?.write).not.toHaveBeenCalled();
     expect(host.ports.log?.write).toHaveBeenCalledWith(expect.objectContaining({ stage: 'mail.poll' }));
   });

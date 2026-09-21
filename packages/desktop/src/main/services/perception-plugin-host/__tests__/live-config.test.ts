@@ -26,7 +26,7 @@ beforeEach(() => {
   store = new PerceptionConnectorConfigStore(directory);
   mocks.start.mockResolvedValue(undefined);
   mocks.stop.mockResolvedValue(undefined);
-  service = new PerceptionPluginHostService({} as ChannelMessageIngress, directory);
+  service = new PerceptionPluginHostService({} as ChannelMessageIngress, directory, undefined, { every: vi.fn(), cancel: vi.fn() });
 });
 afterEach(async () => { service.stop(); await vi.advanceTimersByTimeAsync(0); vi.useRealTimers(); fs.rmSync(directory, { recursive: true, force: true }); });
 describe('Live perception configuration', () => {
@@ -65,5 +65,22 @@ describe('Live perception configuration', () => {
     mocks.start.mockRejectedValueOnce(new Error('TEST_START_FAILURE'));
     save(); service.start(); await vi.advanceTimersByTimeAsync(5000);
     expect(mocks.start).toHaveBeenCalledTimes(2);
+  });
+  it('registers, replaces, and cancels plugin schedules through the injected runtime', async () => {
+    const schedule = { every: vi.fn(), cancel: vi.fn() };
+    await service.stop();
+    service = new PerceptionPluginHostService({} as ChannelMessageIngress, directory, undefined, schedule);
+    mocks.start.mockImplementation(async (context) => {
+      context.ports.schedule?.every('connection-health', 5000, async () => undefined);
+    });
+    save(); service.start(); await vi.advanceTimersByTimeAsync(1);
+    expect(schedule.every).toHaveBeenCalledWith('originos.dingtalk:test:connection-health', 5000, expect.any(Function));
+
+    save('second'); await vi.advanceTimersByTimeAsync(5000);
+    expect(schedule.cancel).toHaveBeenCalledWith('originos.dingtalk:test:connection-health');
+    expect(schedule.every).toHaveBeenCalledTimes(2);
+
+    store.setEnabled('test', false); await vi.advanceTimersByTimeAsync(5000);
+    expect(schedule.cancel).toHaveBeenCalledTimes(2);
   });
 });

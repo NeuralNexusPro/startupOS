@@ -3,7 +3,10 @@ import type {
 	ScheduledTask,
 	ScheduledTaskRun,
 	SchedulerActionRunner,
+	SchedulerRuntimeOptions,
 	ScheduleTrigger,
+	SystemScheduledTaskInput,
+	SystemScheduledTaskSnapshot,
 	UpdateScheduledTaskInput,
 } from "./types";
 import { scheduleStore, type ScheduleStore } from "./schedule-store";
@@ -18,6 +21,10 @@ function createId(prefix: string): string {
 
 function getSystemTimezone(): string {
 	return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+}
+
+function isUserTask(task: ScheduledTask): boolean {
+	return task.ownerKind !== "system" && task.visibility !== "internal";
 }
 
 function parseDate(value: string, fieldName: string): Date {
@@ -91,19 +98,39 @@ export function computeNextRunAt(trigger: ScheduleTrigger, from: Date = new Date
 }
 
 export class SchedulerService {
+	private readonly systemTasks = new Map<string, SystemScheduledTask>();
+	private readonly systemRuns = new Set<Promise<void>>();
+	private readonly clock: () => number;
+	private readonly random: () => number;
+	private systemDispatchEnabled = true;
+
 	constructor(
 		private readonly store: ScheduleStore = scheduleStore,
-		private readonly runner?: SchedulerActionRunner
-	) {}
+		private readonly runner?: SchedulerActionRunner,
+		options: SchedulerRuntimeOptions = {}
+	) {
+		this.clock = options.now ?? Date.now;
+		this.random = options.random ?? Math.random;
+	}
 
 	async listTasks(): Promise<ScheduledTask[]> {
-		return this.store.listTasks();
+		return (await this.store.listTasks())
+			.filter(isUserTask)
+			.map((task) => ({
+				...task,
+				ownerKind: "user",
+				ownerId: task.ownerId ?? "user",
+				visibility: "user",
+			}));
 	}
 
 	async createTask(input: CreateScheduledTaskInput): Promise<ScheduledTask> {
 		const timestamp = nowIso();
 		const task: ScheduledTask = {
 			id: createId("schedule"),
+			ownerKind: "user",
+			ownerId: "user",
+			visibility: "user",
 			title: input.title,
 			...(input.description ? { description: input.description } : {}),
 			status: "enabled",
@@ -121,7 +148,7 @@ export class SchedulerService {
 
 	async updateTask(taskId: string, input: UpdateScheduledTaskInput): Promise<ScheduledTask> {
 		const tasks = await this.store.listTasks();
-		const index = tasks.findIndex((task) => task.id === taskId);
+		const index = tasks.findIndex((task) => task.id === taskId && isUserTask(task));
 		if (index < 0) throw new Error(`Scheduled task not found: ${taskId}`);
 		const existing = tasks[index];
 		if (!existing) throw new Error(`Scheduled task not found: ${taskId}`);
@@ -144,15 +171,16 @@ export class SchedulerService {
 
 	async deleteTask(taskId: string): Promise<boolean> {
 		const tasks = await this.store.listTasks();
-		const next = tasks.filter((task) => task.id !== taskId);
-		if (next.length === tasks.length) return false;
-		await this.store.saveTasks(next);
+		const index = tasks.findIndex((task) => task.id === taskId && isUserTask(task));
+		if (index < 0) return false;
+		tasks.splice(index, 1);
+		await this.store.saveTasks(tasks);
 		return true;
 	}
 
 	async runTask(taskId: string): Promise<ScheduledTaskRun> {
 		const tasks = await this.store.listTasks();
-		const index = tasks.findIndex((task) => task.id === taskId);
+		const index = tasks.findIndex((task) => task.id === taskId && isUserTask(task));
 		if (index < 0) throw new Error(`Scheduled task not found: ${taskId}`);
 		return this.runAndPersist(tasks, index);
 	}
@@ -163,11 +191,116 @@ export class SchedulerService {
 		for (let i = 0; i < tasks.length; i += 1) {
 			const task = tasks[i];
 			if (!task) continue;
+			if (!isUserTask(task)) continue;
 			if (task.status !== "enabled") continue;
 			if (parseDate(task.nextRunAt, "nextRunAt").getTime() > referenceTime.getTime()) continue;
 			runs.push(await this.runAndPersist(tasks, i, referenceTime));
 		}
 		return runs;
+	}
+
+	registerSystemTask(input: SystemScheduledTaskInput): void {
+		if (!input.id.trim() || !input.ownerId.trim()) throw new Error("System task id and ownerId are required");
+		if (!Number.isFinite(input.intervalMs) || input.intervalMs < 1000) {
+			throw new Error("System task intervalMs must be at least 1000");
+		}
+		const jitterRatio = input.jitterRatio ?? 0.1;
+		if (!Number.isFinite(jitterRatio) || jitterRatio < 0 || jitterRatio > 1) {
+			throw new Error("System task jitterRatio must be between 0 and 1");
+		}
+		const maxBackoffMs = input.maxBackoffMs ?? Math.max(input.intervalMs, 15 * 60_000);
+		if (!Number.isFinite(maxBackoffMs) || maxBackoffMs < input.intervalMs) {
+			throw new Error("System task maxBackoffMs must be at least intervalMs");
+		}
+		this.systemTasks.set(input.id, {
+			...input,
+			maxBackoffMs,
+			jitterRatio,
+			nextRunAt: this.clock() + (input.runImmediately === false ? input.intervalMs : 0),
+			running: false,
+			consecutiveFailures: 0,
+		});
+	}
+
+	cancelSystemTask(taskId: string): boolean {
+		return this.systemTasks.delete(taskId);
+	}
+
+	listSystemTasks(): SystemScheduledTaskSnapshot[] {
+		return [...this.systemTasks.values()].map((task) => ({
+			id: task.id,
+			ownerId: task.ownerId,
+			ownerKind: "system",
+			visibility: "internal",
+			intervalMs: task.intervalMs,
+			nextRunAt: new Date(task.nextRunAt).toISOString(),
+			...(task.lastRunAt === undefined ? {} : { lastRunAt: new Date(task.lastRunAt).toISOString() }),
+			state: task.running ? "running" : task.consecutiveFailures > 0 ? "backoff" : "scheduled",
+			consecutiveFailures: task.consecutiveFailures,
+			...(task.lastOutcome ? { lastOutcome: task.lastOutcome } : {}),
+			...(task.safeCode ? { safeCode: task.safeCode } : {}),
+		}));
+	}
+
+	runDueSystemTasks(referenceTime = this.clock()): number {
+		if (!this.systemDispatchEnabled) return 0;
+		let dispatched = 0;
+		for (const task of this.systemTasks.values()) {
+			if (task.nextRunAt > referenceTime) continue;
+			if (this.dispatchSystemTask(task, referenceTime)) dispatched += 1;
+		}
+		return dispatched;
+	}
+
+	runSystemTask(taskId: string, referenceTime = this.clock()): boolean {
+		const task = this.systemTasks.get(taskId);
+		return Boolean(this.systemDispatchEnabled && task && this.dispatchSystemTask(task, referenceTime));
+	}
+
+	startSystemTasks(): void {
+		this.systemDispatchEnabled = true;
+	}
+
+	pauseSystemTasks(): void {
+		this.systemDispatchEnabled = false;
+	}
+
+	async stopSystemTasks(): Promise<void> {
+		this.pauseSystemTasks();
+		await Promise.allSettled([...this.systemRuns]);
+	}
+
+	private dispatchSystemTask(task: SystemScheduledTask, referenceTime: number): boolean {
+		if (task.running) {
+			task.lastOutcome = "overlap-skipped";
+			task.nextRunAt = referenceTime + task.intervalMs;
+			return false;
+		}
+		task.running = true;
+		task.lastRunAt = referenceTime;
+		task.nextRunAt = referenceTime + task.intervalMs;
+		let run!: Promise<void>;
+		run = Promise.resolve()
+			.then(task.callback)
+			.then(() => {
+				task.consecutiveFailures = 0;
+				task.lastOutcome = "success";
+				task.safeCode = undefined;
+			})
+			.catch(() => {
+				task.consecutiveFailures += 1;
+				task.lastOutcome = "failed";
+				task.safeCode = "SYSTEM_TASK_FAILED";
+				const base = Math.min(task.intervalMs * 2 ** task.consecutiveFailures, task.maxBackoffMs);
+				const jitter = Math.floor(base * task.jitterRatio * this.random());
+				task.nextRunAt = this.clock() + Math.min(base + jitter, task.maxBackoffMs);
+			})
+			.finally(() => {
+				task.running = false;
+				this.systemRuns.delete(run);
+			});
+		this.systemRuns.add(run);
+		return true;
 	}
 
 	private async runAndPersist(tasks: ScheduledTask[], index: number, referenceTime: Date = new Date()): Promise<ScheduledTaskRun> {
@@ -231,4 +364,15 @@ export class SchedulerService {
 			};
 		}
 	}
+}
+
+interface SystemScheduledTask extends SystemScheduledTaskInput {
+	maxBackoffMs: number;
+	jitterRatio: number;
+	nextRunAt: number;
+	lastRunAt?: number;
+	running: boolean;
+	consecutiveFailures: number;
+	lastOutcome?: SystemScheduledTaskSnapshot["lastOutcome"];
+	safeCode?: SystemScheduledTaskSnapshot["safeCode"];
 }

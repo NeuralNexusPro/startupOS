@@ -109,7 +109,7 @@ export class EmailPerceptionPlugin implements PerceptionPlugin {
     const profile = validateMailConnectorSettings(context.settings);
     const interval = profile.pollIntervalSeconds * 1_000;
     let polling = false;
-    const poll = async (): Promise<void> => {
+    const poll = async (propagateFailure = false): Promise<void> => {
       if (polling) return;
       polling = true;
       try {
@@ -120,12 +120,13 @@ export class EmailPerceptionPlugin implements PerceptionPlugin {
           status: 'degraded',
           safeCode: safeCode(error),
         });
+        if (propagateFailure) throw error;
       } finally {
         polling = false;
       }
     };
     await poll();
-    context.ports.schedule.every('poll', interval, poll);
+    context.ports.schedule.every('poll', interval, () => poll(true));
   }
   async stop(context: PerceptionPluginRuntimeContext): Promise<void> {
     context.ports.schedule?.cancel('poll');

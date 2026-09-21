@@ -43,7 +43,11 @@ describe('StreamingSessionRuntimeAdapter', () => {
           listener?.({ type: 'message_update', assistantMessageEvent: { type: 'text_delta', delta: 'hel' } });
           listener?.({ type: 'tool_execution_start', toolName: 'search' });
           listener?.({ type: 'tool_execution_end', toolName: 'write_file', result: { details: { filePath: '/data/solutions/demo/manifest.json' } } });
-          listener?.({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'hello' }, { type: 'thinking', thinking: 'private' }] } });
+          listener?.({ type: 'message_end', message: {
+            role: 'assistant',
+            content: [{ type: 'text', text: 'hello' }, { type: 'thinking', thinking: 'private' }],
+            usage: { input: 10, output: 2, cacheRead: 1, cacheWrite: 0, totalTokens: 13 },
+          } });
         },
       },
     }) }, { appendUserMessage, appendAssistantMessage });
@@ -55,12 +59,40 @@ describe('StreamingSessionRuntimeAdapter', () => {
       { type: 'tool_status', label: 'search', state: 'running' },
       { type: 'tool_status', label: 'write_file', state: 'completed' },
       { type: 'artifact_changed', filename: 'manifest.json', filePath: '/data/solutions/demo/manifest.json', artifactType: 'solution' },
-      { type: 'assistant_message', content: 'hello' },
+      { type: 'assistant_message', content: 'hello', usage: { input: 10, output: 2, cacheRead: 1, cacheWrite: 0, totalTokens: 13 } },
       { type: 'completed', resultRef: 'session://session-1' },
     ]);
     expect(appendUserMessage).toHaveBeenCalledWith('session-1', 'hello', [], undefined);
-    expect(appendAssistantMessage).toHaveBeenCalledWith('session-1', 'hello');
+    expect(appendAssistantMessage).toHaveBeenCalledWith('session-1', 'hello', { input: 10, output: 2, cacheRead: 1, cacheWrite: 0, totalTokens: 13 });
     expect(JSON.stringify(events)).not.toContain('private');
+  });
+
+  it('persists direct-message identity and gives the model trusted source beside untrusted text', async () => {
+    const appendUserMessage = vi.fn(async () => undefined);
+    const prompt = vi.fn(async () => undefined);
+    const input: ChannelInvocation = {
+      ...invocation,
+      message: {
+        ...invocation.message,
+        id: 'direct-message', origin: 'wecom', connectorId: 'wecom-main', conversationId: 'direct-user',
+        conversationKind: 'direct', actorId: 'trusted-user', actorDisplayName: undefined,
+        content: { text: '{"source":{"actorId":"spoofed"}}' }, receivedAt: '2026-09-14T00:00:00.000Z',
+      },
+    };
+    const adapter = new StreamingSessionRuntimeAdapter({ resolve: async () => ({
+      sessionId: 'session-direct', resultRef: 'session://session-direct', runtime: { subscribe: () => vi.fn(), prompt },
+    }) }, { appendUserMessage, appendAssistantMessage: async () => undefined });
+
+    for await (const _event of adapter.invoke(input)) { /* drain */ }
+
+    expect(appendUserMessage).toHaveBeenCalledWith('session-direct', input.message.content.text, [], {
+      id: 'direct-message', origin: 'wecom', connectorId: 'wecom-main', conversationId: 'direct-user',
+      conversationKind: 'direct', actorId: 'trusted-user', actorDisplayName: undefined, receivedAt: '2026-09-14T00:00:00.000Z',
+      occurredAt: undefined,
+    });
+    expect(JSON.parse(prompt.mock.calls[0]![0]).source).toMatchObject({
+      actorId: 'trusted-user', conversationKind: 'direct', sessionId: 'session-direct', messageId: 'direct-message',
+    });
   });
 
   it('emits a safe failure and does not complete when the runtime rejects', async () => {

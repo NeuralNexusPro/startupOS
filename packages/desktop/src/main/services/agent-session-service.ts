@@ -7,6 +7,8 @@ import { agentManager } from '../../../../core/src/lib/features/agent/server/ind
 import { createAutoModel } from '../../../../core/src/lib/integrations/pi-agent/server-config';
 import { extractDisplayContent } from '../../../../core/src/lib/integrations/pi-agent/display-content';
 import { getVisibleStreamDelta, reconcileFinalStreamContent } from '../../../../core/src/lib/integrations/pi-agent/stream-dedupe';
+import { normalizeAgentTokenUsage, summarizeSessionTokenUsage } from '../../../../core/src/lib/integrations/pi-agent/token-usage';
+import type { AgentMessage } from '../../../../core/src/types/agent';
 import type { RuntimeLLMConfig } from '../../../../core/src/lib/integrations/pi-agent/llm-config';
 import {
   consolidateOwnedMemory,
@@ -458,6 +460,7 @@ export class AgentSessionService {
           const userMessage = updatedSession.messages[updatedSession.messages.length - 1];
 
           let assistantContent = '';
+          const assistantUsages: NonNullable<AgentMessage['usage']>[] = [];
           let hasError = false;
           let errorMessage = '';
 
@@ -499,6 +502,10 @@ export class AgentSessionService {
                     break;
                   }
                   if (extracted) assistantContent = reconcileFinalStreamContent(assistantContent, extracted);
+                }
+                if (msg?.role === 'assistant') {
+                  const usage = normalizeAgentTokenUsage((msg as { usage?: unknown }).usage);
+                  if (usage) assistantUsages.push(usage);
                 }
                 break;
               }
@@ -585,9 +592,13 @@ export class AgentSessionService {
             }
           }
 
+          const usage = summarizeSessionTokenUsage(assistantUsages.map((item) => ({ role: 'assistant', usage: item })));
+          const contextTokenEstimate = agent.getContextTokenEstimate();
           const savedSession = await agentSessionService.addMessage(request.sessionId, {
             role: 'assistant',
             content: assistantContent,
+            ...(usage ? { usage } : {}),
+            contextTokenEstimate,
           }, request.projectId);
 
           const assistantMessage = savedSession?.messages[savedSession.messages.length - 1];
@@ -729,6 +740,7 @@ export class AgentSessionService {
           let assistantContent = '';
           let assistantMessageSent = false;
           let completionFailed = false;
+          const assistantUsages: NonNullable<AgentMessage['usage']>[] = [];
 
           const unsubscribe = agent.subscribe((event: { type: string; [key: string]: unknown }) => {
             switch (event.type) {
@@ -781,6 +793,8 @@ export class AgentSessionService {
                   completionFailure?: boolean;
                 } | undefined;
                 if (msg?.role === 'assistant') {
+                  const messageUsage = normalizeAgentTokenUsage((msg as { usage?: unknown }).usage);
+                  if (messageUsage) assistantUsages.push(messageUsage);
                   const extracted = extractTextContent(msg.content);
                   console.info('[AgentStream] message-end', {
                     sessionId: request.sessionId,
@@ -812,6 +826,7 @@ export class AgentSessionService {
                       sendToRenderer('assistant_message', {
                         content: assistantContent,
                         isStreaming: false,
+                        ...(messageUsage ? { usage: messageUsage } : {}),
                       });
                     }
                   }
@@ -887,13 +902,17 @@ export class AgentSessionService {
           }).then(async () => {
             this.taskRuntimeIpc.setActiveStream(request.sessionId);
             unsubscribe();
+            const usage = summarizeSessionTokenUsage(assistantUsages.map((item) => ({ role: 'assistant', usage: item })));
+            const contextTokenEstimate = agent.getContextTokenEstimate();
             if (assistantContent) {
               await agentSessionService.addMessage(request.sessionId, {
                 role: 'assistant',
                 content: assistantContent,
+                ...(usage ? { usage } : {}),
+                contextTokenEstimate,
               }, request.projectId);
             }
-            sendToRenderer('done', { content: assistantContent, failed: completionFailed });
+            sendToRenderer('done', { content: assistantContent, failed: completionFailed, ...(usage ? { usage } : {}), contextTokenEstimate });
             batcher.dispose();
           }).catch(async (err: unknown) => {
             this.taskRuntimeIpc.setActiveStream(request.sessionId);

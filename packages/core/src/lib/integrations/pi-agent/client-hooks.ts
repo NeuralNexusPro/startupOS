@@ -19,6 +19,8 @@ import { isElectron } from "../electron/env";
 import { appendStreamDelta, reconcileFinalStreamContent } from "./stream-dedupe";
 import { StreamRenderScheduler } from "./stream-render-scheduler";
 import type { RuntimeLLMConfig } from "./llm-config";
+import type { AgentContextTokenEstimate, AgentTokenUsage } from "../../../types/agent";
+import { normalizeAgentTokenUsage } from "./token-usage";
 import {
 	createRestoreAgentSessionResult,
 	toRestoreAgentSessionError,
@@ -45,6 +47,8 @@ interface SessionState {
 		role: "user" | "assistant" | "system" | "tool" | "toolResult";
 		content: string;
 		timestamp?: number;
+		usage?: AgentTokenUsage;
+		contextTokenEstimate?: AgentContextTokenEstimate;
 	}>;
 	activeTools: Array<{ toolName: string; startTime: number }>;
 	progressMessage: string | null;
@@ -105,7 +109,7 @@ export type ClientAgentEvent =
 	| { type: "turn_end" }
 	| { type: "message_start"; message?: { role: string; content?: string } }
 	| { type: "message_delta"; delta?: { text?: string } }
-	| { type: "message_end"; message?: { role: string; content?: string } }
+	| { type: "message_end"; message?: { role: string; content?: string; usage?: AgentTokenUsage; contextTokenEstimate?: AgentContextTokenEstimate } }
 	| { type: "tool_execution_start"; toolName: string; toolCallId?: string; args?: unknown }
 	| { type: "tool_execution_end"; toolName: string; toolCallId?: string; result?: unknown; isError?: boolean }
 	| { type: "agent_error"; error?: { message: string } };
@@ -139,6 +143,8 @@ export interface UseClientPiAgentState {
 		content: string;
 		timestamp?: number;
 		isStreaming?: boolean;
+		usage?: AgentTokenUsage;
+		contextTokenEstimate?: AgentContextTokenEstimate;
 	}>;
 	artifactVersion: number;
 
@@ -256,7 +262,7 @@ async function sendMessageToAgent(
 	sessionId: string,
 	message: string,
 	projectContext?: ProjectContext,
-): Promise<{ userMessage: { id: string; role: string; content: string; timestamp?: number }; assistantMessage?: { id: string; role: string; content: string; timestamp?: number } }> {
+): Promise<{ userMessage: { id: string; role: string; content: string; timestamp?: number }; assistantMessage?: { id: string; role: string; content: string; timestamp?: number; usage?: AgentTokenUsage; contextTokenEstimate?: AgentContextTokenEstimate } }> {
 	const response = await sendAgentMessage({
 		sessionId,
 		content: message,
@@ -270,7 +276,7 @@ async function sendMessageToAgent(
 		throw new Error(response.error?.message || 'Failed to send message');
 	}
 
-	return response.data as { userMessage: { id: string; role: string; content: string; timestamp?: number }; assistantMessage?: { id: string; role: string; content: string; timestamp?: number } };
+	return response.data as { userMessage: { id: string; role: string; content: string; timestamp?: number }; assistantMessage?: { id: string; role: string; content: string; timestamp?: number; usage?: AgentTokenUsage; contextTokenEstimate?: AgentContextTokenEstimate } };
 }
 
 // ============================================================================
@@ -319,6 +325,8 @@ export function usePiAgent(): UseClientPiAgentState {
 		content: string;
 		timestamp?: number;
 		isStreaming?: boolean;
+		usage?: AgentTokenUsage;
+		contextTokenEstimate?: AgentContextTokenEstimate;
 	}>>([]);
 
 	// 事件监听器
@@ -583,6 +591,8 @@ export function usePiAgent(): UseClientPiAgentState {
 							role: "assistant" as const,
 							content: assistantMessage.content,
 							timestamp: assistantMessage.timestamp || Date.now(),
+							usage: assistantMessage.usage,
+							contextTokenEstimate: assistantMessage.contextTokenEstimate,
 						}];
 						console.log('[usePiAgent] Added assistant message, total:', newMessages.length);
 						return newMessages;
@@ -594,6 +604,8 @@ export function usePiAgent(): UseClientPiAgentState {
 						message: {
 							role: "assistant",
 							content: assistantMessage.content,
+							usage: assistantMessage.usage,
+							contextTokenEstimate: assistantMessage.contextTokenEstimate,
 						},
 					});
 				} else {
@@ -676,6 +688,8 @@ export function usePiAgent(): UseClientPiAgentState {
 
 			let receivedAssistantContent = "";
 			let assistantTurnFinalized = false;
+			let completedUsage: AgentTokenUsage | undefined;
+			let completedContextTokenEstimate: AgentContextTokenEstimate | undefined;
 			let rendererDeltaEvents = 0;
 			let rendererDeltaChars = 0;
 
@@ -772,7 +786,8 @@ export function usePiAgent(): UseClientPiAgentState {
 								scheduleUpdate();
 							}
 						} else if (event.type === "assistant_message") {
-							const content = (event.data as { content?: string })?.content;
+							const data = event.data as { content?: string };
+							const content = data.content;
 							console.info("[StreamRender] renderer-assistant-message", {
 								streamId,
 								sessionId: streamSessionId,
@@ -815,7 +830,10 @@ export function usePiAgent(): UseClientPiAgentState {
 							}
 						} else if (event.type === "done") {
 							if (!isActiveStream()) return;
-							const content = (event.data as { content?: string })?.content;
+							const data = event.data as { content?: string; usage?: unknown; contextTokenEstimate?: AgentContextTokenEstimate };
+							completedUsage = normalizeAgentTokenUsage(data.usage);
+							completedContextTokenEstimate = data.contextTokenEstimate;
+							const content = data.content;
 							console.info("[StreamRender] renderer-done", {
 								streamId,
 								sessionId: streamSessionId,
@@ -837,6 +855,12 @@ export function usePiAgent(): UseClientPiAgentState {
 								setIsThinking(false);
 								setIsRunning(false);
 								setActiveTools([]);
+								setMessages(prev => prev.map(message =>
+									message.id === currentAssistantMessageId
+										? { ...message, usage: completedUsage, contextTokenEstimate: completedContextTokenEstimate }
+										: message
+								));
+								emitEvent({ type: "message_end", message: { role: "assistant", content: receivedAssistantContent, usage: completedUsage, contextTokenEstimate: completedContextTokenEstimate } });
 								emitEvent({ type: "agent_end" });
 								unsubscribeEvents();
 								if (streamUnsubscribeRef.current === unsubscribeEvents) {
@@ -1000,7 +1024,9 @@ export function usePiAgent(): UseClientPiAgentState {
 								const data = event.data as { message?: string };
 								throw new Error(data.message || "Unknown error");
 							} else if (event.type === "done") {
-								const data = event.data as { content?: string };
+								const data = event.data as { content?: string; usage?: unknown; contextTokenEstimate?: AgentContextTokenEstimate };
+								completedUsage = normalizeAgentTokenUsage(data.usage);
+								completedContextTokenEstimate = data.contextTokenEstimate;
 								if (data.content) {
 									receivedAssistantContent = reconcileFinalStreamContent(
 										receivedAssistantContent,
@@ -1034,6 +1060,11 @@ export function usePiAgent(): UseClientPiAgentState {
 									nestedData.content
 								);
 							}
+						} else if (event.type === "done") {
+							const data = event.data as { content?: string; usage?: unknown; contextTokenEstimate?: AgentContextTokenEstimate };
+							if (data.content) receivedAssistantContent = reconcileFinalStreamContent(receivedAssistantContent, data.content);
+							completedUsage = normalizeAgentTokenUsage(data.usage);
+							completedContextTokenEstimate = data.contextTokenEstimate;
 						}
 					}
 					if (receivedAssistantContent) {
@@ -1042,11 +1073,16 @@ export function usePiAgent(): UseClientPiAgentState {
 				}
 
 				await finishUpdate();
+				setMessages(prev => prev.map(message =>
+					message.id === currentAssistantMessageId
+						? { ...message, usage: completedUsage, contextTokenEstimate: completedContextTokenEstimate }
+						: message
+				));
 
 				if (isActiveStream()) {
 					emitEvent({
 						type: "message_end",
-						message: { role: "assistant", content: receivedAssistantContent },
+						message: { role: "assistant", content: receivedAssistantContent, usage: completedUsage, contextTokenEstimate: completedContextTokenEstimate },
 					});
 					console.log(
 						"[usePiAgent] Stream completed, content length:",

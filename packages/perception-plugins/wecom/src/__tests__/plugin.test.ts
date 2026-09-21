@@ -190,11 +190,10 @@ describe('WeComPerceptionPlugin', () => {
 
     client.emit('message.text', frame);
 
-    await vi.waitFor(() => expect(client.replyStream).toHaveBeenCalledTimes(4));
+    await vi.waitFor(() => expect(client.replyStream).toHaveBeenCalledTimes(3));
     expect(client.replyStream).toHaveBeenNthCalledWith(1, frame, expect.any(String), '正在处理中…', false);
     expect(client.replyStream).toHaveBeenNthCalledWith(2, frame, expect.any(String), '你', false);
-    expect(client.replyStream).toHaveBeenNthCalledWith(3, frame, expect.any(String), '你好', false);
-    expect(client.replyStream).toHaveBeenNthCalledWith(4, frame, expect.any(String), '你好', true);
+    expect(client.replyStream).toHaveBeenNthCalledWith(3, frame, expect.any(String), '你好', true);
   });
 });
 
@@ -232,6 +231,8 @@ it.each([
 ] satisfies { event: PluginReplyEvent; expected: string; finish: boolean }[])(
   'commits $event.type content only after ACK and retries identical text',
   async ({ event, expected, finish }) => {
+    const deliveryEvent = event.type === 'text_delta' ? { type: 'text_delta' as const, delta: 'x'.repeat(160) } : event;
+    const deliveryContent = event.type === 'text_delta' ? `base${'x'.repeat(160)}` : expected;
     const client = new FakeClient();
     const plugin = new WeComPerceptionPlugin(() => client);
     const base = context();
@@ -250,15 +251,15 @@ it.each([
       await vi.waitFor(() => expect(deliver).toBeDefined());
       await deliver({ type: 'text_delta', delta: 'base' });
       client.replyStream.mockRejectedValueOnce(new Error('ACK_TIMEOUT'));
-      await expect(deliver(event)).rejects.toThrow('ACK_TIMEOUT');
+      await expect(deliver(deliveryEvent)).rejects.toThrow('ACK_TIMEOUT');
       await deliver({ type: 'completed', resultRef: 'session://retry' });
       expect(client.replyStream).toHaveBeenNthCalledWith(3, frame, expect.any(String), 'base', true);
-      await expect(deliver(event)).resolves.toMatchObject({ status: 'delivered' });
-      expect(client.replyStream).toHaveBeenNthCalledWith(2, frame, expect.any(String), expected, finish);
-      expect(client.replyStream).toHaveBeenNthCalledWith(4, frame, expect.any(String), expected, finish);
+      await expect(deliver(deliveryEvent)).resolves.toMatchObject({ status: 'delivered' });
+      expect(client.replyStream).toHaveBeenNthCalledWith(2, frame, expect.any(String), deliveryContent, finish);
+      expect(client.replyStream).toHaveBeenNthCalledWith(4, frame, expect.any(String), deliveryContent, finish);
       await deliver({ type: 'text_delta', delta: '-tail' });
       await deliver({ type: 'completed', resultRef: 'session://retry' });
-      expect(client.replyStream).toHaveBeenLastCalledWith(frame, expect.any(String), `${expected}-tail`, true);
+      expect(client.replyStream).toHaveBeenLastCalledWith(frame, expect.any(String), `${deliveryContent}-tail`, true);
     } finally {
       finishSubmit();
       await plugin.stop(host);

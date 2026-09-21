@@ -4,7 +4,7 @@ import { requireChannelFileReply, withChannelFileWorkingDirectory } from '../../
 import { requireChannelOfficeCapabilities } from '../../../lib/integrations/pi-agent/channel-office-capabilities';
 import { describe, expect, it, vi } from 'vitest';
 import { ChannelTriggerExecutionAdapter } from '../routing/channel-trigger-execution-adapter';
-import type { ChannelFlowMessageIngress, ChannelInvocation, ChannelMessageIngress } from '../../channel-runtime';
+import type { AgentOutputEvent, ChannelFlowMessageIngress, ChannelInvocation, ChannelMessageIngress } from '../../channel-runtime';
 import type { PerceptionEventV1, PerceptionTriggerExecutionContext, PerceptionTriggerTarget } from '../../../types/perception';
 
 const event: PerceptionEventV1 = {
@@ -32,7 +32,7 @@ describe('ChannelTriggerExecutionAdapter', () => {
     };
     const result = await new ChannelTriggerExecutionAdapter(ingress).dispatch({ event, target: { kind: 'project', id: 'project-1' }, context });
     expect(received).toMatchObject({
-      message: { origin: 'email', connectorId: 'email-main', conversationId: 'thread-1', actorId: 'sender@example.test', content: { attachmentRefs: ['attachment://one'] } },
+      message: { origin: 'email', connectorId: 'email-main', conversationId: 'thread-1', actorId: 'sender@example.test', occurredAt: event.occurredAt, receivedAt: event.receivedAt, content: { attachmentRefs: ['attachment://one'] } },
       target: { kind: 'project-agent', id: 'project-1', projectId: 'project-1' },
     });
     expect(received?.message.content.text).toContain('Subject: Invoice');
@@ -98,6 +98,28 @@ describe('ChannelTriggerExecutionAdapter', () => {
     const adapter = new ChannelTriggerExecutionAdapter(ingress, undefined, { canDeliver: () => true, dispatch });
     await expect(adapter.dispatch({ event, target: { kind: 'project', id: 'project-1' }, context })).resolves.toMatchObject({ responseText: 'Delivered response' });
     expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ connectorId: 'email-main', replyHandle: 'perception://raw/one' }));
+  });
+
+  it('shows the IM delegation and identifies the OriginOS asset in its reply', async () => {
+    const imEvent: PerceptionEventV1 = { ...event, source: 'wecom', connectorId: 'wecom-one', type: 'message.received' };
+    const ingress: ChannelFlowMessageIngress = {
+      send: async function* () { /* packet path is required */ },
+      sendPackets: async function* () {
+        yield { protocolVersion: '1.0', flowId: 'flow-1', packetId: 'p0', sequence: 0, port: 'runtime.output', kind: 'data', emittedAt: event.receivedAt, payload: { type: 'accepted', sessionId: 'session-1' } };
+        yield { protocolVersion: '1.0', flowId: 'flow-1', packetId: 'p1', sequence: 1, port: 'runtime.output', kind: 'data', emittedAt: event.receivedAt, payload: { type: 'assistant_message', content: '候选人名单如下。' } };
+        yield { protocolVersion: '1.0', flowId: 'flow-1', packetId: 'p2', sequence: 2, port: 'runtime.output', kind: 'complete', emittedAt: event.receivedAt, payload: { type: 'completed', resultRef: 'session://session-1' } };
+      },
+    };
+    const delivered: AgentOutputEvent[] = [];
+    const adapter = new ChannelTriggerExecutionAdapter(ingress, undefined, {
+      canDeliver: () => true,
+      dispatch: async ({ packets }) => { for await (const packet of packets) delivered.push(packet.payload); return []; },
+    });
+    await adapter.dispatch({ event: imEvent, target: { kind: 'role-agent', id: 'hawkeye' }, context: { ...context, connectorId: 'wecom-one' } });
+    expect(delivered).toEqual(expect.arrayContaining([
+      { type: 'assistant_message', content: '资产「角色：hawkeye」正在承接您的请求，正在处理中…' },
+      { type: 'assistant_message', content: '资产「角色：hawkeye」正在承接您的请求：\n\n候选人名单如下。' },
+    ]));
   });
 
   it('binds office capabilities to the current IM actor and session only', async () => {

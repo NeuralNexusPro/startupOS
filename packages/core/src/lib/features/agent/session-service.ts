@@ -7,6 +7,7 @@
 import { v4 as uuidv4 } from 'uuid';
 
 import { jsonStore } from '../../storage/json-store';
+import { readUserConfigWithProductDefaults, userLLMConfigToRuntimeLLMConfig } from '../user-config';
 
 import type {
   AgentSession,
@@ -161,7 +162,10 @@ export class AgentSessionService {
     const sessionData = await this.store.read<AgentSession>(sessionPath);
     console.error(`[DEBUG] getSession: sessionData=${sessionData ? 'found' : 'null'}`);
 
-    return sessionData?.data ?? null;
+    const session = sessionData?.data ?? null;
+    if (!session || session.llmConfig) return session;
+    const llmConfig = userLLMConfigToRuntimeLLMConfig(readUserConfigWithProductDefaults().llm);
+    return llmConfig ? { ...session, llmConfig } : session;
   }
 
   /**

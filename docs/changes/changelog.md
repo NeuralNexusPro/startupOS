@@ -2,6 +2,40 @@
 
 ---
 
+## 2026-09-21 — feat：Jev 受限感知决策路由
+
+**类型**：feat
+**影响模块**：Core Jev integration/perception runtime、Desktop Provider 与感知 Host、Web 设置与感知中心、Story SENSE.15
+**摘要**：在确定性规则授权后增加 Jev 候选决策；仅严格 `confidence > 0.8` 且无需 HITL 时复用既有租约执行，其余在事件记录中人工选择或忽略。API Key 仅由 safeStorage/服务端环境持有，决策回执与审计均脱敏；direct 规则保持兼容。真实 Provider、历史标注样本与实际打包 safeStorage 仍待人工验收。
+
+## 2026-09-20 — docs：规划 SENSE.15 Jev 受限决策路由
+
+**类型**：docs
+**影响模块**：`docs/specs/epic-SENSE/story-SENSE.15/`、`openspec/changes/add-jev-perception-decisions/`
+**摘要**：基于 ARCH-210 已确认边界完成产品交互、技术架构、需求追踪、接口/数据契约、异常与低置信交互、测试矩阵和依赖有序工作包；Jev 仅在已存在且授权候选中决策，严格 `confidence > 0.8` 且无需 HITL 才自动执行，凭据仅服务端安全持有。当前仅规划，未修改应用源码或发布。
+
+## 2026-09-18 — feat：渐进式 Agent 上下文、KV Cache 与 Token 统计
+
+**类型**：feat
+**影响模块**：`packages/core/src/lib/integrations/pi-agent/`、`packages/core/src/modules/collaboration-runtime/`、`packages/desktop/`、`packages/web/`、Epic M / Story M.14
+**摘要**：完成 Story M.14。普通 Agent、RoleAgent、Project Agent 与协作 Agent 默认只加载有界 Knowledge/Pattern 目录，当前 turn 以 owner/session 范围按需召回；动态会话内容移出 stable system prompt，Pi Agent 复用稳定 session id 和 provider cache。真实 usage 随最终 assistant message 写入既有会话 JSON，在共享 Agent/Skill UI 聚合展示，并进入协作 CostController/Metrics。匿名针对性测试 99 项通过；Web 全仓 type-check 与 Desktop build 仍有 6 个 M.14 之前已存在的 ontology 严格类型错误，未虚报全绿。
+
+## 2026-09-18 — feat：Canonical Ontology Validator 与 Action Gate
+
+**类型**：feat
+**影响模块**：`packages/core/src/lib/features/ontology/`, `docs/specs/epic-ONT/`, `AGENTS.md`
+**摘要**：完成 ONT4-T1。Core 统一校验 canonical ontology 的集合 ID、交叉引用和状态归属，并在无副作用 Action Gate 中校验本体版本、Action/Concept、当前状态和权限；失败通过稳定错误码与字段路径返回。Rule expression、Facts 查询和 Action 提交保留给后续明确边界。
+
+---
+
+## 2026-09-18 — feat：旧本体模型安全迁移与只读兼容投影
+
+**类型**：feat
+**影响模块**：`packages/core/src/lib/features/ontology/`, `docs/specs/epic-ONT/`, `AGENTS.md`
+**摘要**：完成 ONT3-T1。Core 统一支持旧 `Ontology`、访谈 `OntologyModel` 和 `business-model.json` 的 dry-run 与显式迁移；正式迁移保留原字节备份、拒绝覆盖已有 canonical ontology，并以 DataFile 更新时间保护回滚。旧 DTO 仅通过纯函数只读投影继续兼容，不再形成独立写入源。
+
+---
+
 ## 2026-09-17 — fix：角色与技能历史会话显示内容标题
 
 **类型**：fix
@@ -2041,3 +2075,45 @@ SENSE12-T3：首次启用后台本可启动，但UI快照不自动刷新；增�
 **类型**：release
 **影响模块**：IM办公能力、企业微信附件、Agent/Skill历史会话、感知中心、桌面发布
 **摘要**：完成SENSE.14平台能力发现与调用链路，补齐企微移动端附件输入和处理中状态；修复Agent/Skill历史会话重复标题并兼容旧会话重算。版本递增到0.2.4，由Desktop Release构建Windows、macOS ARM64/x64并发布到七牛、官网更新源和GitHub Release。
+
+## 2026-09-14 — docs：项目语义上下文与任务驱动协作规划
+
+**类型**：docs
+**影响模块**：Epic ONT、P2.8、9.42、9.43及项目访谈规划
+**摘要**：定义访谈语义到执行上下文、任务驱动协作和可恢复状态的主线，复用pi-tasks任务事实源，补项目任务看板与协同图联动。明确六批实施顺序、提交恢复协议及贯通验收矩阵；仅规划文档，未实施或发布功能。
+
+## 2026-09-18 — feat：完成 ONT.1 canonical ontology 公共类型
+
+**类型**：feat
+**影响模块**：Core ontology feature / ONT1-T1
+**摘要**：新增版本化 canonical ontology、三层模型、业务状态、事实/Action/Event/Projection、来源引用及 Agent/Skill contract DTO，并从既有 ontology 公共入口导出。旧本体类型与持久化路径保持不变；core/类型样例编译、lint、架构边界及 OpenSpec strict validation 通过。
+
+## 2026-09-18 — feat：完成 ONT7-T1 最小 Context Projection 协议
+
+**类型**：feat
+**影响模块**：Core ontology feature / ONT7-T1
+**摘要**：新增 decision、execution context、snapshot、九类 projection record 与 checkpoint reference DTO，显式绑定 task/run/workItem/attempt、contract hash 和 ontology version。仅交付公共协议，不实现存储、调度或自动恢复；core/类型样例编译、lint、架构边界及 OpenSpec strict validation 通过。
+
+## 2026-09-18 — feat：完成 ONT2-T1 canonical ontology store
+
+**类型**：feat
+**影响模块**：Core ontology feature / ONT2-T1
+**摘要**：新增原子 DataFile ontology 快照、facts/operations/projections/migrations 四类 JSONL、显式 Date codec、尾部截断恢复、单实例并发队列和 operation 最新回执查询。严格隔离 projectId，不修改旧 store 或运行数据；定向测试、编译、lint、架构边界及 OpenSpec strict validation 通过。
+
+## 2026-09-18 — feat：完成 ONT5-T1 Facts / Actions OSDK
+
+**类型**：feat
+**影响模块**：Core ontology feature / ONT5-T1
+**摘要**：新增绑定当前 ontology 的类型化 facts 查询与 latest revision 选择，并以 Action Gate、输入/输出类型、权限和 expectedRevision 门控事实接纳。operationId 通过请求指纹、intent、缺失事实补写和 accepted 回执支持幂等恢复；Rule evaluator、外部副作用和 instance 状态更新仍明确拒绝或留在后续边界。Ontology 33 项测试、Core 编译、lint、架构边界和 OpenSpec strict validation 通过。
+
+## 2026-09-18 — feat：完成 ONT6-T1 Agent / Skill 契约校验
+
+**类型**：feat
+**影响模块**：Core ontology feature / ONT6-T1
+**摘要**：新增 Agent/Skill contract 与最小 flow DTO 校验，覆盖 ontology/version、FactType/Concept、Action binding、权限、节点/边引用、生产消费兼容和 required input 连通性。校验为确定性纯函数，不包含 DAG 环、P2 发布或 runtime 调度；Ontology 41 项测试、Core 编译、lint、架构边界和 OpenSpec strict validation 通过。
+
+## 2026-09-21 — release：准备 v0.3.0
+
+**类型**：release
+**影响模块**：Jev 感知决策、IM 路由、Agent 上下文与 Token、本体 OSDK、系统调度
+**摘要**：将 OriginOS CE 桌面端升级至 `0.3.0`。此版本包含 JEV 感知路由与 IM 会话兜底、自然语言认知规则、上下文渐进加载与 Token 统计、统一调度运行时及 canonical ontology 能力。Desktop Release 将构建 Windows、macOS arm64/x64 并发布到七牛、官网更新源和 GitHub Release。

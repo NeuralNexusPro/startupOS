@@ -11,6 +11,18 @@ export interface CorrectionSignal {
   excerpt: string;
 }
 
+export interface CommunicationSource {
+  origin?: string;
+  connectorId?: string;
+  conversationKind?: 'direct' | 'group' | 'thread';
+  conversationId?: string;
+  actorId?: string;
+  actorDisplayName?: string;
+  sessionId: string;
+  messageId?: string;
+  observedAt?: string;
+}
+
 export interface TurnCognitiveData {
   turnNumber: number;
   userMessage: string;
@@ -29,6 +41,7 @@ export interface TurnCognitiveData {
     correctionSignals?: CorrectionSignal[];
   };
   timestamp: number;
+  source?: CommunicationSource;
 }
 
 export interface CognitiveProvider {

@@ -35,6 +35,7 @@ import {
 	appendRuntimeEnvironmentPrompt,
 	getRuntimeEnvironment,
 } from "../system/runtime-environment";
+import { createAgentPromptBoundary, injectSessionContext } from "../prompt-boundary";
 import {
 	buildEmptyStopRecoveryMessage,
 	resolveEmptyStopRecoveryEnabled,
@@ -56,6 +57,11 @@ import {
 	toRestorableRuntimeModel,
 	type PersistedRuntimeMessage,
 } from "./runtime-history";
+import {
+	estimateAgentContextTokens,
+	estimateTokens,
+} from "../token-usage";
+import type { AgentContextTokenEstimate } from "../../../../types/agent";
 
 // ============================================================================
 // Event Emitter
@@ -280,6 +286,16 @@ export class OriginOSAgent {
 	private deferredAgentEndEvent: AgentEvent | null = null;
 	private hiddenMessages = new WeakSet<object>();
 	private activeCompletionPolicy: AgentCompletionPolicy = "chat_guard";
+	private sessionContext = "";
+	private rawSessionContext = "";
+	private turnContextProvider?: (query: string) => Promise<string>;
+	private turnContextCache?: {
+		message: AgentMessage;
+		index: number;
+		timestamp?: number;
+		value: Promise<string>;
+	};
+	private contextTokenEstimate: AgentContextTokenEstimate = estimateAgentContextTokens({});
 
 	private isEmptyStopRecoveryEnabled(): boolean {
 		return this.config?.emptyStopRecoveryEnabled === true;
@@ -304,6 +320,7 @@ export class OriginOSAgent {
 		this.state.sessionId = config.sessionId ?? "";
 		this.state.projectContext = config.projectContext;
 		this.healthMonitor = healthMonitor ?? createHealthMonitor();
+		this.turnContextProvider = config.turnContextProvider;
 
 		// 设置 Agent 引用到健康监控器
 		this.healthMonitor.setAgent(this);
@@ -330,6 +347,7 @@ export class OriginOSAgent {
 
 		// 设置初始化状态到健康监控器
 		this.healthMonitor.setStatus(AgentStatus.INITIALIZING);
+		this.setSessionContext(this.config.sessionContext ?? "");
 
 		// 转换自定义消息类型到 LLM 消息格式
 		// 包含 token 预算管理：超出 contextWindow 时截断旧消息
@@ -346,22 +364,6 @@ export class OriginOSAgent {
 			const contextWindow: number = modelAny?.contextWindow ?? 128000;
 			const maxOutputTokens: number = modelAny?.maxTokens ?? 16384;
 			const tokenBudget = contextWindow - maxOutputTokens - 4000; // 预留 system prompt + buffer
-
-			// 估算 token 数（chars/4 启发式，中文约 2 chars/token）
-			const estimateTokens = (content: unknown): number => {
-				if (typeof content === 'string') {
-					return Math.ceil(content.length / 3);
-				}
-				if (Array.isArray(content)) {
-					return content.reduce((sum, c) => {
-						if (c && typeof c === 'object' && 'text' in c) {
-							return sum + Math.ceil((c.text as string).length / 3);
-						}
-						return sum;
-					}, 0);
-				}
-				return 0;
-			};
 
 			// 单条消息最大 token 限制（防止一条超大消息撑爆上下文）
 			const maxSingleMessageTokens = Math.floor(tokenBudget * 0.4); // 单条最多占 40% 预算
@@ -398,8 +400,13 @@ export class OriginOSAgent {
 				return msg;
 			};
 
-			// 从后往前保留消息，直到超出预算
-			let totalTokens = 0;
+			const sessionMessage = validMessages[0]?.role === "user" &&
+				getMessageText(validMessages[0]).startsWith('<originos_session_context readonly="true">')
+				? validMessages.shift()
+				: undefined;
+
+			// 从后往前保留消息，直到超出预算；会话上下文始终保留。
+			let totalTokens = sessionMessage ? estimateTokens(sessionMessage.content) : 0;
 			const keptMessages: Message[] = [];
 			for (let i = validMessages.length - 1; i >= 0; i--) {
 				const rawMsg = validMessages[i];
@@ -418,7 +425,7 @@ export class OriginOSAgent {
 				logInfo(`[Agent] Context truncated: ${validMessages.length} → ${keptMessages.length} messages, ~${totalTokens}/${tokenBudget} tokens`);
 			}
 
-			return keptMessages;
+			return sessionMessage ? [truncateMessage(sessionMessage) as Message, ...keptMessages] : keptMessages;
 		};
 
 		const getRuntimeModel = (): Model<any> => {
@@ -499,17 +506,71 @@ export class OriginOSAgent {
 		const thinkingLevel = modelReasoning === false ? "off" : (this.config.thinkingLevel ?? "low");
 
 		this.agent = new Agent({
+			sessionId: this.sessionId,
 			initialState: {
-				systemPrompt: appendRuntimeEnvironmentPrompt(
-					this.config.systemPrompt,
-					this.runtimeEnvironment,
-				),
+				systemPrompt: this.config.systemPrompt,
 				model: this.config.model,
 				thinkingLevel,
 				tools: this.config.tools ?? [],
 				messages: [],
 			},
 			convertToLlm,
+			transformContext: async (messages) => {
+				const withSessionContext = injectSessionContext(messages, this.sessionContext);
+				const updateEstimate = (turnRecall = '') => {
+					this.contextTokenEstimate = estimateAgentContextTokens({
+						stableSystem: this.agent?.state.systemPrompt ?? this.config?.systemPrompt,
+						sessionContext: this.sessionContext,
+						turnRecall,
+						history: messages,
+					});
+				};
+				updateEstimate();
+				const lastUserIndex = messages.map((message) => message.role).lastIndexOf('user');
+				const lastUserMessage = messages[lastUserIndex];
+				const query = getMessageText(lastUserMessage);
+				if (!query || !lastUserMessage || !this.turnContextProvider) return withSessionContext;
+				try {
+					const timestamp = typeof lastUserMessage.timestamp === 'number'
+						? lastUserMessage.timestamp
+						: undefined;
+					const cached = this.turnContextCache;
+					const sameTurn = cached?.message === lastUserMessage || (
+						timestamp !== undefined &&
+						cached?.index === lastUserIndex &&
+						cached?.timestamp === timestamp
+					);
+					if (!sameTurn) {
+						this.turnContextCache = {
+							message: lastUserMessage,
+							index: lastUserIndex,
+							timestamp,
+							value: this.turnContextProvider(query),
+						};
+					}
+					const recalledContext = await this.turnContextCache!.value;
+					if (!recalledContext.trim()) return withSessionContext;
+					updateEstimate(recalledContext);
+					const insertionIndex = withSessionContext.map((message) => message.role).lastIndexOf('user');
+					const recalledMessage: AgentMessage = {
+						role: 'user',
+						content: [{ type: 'text', text: recalledContext }],
+						timestamp: 0,
+					};
+					if (insertionIndex < 0) return [...withSessionContext, recalledMessage];
+					return [
+						...withSessionContext.slice(0, insertionIndex),
+						recalledMessage,
+						...withSessionContext.slice(insertionIndex),
+					];
+				} catch (error) {
+					console.warn('[OriginOSAgent] Turn context prefetch failed', {
+						sessionId: this.sessionId,
+						errorCategory: error instanceof Error ? error.name : 'UnknownError',
+					});
+					return withSessionContext;
+				}
+			},
 			// 提供 getApiKey 回调，确保 API key 可用于所有 provider
 			getApiKey: async (_provider: string) => {
 				// 优先使用当前模型配置中的 API key，支持 setModel() 后热切换
@@ -526,6 +587,7 @@ export class OriginOSAgent {
 		});
 
 		this.state.isInitialized = true;
+		this.logStablePromptDiagnostic("initial");
 
 		// 标记为运行状态
 		this.healthMonitor.markAsRunning();
@@ -1345,10 +1407,38 @@ export class OriginOSAgent {
 		if (!this.agent) {
 			throw new Error("Agent 未初始化");
 		}
-		this.agent.state.systemPrompt = appendRuntimeEnvironmentPrompt(
-			prompt,
-			this.runtimeEnvironment,
-		);
+		this.agent.state.systemPrompt = prompt;
+		this.logStablePromptDiagnostic("explicit_update");
+	}
+
+	setSessionContext(context: string): void {
+		this.rawSessionContext = context;
+		this.sessionContext = appendRuntimeEnvironmentPrompt(this.rawSessionContext, this.runtimeEnvironment);
+	}
+
+	getContextTokenEstimate(): AgentContextTokenEstimate {
+		return { ...this.contextTokenEstimate };
+	}
+
+	setTurnContextProvider(provider?: (query: string) => Promise<string>): void {
+		this.turnContextProvider = provider;
+		this.turnContextCache = undefined;
+	}
+
+	appendSessionContext(context: string): void {
+		if (!context.trim()) return;
+		this.setSessionContext([this.rawSessionContext, context].filter(Boolean).join("\n\n---\n\n"));
+	}
+
+	private logStablePromptDiagnostic(reason: "initial" | "explicit_update"): void {
+		if (!this.agent) return;
+		const diagnostic = createAgentPromptBoundary(this.agent.state.systemPrompt);
+		logInfo("[OriginOSAgent] Stable prompt:", {
+			sessionId: this.sessionId,
+			hash: diagnostic.stablePromptHash,
+			length: diagnostic.stablePromptLength,
+			reason,
+		});
 	}
 
 	/**
@@ -1440,6 +1530,7 @@ export class OriginOSAgent {
 		const runtimeMessages = mapPersistedMessagesForRuntime(
 			messages,
 			toRestorableRuntimeModel(this.agent.state.model),
+			this.sessionId,
 		);
 		this.agent.state.messages = runtimeMessages;
 		return runtimeMessages.length;
@@ -1568,6 +1659,9 @@ export interface CreateOriginOSAgentParams {
 	 */
 	systemPrompt?: string;
 
+	/** Frozen context injected only for model requests, never persisted as transcript. */
+	sessionContext?: string;
+
 	/**
 	 * 系统提示词变量
 	 */
@@ -1695,6 +1789,7 @@ export function createOriginOSAgent(
 	const config: OriginOSAgentConfig = {
 		sessionId,
 		systemPrompt,
+		sessionContext: params.sessionContext,
 		model: agentModel,
 		projectContext,
 		thinkingLevel: (thinkingLevel || "low") as OriginOSAgentConfig['thinkingLevel'],

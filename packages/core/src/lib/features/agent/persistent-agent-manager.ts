@@ -20,7 +20,7 @@ import {
 	type AgentStatus,
 } from '../../integrations/pi-agent/persistent-agent';
 import { loadProjectContext } from '../../integrations/pi-agent/project-agent/project-context';
-import { buildProjectPromptLayers, assembleProjectPrompt } from '../../integrations/pi-agent/project-agent/project-prompt';
+import { buildProjectPromptBoundary } from '../../integrations/pi-agent/project-agent/project-prompt';
 import { provisionProjectSkills } from '../../integrations/pi-agent/project-agent/project-skill-provisioning';
 import { initializeBuiltInTools } from './tools';
 import { agentSessionService } from './session-service';
@@ -110,9 +110,11 @@ export class PersistentAgentManager {
 		// 4c. 加载 7 层项目上下文并构建 prompt
 		const projectCtx = await loadProjectContext(projectDir, projectId, agentDef.agentId);
 		let systemPrompt: string | undefined;
+		let sessionContext: string | undefined;
 		if (projectCtx) {
-			const layers = buildProjectPromptLayers(projectCtx);
-			systemPrompt = assembleProjectPrompt(layers);
+			const promptBoundary = buildProjectPromptBoundary(projectCtx);
+			systemPrompt = promptBoundary.systemPrompt;
+			sessionContext = promptBoundary.sessionContext;
 			console.log(`[Manager] Step 4c: Built 7-layer system prompt`);
 		} else {
 			console.warn(`[Manager] Step 4c: ProjectContext not loaded, falling back to workspace files`);
@@ -165,6 +167,7 @@ export class PersistentAgentManager {
 			skillDefinition: skillDef,
 			workspaceFiles,
 			builtSystemPrompt: systemPrompt,
+			builtSessionContext: sessionContext,
 			cognitiveManager,
 		});
 		logStep('Step 5 agent object created');
@@ -248,9 +251,8 @@ export class PersistentAgentManager {
 		// 重新加载项目上下文并构建 7 层 prompt
 		const projectCtx = await loadProjectContext(projectDir, projectId, agentDef.agentId);
 		if (projectCtx) {
-			const layers = buildProjectPromptLayers(projectCtx);
-			const systemPrompt = assembleProjectPrompt(layers);
-			await agent.reload(agentDef, toolDef, skillDef, workspaceFiles, systemPrompt);
+			const promptBoundary = buildProjectPromptBoundary(projectCtx);
+			await agent.reload(agentDef, toolDef, skillDef, workspaceFiles, promptBoundary.systemPrompt, promptBoundary.sessionContext);
 		} else {
 			await agent.reload(agentDef, toolDef, skillDef, workspaceFiles);
 		}

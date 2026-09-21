@@ -19,12 +19,24 @@ afterEach(() => {
   fs.rmSync(directory, { recursive: true, force: true });
 });
 
-function controlledAgent() {
-  const state = { systemPrompt: '', messages: [] as AgentMessage[] };
+function controlledAgent(systemPrompt = '', sessionContext = '') {
+  const state = {
+    systemPrompt,
+    sessionContext,
+    messages: [] as AgentMessage[],
+    turnContextProvider: undefined as ((query: string) => Promise<string>) | undefined,
+  };
   return {
     agent: { state },
     isInitialized: () => true,
     setSystemPrompt: vi.fn((prompt: string) => { state.systemPrompt = prompt; }),
+    setSessionContext: vi.fn((context: string) => { state.sessionContext = context; }),
+    appendSessionContext: vi.fn((context: string) => {
+      state.sessionContext = [state.sessionContext, context].filter(Boolean).join('\n\n---\n\n');
+    }),
+    setTurnContextProvider: vi.fn((provider?: (query: string) => Promise<string>) => {
+      state.turnContextProvider = provider;
+    }),
     setTools: vi.fn(), registerTool: vi.fn(),
     subscribe: vi.fn(() => () => {}), destroy: vi.fn(),
     waitForIdle: async () => {},
@@ -36,8 +48,8 @@ function controlledAgent() {
 describe('public business runtime cold start and restore', () => {
   it.each(['role-agent', 'project'] as const)('%s restores file-backed history and refreshes only the restarted prompt snapshot', async agentType => {
     const actors: ReturnType<typeof controlledAgent>[] = [];
-    vi.spyOn(agentAdapter, 'createOriginOSAgent').mockImplementation(() => {
-      const actor = controlledAgent();
+    vi.spyOn(agentAdapter, 'createOriginOSAgent').mockImplementation((params) => {
+      const actor = controlledAgent(params.systemPrompt, params.sessionContext);
       actors.push(actor);
       return actor as unknown as agentAdapter.OriginOSAgent;
     });
@@ -53,11 +65,15 @@ describe('public business runtime cold start and restore', () => {
     await agentManager.getOrCreateAgent(sessionId, projectId, { agentType, agentBaseDir: workingDirectory, systemPrompt: session.systemPrompt });
     const initial = actors[0]!;
     const frozen = initial.agent.state.systemPrompt;
-    expect(frozen).toContain('initial knowledge');
+    const frozenContext = initial.agent.state.sessionContext;
+    expect(frozenContext).toContain('initial knowledge');
+    expect(initial.setTurnContextProvider).toHaveBeenCalledOnce();
+    expect(initial.agent.state.turnContextProvider).toEqual(expect.any(Function));
     expect(initial.subscribe).toHaveBeenCalledOnce();
     const memory = new MemoryCore(workingDirectory, sessionId);
     memory.memory.appendBlock('project', 'knowledge discovered after startup');
     expect(initial.agent.state.systemPrompt).toBe(frozen);
+    expect(initial.agent.state.sessionContext).toBe(frozenContext);
     const messages: AgentMessage[] = [{ role: 'user', content: 'persisted request', timestamp: 1 }];
     await agentSessionService.updateSession(sessionId, { messages }, projectId);
     agentManager.removeAgent(sessionId);
@@ -70,7 +86,11 @@ describe('public business runtime cold start and restore', () => {
     expect(restored).toBe(reused);
     expect(actors).toHaveLength(2);
     const restarted = actors[1]!;
-    expect(restarted.agent.state.systemPrompt).toContain('knowledge discovered after startup');
+    expect(restarted.agent.state.systemPrompt).toBe(frozen);
+    expect(restarted.agent.state.sessionContext).not.toBe('');
+    expect(restarted.appendSessionContext).toHaveBeenCalled();
+    expect(restarted.setTurnContextProvider).toHaveBeenCalledOnce();
+    expect(restarted.agent.state.turnContextProvider).toEqual(expect.any(Function));
     expect(restarted.replacePersistedMessages).toHaveBeenCalledOnce();
     expect(restarted.agent.state.messages).toEqual(messages);
     expect(restarted.subscribe).toHaveBeenCalledOnce();

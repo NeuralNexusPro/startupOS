@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { AgentSession } from '../../../../core/src/types/agent';
+import type { AgentTokenUsage } from '../../../../core/src/types/agent';
 import type {
   AgentOutputEvent,
   ChannelFlowMessageIngress,
@@ -54,6 +55,7 @@ export async function runUiChannelStream(request: UiChannelStreamRequest): Promi
     }),
   });
   let assistantContent = '';
+  let usage: AgentTokenUsage | undefined;
   let failed = false;
   let terminalSent = false;
 
@@ -85,6 +87,7 @@ export async function runUiChannelStream(request: UiChannelStreamRequest): Promi
         return;
       case 'assistant_message':
         assistantContent = reconcileFinalStreamContent(assistantContent, event.content);
+        usage = event.usage;
         batcher.flush();
         sendPayload('assistant_message', { content: assistantContent, isStreaming: false });
         return;
@@ -129,7 +132,7 @@ export async function runUiChannelStream(request: UiChannelStreamRequest): Promi
     batcher.dispose();
     if (!terminalSent) {
       terminalSent = true;
-      sendPayload('done', { content: assistantContent, failed });
+      sendPayload('done', { content: assistantContent, failed, ...(usage ? { usage } : {}) });
     }
   }
 }

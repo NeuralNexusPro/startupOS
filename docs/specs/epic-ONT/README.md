@@ -3,10 +3,10 @@
 **Epic 编号:** ONT  
 **Epic 名称:** Ontology Core 语义底座  
 **优先级:** Critical  
-**状态:** Planning  
+**状态:** In Progress
 **Owner:** Architecture / Core  
 **创建日期:** 2026-07-27  
-**最后更新:** 2026-08-19
+**最后更新:** 2026-09-18
 
 ---
 
@@ -214,13 +214,13 @@ Skill/Agent contract 是 ONT 暴露给 P2 和 collaboration-runtime 的协议。
 
 | Story | 标题 | 状态 | 优先级 | ONT 交付边界 |
 |-------|------|------|--------|--------------|
-| ONT.1 | Canonical Ontology Schema 与公共类型 | Planning | Critical | 定义 canonical model、contract DTO、schema version、public exports |
-| ONT.2 | Ontology Store 与 DataFile/JSONL 存储 | Planning | Critical | core storage adapter、data-root 解析、atomic write、append-only facts |
-| ONT.3 | 旧模型迁移与兼容投影 | Planning | Critical | `Domain/Concept/Instance`、`business-model.json`、`OntologyModel` 迁移与只读投影 |
-| ONT.4 | Validator、Rule、Action Gate | Planning | Critical | 引用校验、聚合不变量、Action 前置/后置条件、结构化错误 |
-| ONT.5 | OSDK Facts / Actions API | Planning | Critical | 类型化 facts 查询、Action execute、版本检查、审计 metadata |
-| ONT.6 | Skill / Agent Contract Validation API | Planning | High | P2 可消费的 contract DTO、SOP I/O 连通性校验、权限校验 |
-| ONT.7 | Context Projection Protocol | Planning | High | 定义 runtime projection DTO 和 append/query API；不实现 runtime 调度 |
+| ONT.1 | Canonical Ontology Schema 与公共类型 | Done | Critical | 定义 canonical model、contract DTO、schema version、public exports |
+| ONT.2 | Ontology Store 与 DataFile/JSONL 存储 | Done | Critical | core storage adapter、data-root 解析、atomic write、append-only facts |
+| ONT.3 | 旧模型迁移与兼容投影 | Done | Critical | 已提供 `Domain/Concept/Instance`、`business-model.json`、`OntologyModel` 的安全迁移与只读投影 |
+| ONT.4 | Validator、Rule、Action Gate | Done | Critical | 已提供引用/状态归属校验与 ontology version、Action、权限结构化门控 |
+| ONT.5 | OSDK Facts / Actions API | Done | Critical | 已提供类型化 facts 查询、Action submit、版本/修订检查、幂等恢复与审计 metadata |
+| ONT.6 | Skill / Agent Contract Validation API | Done | High | 已提供 contract 引用、Action 权限与 SOP required facts 连通性校验 |
+| ONT.7 | Context Projection Protocol | In Progress（T1 Done） | High | 已定义最小 runtime projection DTO；append/query API 待后续工作包 |
 | ONT.8 | Cross-package Adapters 与端到端验证 | Planning | High | Web API adapter、Desktop IPC adapter、P2/runtime integration tests |
 
 ### 实施顺序
@@ -229,7 +229,9 @@ Skill/Agent contract 是 ONT 暴露给 P2 和 collaboration-runtime 的协议。
 ONT.1
   ├─> ONT.2 ─> ONT.3
   ├─> ONT.4 ─> ONT.5
-  └─> ONT.6 ─> ONT.7 ─> ONT.8
+  ├─> ONT.6
+  └─> ONT.7（最小协议提前）
+ONT.3/5/6/7 + P2.8 + 9.42/9.43 ─> ONT.8
 ```
 
 ONT.1、ONT.2、ONT.4 是架构门。下游 P2、Epic 9、Epic C/M/T 不得复制临时 schema 或绕开 public API。
@@ -305,7 +307,7 @@ ONT.1、ONT.2、ONT.4 是架构门。下游 P2、Epic 9、Epic C/M/T 不得复�
 | 运行门控 | 匹配评分为主 | collaboration-runtime 消费 OSDK / Action gate |
 | Context Graph | 未形成统一协议 | ONT 定义 projection protocol，下游 runtime 写入 |
 
-Epic 当前处于规格设计阶段，尚未开始代码实施。
+ONT.1、ONT.2、ONT.3、ONT.4、ONT.5、ONT.6 已完成；ONT.7 已完成最小协议，ONT.8 仍处于规划阶段。
 
 ---
 
@@ -327,3 +329,11 @@ Epic 当前处于规格设计阶段，尚未开始代码实施。
 |------|------|------|--------|
 | 2026-08-19 | 0.2.0 | 按 startupOS 架构围栏重构 Epic：ONT 收敛为 core ontology bounded context，只交付 schema、store、validator、OSDK、contract API 和 projection protocol；P2/runtime/memory 作为下游消费方 | Codex |
 | 2026-07-27 | 0.1.0 | 创建 Epic，覆盖统一 schema、业务聚合、规则与 Action、OSDK 契约门控和多 Agent 运行时 | Codex |
+
+## 2026-09-14：以项目语义执行闭环安排首期
+
+[项目语义上下文与任务驱动多Agent实施规划](project-semantic-execution-plan.md)是本轮跨Epic路线图。访谈形成经确认的概念、状态与来源，P2设计上下文契约，9.42实例化执行并恢复，9.43呈现项目任务看板。全部仍为Planning。
+
+ONT.1补业务状态和来源/版本引用；ONT.2/5补操作回执与可恢复提交；ONT.3补访谈模型来源及旧项目迁移；ONT.4/6支撑语义就绪和契约门控。ONT.7的最小context/provenance DTO提前到ONT.1后，不再等待完整ONT.6；图检索等高级能力仍可后置。ONT.8必须验收从访谈到多Agent中断恢复的完整链路。
+
+ONT不拥有用户Task或Run/WorkItem状态。pi-tasks与collaboration-runtime分别负责；Context Graph为查询投影。AGENTS的Domain/Concept/Instance映射在ONT1-T1设计门确认，本规划不自动修改全局规约。

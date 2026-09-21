@@ -4,13 +4,15 @@ import type { PerceptionPluginManifest } from '@originos/core/modules/perception
 import { usePerceptionStore } from '@/store/perceptionStore';
 import { SenseCenter } from '../SenseCenter';
 
-const services = vi.hoisted(() => ({ catalog: vi.fn(), assets: vi.fn(), capabilities: vi.fn() }));
+const services = vi.hoisted(() => ({ catalog: vi.fn(), assets: vi.fn(), capabilities: vi.fn(), provider: vi.fn() }));
 vi.mock('@/services/perceptionPluginService', () => ({ listPerceptionPlugins: services.catalog, listPerceptionCapabilityStatuses: services.capabilities, canProvisionPlugin: () => true, provisionPerceptionPlugin: vi.fn() }));
 vi.mock('@/services/perceptionTargetService', () => ({ listPerceptionTargetAssets: services.assets }));
+vi.mock('@/services/jevProviderService', () => ({ getJevProvider: services.provider }));
 const now = '2026-09-13T00:00:00Z';
 const data = {
   connectors: [{ id: 'email-main', source: 'email' as const, mode: 'email-poll' as const, enabled: true, settings: {}, secretConfigured: true, createdAt: now, updatedAt: now }],
   grants: [{ target: { kind: 'project' as const, id: 'project-main' }, enabled: true, createdAt: now, updatedAt: now }],
+  decisionCandidateGrants: [{ target: { kind: 'project' as const, id: 'project-main' }, enabled: true, createdAt: now, updatedAt: now }],
   rules: [], eventTraces: [], audit: [], health: [], deadLetters: [],
 };
 const fetchMock = vi.fn();
@@ -21,6 +23,7 @@ beforeEach(() => {
   vi.useFakeTimers(); vi.clearAllMocks();
   const manifests: PerceptionPluginManifest[] = ['email', 'wecom', 'feishu', 'dingtalk'].map(source => ({ id: `originos.${source}`, name: source, source: source as PerceptionPluginManifest['source'], version: '1', hostApi: '1.0', entry: 'fixture', capabilities: [], permissions: [], transport: 'stream', configurationSchema: { version: '1.0', fields: [{ key: 'account', label: '账号', type: 'text' }, { key: 'secret', label: '凭据', type: 'password', sensitive: true }] } }));
   services.catalog.mockResolvedValue(manifests); services.assets.mockResolvedValue([{ id: 'assistant', name: '助手' }]); services.capabilities.mockResolvedValue([]);
+  services.provider.mockResolvedValue({ enabled: true, baseUrl: 'https://api.typesafe.ai', model: 'jev-latest', credentialConfigured: true });
   fetchMock.mockImplementation(response); vi.stubGlobal('fetch', fetchMock);
   usePerceptionStore.setState({ ...structuredClone(data), loading: false, error: undefined });
 });
@@ -90,9 +93,12 @@ describe('SenseCenter drafts during live refresh', () => {
     await act(async () => { render(<SenseCenter />); }); await click('触发规则'); await click('创建规则');
     fireEvent.change(screen.getByLabelText('规则 ID'), { target: { value: 'draft-rule' } });
     fireEvent.change(screen.getByLabelText('白名单字段'), { target: { value: 'content.subject' } });
+    fireEvent.click(screen.getByLabelText('Jev 决策')); fireEvent.click(screen.getByLabelText(/project\/project-main/));
     fireEvent.click(screen.getByLabelText('高风险动作要求人工确认（HITL）'));
     const form = screen.getByRole('form', { name: '创建触发规则' }); await act(async () => { await usePerceptionStore.getState().load({ silent: true }); });
     expect(screen.getByRole('form', { name: '创建触发规则' })).toBe(form); expect(screen.getByLabelText('规则 ID')).toHaveValue('draft-rule'); expect(screen.getByLabelText('白名单字段')).toHaveValue('content.subject'); expect(screen.getByLabelText('高风险动作要求人工确认（HITL）')).not.toBeChecked();
+    expect(screen.getByLabelText('Jev 决策')).toBeChecked(); expect(screen.getByLabelText(/project\/project-main/)).toBeChecked(); expect(services.provider).toHaveBeenCalledTimes(1);
+    await tick(); expect(services.provider).toHaveBeenCalledTimes(1);
   });
   it('resets a draft when explicitly cancelled and reopened', async () => {
     await act(async () => { render(<SenseCenter />); }); await click('添加感知源');

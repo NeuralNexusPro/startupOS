@@ -29,6 +29,7 @@ import { captureConsoleCall, serializeConsoleArgs } from './services/console-log
 import { processHealthMonitor } from './services/process-health-monitor';
 import { createDefaultDesktopChannelRuntime } from './services/channel-runtime-service';
 import { AgentTaskRuntimeIpcController } from './services/agent-task-runtime-ipc';
+import { JevProviderService } from './services/jev-provider/jev-provider-service';
 import { attachDevToolsContextMenu } from './devtools-context-menu';
 import { agentManager } from '../../../core/src/lib/features/agent/server/index';
 import { persistentAgentManager } from '../../../core/src/lib/features/agent/server/index';
@@ -434,6 +435,8 @@ app.whenReady().then(() => {
   ipcServices.push(new OntologyService());
   ipcServices.push(new UserRegistryService());
   ipcServices.push(new MiscService());
+  const jevProviderService = new JevProviderService();
+  ipcServices.push(jevProviderService);
   ipcServices.push(new OntologyDataService());
   ipcServices.push(new CollaborationService());
   const taskRuntimeIpc = new AgentTaskRuntimeIpcController();
@@ -450,7 +453,10 @@ app.whenReady().then(() => {
   });
   perceptionPluginHost = new PerceptionPluginHostService(channelRuntime.ingress, undefined, createPluginLogSink(pluginLogWriter, {
     'originos.email': 'email', 'originos.wecom': 'wecom', 'originos.feishu': 'feishu', 'originos.dingtalk': 'dingtalk',
-  }));
+  }), {
+    every: (key, intervalMs, task) => desktopSchedulerService?.every(key, intervalMs, task),
+    cancel: key => desktopSchedulerService?.cancel(key),
+  }, jevProviderService.decisions);
   mainWindow = createWindow();
   windowManager.setMainWindow(mainWindow);
   windowManager.createDockWindow();
@@ -515,13 +521,14 @@ app.on('before-quit', (event) => {
   localFileSystem?.dispose();
   trayManager?.destroy();
   shortcutManager?.destroy();
-  desktopSchedulerService?.stop();
+  desktopSchedulerService?.pause();
   const pluginShutdown = perceptionPluginHost?.stop();
   rendererServerProcess?.kill();
   rendererServerProcess = null;
   void (async () => {
     try {
       await pluginShutdown;
+      await desktopSchedulerService?.stop();
       await pluginLogWriter?.dispose();
       await dailyLogWriter?.flush();
       await localAgentBridge?.shutdown();

@@ -122,3 +122,13 @@
 | 2026-07-28 | 创建初版 |
 | 2026-07-28 | Workflow 迁移到解决方案设计，runtime 改为执行契约实例化 |
 | 2026-07-28 | 契约发布职责迁移至 P2.8，9.42 仅保留 runtime consumer |
+
+## 2026-09-14：项目语义执行规划补充
+
+- [ ] 942-T1：消费P28-T1、ONT5/7和9.41公开端口，实施语义绑定、WorkItem/Attempt隔离与就绪门控。
+- [ ] 942-T2：前者完成后实施操作意图/回执、Evidence幂等、lease fencing、checkpoint/replay与故障注入。
+- [ ] 旧运行只读或显式校验迁移，不能直接写新Evidence。
+- [ ] 每Task独立Proposal和隔离工作区；恢复验收先于看板正式交付。
+
+
+完整依赖、状态所有权及验收场景见[主线规划](../../epic-ONT/project-semantic-execution-plan.md)。

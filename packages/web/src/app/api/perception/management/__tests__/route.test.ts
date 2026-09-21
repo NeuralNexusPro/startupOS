@@ -9,9 +9,12 @@ const savePerceptionRule = vi.fn();
 const deletePerceptionRule = vi.fn();
 const savePerceptionGrant = vi.fn();
 const deletePerceptionGrant = vi.fn();
+const resolvePerceptionDecision = vi.fn();
+const retryPerceptionDecision = vi.fn();
 vi.mock('@/services/perceptionManagementService', () => ({
   getPerceptionDashboard, setPerceptionConnectorEnabled, replayPerceptionDeadLetter,
   savePerceptionConnector, savePerceptionRule, deletePerceptionRule, savePerceptionGrant, deletePerceptionGrant,
+  resolvePerceptionDecision, retryPerceptionDecision,
 }));
 const { GET, PATCH } = await import('../route');
 
@@ -26,6 +29,8 @@ describe('/api/perception/management', () => {
     deletePerceptionRule.mockReturnValue(true);
     savePerceptionGrant.mockReturnValue({ target: { kind: 'project', id: 'project-1' }, enabled: true });
     deletePerceptionGrant.mockReturnValue(true);
+    resolvePerceptionDecision.mockResolvedValue({ id: 'decision-1', status: 'user-executed' });
+    retryPerceptionDecision.mockResolvedValue({ id: 'decision-1', status: 'pending' });
   });
 
   it('returns the redacted management dashboard from the Web service', async () => {
@@ -112,5 +117,14 @@ describe('/api/perception/management', () => {
     const response = await PATCH(new NextRequest('http://localhost/api/perception/management', { method: 'PATCH', body: JSON.stringify({ action: 'delete-rule', id: 'rule-1' }) }));
     expect(response.status).toBe(200);
     expect(deletePerceptionRule).toHaveBeenCalledWith('rule-1');
+  });
+
+  it('maps narrow decision resolution and retry actions', async () => {
+    const resolved = await PATCH(new NextRequest('http://localhost/api/perception/management', { method: 'PATCH', body: JSON.stringify({ action: 'resolve-decision', decisionId: 'decision-1', candidateKey: 'project:p-1' }) }));
+    expect(await resolved.json()).toMatchObject({ success: true, data: { id: 'decision-1', status: 'user-executed' } });
+    expect(resolvePerceptionDecision).toHaveBeenCalledWith('decision-1', 'project:p-1');
+    const retried = await PATCH(new NextRequest('http://localhost/api/perception/management', { method: 'PATCH', body: JSON.stringify({ action: 'retry-decision', decisionId: 'decision-1' }) }));
+    expect(await retried.json()).toMatchObject({ success: true, data: { id: 'decision-1', status: 'pending' } });
+    expect(retryPerceptionDecision).toHaveBeenCalledWith('decision-1');
   });
 });

@@ -77,6 +77,38 @@ describe("CostController — Usage Tracking", () => {
     const usage = cost.getUsage("agent-a");
 
     expect(usage!.tokensUsed).toBe(300);
+    expect(usage).toMatchObject({ inputTokens: 100, outputTokens: 200 });
+  });
+
+  it("records cache classes and prefers provider cost", () => {
+    cost.recordUsage("agent-a", {
+      input: 100,
+      output: 20,
+      cacheRead: 70,
+      cacheWrite: 10,
+      totalTokens: 200,
+      cost: { total: 0.42 },
+    });
+
+    const report = cost.getCostReport("session-1");
+    expect(report.agentBreakdown["agent-a"]).toMatchObject({
+      tokensUsed: 120,
+      totalTokens: 200,
+      cacheReadTokens: 70,
+      cacheWriteTokens: 10,
+      providerCostUsd: 0.42,
+      estimatedCostUsd: 0,
+      costUsd: 0.42,
+    });
+    expect(report).toMatchObject({ providerCostUsd: 0.42, estimatedCostUsd: 0, costUsd: 0.42 });
+  });
+
+  it("estimates missing cost from the real input/output split", () => {
+    cost.recordUsage("agent-a", { input: 1000, output: 0, cacheRead: 500, cacheWrite: 0 });
+    cost.recordUsage("agent-b", { input: 0, output: 1000, cacheRead: 0, cacheWrite: 0 });
+
+    expect(cost.getUsage("agent-a")!.estimatedCostUsd).toBeCloseTo(0.0025);
+    expect(cost.getUsage("agent-b")!.estimatedCostUsd).toBeCloseTo(0.01);
   });
 
   it("records turns, messages, tool calls", () => {
@@ -244,6 +276,25 @@ describe("MetricsRegistry", () => {
     const tokens = samples.filter((s) => s.name === "agent_tokens_used_total");
     expect(tokens).toHaveLength(1);
     expect(tokens[0]!.value).toBe(800);
+  });
+
+  it("records provider token classes", () => {
+    metrics.recordTokenUsage("agent-a", "session-1", {
+      input: 500,
+      output: 100,
+      cacheRead: 300,
+      cacheWrite: 50,
+      totalTokens: 950,
+    });
+
+    const byName = Object.fromEntries(metrics.collect().map((sample) => [sample.name, sample.value]));
+    expect(byName).toMatchObject({
+      agent_tokens_used_total: 950,
+      agent_input_tokens_total: 500,
+      agent_output_tokens_total: 100,
+      agent_cache_read_tokens_total: 300,
+      agent_cache_write_tokens_total: 50,
+    });
   });
 
   it("records messages", () => {

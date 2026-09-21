@@ -74,7 +74,7 @@ export class ChannelTriggerExecutionAdapter implements TriggerExecutionPort {
         const fanOut = fanOutFlowPackets(ingress.sendPackets(invocation), { branches: 2 });
         await Promise.all([
           consume(unpack(fanOut.branches[0]!)),
-          delivery.dispatch({ connectorId: invocation.message.connectorId, replyHandle, packets: fanOut.branches[1]!, onDiagnostic: error => {
+          delivery.dispatch({ connectorId: invocation.message.connectorId, replyHandle, packets: isImChannel(input.event.source) ? withAssetIdentity(fanOut.branches[1]!, input.event.id, input.target, input.context.targetLabel) : fanOut.branches[1]!, onDiagnostic: error => {
             deliveryDiagnosticId ??= randomUUID();
             writePluginLog(log, { level: 'error', stage: 'delivery', safeCode: 'CHANNEL_DELIVERY_FAILED', eventId: input.event.id, sessionId, diagnosticId: deliveryDiagnosticId, error });
           } }).then(receipts => {
@@ -162,6 +162,7 @@ function toChannelInvocation(input: Parameters<TriggerExecutionPort['dispatch']>
         text: isImChannel(event.source) ? event.content.text : perceptionText(input),
         ...(event.content.attachmentRefs?.length ? { attachmentRefs: event.content.attachmentRefs } : {}),
       },
+      occurredAt: event.occurredAt,
       receivedAt: event.receivedAt,
       replyHandle: event.provenance.rawPayloadRef,
     },
@@ -175,6 +176,36 @@ function isFlowIngress(ingress: ChannelMessageIngress): ingress is ChannelFlowMe
 
 async function* unpack(packets: AsyncIterable<FlowPacket<AgentOutputEvent>>): AsyncIterable<AgentOutputEvent> {
   for await (const packet of packets) yield packet.payload;
+}
+
+async function* withAssetIdentity(
+  packets: AsyncIterable<FlowPacket<AgentOutputEvent>>,
+  eventId: string,
+  target: PerceptionTriggerTarget,
+  targetLabel?: string,
+): AsyncIterable<FlowPacket<AgentOutputEvent>> {
+  const label = assetLabel(target, targetLabel);
+  const prefix = `资产「${label}」正在承接您的请求：`;
+  yield {
+    protocolVersion: '1.0', flowId: eventId, packetId: `${eventId}:decision`, sequence: -1,
+    port: 'runtime.output', kind: 'data', emittedAt: new Date().toISOString(),
+    payload: { type: 'assistant_message', content: `资产「${label}」正在承接您的请求，正在处理中…` },
+  };
+  let prefixedDelta = false;
+  for await (const packet of packets) {
+    const payload = packet.payload.type === 'assistant_message'
+      ? { ...packet.payload, content: `${prefix}\n\n${packet.payload.content}` }
+      : packet.payload.type === 'text_delta' && !prefixedDelta
+        ? { ...packet.payload, delta: `${prefix}\n\n${packet.payload.delta}` }
+        : packet.payload;
+    if (packet.payload.type === 'text_delta') prefixedDelta = true;
+    yield payload === packet.payload ? packet : { ...packet, payload };
+  }
+}
+
+function assetLabel(target: PerceptionTriggerTarget, targetLabel?: string): string {
+  const kind = target.kind === 'role-agent' ? '角色' : target.kind === 'project' ? '项目' : '技能';
+  return `${kind}：${targetLabel ?? target.id}`;
 }
 
 function perceptionText(input: Parameters<TriggerExecutionPort['dispatch']>[0]): string {

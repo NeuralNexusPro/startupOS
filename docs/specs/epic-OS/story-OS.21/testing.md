@@ -54,6 +54,11 @@
 3. 断开一个邮箱网络，确认该邮箱退避，而用户任务和另一邮箱不受影响。
 4. Windows 睡眠后恢复，确认不重复拉取邮件或重复触发规则。
 
-## 测试结果
+## 测试结果（2026-09-18）
 
-尚未实施，待开发完成后记录自动化结果、人工验证步骤和剩余风险。
+- Core system scheduler：6/6 通过；覆盖隐藏/旧任务兼容、owner 隔离、overlap、退避复位、停止等待、时间跳跃与立即执行。
+- Desktop scheduler 与 Plugin Host：11/11 通过；覆盖单 timer、用户任务 30 秒扫描节奏、配置重排和注销。
+- Email：6/6 通过；DingTalk：29/29 通过；Web 既有 Scheduler：4/4 通过。
+- Core TypeScript、Email typecheck、Desktop build、`pnpm lint`（0 error）、`pnpm lint:boundaries`（0 diagnostics）、架构检查器 self-test、OpenSpec strict validation 与 `git diff --check` 通过。
+- 全量 Desktop 的 `email-provisioning` 5 项在原 `dev` 同样失败，属于既有环境基线；本次相关定向回归通过。
+- 剩余人工验收：Windows 真机睡眠/恢复，以及断开一个真实邮箱后确认该邮箱退避且其他任务继续执行。

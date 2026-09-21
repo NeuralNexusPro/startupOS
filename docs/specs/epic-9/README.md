@@ -119,6 +119,7 @@
 | **9.40** | 协作 UI：多 HITL 并发与消息流对齐 | Medium | Phase 3 | 📋 Planning |
 | **9.41** | Agent/RoleAgent 任务入口与 pi-tasks 直接执行 | High | Phase 3 | 📋 Ready（A-02 边界已通过） |
 | **9.42** | 多 Agent 任务与解决方案执行契约对齐 | High | Phase 3 | 📋 Planning |
+| **9.43** | 项目任务看板与协同图联动 | High | Phase 3 | 📋 Planning |
 
 > **当前进度（2026-08-01）：** Epic 9 主运行时已具备 Workflow、Supervisor、黑板、协议和基础 UI；Story 9.41 的 A-02 受控 `pi-tasks` 公共边界已通过，但任务入口、Task 卡片、completion policy、lease、续跑与恢复尚未实施。Phase 3 的 HITL 收敛、链路治理及高级协作能力也未完成，因此 Epic 保持 In Progress，不能按整体 Complete 归档。
 
@@ -1056,3 +1057,9 @@ src/app/api/collaboration/sessions/[id]/execute/route.ts         # MODIFY: 接�
 测试包：/Users/archersado/workspace/startupOS/release/session-fixes-20260913/mac-arm64/OriginOS CE.app。
 
 [Testing](./story-9.41/testing.md)
+
+## 2026-09-14：任务驱动、语义上下文与看板
+
+9.42分942-T1（语义绑定/执行门控）和942-T2（恢复/回执核对）实施。新增[9.43项目任务看板](story-9.43/README.md)，复用pi-tasks用户任务、runtime WorkItem和ONT业务状态。图与看板同一数据投影，任务完成不可由Worker自报或UI拖拽直接决定。
+
+[跨Epic主线规划](../epic-ONT/project-semantic-execution-plan.md)包含前置能力与端到端矩阵，恢复是首期验收门，不延后到看板交付之后。既有9.41单会话恢复不等于多Agent恢复已完成。

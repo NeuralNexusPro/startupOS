@@ -23,7 +23,7 @@ function management(): PerceptionManagementFacade {
   return facade;
 }
 
-export function getPerceptionDashboard() {
+export async function getPerceptionDashboard() {
   const service = management();
   return {
     connectors: service.listConnectors(),
@@ -33,6 +33,8 @@ export function getPerceptionDashboard() {
     audit: service.listAudit({ limit: 100 }),
     eventTraces: service.listEventTraces(100),
     deadLetters: service.listDeadLetters(),
+    decisions: service.listPendingDecisions(),
+    decisionCandidateGrants: await service.listDecisionCandidateGrants(),
   };
 }
 
@@ -62,4 +64,12 @@ export function setPerceptionConnectorEnabled(id: string, enabled: boolean) {
 
 export function replayPerceptionDeadLetter(connectorId: string, deadLetterId: string) {
   return management().replayDeadLetter(connectorId, deadLetterId);
+}
+
+export async function resolvePerceptionDecision(_decisionId: string, _candidateKey: string): Promise<never> {
+  throw new Error('RUNTIME_UNAVAILABLE');
+}
+
+export async function retryPerceptionDecision(_decisionId: string): Promise<never> {
+  throw new Error('RUNTIME_UNAVAILABLE');
 }

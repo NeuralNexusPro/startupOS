@@ -11,8 +11,8 @@
  */
 
 import path from 'path';
-import { Launcher, type LaunchContext, type LaunchResult } from './base';
-import { appendGlobalUserPreferencesPrompt } from '../../../../lib/integrations/pi-agent/user-preferences';
+import { Launcher, type LaunchContext, type LaunchResult, buildAgentPromptBoundary } from './base';
+import { buildProjectLauncherSessionContext, createAgentPromptBoundary } from '../../../../lib/integrations/pi-agent/prompt-boundary';
 import { getDataRoot } from '../../../paths';
 import { ObservationPolicyResolver } from '../../../../modules/memory-core';
 
@@ -29,32 +29,24 @@ export class ProjectLauncher extends Launcher {
       const content = await this.loadEntryContent(ctx.entryId);
       const agentMd = content['Agent.md'] || '';
 
-      // 2. 构建系统提示词
-      let systemPrompt = agentMd;
-
-      // 注入本体上下文
-      if (content['business-model.json']) {
-        systemPrompt += '\n\n## 本体上下文\n\n';
-        systemPrompt += 'The following business model ontology is loaded:\n\n';
-        systemPrompt += '```json\n' + content['business-model.json'] + '\n```\n';
-      }
-
-      // 注入 Memory.md
-      if (content['Memory.md']) {
-        systemPrompt += '\n\n## 历史记忆\n\n' + content['Memory.md'];
-      }
-
-      // 注入 Taste.md
-      if (content['Taste.md']) {
-        systemPrompt += '\n\n## 风格偏好\n\n' + content['Taste.md'];
-      }
-      systemPrompt = appendGlobalUserPreferencesPrompt(systemPrompt);
+      // 2. 构建稳定 prompt 与会话快照
+      const stableBoundary = buildAgentPromptBoundary(agentMd, {
+        taste: content['Taste.md'],
+      });
+      const promptBoundary = createAgentPromptBoundary(
+        stableBoundary.systemPrompt,
+        buildProjectLauncherSessionContext({
+          memory: content['Memory.md'],
+          baseDir: projectBaseDir,
+          businessModel: content['business-model.json'],
+        }),
+      );
 
       // 3. 创建/恢复会话
       const { sessionId } = await this.createOrRestoreSession({
         projectId: ctx.entryId,
         projectName: ctx.entryId,
-        systemPrompt,
+        systemPrompt: promptBoundary.systemPrompt,
         agentType: 'project',
         agentBaseDir: projectBaseDir,
         sessionId: ctx.restoreSessionId || ctx.sessionId,
@@ -67,7 +59,8 @@ export class ProjectLauncher extends Launcher {
 
       // 4. 注册 Agent 到 AgentManager
       const tools = await this.registerAgent(sessionId, ctx.entryId, {
-        systemPrompt,
+        systemPrompt: promptBoundary.systemPrompt,
+        sessionContext: promptBoundary.sessionContext,
         agentType: 'project',
         agentBaseDir: projectBaseDir,
         isWindowBound: ctx.isWindowBound,
@@ -84,7 +77,8 @@ export class ProjectLauncher extends Launcher {
       return {
         success: true,
         sessionId,
-        systemPrompt,
+        systemPrompt: promptBoundary.systemPrompt,
+        sessionContext: promptBoundary.sessionContext,
         agentType: 'project',
         baseDir: projectBaseDir,
         tools,

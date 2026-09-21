@@ -7,19 +7,24 @@
 import path from 'node:path';
 import { HistoryStore, type RecallEntry } from './history-store';
 import { cosineSimilarity, embeddingEngine } from '../archival/embedding';
+import type { CommunicationSource } from '../../../lib/shared/cognitive';
 
 export interface RecallSearchResult {
   turnNumber: number;
   score: number;
   summary: string;
   text: string;
+  timestamp: number;
+  source?: CommunicationSource;
 }
 
 export class RecallMemory {
   private entries: RecallEntry[] = [];
   private historyStore: HistoryStore;
+  private readonly sessionId: string;
 
   constructor(agentDir: string, sessionId: string = 'default') {
+    this.sessionId = sessionId;
     this.historyStore = new HistoryStore(
       path.join(agentDir, 'memory', 'history'),
       sessionId
@@ -33,14 +38,18 @@ export class RecallMemory {
     userMessage: string;
     assistantMessage?: string;
     toolCalls?: Array<{ name: string; params?: unknown; result: string; success: boolean }>;
+    timestamp?: number;
+    source?: CommunicationSource;
   }): void {
+    const timestamp = data.timestamp ?? Date.now();
     const entry: RecallEntry = {
       turnNumber: data.turnNumber,
       summary: data.userMessage.slice(0, 200),
       userMessage: data.userMessage,
       assistantMessage: data.assistantMessage ?? '',
       toolCalls: data.toolCalls ?? [],
-      timestamp: Date.now(),
+      timestamp,
+      source: data.source ?? { sessionId: this.sessionId, observedAt: new Date(timestamp).toISOString() },
     };
     this.entries.push(entry);
     this.historyStore.append(entry);
@@ -60,6 +69,8 @@ export class RecallMemory {
           score,
           summary: entry.summary,
           text: entry.userMessage,
+          timestamp: entry.timestamp,
+          source: entry.source,
         };
       })
     );
@@ -99,6 +110,8 @@ export class RecallMemory {
       score: score / Math.max(queryTerms.length, 1),
       summary: entry.summary,
       text: entry.userMessage,
+      timestamp: entry.timestamp,
+      source: entry.source,
     };
   }
 }
