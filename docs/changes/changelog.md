@@ -2111,3 +2111,9 @@ SENSE12-T3：首次启用后台本可启动，但UI快照不自动刷新；增�
 **类型**：feat
 **影响模块**：Core ontology feature / ONT6-T1
 **摘要**：新增 Agent/Skill contract 与最小 flow DTO 校验，覆盖 ontology/version、FactType/Concept、Action binding、权限、节点/边引用、生产消费兼容和 required input 连通性。校验为确定性纯函数，不包含 DAG 环、P2 发布或 runtime 调度；Ontology 41 项测试、Core 编译、lint、架构边界和 OpenSpec strict validation 通过。
+
+## 2026-09-21 — release：准备 v0.3.0
+
+**类型**：release
+**影响模块**：Jev 感知决策、IM 路由、Agent 上下文与 Token、本体 OSDK、系统调度
+**摘要**：将 OriginOS CE 桌面端升级至 `0.3.0`。此版本包含 JEV 感知路由与 IM 会话兜底、自然语言认知规则、上下文渐进加载与 Token 统计、统一调度运行时及 canonical ontology 能力。Desktop Release 将构建 Windows、macOS arm64/x64 并发布到七牛、官网更新源和 GitHub Release。
