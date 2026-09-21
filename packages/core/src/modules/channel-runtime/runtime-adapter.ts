@@ -3,6 +3,8 @@ import { BoundedFlowPort, FlowPortClosedError } from './flow-port';
 import type { AgentOutputEvent, ChannelFlowRuntimePort, ChannelInvocation, FlowPacket } from './types';
 import { isImChannel, type ChannelMessageMetadata } from './types';
 import { encodeCommunicationUserMessage } from '../../lib/shared/cognitive';
+import { normalizeAgentTokenUsage } from '../../lib/integrations/pi-agent/token-usage';
+import type { AgentTokenUsage } from '../../types/agent';
 
 export interface ChannelRuntimeHandle {
   prompt(message: string): Promise<void>;
@@ -13,7 +15,7 @@ export interface ChannelRuntimeHandle {
 export interface RuntimeSourceEvent {
   type: string;
   assistantMessageEvent?: { type?: string; delta?: string };
-  message?: { role?: string; content?: unknown };
+  message?: { role?: string; content?: unknown; usage?: unknown };
   toolName?: string;
   result?: unknown;
 }
@@ -30,7 +32,7 @@ export interface ChannelSessionResolverPort {
 
 export interface ChannelSessionMessageStorePort {
   appendUserMessage(sessionId: string, content: string, attachmentRefs: readonly string[], channel?: ChannelMessageMetadata): Promise<void>;
-  appendAssistantMessage(sessionId: string, content: string): Promise<void>;
+  appendAssistantMessage(sessionId: string, content: string, usage?: AgentTokenUsage): Promise<void>;
 }
 
 export interface StreamingSessionRuntimeAdapterOptions {
@@ -94,7 +96,7 @@ export class StreamingSessionRuntimeAdapter implements ChannelFlowRuntimePort {
           pendingWrites = pendingWrites.then(async () => {
             if (failed) return;
             for (const event of toOutputEvents(source)) {
-              if (event.type === 'assistant_message') await this.messages.appendAssistantMessage(session!.sessionId, event.content);
+              if (event.type === 'assistant_message') await this.messages.appendAssistantMessage(session!.sessionId, event.content, event.usage);
               await output.send(event);
             }
           }).catch(error => fail(error, 'persist.output'));
@@ -163,7 +165,8 @@ function toOutputEvents(source: RuntimeSourceEvent): AgentOutputEvent[] {
   }
   if (source.type === 'message_end' && source.message?.role === 'assistant') {
     const content = extractText(source.message.content);
-    return content ? [{ type: 'assistant_message', content }] : [];
+    const usage = normalizeAgentTokenUsage(source.message.usage);
+    return content ? [{ type: 'assistant_message', content, ...(usage ? { usage } : {}) }] : [];
   }
   if (source.type === 'tool_execution_start') return [{ type: 'tool_status', label: source.toolName ?? 'tool', state: 'running' }];
   if (source.type === 'tool_execution_end') {

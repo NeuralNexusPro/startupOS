@@ -663,6 +663,13 @@ CognitiveManager
 - 渠道失败按调用关联eventId/sessionId/diagnosticId，感知审计保存诊断引用；日志不得成为业务状态事实源，日志故障不得触发业务重试。
 - 不记录消息正文、附件字节或凭据；错误按安全类别、HTTP状态、受限源码位置摘要，未知SDK文本不直接落盘。SDK默认日志必须接入实例级受控出口。
 
+### Jev 感知决策边界（SENSE.15）
+
+- Jev 只能在当前存在且已授权的候选目标中决策；调用前和人工确认时均重新校验授权，最多 20 个候选。
+- 仅 `route_target.confidence > 0.8`、规则无需 HITL 且 Jev 未要求 HITL 时自动执行；失败、无效响应和边界值一律进入人工处理，不默认路由。
+- 自动与人工执行复用现有 `ExecutionLease` 和 dispatch；决策回执存于 `data/perception/decisions/`，非敏感 Provider 配置存于 `data/model-providers/jev.json`。
+- Jev API Key 仅由 Desktop safeStorage 或服务端 `TYPESAFE_API_KEY` 持有；renderer、配置 JSON、日志、审计和回执不得读取或保存明文。
+
 ---
 
 ## 📊 性能约束

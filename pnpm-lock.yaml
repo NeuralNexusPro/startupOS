@@ -67,6 +67,9 @@ importers:
       '@types/d3-force':
         specifier: ^3.0.10
         version: 3.0.10
+      '@typesafe-ai/sdk':
+        specifier: ^0.6.0
+        version: 0.6.0
       '@xyflow/react':
         specifier: ^12.10.2
         version: 12.11.2(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.0.0(react@18.0.0))(react@18.0.0)
@@ -273,6 +276,9 @@ importers:
       '@originos/pi-agent-adapter':
         specifier: workspace:*
         version: link:../agent
+      '@typesafe-ai/sdk':
+        specifier: ^0.6.0
+        version: 0.6.0
       uuid:
         specifier: ^14.0.0
         version: 14.0.1
@@ -310,6 +316,9 @@ importers:
       '@sinclair/typebox':
         specifier: ^0.34.0
         version: 0.34.52
+      '@typesafe-ai/sdk':
+        specifier: ^0.6.0
+        version: 0.6.0
       '@wecom/aibot-node-sdk':
         specifier: 1.0.6
         version: 1.0.6
@@ -2122,6 +2131,10 @@ packages:
 
   '@types/yargs@16.0.11':
     resolution: {integrity: sha512-sbtvk8wDN+JvEdabmZExoW/HNr1cB7D/j4LT08rMiuikfA7m/JNJg7ATQcgzs34zHnoScDkY0ZRSl29Fkmk36g==}
+
+  '@typesafe-ai/sdk@0.6.0':
+    resolution: {integrity: sha512-IddX+Q0XM+VagOUZFeP7wZjaO4SHMdvnh2zEBdrZZnXedWI3BNK1lKhMx3ayrkFWvVLbVcUHJy6AVZlY+e6Jaw==}
+    engines: {node: '>=20'}
 
   '@typescript-eslint/eslint-plugin@8.64.0':
     resolution: {integrity: sha512-CGvQPBxN3wZLu6Rz2kFUpZeoCm78xUic92ck39KPePkO1NPOwjCqdQnm5Q87tpWw9vcBvW8XLrDXjH9PWYtJ3Q==}
@@ -7897,6 +7910,8 @@ snapshots:
   '@types/yargs@16.0.11':
     dependencies:
       '@types/yargs-parser': 21.0.3
+
+  '@typesafe-ai/sdk@0.6.0': {}
 
   '@typescript-eslint/eslint-plugin@8.64.0(@typescript-eslint/parser@8.64.0(eslint@8.57.1)(typescript@5.7.3))(eslint@8.57.1)(typescript@5.7.3)':
     dependencies:

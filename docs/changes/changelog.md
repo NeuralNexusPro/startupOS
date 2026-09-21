@@ -2,6 +2,18 @@
 
 ---
 
+## 2026-09-21 — feat：Jev 受限感知决策路由
+
+**类型**：feat
+**影响模块**：Core Jev integration/perception runtime、Desktop Provider 与感知 Host、Web 设置与感知中心、Story SENSE.15
+**摘要**：在确定性规则授权后增加 Jev 候选决策；仅严格 `confidence > 0.8` 且无需 HITL 时复用既有租约执行，其余在事件记录中人工选择或忽略。API Key 仅由 safeStorage/服务端环境持有，决策回执与审计均脱敏；direct 规则保持兼容。真实 Provider、历史标注样本与实际打包 safeStorage 仍待人工验收。
+
+## 2026-09-20 — docs：规划 SENSE.15 Jev 受限决策路由
+
+**类型**：docs
+**影响模块**：`docs/specs/epic-SENSE/story-SENSE.15/`、`openspec/changes/add-jev-perception-decisions/`
+**摘要**：基于 ARCH-210 已确认边界完成产品交互、技术架构、需求追踪、接口/数据契约、异常与低置信交互、测试矩阵和依赖有序工作包；Jev 仅在已存在且授权候选中决策，严格 `confidence > 0.8` 且无需 HITL 才自动执行，凭据仅服务端安全持有。当前仅规划，未修改应用源码或发布。
+
 ## 2026-09-18 — feat：渐进式 Agent 上下文、KV Cache 与 Token 统计
 
 **类型**：feat

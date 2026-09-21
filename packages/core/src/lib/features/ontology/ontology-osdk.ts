@@ -45,7 +45,7 @@ function requestFingerprint(request: CanonicalActionSubmission): string {
 }
 
 function operationFingerprint(record: CanonicalOperationRecord): string | undefined {
-  const value = record.metadata?.requestFingerprint;
+  const value = record.metadata?.['requestFingerprint'];
   return typeof value === 'string' ? value : undefined;
 }
 

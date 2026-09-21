@@ -29,6 +29,7 @@ import { captureConsoleCall, serializeConsoleArgs } from './services/console-log
 import { processHealthMonitor } from './services/process-health-monitor';
 import { createDefaultDesktopChannelRuntime } from './services/channel-runtime-service';
 import { AgentTaskRuntimeIpcController } from './services/agent-task-runtime-ipc';
+import { JevProviderService } from './services/jev-provider/jev-provider-service';
 import { attachDevToolsContextMenu } from './devtools-context-menu';
 import { agentManager } from '../../../core/src/lib/features/agent/server/index';
 import { persistentAgentManager } from '../../../core/src/lib/features/agent/server/index';
@@ -434,6 +435,8 @@ app.whenReady().then(() => {
   ipcServices.push(new OntologyService());
   ipcServices.push(new UserRegistryService());
   ipcServices.push(new MiscService());
+  const jevProviderService = new JevProviderService();
+  ipcServices.push(jevProviderService);
   ipcServices.push(new OntologyDataService());
   ipcServices.push(new CollaborationService());
   const taskRuntimeIpc = new AgentTaskRuntimeIpcController();
@@ -453,7 +456,7 @@ app.whenReady().then(() => {
   }), {
     every: (key, intervalMs, task) => desktopSchedulerService?.every(key, intervalMs, task),
     cancel: key => desktopSchedulerService?.cancel(key),
-  });
+  }, jevProviderService.decisions);
   mainWindow = createWindow();
   windowManager.setMainWindow(mainWindow);
   windowManager.createDockWindow();

@@ -9,16 +9,19 @@ import {
   deletePerceptionRule,
   savePerceptionRule,
   setPerceptionConnectorEnabled,
+  resolvePerceptionDecision,
+  retryPerceptionDecision,
 } from '@/services/perceptionManagementService';
 import type { ExternalTriggerGrant, PerceptionConnectorConfig, PerceptionTriggerRule } from '@originos/core/types';
 
 interface ManagementAction {
   action?: string; id?: string; connectorId?: string; enabled?: boolean; kind?: ExternalTriggerGrant['target']['kind'];
   connector?: PerceptionConnectorConfig; rule?: PerceptionTriggerRule; grant?: ExternalTriggerGrant;
+  decisionId?: string; candidateKey?: string;
 }
 
 export async function GET(): Promise<NextResponse> {
-  return NextResponse.json({ success: true, data: getPerceptionDashboard() });
+  return NextResponse.json({ success: true, data: await getPerceptionDashboard() });
 }
 
 export async function PATCH(request: NextRequest): Promise<NextResponse> {
@@ -42,7 +45,7 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ success: true, data: savePerceptionConnector(body.connector) });
     }
     if (body.action === 'save-rule' && body.rule) {
-      return NextResponse.json({ success: true, data: savePerceptionRule(body.rule) });
+      return NextResponse.json({ success: true, data: await savePerceptionRule(body.rule) });
     }
     if (body.action === 'delete-rule' && body.id) {
       return NextResponse.json({ success: true, data: deletePerceptionRule(body.id) });
@@ -53,6 +56,12 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     if (body.action === 'delete-grant' && body.kind && body.id) {
       return NextResponse.json({ success: true, data: deletePerceptionGrant(body.kind, body.id) });
     }
+    if (body.action === 'resolve-decision' && body.decisionId && body.candidateKey) {
+      return NextResponse.json({ success: true, data: await resolvePerceptionDecision(body.decisionId, body.candidateKey) });
+    }
+    if (body.action === 'retry-decision' && body.decisionId) {
+      return NextResponse.json({ success: true, data: await retryPerceptionDecision(body.decisionId) });
+    }
     return NextResponse.json({ success: false, error: { code: 'INVALID_ACTION' } }, { status: 400 });
   } catch (error) {
     const code = managementErrorCode(body.action, error);
@@ -61,6 +70,7 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
 }
 
 function managementErrorCode(action: string | undefined, error: unknown): string {
+  if ((action === 'resolve-decision' || action === 'retry-decision') && error instanceof Error && error.message === 'RUNTIME_UNAVAILABLE') return 'RUNTIME_UNAVAILABLE';
   if (action !== 'save-rule') return 'MANAGEMENT_ACTION_FAILED';
   if (error instanceof Error && error.message === 'Perception rule target is not authorized for external triggers') {
     return 'TARGET_NOT_AUTHORIZED';

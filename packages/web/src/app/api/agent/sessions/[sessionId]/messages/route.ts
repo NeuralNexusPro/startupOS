@@ -11,7 +11,7 @@ import { agentSessionService } from '@originos/core/lib/features/agent';
 import { agentManager } from '@originos/core/lib/features/agent/server';
 import { sanitizeAgentDisplayContent } from '@originos/core/lib/integrations/pi-agent/display-content';
 import { getVisibleStreamDelta, reconcileFinalStreamContent } from '@originos/core/lib/integrations/pi-agent/stream-dedupe';
-import { normalizeAgentTokenUsage, summarizeSessionTokenUsage } from '@originos/core/lib/integrations/pi-agent';
+import { normalizeAgentTokenUsage, summarizeSessionTokenUsage } from '@originos/core/lib/integrations/pi-agent/token-usage';
 import {
   assertSessionMessageOwnership,
   toRestoreAgentSessionError,

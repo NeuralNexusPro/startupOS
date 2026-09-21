@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { persistentAgentManager } from '@originos/core/lib/features/agent/server';
 import { sanitizeAgentDisplayContent } from '@originos/core/lib/integrations/pi-agent/display-content';
 import { getVisibleStreamDelta, reconcileFinalStreamContent } from '@originos/core/lib/integrations/pi-agent/stream-dedupe';
-import { normalizeAgentTokenUsage, summarizeSessionTokenUsage } from '@originos/core/lib/integrations/pi-agent';
+import { normalizeAgentTokenUsage, summarizeSessionTokenUsage } from '@originos/core/lib/integrations/pi-agent/token-usage';
 import { getRuntimeAgent, setRuntimeAgent, type ProjectRuntimeAgent } from '@/app/api/agent/_runtime-agent-registry';
 import { getGlobalSpawner } from '@originos/core/modules/collaboration-runtime/sandbox/agent-spawner';
 import type { ApiResponse } from '@originos/core/types';

@@ -17,3 +17,4 @@ export * from './rules';
 export * from './routing';
 export * from './operations';
 export * from './plugins';
+export * from './decision';

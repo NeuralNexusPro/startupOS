@@ -35,6 +35,7 @@ describe('ChatMessageList token usage', () => {
               sessionContext: 30,
               turnRecall: 10,
               history: 40,
+              estimated: true,
             },
           },
         ]}

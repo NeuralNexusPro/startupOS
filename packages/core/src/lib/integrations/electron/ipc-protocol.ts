@@ -106,6 +106,9 @@ export const IPC_CHANNELS = {
   DEBUG_ENV: 'debug:env',
   USER_CONFIG_GET: 'user-config:get',
   USER_CONFIG_SET: 'user-config:set',
+  JEV_PROVIDER_GET: 'jev-provider:get',
+  JEV_PROVIDER_UPDATE: 'jev-provider:update',
+  JEV_PROVIDER_CLEAR_CREDENTIAL: 'jev-provider:clear-credential',
   UPDATE_STATUS: 'update:status',
   UPDATE_CHECK: 'update:check',
   UPDATE_DOWNLOAD: 'update:download',
@@ -152,6 +155,9 @@ export const IPC_CHANNELS = {
   PERCEPTION_PLUGIN_CATALOG: 'perception:plugin:catalog',
   PERCEPTION_PLUGIN_PROVISION: 'perception:plugin:provision',
   PERCEPTION_PLUGIN_CAPABILITY_STATUS: 'perception:plugin:capability-status',
+  PERCEPTION_DECISION_PENDING: 'perception:decision:pending',
+  PERCEPTION_DECISION_RESOLVE: 'perception:decision:resolve',
+  PERCEPTION_DECISION_RETRY: 'perception:decision:retry',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
