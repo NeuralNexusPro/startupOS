@@ -103,7 +103,7 @@ interface PerceptionEventV1 {
 | **SENSE.12** | Perception Plugin Host 与 Connector 插件化迁移 | Critical | SENSE.1–11 | 🚧 In Progress |
 | **SENSE.13** | 感知中心首页入口与连接状态面板 | High | SENSE.8、SENSE.9、SENSE.12 | ✅ Complete |
 | **[SENSE.14](story-SENSE.14/README.md)** | IM平台能力发现与Agent按需调用 | High | SENSE.12、Agent工具授权 | 📋 In Progress |
-| **[SENSE.15](story-SENSE.15/README.md)** | Jev 受限决策路由 | High | SENSE.7、SENSE.8、SENSE.9、SENSE.12 | 📋 Planning |
+| **[SENSE.15](story-SENSE.15/README.md)** | Jev 受限决策路由 | High | SENSE.7、SENSE.8、SENSE.9、SENSE.12 | 🚧 In Review |
 
 ## 数据目录
 
@@ -113,12 +113,13 @@ data/perception/
 ├── rules/               # 版本化 Trigger Rules
 ├── inbox/               # 归一化前的有界 payload 引用
 ├── events/              # PerceptionEvent DataFile/JSONL
+├── decisions/           # Jev 决策回执与人工解决状态
 ├── leases/              # 幂等执行租约
 ├── dead-letter/         # 达到重试上限的事件
 └── audit/               # 脱敏审计记录
 ```
 
-密钥、App Secret、邮箱密码和 token 不得明文写入上述目录；Desktop 使用系统安全存储，Web/Server 使用环境或 secret provider reference。
+Jev 非敏感配置保存于 `data/model-providers/jev.json`。密钥、App Secret、邮箱密码和 token 不得明文写入数据目录；Desktop 使用系统安全存储，Web/Server 使用环境或 secret provider reference。
 
 ## 关键验收门禁
 

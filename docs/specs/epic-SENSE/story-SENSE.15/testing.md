@@ -52,4 +52,13 @@ openspec validate add-jev-perception-decisions --strict
 
 ## 5. 完成记录
 
-当前为设计阶段，尚未执行实现测试。实施完成后必须在此记录命令、通过数、失败项、真实性能数据、人工步骤和剩余风险；不得预先勾选。
+2026-09-21 自动化结果：
+
+- 集成提交：W1 `15a2de2`（SSRF 补丁 `b6928fc`）、W2 `a073629`、W3 `8aad64e`、W4 `efbeda7d`、W5 `efe7f1d`；契约对齐提交 `95308d6`。
+- Core Jev adapter、perception runtime 与 feature 专项共执行 137 项；功能断言全部通过。并行运行时 `plugin-capabilities` 的 p95 一次为 537ms，隔离复跑 10/10 通过（该文件 810ms）。
+- 新增 100 条带预期结果的合成决策样本，0 条越权自动路由、80 条进入人工处理；该数据只验证固定策略边界，不冒充历史数据、真实模型校准或业务准确率。
+- Desktop 专项 6/6 通过；W4 集成 worktree 的 Desktop build 通过。Proposal worktree 复跑 build 时因 package-local `node_modules` 缺少既有 `adm-zip` 与 `archiver` 类型而失败，未以安装新依赖掩盖环境问题。
+- Web 设置、感知中心、Provider 与 management route 专项 48/48 通过；扩大并行集合为 51 项通过、1 项 1303ms 性能断言失败，`SenseCenter` 隔离复跑 9/9 通过（686ms）。已有 React `act()` warning 保留记录。
+- `pnpm lint`：0 error、3052 warning；`lint:boundaries`：扫描 901 文件、0 diagnostics；架构 self-test：43 个样例在根目录和包目录均通过。
+
+尚未完成的人工证据：真实 TypeSafe/Jev 凭据 smoke test、约 100 条脱敏历史标注事件的误路由/漏升级/校准统计，以及实际打包 Electron 的 safeStorage 保存、重启和清除。回滚路径为停用 Jev Provider 或将规则切回 direct；已写入的脱敏 decision receipt/audit 保留追溯，不参与授权或业务事实判断。

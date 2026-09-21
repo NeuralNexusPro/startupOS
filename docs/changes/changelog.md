@@ -2,6 +2,12 @@
 
 ---
 
+## 2026-09-21 — feat：Jev 受限感知决策路由
+
+**类型**：feat
+**影响模块**：Core Jev integration/perception runtime、Desktop Provider 与感知 Host、Web 设置与感知中心、Story SENSE.15
+**摘要**：在确定性规则授权后增加 Jev 候选决策；仅严格 `confidence > 0.8` 且无需 HITL 时复用既有租约执行，其余在事件记录中人工选择或忽略。API Key 仅由 safeStorage/服务端环境持有，决策回执与审计均脱敏；direct 规则保持兼容。真实 Provider、历史标注样本与实际打包 safeStorage 仍待人工验收。
+
 ## 2026-09-20 — docs：规划 SENSE.15 Jev 受限决策路由
 
 **类型**：docs

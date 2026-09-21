@@ -50,9 +50,9 @@
 
 依赖：所有实现工作包。写入范围：Proposal 主 worktree 的冲突解决、Story/OpenSpec、AGENTS.md、`docs/changes/` 与验证记录；不得在主 worktree直接实现应用源码。负责角色：Tech Lead/QA。完成证据：合并提交、完整命令日志、Story verification goal 结果与回滚记录。
 
-- [ ] 6.1 逐个审查并合并 W1–W5 Task 分支到 `proposal/add-jev-perception-decisions`，每次合并后运行受影响测试并记录 commit、文件和未解决项
+- [x] 6.1 逐个审查并合并 W1–W5 Task 分支到 `proposal/add-jev-perception-decisions`，每次合并后运行受影响测试并记录 commit、文件和未解决项
 - [ ] 6.2 创建并完成自动化测试验证 goal“通过 Story SENSE.15 中定义的全部测试 case”，执行 Core/Desktop/Web 专项、typecheck/build、`pnpm lint`、`pnpm lint:boundaries` 与架构 self-test，并把真实结果写入 `testing.md`
 - [ ] 6.3 使用约 100 条脱敏标注事件评估误路由率、漏升级率、人工介入率与 confidence 校准，验证 0.8 边界和 p95/3 秒 deadline；无法自动化的真实 Jev/Desktop safeStorage 步骤必须记录人工证据和剩余风险
-- [ ] 6.4 同步新增数据路径/公共契约到 AGENTS.md、Epic README、文档索引和全量/版本 changelog，并运行占位符扫描证明 Story 六份文档可实施
+- [x] 6.4 同步新增数据路径/公共契约到 AGENTS.md、Epic README、文档索引和全量/版本 changelog，并运行占位符扫描证明 Story 六份文档可实施
 - [ ] 6.5 运行 `openspec validate add-jev-perception-decisions --strict`、核对全部 AC 与回滚演练；仅在实现和证据齐全后勾选完成项并提交审查
 - [ ] 6.6 Proposal 获批且完整验证后合并到 `dev`，再清理已合并 Proposal/Task worktree 与分支并记录清理结果

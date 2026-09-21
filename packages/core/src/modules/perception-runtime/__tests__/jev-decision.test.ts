@@ -132,6 +132,18 @@ describe('Jev decision receipts and policy', () => {
     expect(evaluateDecisionPolicy(answer(0.81, 0, 'ignore'), rule().decision.candidates, false)).toMatchObject({ action: 'ignore' });
     expect(evaluateDecisionPolicy(answer(0.81, 0, 'notify_user'), rule().decision.candidates, false)).toMatchObject({ action: 'pending', reason: 'NOTIFY_USER' });
   });
+
+  it('evaluates 100 labeled synthetic events without unsafe auto-routing', () => {
+    const outcomes = Array.from({ length: 100 }, (_, index) => {
+      const confidence = index % 5 === 0 ? 0.81 : index % 5 === 1 ? 0.8 : 0.6;
+      const needsHitl = index % 5 === 2 ? 0.5 : 0;
+      const ruleHitl = index % 5 === 3;
+      const expected = confidence > 0.8 && needsHitl < 0.5 && !ruleHitl ? 'dispatch' : 'pending';
+      return { expected, actual: evaluateDecisionPolicy(answer(confidence, needsHitl), rule().decision.candidates, ruleHitl).action };
+    });
+    expect(outcomes.filter(({ expected, actual }) => expected !== actual)).toHaveLength(0);
+    expect(outcomes.filter(({ actual }) => actual === 'pending')).toHaveLength(80);
+  });
 });
 
 describe('PerceptionRouter Jev integration', () => {
