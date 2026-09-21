@@ -99,3 +99,6 @@ coverage
 # Misc
 *.bak
 *.cache
+
+# pnpm local package store
+.pnpm-store/
