@@ -22,7 +22,7 @@ function response(status = 200, body: unknown = { model: 'jev-test', answers }):
 function adapter(fetcher: typeof fetch, overrides: Partial<ConstructorParameters<typeof JevHttpAdapter>[0]> = {}) {
   return new JevHttpAdapter({
     baseUrl: 'https://jev.example.test', model: 'jev-test', apiKey: 'test-key', fetch: fetcher,
-    retryDelayMs: 0, ...overrides,
+    resolveHostname: async () => ['203.0.113.10'], retryDelayMs: 0, ...overrides,
   });
 }
 
@@ -55,6 +55,24 @@ describe('JevHttpAdapter', () => {
   it('maps aborts and network failures without exposing provider errors', async () => {
     await expectCode(adapter(vi.fn<typeof fetch>(async () => { throw new DOMException('secret', 'AbortError'); })).decide(request), 'JEV_TIMEOUT');
     await expectCode(adapter(vi.fn<typeof fetch>(async () => { throw new Error('secret'); })).decide(request), 'JEV_NETWORK_ERROR');
+  });
+
+  it.each([
+    ['private IPv4', ['10.1.2.3']],
+    ['loopback IPv4', ['127.0.0.1']],
+    ['private IPv6', ['fd00::1']],
+    ['loopback IPv6', ['::1']],
+    ['mixed public and private addresses', ['203.0.113.10', '192.168.1.2']],
+  ])('rejects a public hostname resolving to %s', async (_name, addresses) => {
+    const fetcher = vi.fn<typeof fetch>(async () => response());
+    await expectCode(adapter(fetcher, { resolveHostname: async () => addresses }).decide(request), 'JEV_INVALID_BASE_URL');
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('allows a public resolved address', async () => {
+    const fetcher = vi.fn<typeof fetch>(async () => response());
+    await expect(adapter(fetcher, { resolveHostname: async () => ['2606:4700:4700::1111'] }).decide(request)).resolves.toBeDefined();
+    expect(fetcher).toHaveBeenCalledOnce();
   });
 });
 
@@ -90,6 +108,16 @@ describe('Jev baseUrl boundary', () => {
     expect(normalizeJevBaseUrl('http://localhost:3000/', { environment: 'development', allowDevelopmentLoopback: true }))
       .toBe('http://localhost:3000');
     expect(() => normalizeJevBaseUrl('http://localhost:3000', { environment: 'development' })).toThrow();
+  });
+
+  it('does not resolve an explicitly allowed development loopback host', async () => {
+    const resolveHostname = vi.fn(async () => ['127.0.0.1']);
+    const fetcher = vi.fn<typeof fetch>(async () => response());
+    await new JevHttpAdapter({
+      baseUrl: 'http://localhost:3000', model: 'jev-test', apiKey: 'test-key', environment: 'development',
+      allowDevelopmentLoopback: true, resolveHostname, fetch: fetcher,
+    }).decide(request);
+    expect(resolveHostname).not.toHaveBeenCalled();
   });
 });
 
