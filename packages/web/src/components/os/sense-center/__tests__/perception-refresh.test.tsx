@@ -4,8 +4,8 @@ import { useEffect } from 'react';
 import { PerceptionStatusButton } from '@/components/os/sense-center/PerceptionStatusButton';
 import { usePerceptionStore } from '@/store/perceptionStore';
 
-const data: Pick<ReturnType<typeof usePerceptionStore.getState>, 'connectors' | 'grants' | 'rules' | 'health' | 'audit' | 'eventTraces' | 'deadLetters'> = { connectors: [], grants: [], rules: [], health: [], audit: [], eventTraces: [], deadLetters: [] };
-const response = (value = data) => ({ ok: true, json: async () => ({ success: true, data: value }) });
+const data: Pick<ReturnType<typeof usePerceptionStore.getState>, 'connectors' | 'grants' | 'rules' | 'health' | 'audit' | 'eventTraces' | 'deadLetters' | 'decisions'> = { connectors: [], grants: [], rules: [], health: [], audit: [], eventTraces: [], deadLetters: [], decisions: [] };
+const response = <T,>(value: T = data as T) => ({ ok: true, json: async () => ({ success: true, data: value }) });
 const fetchMock = vi.fn();
 beforeEach(() => {
   vi.useFakeTimers();
@@ -72,6 +72,15 @@ describe('perception live refresh', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(usePerceptionStore.getState().loading).toBe(false);
     expect(usePerceptionStore.getState().health).toEqual(newest.health);
+  });
+
+  it('updates a decision through the management boundary and keeps the shared refresh timer', async () => {
+    const receipt = { id: 'decision-1', eventId: 'event-1', ruleId: 'rule-1', catalogVersion: '1.0', policyVersion: '1.0', candidateKeys: ['ignore'], threshold: 0.8 as const, status: 'ignored' as const, selectedKey: 'ignore', createdAt: '2026-09-12T00:00:00Z', updatedAt: '2026-09-12T00:00:01Z' };
+    fetchMock.mockResolvedValueOnce(response(receipt)).mockResolvedValueOnce(response({ ...data, decisions: [receipt] }));
+    await usePerceptionStore.getState().resolveDecision(receipt.id, 'ignore');
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: 'PATCH', body: JSON.stringify({ action: 'resolve-decision', decisionId: receipt.id, candidateKey: 'ignore' }) });
+    expect(usePerceptionStore.getState().decisions).toEqual([receipt]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
 

@@ -1,27 +1,34 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ExternalTriggerGrant, PerceptionAuditEntry, PerceptionDeadLetter, PerceptionEventTrace, PerceptionTriggerRule } from '@originos/core/types';
+import type { ExternalTriggerGrant, JevDecisionReceipt, PerceptionAuditEntry, PerceptionDeadLetter, PerceptionEventTrace, PerceptionTriggerRule } from '@originos/core/types';
+
+const provider = vi.hoisted(() => ({ get: vi.fn(() => new Promise<never>(() => undefined)) }));
+vi.mock('@/services/jevProviderService', () => ({ getJevProvider: provider.get }));
 
 const load = vi.fn(async () => undefined);
 const startRefreshing = vi.fn(() => { void load(); return vi.fn(); });
 const replay = vi.fn(async () => undefined);
+const resolveDecision = vi.fn(async () => undefined);
+const retryDecision = vi.fn(async () => undefined);
 const state: {
   connectors: []; grants: ExternalTriggerGrant[]; rules: PerceptionTriggerRule[]; health: [];
-  deadLetters: PerceptionDeadLetter[]; audit: PerceptionAuditEntry[];
+  deadLetters: PerceptionDeadLetter[]; audit: PerceptionAuditEntry[]; decisions: JevDecisionReceipt[];
   eventTraces: PerceptionEventTrace[];
   loading: boolean; error: string | undefined; startRefreshing: typeof startRefreshing; load: typeof load; replay: typeof replay;
   setConnectorEnabled: ReturnType<typeof vi.fn>; saveConnector: ReturnType<typeof vi.fn>; saveRule: ReturnType<typeof vi.fn>;
   deleteRule: ReturnType<typeof vi.fn>; saveGrant: ReturnType<typeof vi.fn>; deleteGrant: ReturnType<typeof vi.fn>;
+  resolveDecision: typeof resolveDecision; retryDecision: typeof retryDecision;
 } = {
-  connectors: [], grants: [], rules: [], health: [], deadLetters: [], audit: [], eventTraces: [], loading: false,
+  connectors: [], grants: [], rules: [], health: [], deadLetters: [], audit: [], decisions: [], eventTraces: [], loading: false,
   error: undefined, load, startRefreshing, replay, setConnectorEnabled: vi.fn(), saveConnector: vi.fn(), saveRule: vi.fn(), deleteRule: vi.fn(), saveGrant: vi.fn(), deleteGrant: vi.fn(),
+  resolveDecision, retryDecision,
 };
 vi.mock('@/store/perceptionStore', () => ({ usePerceptionStore: () => state }));
 
 const { SenseCenter } = await import('../SenseCenter');
 
 describe('SenseCenter', () => {
-  beforeEach(() => { vi.clearAllMocks(); state.audit = []; state.eventTraces = []; state.deadLetters = []; state.grants = []; state.rules = []; });
+  beforeEach(() => { vi.clearAllMocks(); state.audit = []; state.eventTraces = []; state.deadLetters = []; state.decisions = []; state.grants = []; state.rules = []; });
 
   it('renders accessible loading-independent navigation and empty states', async () => {
     const startedAt = performance.now();
@@ -109,5 +116,50 @@ describe('SenseCenter', () => {
     expect(screen.getByRole('form', { name: '编辑触发规则' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '删除' }));
     expect(state.deleteRule).toHaveBeenCalledWith('rule-1');
+  });
+
+  it('shows Jev rule metadata and accessible pending-decision actions without guessing a target', async () => {
+    const now = '2026-09-04T08:00:00.000Z';
+    const candidates = [
+      { key: 'ignore' as const, action: 'ignore' as const },
+      { key: 'notify_user' as const, action: 'notify_user' as const },
+      { key: 'project:project-1', action: 'dispatch' as const, target: { kind: 'project' as const, id: 'project-1' } },
+      { key: 'role-agent:removed', action: 'dispatch' as const, target: { kind: 'role-agent' as const, id: 'removed' } },
+    ];
+    const rule: PerceptionTriggerRule = { id: 'rule-jev', enabled: true, routingMode: 'jev', sources: ['email'], eventTypes: ['mail.received'], conditions: [], decision: { catalogVersion: '1.0', policyVersion: '1.0', candidates }, execution: { requireHitl: false, maxAttempts: 1 }, createdAt: now, updatedAt: now };
+    state.rules = [rule];
+    state.grants = [{ target: { kind: 'project', id: 'project-1' }, enabled: true, createdAt: now, updatedAt: now }];
+    state.eventTraces = [{ event: { schemaVersion: '1.0', id: 'event-jev', source: 'email', sourceEventId: 'mail-jev', connectorId: 'email-main', type: 'mail.received', occurredAt: now, receivedAt: now, actor: { externalId: 'sender@example.com' }, content: { subject: 'Needs routing' }, provenance: { rawPayloadRef: 'inbox://safe' } }, audit: [], ruleTriggers: [{ ruleId: rule.id, matchedAt: now, rule }] }];
+    state.decisions = [{ id: 'decision-1', eventId: 'event-jev', ruleId: rule.id, catalogVersion: '1.0', policyVersion: '1.0', candidateKeys: candidates.map((item) => item.key), answers: { providerModel: 'jev-latest', routeTarget: { choice: 'project:project-1', confidence: 0.8, probabilities: { ignore: 0.05, notify_user: 0.05, 'project:project-1': 0.7, 'role-agent:removed': 0.2 } }, urgency: { score: 1, confidence: 0.9, probabilities: { low: 0.1, medium: 0.8, high: 0.1 } }, risk: { score: 1, confidence: 0.9, probabilities: { low: 0.8, medium: 0.1, high: 0.1 } }, needsHitl: 0.2, retainAsEvidence: 0 }, threshold: 0.8, status: 'pending', reason: 'LOW_CONFIDENCE', createdAt: now, updatedAt: now }];
+    render(<SenseCenter />);
+    fireEvent.click(screen.getByRole('button', { name: '触发规则' }));
+    expect(screen.getByText('email → Jev 决策（2 个目标候选）')).toBeInTheDocument();
+    expect(screen.getByText(/目录 1.0 · 策略 1.0 · 阈值 > 0.8/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '事件记录' }));
+    expect(screen.getByRole('status')).toHaveTextContent('等待你的选择');
+    expect(screen.getByText('目标已删除或授权已撤销，请刷新候选')).toBeInTheDocument();
+    const targetButtons = screen.getAllByRole('button', { name: '选择此目标' });
+    expect(targetButtons[0]).toBeEnabled(); expect(targetButtons[1]).toBeDisabled();
+    expect(resolveDecision).not.toHaveBeenCalled();
+    fireEvent.click(targetButtons[0]!);
+    await waitFor(() => expect(resolveDecision).toHaveBeenCalledWith('decision-1', 'project:project-1'));
+  });
+
+  it('offers retry for safe Provider errors and disables all actions after resolution', async () => {
+    const now = '2026-09-04T08:00:00.000Z';
+    const candidate = { key: 'project:project-1', action: 'dispatch' as const, target: { kind: 'project' as const, id: 'project-1' } };
+    const rule: PerceptionTriggerRule = { id: 'rule-jev', enabled: true, routingMode: 'jev', sources: ['email'], eventTypes: ['mail.received'], conditions: [], decision: { catalogVersion: '1.0', policyVersion: '1.0', candidates: [{ key: 'ignore', action: 'ignore' }, { key: 'notify_user', action: 'notify_user' }, candidate] }, execution: { requireHitl: false, maxAttempts: 1 }, createdAt: now, updatedAt: now };
+    state.grants = [{ target: candidate.target, enabled: true, createdAt: now, updatedAt: now }];
+    state.eventTraces = [{ event: { schemaVersion: '1.0', id: 'event-jev', source: 'email', sourceEventId: 'mail-jev', connectorId: 'email-main', type: 'mail.received', occurredAt: now, receivedAt: now, actor: { externalId: 'sender@example.com' }, content: { subject: 'Provider failed' }, provenance: { rawPayloadRef: 'inbox://safe' } }, audit: [], ruleTriggers: [{ ruleId: rule.id, matchedAt: now, rule }] }];
+    state.decisions = [{ id: 'decision-failed', eventId: 'event-jev', ruleId: rule.id, catalogVersion: '1.0', policyVersion: '1.0', candidateKeys: ['ignore', candidate.key], threshold: 0.8, status: 'failed', reason: 'JEV_TIMEOUT', createdAt: now, updatedAt: now }];
+    const view = render(<SenseCenter />); fireEvent.click(screen.getByRole('button', { name: '事件记录' }));
+    fireEvent.click(screen.getByRole('button', { name: '重试决策' }));
+    await waitFor(() => expect(retryDecision).toHaveBeenCalledWith('decision-failed'));
+    view.unmount();
+    state.decisions[0] = { ...state.decisions[0]!, status: 'user-executed', selectedKey: candidate.key, leaseId: 'lease-1', resultRef: 'result-1' };
+    render(<SenseCenter />); fireEvent.click(screen.getByRole('button', { name: '事件记录' }));
+    expect(screen.getByRole('button', { name: '选择此目标' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '忽略' })).toBeDisabled();
+    expect(screen.getByText(/已解决操作不可重复执行/)).toBeInTheDocument();
   });
 });

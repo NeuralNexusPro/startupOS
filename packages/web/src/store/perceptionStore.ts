@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import type {
   ConnectorHealth,
   ExternalTriggerGrant,
+  JevDecisionReceipt,
   PerceptionAuditEntry,
   PerceptionConnectorConfig,
   PerceptionDeadLetter,
@@ -19,6 +20,7 @@ interface DashboardData {
   audit: PerceptionAuditEntry[];
   eventTraces: PerceptionEventTrace[];
   deadLetters: PerceptionDeadLetter[];
+  decisions: JevDecisionReceipt[];
 }
 interface PerceptionState extends DashboardData {
   loading: boolean;
@@ -32,15 +34,22 @@ interface PerceptionState extends DashboardData {
   deleteRule(id: string): Promise<void>;
   saveGrant(grant: ExternalTriggerGrant): Promise<void>;
   deleteGrant(grant: ExternalTriggerGrant): Promise<void>;
+  resolveDecision(id: string, candidateKey: string): Promise<void>;
+  retryDecision(id: string): Promise<void>;
 }
 
-const EMPTY: DashboardData = { connectors: [], grants: [], rules: [], health: [], audit: [], eventTraces: [], deadLetters: [] };
+const EMPTY: DashboardData = { connectors: [], grants: [], rules: [], health: [], audit: [], eventTraces: [], deadLetters: [], decisions: [] };
 
-async function request(input: RequestInfo, init?: RequestInit): Promise<DashboardData | ConnectorSummary> {
+async function request<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   const response = await fetch(input, init);
-  const payload = await response.json() as { success: boolean; data?: DashboardData | ConnectorSummary; error?: { code?: string } };
+  const payload = await response.json() as { success: boolean; data?: T; error?: { code?: string } };
   if (!response.ok || !payload.success || !payload.data) throw new Error(payload.error?.code || 'PERCEPTION_REQUEST_FAILED');
   return payload.data;
+}
+
+function updateDecision(decisions: JevDecisionReceipt[], receipt: JevDecisionReceipt): JevDecisionReceipt[] {
+  const index = decisions.findIndex((item) => item.id === receipt.id);
+  return index < 0 ? [receipt, ...decisions] : decisions.map((item, itemIndex) => itemIndex === index ? receipt : item);
 }
 
 let pendingLoad: Promise<void> | undefined;
@@ -55,7 +64,8 @@ export const usePerceptionStore = create<PerceptionState>((set, get) => ({
     const load = (pendingLoad ?? Promise.resolve()).then(async () => {
       if (!silent) set({ loading: true, error: undefined });
       try {
-        set(await request('/api/perception/management') as DashboardData);
+        const snapshot = await request<Omit<DashboardData, 'decisions'> & { decisions?: JevDecisionReceipt[] }>('/api/perception/management');
+        set((state) => ({ ...snapshot, decisions: snapshot.decisions ?? state.decisions }));
       } catch {
         if (!silent) set({ error: '无法加载感知中心，请稍后重试' });
       } finally {
@@ -83,7 +93,7 @@ export const usePerceptionStore = create<PerceptionState>((set, get) => ({
   },
   setConnectorEnabled: async (id, enabled) => {
     try {
-      await request('/api/perception/management', {
+      await request<ConnectorSummary>('/api/perception/management', {
         method: 'PATCH', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ action: 'set-connector-enabled', id, enabled }),
       });
@@ -91,45 +101,61 @@ export const usePerceptionStore = create<PerceptionState>((set, get) => ({
     } catch { set({ error: enabled ? '启用失败：请先重新绑定并通过邮箱连接测试' : '停用连接器失败' }); }
   },
   replay: async (connectorId, id) => {
-    await request('/api/perception/management', {
+    await request<unknown>('/api/perception/management', {
       method: 'PATCH', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ action: 'replay-dead-letter', connectorId, id }),
     });
     await get().load();
   },
   saveConnector: async (connector) => {
-    await request('/api/perception/management', {
+    await request<ConnectorSummary>('/api/perception/management', {
       method: 'PATCH', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ action: 'save-connector', connector }),
     });
     await get().load();
   },
   saveRule: async (rule) => {
-    await request('/api/perception/management', {
+    await request<unknown>('/api/perception/management', {
       method: 'PATCH', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ action: 'save-rule', rule }),
     });
     await get().load();
   },
   deleteRule: async (id) => {
-    await request('/api/perception/management', {
+    await request<unknown>('/api/perception/management', {
       method: 'PATCH', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ action: 'delete-rule', id }),
     });
     await get().load();
   },
   saveGrant: async (grant) => {
-    await request('/api/perception/management', {
+    await request<unknown>('/api/perception/management', {
       method: 'PATCH', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ action: 'save-grant', grant }),
     });
     await get().load();
   },
   deleteGrant: async (grant) => {
-    await request('/api/perception/management', {
+    await request<unknown>('/api/perception/management', {
       method: 'PATCH', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ action: 'delete-grant', kind: grant.target.kind, id: grant.target.id }),
     });
     await get().load();
+  },
+  resolveDecision: async (id, candidateKey) => {
+    const receipt = await request<JevDecisionReceipt>('/api/perception/management', {
+      method: 'PATCH', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'resolve-decision', decisionId: id, candidateKey }),
+    });
+    set((state) => ({ decisions: updateDecision(state.decisions, receipt) }));
+    await get().load({ silent: true });
+  },
+  retryDecision: async (id) => {
+    const receipt = await request<JevDecisionReceipt>('/api/perception/management', {
+      method: 'PATCH', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'retry-decision', decisionId: id }),
+    });
+    set((state) => ({ decisions: updateDecision(state.decisions, receipt) }));
+    await get().load({ silent: true });
   },
 }));
