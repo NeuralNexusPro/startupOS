@@ -19,6 +19,7 @@ import { loadToolConfig } from '../../../../lib/integrations/pi-agent/tool-confi
 import type { RuntimeLLMConfig } from '../../../../lib/integrations/pi-agent/llm-config';
 import { appendGlobalUserPreferencesPrompt } from '../../../../lib/integrations/pi-agent/user-preferences';
 import { buildAgentSessionContext, createAgentPromptBoundary, type AgentPromptBoundary } from '../../../../lib/integrations/pi-agent/prompt-boundary';
+import { readUserConfigWithProductDefaults, userLLMConfigToRuntimeLLMConfig } from '../../user-config';
 import type { CreateSessionRequest } from '../../../../types/agent';
 import type { ObservationContext } from '../../../../modules/memory-core';
 
@@ -155,6 +156,7 @@ export abstract class Launcher {
   protected async createOrRestoreSession(
     params: CreateSessionRequest & { agentType: string; agentBaseDir?: string; llmConfig?: LaunchContext['llmConfig'] },
   ): Promise<{ sessionId: string; isNew: boolean }> {
+    params.llmConfig = this.resolveLLMConfig(params.llmConfig);
     // 自动设置工作目录，确保工具使用正确的当前路径
     if (params.agentBaseDir) {
       params.projectContext = {
@@ -201,7 +203,7 @@ export abstract class Launcher {
       agentType: options.agentType,
       agentBaseDir: options.agentBaseDir,
       isWindowBound: options.isWindowBound,
-      llmConfig: options.llmConfig,
+      llmConfig: this.resolveLLMConfig(options.llmConfig),
       memoryOwnership: options.memoryOwnership,
       observationContext: options.observationContext,
     });
@@ -209,6 +211,10 @@ export abstract class Launcher {
     // Agent is created with tools already registered via AgentManager.getOrCreateAgent
     // Tools are filtered by Tool.md config inside the AgentManager
     return [];
+  }
+
+  private resolveLLMConfig(config?: RuntimeLLMConfig): RuntimeLLMConfig | undefined {
+    return config ?? userLLMConfigToRuntimeLLMConfig(readUserConfigWithProductDefaults().llm);
   }
 
   /**

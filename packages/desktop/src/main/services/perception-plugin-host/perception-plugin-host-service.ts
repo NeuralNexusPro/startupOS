@@ -363,6 +363,7 @@ export class PerceptionPluginHostService {
     );
     const events = new PerceptionEventStore(this.dataRoot);
     const grants = new ExternalTriggerGrantStore(this.dataRoot);
+    const rules = new TriggerRuleStore(this.dataRoot);
     const execution = new ChannelTriggerExecutionAdapter(
       this.channelIngress,
       undefined,
@@ -386,17 +387,72 @@ export class PerceptionPluginHostService {
     const orchestrator = this.decisions
       ? new DecisionOrchestrator(this.decisions, new DecisionReceiptStore(this.dataRoot), decisionHashSalt(this.dataRoot))
       : undefined;
+    const targets = new FileSystemPerceptionTargetRegistry(this.dataRoot);
+    const writeDecisionLog = async ({ phase, event, rule, candidateKeys, receipt, outcome }: Parameters<NonNullable<import('../../../../../core/src/modules/perception-runtime').DecisionPendingNotificationPort['logDecision']>>[0]) => {
+      const labels = Object.fromEntries(await Promise.all(rule.decision.candidates.map(async (candidate) => [
+        candidate.key,
+        candidate.action === 'dispatch' ? (await targets.describe(candidate.target))?.name ?? candidate.key : candidate.action === 'ignore' ? '忽略事件' : '通知用户',
+      ])));
+      const label = (key: string) => labels[key] ?? key;
+      const answers = receipt?.answers;
+      const decision = {
+        phase, decisionId: receipt?.id, ruleId: rule.id, outcome, status: receipt?.status, reason: receipt?.reason,
+        candidateKeys: (candidateKeys ?? receipt?.candidateKeys)?.map(label),
+        routeTarget: answers?.routeTarget.choice ? label(answers.routeTarget.choice) : undefined, routeConfidence: answers?.routeTarget.confidence,
+        routeProbabilities: answers?.routeTarget.probabilities && Object.fromEntries(Object.entries(answers.routeTarget.probabilities).map(([key, value]) => [label(key), value])),
+        deliveryMode: answers?.deliveryMode?.choice, deliveryConfidence: answers?.deliveryMode?.confidence, deliveryProbabilities: answers?.deliveryMode?.probabilities,
+        needsUserAttention: answers?.needsUserAttention, urgency: answers?.urgency.score, risk: answers?.risk.score,
+        needsHitl: answers?.needsHitl, retainAsEvidence: answers?.retainAsEvidence,
+      };
+      this.logs?.write(PLUGIN_IDS[event.source] ?? event.source, event.connectorId, {
+        level: phase === 'failed' ? 'error' : 'info', stage: `decision.${phase}`, eventId: event.id, decision,
+      });
+      if (process.env['NODE_ENV'] !== 'production') console.info('[perception-decision]', {
+        eventId: event.id,
+        source: event.source,
+        decision: Object.fromEntries(Object.entries(decision).filter(([, value]) => value !== undefined)),
+      });
+    };
     const router = new PerceptionRouter(
       this.dataRoot,
-      new TriggerRuleStore(this.dataRoot),
+      rules,
       new FileTargetAuthorizationPort(
         grants,
-        new FileSystemPerceptionTargetRegistry(this.dataRoot)
+        targets
       ),
       execution,
       undefined,
       orchestrator,
-      { notify: async ({ receipt, event }) => {
+      {
+        logDecision: input => { void writeDecisionLog(input).catch(() => undefined); },
+        notify: async ({ receipt, event, rule }) => {
+        if (['wecom', 'feishu', 'dingtalk'].includes(event.source) && receipt.reason && receipt.reason !== 'TARGET_AMBIGUOUS') {
+          try {
+            const replyHandle = event.provenance.rawPayloadRef;
+            const content = receipt.reason.startsWith('JEV_') || receipt.status === 'failed'
+              ? '我暂时无法完成这条消息的分派，请稍后再试一次。'
+              : '我已收到这条消息，暂时无法自动处理，请稍后再试一次。';
+            await this.replies.deliver(replyHandle, { type: 'assistant_message', content });
+            await this.replies.deliver(replyHandle, { type: 'completed', resultRef: `perception://decision/${receipt.id}` });
+            return;
+          } catch {
+            this.logs?.write(PLUGIN_IDS[event.source] ?? event.source, event.connectorId, { level: 'warn', stage: 'decision.failure-reply', eventId: event.id, safeCode: 'DECISION_FAILURE_REPLY_FAILED' });
+          }
+        }
+        if (receipt.reason === 'TARGET_AMBIGUOUS' && ['wecom', 'feishu', 'dingtalk'].includes(event.source)) {
+          try {
+            const labels = Object.fromEntries(await Promise.all(rule.decision.candidates.filter((candidate) => candidate.action === 'dispatch').map(async (candidate) => [candidate.key, (await targets.describe(candidate.target))?.name ?? candidate.key])));
+            const choices = receipt.answers?.routeTarget.probabilities
+              ? Object.entries(receipt.answers.routeTarget.probabilities).filter(([key, probability]) => labels[key] && probability > 0).sort(([, left], [, right]) => right - left).map(([key, probability]) => `${labels[key]}（${Math.round(probability * 100)}%）`).join('、')
+              : '多个候选能力';
+            const replyHandle = event.provenance.rawPayloadRef;
+            await this.replies.deliver(replyHandle, { type: 'assistant_message', content: `我找到了几位合适的处理伙伴：${choices}。您期望由谁，或由什么能力来承接这个请求？` });
+            await this.replies.deliver(replyHandle, { type: 'completed', resultRef: `perception://decision/${receipt.id}` });
+            return;
+          } catch {
+            this.logs?.write(PLUGIN_IDS[event.source] ?? event.source, event.connectorId, { level: 'warn', stage: 'decision.choice-reply', eventId: event.id, safeCode: 'DECISION_CHOICE_REPLY_FAILED' });
+          }
+        }
         let shown = false;
         try {
           shown = (await this.notify({
@@ -408,9 +464,43 @@ export class PerceptionPluginHostService {
         if (!shown) this.logs?.write(PLUGIN_IDS[event.source] ?? event.source, event.connectorId, {
           level: 'warn', stage: 'decision.notification', eventId: event.id, safeCode: 'DECISION_NOTIFICATION_FAILED',
         });
-      } },
+        },
+      },
+      targets,
     );
     this.router = router;
+    const reconsiderImDecision = async (event: Parameters<typeof events.save>[0]) => {
+      if (!['wecom', 'feishu', 'dingtalk'].includes(event.source)) return undefined;
+      const matches = router.listPendingDecisions().flatMap((receipt) => {
+        if (receipt.reason !== 'TARGET_AMBIGUOUS') return [];
+        try {
+          const original = events.get(receipt.eventId);
+          return original.source === event.source && original.connectorId === event.connectorId
+            && original.actor.externalId === event.actor.externalId && original.conversation?.externalId === event.conversation?.externalId
+            ? [{ receipt, original, rule: rules.get(receipt.ruleId) }]
+            : [];
+        } catch { return []; }
+      });
+      const match = matches
+        .filter((item) => item.rule?.routingMode === 'jev')
+        .sort((left, right) => right.original.receivedAt.localeCompare(left.original.receivedAt))[0];
+      if (!match) return undefined;
+      if (!match.rule || match.rule.routingMode !== 'jev') return undefined;
+      const history = events.list(200).filter((item) => item.source === match.original.source && item.connectorId === match.original.connectorId
+        && item.actor.externalId === match.original.actor.externalId && item.conversation?.externalId === match.original.conversation?.externalId
+        && item.receivedAt >= match.original.receivedAt && item.receivedAt < event.receivedAt).sort((left, right) => left.receivedAt.localeCompare(right.receivedAt));
+      if (!(await router.isPendingChoiceFeedback(match.receipt.id, event, history))) return undefined;
+      const result = await router.reconsiderDecision(match.receipt.id, event, history);
+      if (result.status === 'pending') return result;
+      const response = result.responseTexts?.at(-1) ?? result.responseText ?? (result.status === 'dispatched' ? '已根据你的反馈完成选择，正在处理。' : '已根据你的反馈完成处理。');
+      try {
+        await this.replies.deliver(event.provenance.rawPayloadRef, { type: 'assistant_message', content: response });
+        await this.replies.deliver(event.provenance.rawPayloadRef, { type: 'completed', resultRef: result.resultRef ?? `perception://decision/${match.receipt.id}` });
+      } catch {
+        this.logs?.write(PLUGIN_IDS[event.source] ?? event.source, event.connectorId, { level: 'warn', stage: 'decision.choice-delivery', eventId: event.id, safeCode: 'DECISION_CHOICE_DELIVERY_FAILED' });
+      }
+      return result;
+    };
     const state = new FilePluginStateAdapter(this.dataRoot);
     return {
       log: this.logs,
@@ -438,7 +528,19 @@ export class PerceptionPluginHostService {
           try { await options?.onAccepted?.(); }
           catch (error) { this.logs?.write(PLUGIN_IDS[event.source] ?? event.source, event.connectorId, { level: 'error', stage: 'event.ack', eventId: event.id, safeCode: 'EVENT_ACK_FAILED', error }); }
           if (saved.duplicate) return [{ status: 'duplicate' as const }];
-          return router.route(saved.event);
+          const reconsidered = await reconsiderImDecision(saved.event);
+          if (reconsidered) return [reconsidered];
+          const results = await router.route(saved.event);
+          if (['wecom', 'feishu', 'dingtalk'].includes(saved.event.source)
+            && results.some((result) => result.status === 'failed' || result.reason === 'JEV_RUNTIME_UNAVAILABLE')) {
+            try {
+              await this.replies.deliver(saved.event.provenance.rawPayloadRef, { type: 'assistant_message', content: '我暂时无法处理这条消息，请稍后再试一次。' });
+              await this.replies.deliver(saved.event.provenance.rawPayloadRef, { type: 'completed', resultRef: `perception://event/${saved.event.id}` });
+            } catch {
+              this.logs?.write(PLUGIN_IDS[saved.event.source] ?? saved.event.source, saved.event.connectorId, { level: 'warn', stage: 'event.failure-reply', eventId: saved.event.id, safeCode: 'EVENT_FAILURE_REPLY_FAILED' });
+            }
+          }
+          return results;
         },
       },
       attachments: {

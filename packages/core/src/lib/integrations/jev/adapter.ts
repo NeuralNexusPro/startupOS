@@ -5,11 +5,21 @@ import type {
   JevScoreAnswer,
   PerceptionDecisionPort,
 } from '../../../types/perception';
+import {
+  APIConnectionError,
+  APIError,
+  APITimeoutError,
+  choice,
+  noul,
+  score,
+  TypeSafeClient,
+} from '@typesafe-ai/sdk';
+import type { EntryType } from '@typesafe-ai/sdk';
 
 export const JEV_CATALOG_VERSION = '1.0' as const;
 export const JEV_DECISION_TIMEOUT_MS = 3_000;
 const SCORE_KEYS = ['low', 'medium', 'high'] as const;
-const ANSWER_KEYS = ['needs_hitl', 'retain_as_evidence', 'risk', 'route_target', 'urgency'];
+const ANSWER_KEYS = ['delivery_mode', 'needs_user_attention', 'needs_hitl', 'retain_as_evidence', 'risk', 'route_target', 'urgency'];
 
 export type JevErrorCode =
   | 'JEV_INVALID_BASE_URL'
@@ -64,21 +74,35 @@ export function normalizeJevBaseUrl(
 }
 
 export class JevHttpAdapter implements PerceptionDecisionPort {
-  private readonly endpoint: string;
-  private readonly fetcher: typeof fetch;
+  private readonly client: TypeSafeClient;
   private readonly hostname: string;
   private readonly resolveHostname: NonNullable<JevAdapterOptions['resolveHostname']>;
   private readonly timeoutMs: number;
-  private readonly retryDelayMs: number;
 
   constructor(private readonly options: JevAdapterOptions) {
     const baseUrl = normalizeJevBaseUrl(options.baseUrl, options);
-    this.endpoint = `${baseUrl}/v1/systemone`;
     this.hostname = new URL(baseUrl).hostname.replace(/^\[|\]$/g, '').toLowerCase();
-    this.fetcher = options.fetch ?? fetch;
     this.resolveHostname = options.resolveHostname ?? resolveHostname;
     this.timeoutMs = Math.min(options.timeoutMs ?? JEV_DECISION_TIMEOUT_MS, JEV_DECISION_TIMEOUT_MS);
-    this.retryDelayMs = options.retryDelayMs ?? 100;
+    const fetcher = options.fetch ?? fetch;
+    this.client = new TypeSafeClient({
+      apiKey: options.apiKey,
+      baseURL: baseUrl,
+      defaultModel: options.model,
+      timeout: this.timeoutMs,
+      logLevel: 'off',
+      retry: {
+        maxRetries: 1,
+        backoffInitialMs: options.retryDelayMs ?? 100,
+        backoffMaxMs: options.retryDelayMs ?? 100,
+        backoffJitter: 0,
+        httpStatuses: new Set([429, 529]),
+        respectRetryAfter: false,
+        apiConnectionError: true,
+        apiTimeoutError: false,
+      },
+      fetch: (input, init) => fetcher(input, { ...init, redirect: 'error' }),
+    });
   }
 
   async decide(request: JevDecisionRequest): Promise<JevDecisionAnswer> {
@@ -97,103 +121,113 @@ export class JevHttpAdapter implements PerceptionDecisionPort {
         throw new JevError('JEV_INVALID_BASE_URL');
       }
     }
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const remaining = this.timeoutMs - (Date.now() - startedAt);
-      if (remaining <= 0) throw new JevError('JEV_TIMEOUT');
-      let response: Response;
-      try {
-        response = await this.fetcher(this.endpoint, {
-          method: 'POST',
-          headers: { authorization: `Bearer ${this.options.apiKey}`, 'content-type': 'application/json' },
-          body: JSON.stringify(buildJevRequest(this.options.model, request)),
-          signal: AbortSignal.timeout(remaining),
-          redirect: 'error',
-        });
-      } catch (error) {
-        if (isAbortError(error)) throw new JevError('JEV_TIMEOUT');
-        throw new JevError('JEV_NETWORK_ERROR');
+    const remaining = this.timeoutMs - (Date.now() - startedAt);
+    if (remaining <= 0) throw new JevError('JEV_TIMEOUT');
+    let response: unknown;
+    try {
+      response = await this.client.systemOne(buildJevRequest(request), { signal: AbortSignal.timeout(remaining), timeout: remaining });
+      return parseJevResponse(response, request.candidateKeys, request.pendingChoiceFeedback);
+    } catch (error) {
+      if (error instanceof JevError) {
+        if (error.code === 'JEV_INVALID_RESPONSE') console.info('[jev-decision] invalid response shape', responseShape(response));
+        throw error;
       }
-
-      if ((response.status === 429 || response.status === 529) && attempt === 0) {
-        const waitMs = Math.min(this.retryDelayMs, this.timeoutMs - (Date.now() - startedAt));
-        if (waitMs > 0) await wait(waitMs);
-        continue;
-      }
-      if (!response.ok) throw new JevError(httpErrorCode(response.status));
-      try {
-        return parseJevResponse(await response.json(), request.candidateKeys);
-      } catch (error) {
-        if (error instanceof JevError) throw error;
-        throw new JevError('JEV_INVALID_RESPONSE');
-      }
+      if (error instanceof APITimeoutError || isAbortError(error) || error instanceof APIConnectionError && isAbortError(error.cause)) throw new JevError('JEV_TIMEOUT');
+      if (error instanceof APIConnectionError) throw new JevError('JEV_NETWORK_ERROR');
+      if (error instanceof APIError) throw new JevError(httpErrorCode(error.status));
+      throw new JevError('JEV_INVALID_RESPONSE');
     }
-    throw new JevError('JEV_TIMEOUT');
   }
 }
 
-export function buildJevRequest(model: string, request: JevDecisionRequest) {
+export function buildJevRequest(request: JevDecisionRequest) {
+  const routeTargetKeys = request.candidateKeys.filter((key) => key !== 'ignore' && key !== 'notify_user');
   return {
-    state: request.state,
-    model,
-    catalogVersion: request.catalogVersion,
-    questions: [
-      { key: 'route_target', type: 'Choice', criteria: request.candidateKeys },
-      { key: 'urgency', type: 'Score', criteria: SCORE_KEYS },
-      { key: 'risk', type: 'Score', criteria: SCORE_KEYS },
-      { key: 'needs_hitl', type: 'Noul' },
-      { key: 'retain_as_evidence', type: 'Noul' },
-    ],
+    state: toJevState(request.state),
+    questions: {
+      needs_user_attention: noul('Does this event require the user to be made aware of it?', { true: 'The event needs user awareness or follow-up.', false: 'The event does not need user awareness or follow-up.' }),
+      delivery_mode: choice('If user awareness is needed, choose whether this event only needs a notification or needs a target capability to handle it. A target capability reply is itself the user-facing response; messages containing a request or question should use invoke_target.', {
+        notify_user: 'Only notify the user. No domain-specific response or target action is needed.',
+        invoke_target: 'Delegate to one authorized target capability to answer or act; its response fulfills user awareness. Use for messages containing a request or question.',
+      }),
+      route_target: choice('If delegation is appropriate, choose the single authorized target capability best suited to handle this event. Respect optional userCognitiveGuidance in state as the user-provided routing guidance.', Object.fromEntries(routeTargetKeys.map((key) => [key, toJevEntry(request.candidateCriteria?.[key] ?? null)]))),
+      urgency: score('How urgent is this event?', [...SCORE_KEYS] as [string, string, string]),
+      risk: score('How risky is it to act on this event automatically?', [...SCORE_KEYS] as [string, string, string]),
+      needs_hitl: noul('Does this event require human review before any action?', { true: 'Human review is required before acting.', false: 'Human review is not required before acting.' }),
+      retain_as_evidence: noul('Should this event be retained as evidence for later review?', { true: 'Retain this event as evidence.', false: 'No special evidence retention is needed.' }),
+      ...(request.pendingChoiceFeedback ? {
+        is_choice_feedback: noul('Is the latest user message a response to the pending request to choose a target capability for the original event? True only when it selects or clarifies that pending choice; false when it is a new request.', { true: 'This is feedback for the pending target choice.', false: 'This is a new request and must be routed as a new event.' }),
+      } : {}),
+    },
   };
 }
 
-export function parseJevResponse(value: unknown, candidateKeys: readonly string[]): JevDecisionAnswer {
+function toJevState(value: JevDecisionRequest['state']): EntryType {
+  if (typeof value === 'number' || typeof value === 'boolean') throw new JevError('JEV_INVALID_REQUEST');
+  return value as EntryType;
+}
+
+function toJevEntry(value: JevDecisionRequest['state']): EntryType {
+  return typeof value === 'number' || typeof value === 'boolean' ? String(value) : value as EntryType;
+}
+
+export function parseJevResponse(value: unknown, candidateKeys: readonly string[], pendingChoiceFeedback = false): JevDecisionAnswer {
   const root = record(value);
   const answers = record(root['answers']);
-  if (!sameKeys(answers, ANSWER_KEYS)) throw new JevError('JEV_INVALID_RESPONSE');
-  const routeTarget = choiceAnswer(answers['route_target'], candidateKeys);
+  if (!hasKeys(answers, pendingChoiceFeedback ? [...ANSWER_KEYS, 'is_choice_feedback'] : ANSWER_KEYS)) throw new JevError('JEV_INVALID_RESPONSE');
+  const routeTarget = choiceAnswer(answers['route_target'], candidateKeys.filter((key) => key !== 'ignore' && key !== 'notify_user'));
   const urgency = scoreAnswer(answers['urgency']);
   const risk = scoreAnswer(answers['risk']);
   return {
     ...(typeof root['model'] === 'string' ? { providerModel: root['model'] } : {}),
     routeTarget,
+    needsUserAttention: noulAnswer(answers['needs_user_attention']),
+    deliveryMode: choiceAnswer(answers['delivery_mode'], ['notify_user', 'invoke_target']),
     urgency,
     risk,
     needsHitl: noulAnswer(answers['needs_hitl']),
     retainAsEvidence: noulAnswer(answers['retain_as_evidence']),
+    ...(pendingChoiceFeedback ? { isChoiceFeedback: noulAnswer(answers['is_choice_feedback']) } : {}),
   };
 }
 
 function choiceAnswer(value: unknown, keys: readonly string[]): JevChoiceAnswer {
   const answer = record(value);
-  if (typeof answer['choice'] !== 'string' || !keys.includes(answer['choice'])) throw new JevError('JEV_INVALID_RESPONSE');
+  if (answer['type'] !== 'choice' || typeof answer['choice'] !== 'string' || !keys.includes(answer['choice'])) throw new JevError('JEV_INVALID_RESPONSE');
   return { choice: answer['choice'], confidence: probability(answer['confidence']), probabilities: distribution(answer['probabilities'], keys) };
 }
 
 function scoreAnswer(value: unknown): JevScoreAnswer {
   const answer = record(value);
-  if (typeof answer['score'] !== 'number' || !Number.isFinite(answer['score']) || answer['score'] < 0 || answer['score'] > 1) {
+  const maximum = SCORE_KEYS.length - 1;
+  if (answer['type'] !== 'score' || typeof answer['score'] !== 'number' || !Number.isFinite(answer['score']) || answer['score'] < 0 || answer['score'] > maximum) {
     throw new JevError('JEV_INVALID_RESPONSE');
   }
-  return { score: answer['score'], confidence: probability(answer['confidence']), probabilities: distribution(answer['probabilities'], SCORE_KEYS) };
+  return {
+    score: answer['score'] / maximum,
+    confidence: probability(answer['confidence']),
+    probabilities: distribution(answer['probabilities'], SCORE_KEYS.map((_, index) => String(index)), SCORE_KEYS),
+  };
 }
 
 function noulAnswer(value: unknown): number {
   const answer = record(value);
+  if (answer['type'] !== 'noul') throw new JevError('JEV_INVALID_RESPONSE');
   return probability(answer['noul']);
 }
 
-function distribution(value: unknown, keys: readonly string[]): Record<string, number> {
+function distribution(value: unknown, wireKeys: readonly string[], outputKeys = wireKeys): Record<string, number> {
   const probabilities = record(value);
-  if (!sameKeys(probabilities, [...keys])) throw new JevError('JEV_INVALID_RESPONSE');
+  if (wireKeys.length !== outputKeys.length || !hasKeys(probabilities, wireKeys)) throw new JevError('JEV_INVALID_RESPONSE');
   const result: Record<string, number> = {};
   let sum = 0;
-  for (const key of keys) {
+  for (const [index, key] of wireKeys.entries()) {
     const item = probability(probabilities[key]);
-    result[key] = item;
+    result[outputKeys[index]!] = item;
     sum += item;
   }
-  if (Math.abs(sum - 1) > 1e-6) throw new JevError('JEV_INVALID_RESPONSE');
-  return result;
+  if (Math.abs(sum - 1) > 0.02) throw new JevError('JEV_INVALID_RESPONSE');
+  return Object.fromEntries(Object.entries(result).map(([key, value]) => [key, value / sum]));
 }
 
 function probability(value: unknown): number {
@@ -206,14 +240,40 @@ function record(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function sameKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
-  const actual = Object.keys(value).sort();
-  return actual.length === keys.length && actual.every((key, index) => key === [...keys].sort()[index]);
+function responseShape(value: unknown): Record<string, unknown> {
+  const root = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+  const answerValue = root?.['answers'];
+  const answers = answerValue && typeof answerValue === 'object' && !Array.isArray(answerValue) ? answerValue as Record<string, unknown> : undefined;
+  return {
+    rootType: Array.isArray(value) ? 'array' : typeof value,
+    answerKeys: answers ? Object.keys(answers).sort() : [],
+    routeTarget: answerShape(answers?.['route_target']),
+    deliveryMode: answerShape(answers?.['delivery_mode']),
+    urgency: answerShape(answers?.['urgency']),
+    risk: answerShape(answers?.['risk']),
+  };
+}
+
+function answerShape(value: unknown): Record<string, unknown> {
+  const answer = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+  const probabilityValue = answer?.['probabilities'];
+  const probabilities = probabilityValue && typeof probabilityValue === 'object' && !Array.isArray(probabilityValue) ? probabilityValue as Record<string, unknown> : undefined;
+  const values = probabilities ? Object.values(probabilities) : [];
+  const numericValues = values.filter((item): item is number => typeof item === 'number' && Number.isFinite(item));
+  return {
+    type: typeof answer?.['type'] === 'string' ? answer['type'] : typeof answer?.['type'],
+    probabilityCount: values.length,
+    probabilitySum: numericValues.length === values.length ? numericValues.reduce((sum, item) => sum + item, 0) : undefined,
+  };
+}
+
+function hasKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  return keys.every((key) => Object.hasOwn(value, key));
 }
 
 function httpErrorCode(status: number): JevErrorCode {
-  if (status === 401) return 'JEV_UNAUTHORIZED';
-  if (status === 422) return 'JEV_INVALID_REQUEST';
+  if (status === 401 || status === 403) return 'JEV_UNAUTHORIZED';
+  if (status === 400 || status === 422) return 'JEV_INVALID_REQUEST';
   if (status === 429) return 'JEV_RATE_LIMITED';
   if (status === 529) return 'JEV_OVERLOADED';
   return 'JEV_NETWORK_ERROR';
@@ -248,10 +308,6 @@ function mappedIpv4(hostname: string): string | undefined {
   const low = Number.parseInt(parts[1] ?? '', 16);
   if (!Number.isInteger(high) || !Number.isInteger(low)) return undefined;
   return `${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`;
-}
-
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function resolveHostname(hostname: string): Promise<string[]> {

@@ -82,6 +82,8 @@ export interface JevDecisionRuleConfig {
   catalogVersion: '1.0';
   policyVersion: '1.0';
   candidates: PerceptionDecisionCandidate[];
+  /** User-authored natural-language guidance for this rule's Jev decisions. */
+  cognitiveGuidance?: string;
 }
 export interface PerceptionRuleBase {
   id: string;
@@ -108,17 +110,22 @@ export interface JevProviderSummary {
 export interface JevDecisionRequest {
   state: JsonValue;
   candidateKeys: string[];
+  candidateCriteria?: Record<string, JsonValue>;
   catalogVersion: '1.0';
+  pendingChoiceFeedback?: boolean;
 }
 export interface JevChoiceAnswer { choice: string; confidence: number; probabilities: Record<string, number> }
 export interface JevScoreAnswer { score: number; confidence: number; probabilities: Record<string, number> }
 export interface JevDecisionAnswer {
   providerModel?: string;
   routeTarget: JevChoiceAnswer;
+  needsUserAttention?: number;
+  deliveryMode?: JevChoiceAnswer;
   urgency: JevScoreAnswer;
   risk: JevScoreAnswer;
   needsHitl: number;
   retainAsEvidence: number;
+  isChoiceFeedback?: number;
 }
 export interface JevDecisionReceipt {
   id: string;
@@ -153,6 +160,16 @@ export interface TargetAuthorizationPort {
 export interface PerceptionTargetExistencePort {
   exists(target: PerceptionTriggerTarget): Promise<boolean>;
 }
+export interface PerceptionTargetProfile {
+  name: string;
+  description?: string;
+  domain?: string;
+  tags?: string[];
+  owner?: { kind: 'project' | 'role-agent'; name: string; description?: string };
+}
+export interface PerceptionTargetProfilePort {
+  describe(target: PerceptionTriggerTarget): Promise<PerceptionTargetProfile | undefined>;
+}
 export interface PerceptionTriggerExecutionContext {
   connectorId: string;
   eventId: string;
@@ -160,6 +177,7 @@ export interface PerceptionTriggerExecutionContext {
   leaseId: string;
   rawPayloadRef: string;
   requireHitl: boolean;
+  targetLabel?: string;
   cognitionOwner: { kind: 'project' | 'role-agent'; id: string } | { kind: 'ephemeral' };
 }
 export interface TriggerExecutionResult { resultRef: string; sessionId?: string; responseText?: string; responseTexts?: string[] }

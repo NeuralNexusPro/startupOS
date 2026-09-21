@@ -31,6 +31,9 @@ export function validateTriggerRule(rule: PerceptionTriggerRule): void {
 
 function validateDecisionRule(rule: Extract<PerceptionTriggerRule, { routingMode: 'jev' }>): void {
   if (rule.decision.catalogVersion !== '1.0' || rule.decision.policyVersion !== '1.0') throw new Error('Unsupported Jev decision version');
+  if (rule.decision.cognitiveGuidance !== undefined && (typeof rule.decision.cognitiveGuidance !== 'string' || rule.decision.cognitiveGuidance.trim().length > 4_000)) {
+    throw new Error('Jev cognitive guidance must be a string of at most 4000 characters');
+  }
   const keys = new Set<string>();
   let dispatchCount = 0;
   let ignoreCount = 0;

@@ -6,7 +6,7 @@ import type {
 } from '../../../types/perception';
 import { evaluateDecisionPolicy } from './policy';
 import { DecisionReceiptStore } from './receipt-store';
-import { buildDecisionRequest, type AuthorizedDecisionCandidate } from './state-builder';
+import { buildDecisionRequest, type AuthorizedDecisionCandidate, type DecisionConversationContext } from './state-builder';
 
 type JevRule = Extract<PerceptionTriggerRule, { routingMode: 'jev' }>;
 
@@ -26,7 +26,7 @@ export class DecisionOrchestrator {
   async decide(event: PerceptionEventV1, rule: JevRule, candidates: readonly AuthorizedDecisionCandidate[]): Promise<DecisionOutcome> {
     const id = this.receipts.stableId(event.id, rule.id, rule.decision.catalogVersion);
     const now = new Date().toISOString();
-    const request = buildDecisionRequest(event, candidates, this.hashSalt);
+    const request = buildDecisionRequest(event, candidates, this.hashSalt, undefined, rule.decision.cognitiveGuidance);
     const reserved = await this.receipts.reserve({
       id,
       eventId: event.id,
@@ -55,6 +55,23 @@ export class DecisionOrchestrator {
     return this.request(event, rule, candidates, id);
   }
 
+  async reconsider(id: string, event: PerceptionEventV1, rule: JevRule, candidates: readonly AuthorizedDecisionCandidate[], context: DecisionConversationContext): Promise<DecisionOutcome> {
+    const receipt = this.receipts.get(id);
+    if (!receipt) throw new Error('DECISION_NOT_FOUND');
+    if (receipt.status === 'ignored' || receipt.status === 'auto-executed' || receipt.status === 'user-executed') return recover(receipt, candidates);
+    return this.request(event, rule, candidates, id, context);
+  }
+
+  async isPendingChoiceFeedback(event: PerceptionEventV1, candidates: readonly AuthorizedDecisionCandidate[], context: DecisionConversationContext): Promise<boolean> {
+    if (!candidates.some(({ candidate }) => candidate.action === 'dispatch')) return false;
+    try {
+      const answer = await this.decisions.decide(buildDecisionRequest(event, candidates, this.hashSalt, { ...context, pendingChoiceFeedback: true }));
+      return (answer.isChoiceFeedback ?? 0) >= 0.5;
+    } catch {
+      return false;
+    }
+  }
+
   get(id: string): JevDecisionReceipt | null { return this.receipts.get(id) }
   listPending(): JevDecisionReceipt[] { return this.receipts.listPending() }
 
@@ -70,19 +87,19 @@ export class DecisionOrchestrator {
     }));
   }
 
-  private async request(event: PerceptionEventV1, rule: JevRule, candidates: readonly AuthorizedDecisionCandidate[], id: string): Promise<DecisionOutcome> {
+  private async request(event: PerceptionEventV1, rule: JevRule, candidates: readonly AuthorizedDecisionCandidate[], id: string, context?: DecisionConversationContext): Promise<DecisionOutcome> {
     if (!candidates.some(({ candidate }) => candidate.action === 'dispatch')) {
       return { action: 'pending', receipt: await this.defer(id, 'NO_AUTHORIZED_CANDIDATE'), requested: false };
     }
 
-    const request = buildDecisionRequest(event, candidates, this.hashSalt);
+    const request = buildDecisionRequest(event, candidates, this.hashSalt, context, rule.decision.cognitiveGuidance);
     let answer;
     try {
       answer = await this.decisions.decide(request);
     } catch (error) {
       return { action: 'pending', receipt: await this.defer(id, safeErrorCode(error), 'failed'), requested: true };
     }
-    const policy = evaluateDecisionPolicy(answer, candidates.map(({ candidate }) => candidate), rule.execution.requireHitl);
+    const policy = evaluateDecisionPolicy(answer, candidates.map(({ candidate }) => candidate), rule.execution.requireHitl, isImMessage(event));
     if (policy.action === 'pending') {
       const receipt = await this.receipts.update(id, (current) => ({
         ...current, answers: answer, providerModel: answer.providerModel, status: 'pending', reason: policy.reason, updatedAt: new Date().toISOString(),
@@ -134,4 +151,8 @@ function safeErrorCode(error: unknown): string {
   if (!error || typeof error !== 'object') return 'JEV_FAILED';
   const code = Object.getOwnPropertyDescriptor(error, 'code')?.value;
   return typeof code === 'string' && /^JEV_[A-Z_]{1,64}$/.test(code) ? code : 'JEV_FAILED';
+}
+
+function isImMessage(event: PerceptionEventV1): boolean {
+  return ['wecom', 'feishu', 'dingtalk'].includes(event.source);
 }

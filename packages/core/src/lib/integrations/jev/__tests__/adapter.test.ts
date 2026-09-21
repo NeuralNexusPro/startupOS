@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it, vi } from 'vitest';
 import type { JevDecisionRequest, PerceptionTriggerRule } from '../../../../types/perception';
 import { JevError, JevHttpAdapter, buildJevRequest, normalizeJevBaseUrl, parseJevResponse } from '..';
@@ -8,11 +9,13 @@ const request: JevDecisionRequest = {
   catalogVersion: '1.0',
 };
 const answers = {
-  route_target: { choice: 'project:one', confidence: 0.9, probabilities: { ignore: 0.1, 'project:one': 0.9 } },
-  urgency: { score: 0.8, confidence: 0.7, probabilities: { low: 0.1, medium: 0.2, high: 0.7 } },
-  risk: { score: 0.2, confidence: 0.8, probabilities: { low: 0.8, medium: 0.1, high: 0.1 } },
-  needs_hitl: { noul: 0.1 },
-  retain_as_evidence: { noul: 0.6 },
+  route_target: { type: 'choice', choice: 'project:one', confidence: 0.9, probabilities: { 'project:one': 1 } },
+  needs_user_attention: { type: 'noul', noul: 0.9 },
+  delivery_mode: { type: 'choice', choice: 'invoke_target', confidence: 0.9, probabilities: { notify_user: 0.1, invoke_target: 0.9 } },
+  urgency: { type: 'score', score: 1.6, confidence: 0.7, probabilities: { 0: 0.1, 1: 0.2, 2: 0.7 } },
+  risk: { type: 'score', score: 0.3, confidence: 0.8, probabilities: { 0: 0.8, 1: 0.1, 2: 0.1 } },
+  needs_hitl: { type: 'noul', noul: 0.1 },
+  retain_as_evidence: { type: 'noul', noul: 0.6 },
 };
 
 function response(status = 200, body: unknown = { model: 'jev-test', answers }): Response {
@@ -34,15 +37,23 @@ describe('JevHttpAdapter', () => {
   it('posts the fixed five-question catalog and parses a valid response', async () => {
     const fetcher = vi.fn<typeof fetch>(async () => response());
     await expect(adapter(fetcher).decide(request)).resolves.toMatchObject({
-      providerModel: 'jev-test', routeTarget: { choice: 'project:one', confidence: 0.9 }, needsHitl: 0.1,
+      providerModel: 'jev-test', routeTarget: { choice: 'project:one', confidence: 0.9 }, needsUserAttention: 0.9, deliveryMode: { choice: 'invoke_target' }, needsHitl: 0.1,
     });
     const [url, init] = fetcher.mock.calls[0] ?? [];
     expect(url).toBe('https://jev.example.test/v1/systemone');
     expect(init).toMatchObject({ method: 'POST', redirect: 'error' });
-    expect(JSON.parse(String(init?.body))).toEqual(buildJevRequest('jev-test', request));
+    expect(JSON.parse(String(init?.body))).toEqual({ ...buildJevRequest(request), model: 'jev-test' });
+    expect(buildJevRequest(request).questions).toMatchObject({
+      needs_user_attention: { type: 'noul' },
+      delivery_mode: { type: 'choice', criteria: { notify_user: expect.any(String), invoke_target: expect.any(String) } },
+      route_target: { type: 'choice', criteria: { 'project:one': null } },
+      urgency: { type: 'score', criteria: ['low', 'medium', 'high'] },
+      needs_hitl: { type: 'noul' },
+    });
+    expect(buildJevRequest(request).questions.delivery_mode.criteria.invoke_target).toContain('messages containing a request or question');
   });
 
-  it.each([[401, 'JEV_UNAUTHORIZED'], [422, 'JEV_INVALID_REQUEST']])('maps HTTP %s safely', async (status, code) => {
+  it.each([[400, 'JEV_INVALID_REQUEST'], [401, 'JEV_UNAUTHORIZED'], [403, 'JEV_UNAUTHORIZED'], [422, 'JEV_INVALID_REQUEST']])('maps HTTP %s safely', async (status, code) => {
     await expectCode(adapter(vi.fn<typeof fetch>(async () => response(status))).decide(request), code);
   });
 
@@ -77,6 +88,15 @@ describe('JevHttpAdapter', () => {
 });
 
 describe('Jev response validation', () => {
+  it('accepts provider metadata and rounded probability totals', () => {
+    const rounded = {
+      ...answers,
+      route_target: { ...answers.route_target, probabilities: { 'project:one': 0.99 } },
+      provider_trace: { ignored: true },
+    };
+    expect(parseJevResponse({ answers: rounded }, request.candidateKeys)).toMatchObject({ routeTarget: { probabilities: { 'project:one': 1 } } });
+  });
+
   it.each([
     ['catalog choice', { ...answers, route_target: { ...answers.route_target, choice: 'invented' } }],
     ['missing probability', { ...answers, route_target: { ...answers.route_target, probabilities: { ignore: 1 } } }],

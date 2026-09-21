@@ -23,6 +23,13 @@ describe('plugin logging boundaries', () => {
     expect(sanitizePluginLog({ level: 'info', stage: '../injected?token=secret' }).stage).toBe('unknown');
     expect(() => createPluginSdkLogger({ write: () => { throw new Error('disk'); } }).error('secret')).not.toThrow();
   });
+  it('retains bounded decision diagnostics without event content', () => {
+    const output = sanitizePluginLog({
+      level: 'info', stage: 'decision.completed',
+      decision: { phase: 'completed', decisionId: 'decision-1', candidateKeys: ['鹰眼', '../unsafe'], routeTarget: '鹰眼', routeConfidence: 0.81, routeProbabilities: { '鹰眼': 0.81, unsafe: 2 } },
+    });
+    expect(output).toMatchObject({ decision: { phase: 'completed', candidateKeys: ['鹰眼'], routeProbabilities: { '鹰眼': 0.81 } } });
+  });
 });
 
 

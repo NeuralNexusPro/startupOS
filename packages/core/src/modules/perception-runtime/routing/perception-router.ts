@@ -6,6 +6,7 @@ import type {
   PerceptionTriggerExecutionContext,
   PerceptionTriggerRule,
   TargetAuthorizationPort,
+  PerceptionTargetProfilePort,
   TriggerExecutionPort,
 } from '../../../types/perception';
 import { DecisionOrchestrator } from '../decision/decision-orchestrator';
@@ -37,6 +38,14 @@ interface LeasePort {
 interface AuditPort { append(entry: Parameters<PerceptionAuditStore['append']>[0]): void }
 export interface DecisionPendingNotificationPort {
   notify(input: { receipt: JevDecisionReceipt; event: PerceptionEventV1; rule: Extract<PerceptionTriggerRule, { routingMode: 'jev' }> }): Promise<void>;
+  logDecision?(input: {
+    phase: 'requested' | 'completed' | 'dispatched' | 'failed';
+    event: PerceptionEventV1;
+    rule: Extract<PerceptionTriggerRule, { routingMode: 'jev' }>;
+    candidateKeys?: string[];
+    receipt?: JevDecisionReceipt;
+    outcome?: string;
+  }): void;
 }
 
 export class PerceptionRouter {
@@ -53,6 +62,7 @@ export class PerceptionRouter {
     stores?: { leases?: LeasePort; audit?: AuditPort },
     private readonly decisions?: DecisionOrchestrator,
     private readonly pendingNotifications?: DecisionPendingNotificationPort,
+    private readonly profiles?: PerceptionTargetProfilePort,
   ) {
     this.leases = stores?.leases ?? new ExecutionLeaseStore(dataRoot);
     this.audit = stores?.audit ?? new PerceptionAuditStore(dataRoot);
@@ -101,9 +111,26 @@ export class PerceptionRouter {
     return this.serializeResolution(decisionId, async () => {
       const context = this.decisionContext(decisionId);
       const candidates = await this.authorizedCandidates(context.event, context.rule);
+      this.logDecision({ phase: 'requested', event: context.event, rule: context.rule, candidateKeys: candidates.map(({ candidate }) => candidate.key) });
       const outcome = await this.decisions!.retry(context.event, context.rule, candidates);
       return this.handleDecisionOutcome(context.event, context.rule, outcome);
     });
+  }
+
+  async reconsiderDecision(decisionId: string, feedback: PerceptionEventV1, history: readonly PerceptionEventV1[]): Promise<PerceptionRouteResult> {
+    return this.serializeResolution(decisionId, async () => {
+      const context = this.decisionContext(decisionId);
+      const candidates = await this.authorizedCandidates(context.event, context.rule);
+      this.logDecision({ phase: 'requested', event: context.event, rule: context.rule, candidateKeys: candidates.map(({ candidate }) => candidate.key) });
+      const outcome = await this.decisions!.reconsider(decisionId, context.event, context.rule, candidates, { feedback, history });
+      return this.handleDecisionOutcome(context.event, context.rule, outcome, feedback);
+    });
+  }
+
+  async isPendingChoiceFeedback(decisionId: string, feedback: PerceptionEventV1, history: readonly PerceptionEventV1[]): Promise<boolean> {
+    const context = this.decisionContext(decisionId);
+    const candidates = await this.authorizedCandidates(context.event, context.rule);
+    return this.decisions?.isPendingChoiceFeedback(context.event, candidates, { feedback, history }) ?? false;
   }
 
   private async routeRule(event: PerceptionEventV1, rule: PerceptionTriggerRule, attemptKey?: string): Promise<PerceptionRouteResult> {
@@ -118,18 +145,20 @@ export class PerceptionRouter {
       return { ruleId: rule.id, status: 'pending', reason: 'JEV_RUNTIME_UNAVAILABLE' };
     }
     const candidates = await this.authorizedCandidates(event, rule);
+    this.logDecision({ phase: 'requested', event, rule, candidateKeys: candidates.map(({ candidate }) => candidate.key) });
     const outcome = await this.decisions.decide(event, rule, candidates);
     return this.handleDecisionOutcome(event, rule, outcome);
   }
 
-  private async handleDecisionOutcome(event: PerceptionEventV1, rule: Extract<PerceptionTriggerRule, { routingMode: 'jev' }>, outcome: Awaited<ReturnType<DecisionOrchestrator['decide']>>): Promise<PerceptionRouteResult> {
+  private async handleDecisionOutcome(event: PerceptionEventV1, rule: Extract<PerceptionTriggerRule, { routingMode: 'jev' }>, outcome: Awaited<ReturnType<DecisionOrchestrator['decide']>>, notificationEvent = event): Promise<PerceptionRouteResult> {
+    this.logDecision({ phase: 'completed', event, rule, receipt: outcome.receipt, outcome: outcome.action });
     if (outcome.requested) this.appendAudit('decision.requested', event, rule.id, { decisionId: outcome.receipt.id });
     if (outcome.action === 'pending') {
       this.appendAudit(outcome.receipt.status === 'failed' ? 'decision.failed' : 'decision.pending', event, rule.id, {
         decisionId: outcome.receipt.id,
         ...(outcome.receipt.reason ? { reason: outcome.receipt.reason } : {}),
       });
-      await this.notifyPending(outcome.receipt, event, rule);
+      await this.notifyPending(outcome.receipt, notificationEvent, rule);
       return { ruleId: rule.id, status: 'pending', reason: outcome.receipt.reason };
     }
     if (outcome.action === 'ignored') {
@@ -147,10 +176,15 @@ export class PerceptionRouter {
     for (const candidate of rule.decision.candidates) {
       if (candidate.action !== 'dispatch') { candidates.push({ candidate }); continue; }
       const authorization = await this.authorization.authorize({ event, rule, target: candidate.target });
-      if (authorization.authorized) candidates.push({ candidate, authorization });
+      if (authorization.authorized) candidates.push({ candidate, authorization, profile: await this.describeTarget(candidate.target) });
       else this.appendAudit('target.denied', event, rule.id, { candidateKey: candidate.key, reason: authorization.reason ?? 'not-authorized' });
     }
     return candidates;
+  }
+
+  private async describeTarget(target: PerceptionTriggerTarget) {
+    try { return await this.profiles?.describe(target); }
+    catch { return undefined; }
   }
 
   private async routeTarget(
@@ -207,12 +241,14 @@ export class PerceptionRouter {
       leaseId: acquired.lease.id,
       rawPayloadRef: event.provenance.rawPayloadRef,
       requireHitl: rule.execution.requireHitl,
+      targetLabel: (await this.describeTarget(target))?.name,
       cognitionOwner: cognitionOwner(target),
     };
     try {
       const dispatched = await this.execution.dispatch({ event, target, context });
       this.leases.complete(acquired.lease.id, dispatched.resultRef);
-      if (decisionId) await this.decisions?.complete(decisionId, acquired.lease.id, dispatched.resultRef, decisionStatus);
+      const receipt = decisionId ? await this.decisions?.complete(decisionId, acquired.lease.id, dispatched.resultRef, decisionStatus) : undefined;
+      if (receipt && rule.routingMode === 'jev') this.logDecision({ phase: 'dispatched', event, rule, receipt, outcome: decisionStatus });
       this.appendAudit('trigger.dispatched', event, rule.id, { leaseId: acquired.lease.id, resultRef: dispatched.resultRef });
       this.appendAudit('lease.completed', event, rule.id, { leaseId: acquired.lease.id });
       return {
@@ -225,7 +261,8 @@ export class PerceptionRouter {
       };
     } catch (error) {
       this.leases.fail(acquired.lease.id);
-      if (decisionId) await this.decisions?.fail(decisionId, acquired.lease.id);
+      const receipt = decisionId ? await this.decisions?.fail(decisionId, acquired.lease.id) : undefined;
+      if (receipt && rule.routingMode === 'jev') this.logDecision({ phase: 'failed', event, rule, receipt, outcome: 'dispatch' });
       const detail: Record<string, string> = { leaseId: acquired.lease.id };
       for (const key of ['diagnosticId', 'safeCode', 'sessionId'] as const) {
         const value: unknown = error && typeof error === 'object' ? Object.getOwnPropertyDescriptor(error, key)?.value : undefined;
@@ -261,6 +298,11 @@ export class PerceptionRouter {
   private async notifyPending(receipt: JevDecisionReceipt, event: PerceptionEventV1, rule: Extract<PerceptionTriggerRule, { routingMode: 'jev' }>): Promise<void> {
     try { await this.pendingNotifications?.notify({ receipt, event, rule }); }
     catch { /* Notifications are advisory; the receipt remains the pending fact source. */ }
+  }
+
+  private logDecision(input: Parameters<NonNullable<DecisionPendingNotificationPort['logDecision']>>[0]): void {
+    try { this.pendingNotifications?.logDecision?.(input); }
+    catch { /* Diagnostics must never affect decision routing. */ }
   }
 
   private appendAudit(action: Parameters<PerceptionAuditStore['append']>[0]['action'], event: PerceptionEventV1, ruleId: string, detail?: Parameters<PerceptionAuditStore['append']>[0]['detail']): void {

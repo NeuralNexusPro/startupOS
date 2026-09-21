@@ -136,16 +136,17 @@ describe('RuleWizard', () => {
     ];
     render(<RuleWizard connectors={[connector]} grants={grants} jevProvider={{ enabled: true, baseUrl: 'https://api.typesafe.ai', model: 'jev-latest', credentialConfigured: true }} onSave={onSave} onCancel={vi.fn()} />);
     fireEvent.click(screen.getByLabelText('Jev 决策'));
-    expect(screen.getByText('仅置信度严格高于 0.8 且无需人工确认时自动执行；0.8 也需要确认。')).toBeInTheDocument();
+    expect(screen.getByText('无需 HITL 时，首二目标候选的概率差值严格大于 0.5 才自动执行；否则由用户选择。')).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText(/project\/project-1/));
     fireEvent.click(screen.getByLabelText(/role-agent\/assistant/));
+    fireEvent.change(screen.getByLabelText('认知规则'), { target: { value: '简历相关问题优先交给鹰眼。' } });
     fireEvent.click(screen.getByLabelText('创建后立即启用'));
     fireEvent.click(screen.getByRole('button', { name: '创建并启用' }));
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
     expect(onSave.mock.calls[0]?.[0]).toMatchObject({ routingMode: 'jev', decision: { catalogVersion: '1.0', policyVersion: '1.0', candidates: [
       { key: 'ignore', action: 'ignore' }, { key: 'notify_user', action: 'notify_user' },
       { key: 'project:project-1', action: 'dispatch' }, { key: 'role-agent:assistant', action: 'dispatch' },
-    ] } });
+    ], cognitiveGuidance: '简历相关问题优先交给鹰眼。' } });
   });
 
   it('blocks enabled Jev rules without a configured provider but allows a disabled draft', async () => {

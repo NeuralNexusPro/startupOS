@@ -60,7 +60,11 @@ function rule(): Extract<PerceptionTriggerRule, { routingMode: 'jev' }> {
 function answer(confidence = 0.81, needsHitl = 0, choice = 'project:project-1'): JevDecisionAnswer {
   return {
     providerModel: 'jev-test',
-    routeTarget: { choice, confidence, probabilities: { ignore: 0.05, notify_user: 0.04, 'project:project-1': 0.91 } },
+    routeTarget: { choice, confidence, probabilities: choice === 'ignore'
+      ? { ignore: confidence, notify_user: 0, 'project:project-1': 1 - confidence }
+      : choice === 'notify_user'
+        ? { ignore: 0, notify_user: confidence, 'project:project-1': 1 - confidence }
+        : { ignore: 1 - confidence, notify_user: 0, 'project:project-1': confidence } },
     urgency: { score: 0.5, confidence: 0.8, probabilities: { low: 0.2, medium: 0.6, high: 0.2 } },
     risk: { score: 0.2, confidence: 0.9, probabilities: { low: 0.8, medium: 0.1, high: 0.1 } },
     needsHitl,
@@ -70,7 +74,9 @@ function answer(confidence = 0.81, needsHitl = 0, choice = 'project:project-1'):
 
 describe('Jev decision state and rule boundary', () => {
   it('builds a deterministic minimal state without external ids, raw payload, attachment references, or secrets', () => {
-    const candidates = rule().decision.candidates.map((candidate) => ({ candidate }));
+    const candidates = rule().decision.candidates.map((candidate) => candidate.action === 'dispatch'
+      ? { candidate, profile: { name: '项目一', description: '处理产品规划和需求澄清', domain: '产品', tags: ['规划'] } }
+      : { candidate });
     const first = buildDecisionRequest(event(), candidates, 'stable-salt');
     const second = buildDecisionRequest(event(), [...candidates].reverse(), 'stable-salt');
     expect(first).toEqual(second);
@@ -79,6 +85,15 @@ describe('Jev decision state and rule boundary', () => {
       expect(serialized).not.toContain(secret);
     }
     expect(serialized).toContain('attachmentCount');
+    expect(first.state).toMatchObject({ candidates: expect.arrayContaining([expect.objectContaining({ targetProfile: { name: '项目一', description: '处理产品规划和需求澄清', domain: '产品', tags: ['规划'] } })]) });
+    expect(buildDecisionRequest(event(), candidates, 'stable-salt', undefined, '简历问题优先交给鹰眼').state).toMatchObject({ userCognitiveGuidance: '简历问题优先交给鹰眼' });
+  });
+
+  it('adds only signal-to-feedback conversation context to reconsideration requests', () => {
+    const feedback = { ...event(), id: 'event-feedback', sourceEventId: 'source-feedback', receivedAt: '2026-09-01T08:01:00.000Z', content: { text: '请让项目一处理' } };
+    const request = buildDecisionRequest(event(), rule().decision.candidates.map((candidate) => ({ candidate })), 'stable-salt', { feedback, history: [event()] });
+    expect(request.state).toMatchObject({ userFeedback: { text: '请让项目一处理' }, conversationHistory: [expect.objectContaining({ eventType: 'mail.received' })] });
+    expect(JSON.stringify(request.state)).not.toContain('sender@example.test');
   });
 
   it('accepts historical direct rules without rewriting and rejects invalid Jev candidate catalogs', () => {
@@ -90,6 +105,14 @@ describe('Jev decision state and rule boundary', () => {
     const tooMany = Array.from({ length: 21 }, (_, index) => ({ key: `project:p-${index}`, action: 'dispatch' as const, target: { kind: 'project' as const, id: `p-${index}` } }));
     expect(() => validateTriggerRule({ ...rule(), decision: { ...rule().decision, candidates: [{ key: 'ignore', action: 'ignore' }, { key: 'notify_user', action: 'notify_user' }, ...tooMany] } })).toThrow('20');
     expect(() => validateTriggerRule({ ...rule(), decision: { ...rule().decision, candidates: [{ key: 'ignore', action: 'ignore' }, { key: 'notify_user', action: 'notify_user' }, { key: 'notify_user', action: 'dispatch', target: { kind: 'project', id: 'p-1' } }] } })).toThrow();
+  });
+
+  it('combines awareness and delivery decisions before routing a target', () => {
+    const candidates = rule().decision.candidates;
+    expect(evaluateDecisionPolicy({ ...answer(), needsUserAttention: 0.1, deliveryMode: { choice: 'invoke_target', confidence: 1, probabilities: { notify_user: 0, invoke_target: 1 } } }, candidates, false)).toMatchObject({ action: 'ignore' });
+    expect(evaluateDecisionPolicy({ ...answer(), routeTarget: { choice: 'project:project-1', confidence: 1, probabilities: { 'project:project-1': 1 } }, needsUserAttention: 0.1, deliveryMode: { choice: 'invoke_target', confidence: 1, probabilities: { notify_user: 0, invoke_target: 1 } } }, candidates, false, true)).toMatchObject({ action: 'dispatch' });
+    expect(evaluateDecisionPolicy({ ...answer(), needsUserAttention: 0.9, deliveryMode: { choice: 'notify_user', confidence: 1, probabilities: { notify_user: 1, invoke_target: 0 } } }, candidates, false)).toMatchObject({ action: 'pending', reason: 'NOTIFY_USER' });
+    expect(evaluateDecisionPolicy({ ...answer(), routeTarget: { choice: 'project:project-1', confidence: 0.07, probabilities: { 'project:project-1': 1 } }, needsUserAttention: 0.9, deliveryMode: { choice: 'invoke_target', confidence: 0.07, probabilities: { notify_user: 0.46, invoke_target: 0.54 } } }, candidates, false)).toMatchObject({ action: 'dispatch' });
   });
 });
 
@@ -109,11 +132,27 @@ describe('Jev decision receipts and policy', () => {
 
   it.each([
     [0.81, 0, false, 'dispatch'],
-    [0.8, 0, false, 'pending'],
+    [0.8, 0, false, 'dispatch'],
     [0.81, 0.5, false, 'pending'],
     [1, 0, true, 'pending'],
-  ] as const)('applies confidence %s, needs_hitl %s, rule HITL %s', (confidence, needsHitl, ruleHitl, expected) => {
-    expect(evaluateDecisionPolicy(answer(confidence, needsHitl), rule().decision.candidates, ruleHitl).action).toBe(expected);
+  ] as const)('applies selected probability %s, needs_hitl %s, rule HITL %s', (probability, needsHitl, ruleHitl, expected) => {
+    const result = answer(0.01, needsHitl);
+    result.routeTarget.probabilities = { ignore: 1 - probability, notify_user: 0, 'project:project-1': probability };
+    expect(evaluateDecisionPolicy(result, rule().decision.candidates, ruleHitl).action).toBe(expected);
+  });
+
+  it('uses the selected candidate probability when provider confidence disagrees', () => {
+    const result = answer(0.73);
+    result.routeTarget.probabilities = { ignore: 0.09, notify_user: 0.09, 'project:project-1': 0.82 };
+    expect(result.routeTarget.probabilities['project:project-1']).toBe(0.82);
+    expect(evaluateDecisionPolicy(result, rule().decision.candidates, false)).toMatchObject({ action: 'dispatch' });
+  });
+
+  it('requires user selection when the two leading targets differ by at most 0.5', () => {
+    const candidates = [...rule().decision.candidates, { key: 'project:project-2', action: 'dispatch' as const, target: { kind: 'project' as const, id: 'project-2' } }];
+    const result = answer();
+    result.routeTarget.probabilities = { ignore: 0, notify_user: 0, 'project:project-1': 0.66, 'project:project-2': 0.34 };
+    expect(evaluateDecisionPolicy(result, candidates, false)).toMatchObject({ action: 'pending', reason: 'TARGET_AMBIGUOUS' });
   });
 
   it('fails closed for missing or non-finite probability data', () => {
@@ -138,11 +177,11 @@ describe('Jev decision receipts and policy', () => {
       const confidence = index % 5 === 0 ? 0.81 : index % 5 === 1 ? 0.8 : 0.6;
       const needsHitl = index % 5 === 2 ? 0.5 : 0;
       const ruleHitl = index % 5 === 3;
-      const expected = confidence > 0.8 && needsHitl < 0.5 && !ruleHitl ? 'dispatch' : 'pending';
+      const expected = confidence > 0.75 && needsHitl < 0.5 && !ruleHitl ? 'dispatch' : 'pending';
       return { expected, actual: evaluateDecisionPolicy(answer(confidence, needsHitl), rule().decision.candidates, ruleHitl).action };
     });
     expect(outcomes.filter(({ expected, actual }) => expected !== actual)).toHaveLength(0);
-    expect(outcomes.filter(({ actual }) => actual === 'pending')).toHaveLength(80);
+    expect(outcomes.filter(({ actual }) => actual === 'pending')).toHaveLength(60);
   });
 });
 
@@ -163,7 +202,7 @@ describe('PerceptionRouter Jev integration', () => {
     const receipt = new DecisionReceiptStore(dataRoot).get(new DecisionReceiptStore(dataRoot).stableId(event().id, rule().id, '1.0'));
     expect(receipt).toMatchObject({
       status: 'auto-executed', resultRef: 'perception://session/result-1',
-      answers: { routeTarget: { probabilities: { ignore: 0.05, notify_user: 0.04, 'project:project-1': 0.91 } } },
+      answers: { routeTarget: { probabilities: { 'project:project-1': 0.81 } } },
     });
   });
 
@@ -223,7 +262,7 @@ describe('PerceptionRouter Jev integration', () => {
     new PerceptionEventStore(dataRoot).save(eventValue);
     new TriggerRuleStore(dataRoot).save(ruleValue);
     let authorized = true;
-    const orchestrator = new DecisionOrchestrator({ decide: async () => answer(0.8) }, new DecisionReceiptStore(dataRoot), 'stable-salt');
+    const orchestrator = new DecisionOrchestrator({ decide: async () => answer(1, 0.5) }, new DecisionReceiptStore(dataRoot), 'stable-salt');
     const dispatch = vi.fn();
     const router = new PerceptionRouter(dataRoot, new TriggerRuleStore(dataRoot), { authorize: async () => ({ authorized }) }, { dispatch }, undefined, orchestrator);
     await router.route(eventValue);
@@ -236,12 +275,27 @@ describe('PerceptionRouter Jev integration', () => {
 
   it('keeps pending truth unchanged when the advisory notification fails', async () => {
     const dataRoot = root();
-    const orchestrator = new DecisionOrchestrator({ decide: async () => answer(0.8) }, new DecisionReceiptStore(dataRoot), 'stable-salt');
+    const orchestrator = new DecisionOrchestrator({ decide: async () => answer(1, 0.5) }, new DecisionReceiptStore(dataRoot), 'stable-salt');
     const notify = vi.fn(async () => { throw new Error('native notification failed'); });
     const router = new PerceptionRouter(dataRoot, { list: () => [rule()] }, { authorize: async () => ({ authorized: true }) }, { dispatch: vi.fn() }, undefined, orchestrator, { notify });
     expect(await router.route(event())).toMatchObject([{ status: 'pending' }]);
     expect(notify).toHaveBeenCalledOnce();
-    expect(orchestrator.listPending()[0]).toMatchObject({ status: 'pending', reason: 'LOW_CONFIDENCE' });
+    expect(orchestrator.listPending()[0]).toMatchObject({ status: 'pending', reason: 'HITL_REQUIRED' });
+  });
+
+  it('emits decision diagnostics without event content', async () => {
+    const dataRoot = root();
+    const logDecision = vi.fn();
+    const router = new PerceptionRouter(
+      dataRoot, { list: () => [rule()] }, { authorize: async () => ({ authorized: true }) },
+      { dispatch: vi.fn(async () => ({ resultRef: 'result' })) }, undefined,
+      new DecisionOrchestrator({ decide: async () => ({ ...answer(), routeTarget: { choice: 'project:project-1', confidence: 1, probabilities: { 'project:project-1': 1 } }, needsUserAttention: 0.9, deliveryMode: { choice: 'invoke_target', confidence: 0.9, probabilities: { notify_user: 0.1, invoke_target: 0.9 } } }) }, new DecisionReceiptStore(dataRoot), 'stable-salt'),
+      { notify: vi.fn(), logDecision },
+    );
+    await router.route(event());
+    expect(logDecision).toHaveBeenCalledWith(expect.objectContaining({ phase: 'requested', candidateKeys: ['ignore', 'notify_user', 'project:project-1'] }));
+    expect(logDecision).toHaveBeenCalledWith(expect.objectContaining({ phase: 'completed', receipt: expect.objectContaining({ answers: expect.objectContaining({ routeTarget: expect.anything() }) }) }));
+    expect(logDecision).toHaveBeenCalledWith(expect.objectContaining({ phase: 'dispatched' }));
   });
 
   it('does not block a direct event from another connector while Jev is failing', async () => {

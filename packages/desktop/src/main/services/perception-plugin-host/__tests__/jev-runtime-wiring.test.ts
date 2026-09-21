@@ -5,11 +5,12 @@ import { afterEach, expect, it, vi } from 'vitest';
 import {
   DecisionReceiptStore,
   ExternalTriggerGrantStore,
+  PerceptionEventStore,
   TriggerRuleStore,
   type PerceptionPluginHostPorts,
 } from '../../../../../../core/src/modules/perception-runtime';
 import type { ChannelMessageIngress } from '../../../../../../core/src/modules/channel-runtime';
-import type { JevDecisionAnswer, PerceptionEventV1, PerceptionTriggerRule } from '../../../../../../core/src/types/perception';
+import type { JevDecisionAnswer, JevDecisionRequest, PerceptionEventV1, PerceptionTriggerRule } from '../../../../../../core/src/types/perception';
 import { PerceptionPluginHostService } from '../perception-plugin-host-service';
 import { IPC_CHANNELS } from '../../../ipc-protocol';
 
@@ -67,6 +68,42 @@ it('wires Jev into the Host without blocking direct dispatch and keeps failed-pr
   expect(decide).toHaveBeenCalledTimes(2);
   expect(await ipc(IPC_CHANNELS.PERCEPTION_DECISION_RESOLVE)(undefined, { decisionId, candidateKey: 'project:jev-project' })).toMatchObject({ success: true, data: expect.objectContaining({ status: 'user-executed', resultRef: 'perception://session/session-1' }) });
   expect(await ipc(IPC_CHANNELS.PERCEPTION_DECISION_RESOLVE)(undefined, { decisionId, candidateKey: 'ignore' })).toMatchObject({ success: true, data: expect.objectContaining({ status: 'user-executed', resultRef: 'perception://session/session-1' }) });
+  expect(send).toHaveBeenCalledTimes(2);
+  await service.stop();
+});
+
+it('uses the newest pending IM choice when older choices remain unresolved', async () => {
+  const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'jev-host-choice-')); roots.push(dataRoot);
+  const at = (minute: number) => `2026-09-20T00:${String(minute).padStart(2, '0')}:00.000Z`;
+  const imEvent = (id: string, minute: number, text: string): PerceptionEventV1 => ({ schemaVersion: '1.0', id, source: 'wecom', sourceEventId: id, connectorId: 'wecom-main', type: 'message.received', occurredAt: at(minute), receivedAt: at(minute), actor: { externalId: 'sender' }, conversation: { externalId: 'direct-1', kind: 'direct' }, content: { text }, provenance: { rawPayloadRef: `wecom://${id}` } });
+  const rule: PerceptionTriggerRule = { id: 'jev-im', enabled: true, sources: ['wecom'], eventTypes: ['message.received'], conditions: [], routingMode: 'jev', decision: { catalogVersion: '1.0', policyVersion: '1.0', candidates: [{ key: 'ignore', action: 'ignore' }, { key: 'notify_user', action: 'notify_user' }, { key: 'project:jev-project', action: 'dispatch', target: { kind: 'project', id: 'jev-project' } }] }, execution: { requireHitl: false, maxAttempts: 1 }, createdAt: at(0), updatedAt: at(0) };
+  fs.mkdirSync(path.join(dataRoot, 'projects', 'jev-project'), { recursive: true });
+  fs.writeFileSync(path.join(dataRoot, 'projects', 'jev-project', 'project.json'), '{}');
+  new ExternalTriggerGrantStore(dataRoot).save({ target: { kind: 'project', id: 'jev-project' }, enabled: true, createdAt: at(0), updatedAt: at(0) });
+  new TriggerRuleStore(dataRoot).save(rule);
+  const events = new PerceptionEventStore(dataRoot);
+  const receipts = new DecisionReceiptStore(dataRoot);
+  for (const [id, minute] of [['old-event', 1], ['latest-event', 2]] as const) {
+    events.save(imEvent(id, minute, '需要处理'));
+    receipts.save({ id: `${id}-receipt`, eventId: id, ruleId: rule.id, catalogVersion: '1.0', policyVersion: '1.0', candidateKeys: rule.decision.candidates.map((candidate) => candidate.key), threshold: 0.8, status: 'pending', reason: 'TARGET_AMBIGUOUS', createdAt: at(minute), updatedAt: at(minute) });
+  }
+  const answer = (): JevDecisionAnswer => ({ providerModel: 'jev-test', routeTarget: { choice: 'project:jev-project', confidence: 1, probabilities: { 'project:jev-project': 1 } }, deliveryMode: { choice: 'invoke_target', confidence: 1, probabilities: { notify_user: 0, invoke_target: 1 } }, needsUserAttention: 1, urgency: { score: 0, confidence: 1, probabilities: {} }, risk: { score: 0, confidence: 1, probabilities: {} }, needsHitl: 0, retainAsEvidence: 0 });
+  const decide = vi.fn(async (_request: JevDecisionRequest): Promise<JevDecisionAnswer> => answer())
+    .mockResolvedValueOnce({ ...answer(), isChoiceFeedback: 1 })
+    .mockResolvedValueOnce(answer())
+    .mockResolvedValueOnce({ ...answer(), isChoiceFeedback: 0 })
+    .mockResolvedValueOnce(answer());
+  const send = vi.fn(async function* () { yield { type: 'accepted' as const, sessionId: 'session-1' }; yield { type: 'completed' as const, resultRef: 'perception://session/session-1' }; });
+  const service = new PerceptionPluginHostService({ send } as ChannelMessageIngress, dataRoot, undefined, { every: vi.fn(), cancel: vi.fn() }, { decide });
+  const ports = (service as unknown as { createPorts(): PerceptionPluginHostPorts }).createPorts();
+  await ports.events.submit(imEvent('feedback-event', 3, '由项目处理'));
+  expect(decide).toHaveBeenCalledTimes(2);
+  expect(receipts.get('latest-event-receipt')).toMatchObject({ status: 'auto-executed' });
+  expect(receipts.get('old-event-receipt')).toMatchObject({ status: 'pending' });
+  expect(send).toHaveBeenCalledOnce();
+  await ports.events.submit(imEvent('new-request', 4, '这是一个新的问题'));
+  expect(decide).toHaveBeenCalledTimes(4);
+  expect(receipts.get(receipts.stableId('new-request', rule.id, '1.0'))).toMatchObject({ status: 'auto-executed' });
   expect(send).toHaveBeenCalledTimes(2);
   await service.stop();
 });

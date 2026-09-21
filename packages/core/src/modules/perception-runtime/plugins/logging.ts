@@ -1,4 +1,25 @@
 /** Deliberately excludes free-form SDK messages, request bodies and arbitrary metadata. */
+export interface PluginDecisionLog {
+  phase: 'requested' | 'completed' | 'dispatched' | 'failed';
+  decisionId?: string;
+  ruleId?: string;
+  outcome?: string;
+  status?: string;
+  reason?: string;
+  candidateKeys?: string[];
+  routeTarget?: string;
+  routeConfidence?: number;
+  routeProbabilities?: Record<string, number>;
+  deliveryMode?: string;
+  deliveryConfidence?: number;
+  deliveryProbabilities?: Record<string, number>;
+  needsUserAttention?: number;
+  urgency?: number;
+  risk?: number;
+  needsHitl?: number;
+  retainAsEvidence?: number;
+}
+
 export interface PluginLogRecord {
   level: 'debug' | 'info' | 'warn' | 'error';
   stage: string;
@@ -7,6 +28,7 @@ export interface PluginLogRecord {
   sessionId?: string;
   flowId?: string;
   diagnosticId?: string;
+  decision?: PluginDecisionLog;
   error?: unknown;
 }
 export interface PluginSdkLogger {
@@ -60,7 +82,7 @@ export function createPluginSdkLogger(log: PluginLogPort | undefined, stage = 's
 }
 
 function field(value: unknown): string | undefined {
-  return typeof value === 'string' && /^[a-zA-Z0-9_.:@/-]{1,160}$/.test(value) ? value : undefined;
+  return typeof value === 'string' && /^[\p{L}\p{N}_.:@/-]{1,160}$/u.test(value) ? value : undefined;
 }
 
 /** Never serialize arbitrary Error properties (HTTP libraries attach requests and credentials). */
@@ -73,8 +95,45 @@ export function sanitizePluginLog(record: PluginLogRecord) {
     const value = field(record[key]);
     if (value) result[key] = value;
   }
+  const decision = sanitizeDecision(record.decision);
+  if (decision) result['decision'] = decision;
   if (record.error) result['error'] = summarizeError(record.error);
   return result;
+}
+
+function sanitizeDecision(input: PluginDecisionLog | undefined): Record<string, unknown> | undefined {
+  if (!input) return undefined;
+  const result: Record<string, unknown> = { phase: input.phase };
+  for (const key of ['decisionId', 'ruleId', 'outcome', 'status', 'reason', 'routeTarget', 'deliveryMode'] as const) {
+    const value = field(input[key]);
+    if (value) result[key] = value;
+  }
+  const candidateKeys = input.candidateKeys?.map(decisionField).filter((value): value is string => Boolean(value)).slice(0, 20);
+  if (candidateKeys?.length) result['candidateKeys'] = candidateKeys;
+  for (const key of ['routeConfidence', 'deliveryConfidence', 'needsUserAttention', 'urgency', 'risk', 'needsHitl', 'retainAsEvidence'] as const) {
+    const value = input[key];
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1) result[key] = value;
+  }
+  for (const key of ['routeProbabilities', 'deliveryProbabilities'] as const) {
+    const probabilities = sanitizeProbabilities(input[key]);
+    if (probabilities) result[key] = probabilities;
+  }
+  return result;
+}
+
+function sanitizeProbabilities(input: Record<string, number> | undefined): Record<string, number> | undefined {
+  if (!input || Array.isArray(input)) return undefined;
+  const result: Record<string, number> = {};
+  for (const [key, value] of Object.entries(input).slice(0, 20)) {
+    const safeKey = decisionField(key);
+    if (safeKey && typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1) result[safeKey] = value;
+  }
+  return Object.keys(result).length ? result : undefined;
+}
+
+function decisionField(value: unknown): string | undefined {
+  const safe = field(value);
+  return safe && !safe.includes('..') ? safe : undefined;
 }
 
 function summarizeError(error: unknown, depth = 0): Record<string, unknown> {
