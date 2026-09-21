@@ -11,7 +11,7 @@ const replay = vi.fn(async () => undefined);
 const resolveDecision = vi.fn(async () => undefined);
 const retryDecision = vi.fn(async () => undefined);
 const state: {
-  connectors: []; grants: ExternalTriggerGrant[]; rules: PerceptionTriggerRule[]; health: [];
+  connectors: []; grants: ExternalTriggerGrant[]; decisionCandidateGrants: ExternalTriggerGrant[]; rules: PerceptionTriggerRule[]; health: [];
   deadLetters: PerceptionDeadLetter[]; audit: PerceptionAuditEntry[]; decisions: JevDecisionReceipt[];
   eventTraces: PerceptionEventTrace[];
   loading: boolean; error: string | undefined; startRefreshing: typeof startRefreshing; load: typeof load; replay: typeof replay;
@@ -19,7 +19,7 @@ const state: {
   deleteRule: ReturnType<typeof vi.fn>; saveGrant: ReturnType<typeof vi.fn>; deleteGrant: ReturnType<typeof vi.fn>;
   resolveDecision: typeof resolveDecision; retryDecision: typeof retryDecision;
 } = {
-  connectors: [], grants: [], rules: [], health: [], deadLetters: [], audit: [], decisions: [], eventTraces: [], loading: false,
+  connectors: [], grants: [], decisionCandidateGrants: [], rules: [], health: [], deadLetters: [], audit: [], decisions: [], eventTraces: [], loading: false,
   error: undefined, load, startRefreshing, replay, setConnectorEnabled: vi.fn(), saveConnector: vi.fn(), saveRule: vi.fn(), deleteRule: vi.fn(), saveGrant: vi.fn(), deleteGrant: vi.fn(),
   resolveDecision, retryDecision,
 };
@@ -28,7 +28,7 @@ vi.mock('@/store/perceptionStore', () => ({ usePerceptionStore: () => state }));
 const { SenseCenter } = await import('../SenseCenter');
 
 describe('SenseCenter', () => {
-  beforeEach(() => { vi.clearAllMocks(); state.audit = []; state.eventTraces = []; state.deadLetters = []; state.decisions = []; state.grants = []; state.rules = []; });
+  beforeEach(() => { vi.clearAllMocks(); state.audit = []; state.eventTraces = []; state.deadLetters = []; state.decisions = []; state.grants = []; state.decisionCandidateGrants = []; state.rules = []; });
 
   it('renders accessible loading-independent navigation and empty states', async () => {
     const startedAt = performance.now();
@@ -93,6 +93,7 @@ describe('SenseCenter', () => {
   it('manages external-trigger target grants from the target permissions tab', async () => {
     const now = '2026-09-04T08:00:00.000Z';
     state.grants = [{ target: { kind: 'project', id: 'project-1' }, enabled: true, createdAt: now, updatedAt: now }];
+    state.decisionCandidateGrants = state.grants;
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     render(<SenseCenter />);
     fireEvent.click(screen.getByRole('button', { name: '目标权限' }));
@@ -106,6 +107,7 @@ describe('SenseCenter', () => {
   it('enables, edits, and confirms deletion of a trigger rule', () => {
     const now = '2026-09-04T08:00:00.000Z';
     state.grants = [{ target: { kind: 'project', id: 'project-1' }, enabled: true, createdAt: now, updatedAt: now }];
+    state.decisionCandidateGrants = state.grants;
     state.rules = [{ id: 'rule-1', enabled: false, sources: ['email'], eventTypes: ['mail.received'], conditions: [], target: { kind: 'project', id: 'project-1' }, execution: { requireHitl: true, maxAttempts: 3 }, createdAt: now, updatedAt: now }];
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     render(<SenseCenter />);
@@ -129,6 +131,7 @@ describe('SenseCenter', () => {
     const rule: PerceptionTriggerRule = { id: 'rule-jev', enabled: true, routingMode: 'jev', sources: ['email'], eventTypes: ['mail.received'], conditions: [], decision: { catalogVersion: '1.0', policyVersion: '1.0', candidates }, execution: { requireHitl: false, maxAttempts: 1 }, createdAt: now, updatedAt: now };
     state.rules = [rule];
     state.grants = [{ target: { kind: 'project', id: 'project-1' }, enabled: true, createdAt: now, updatedAt: now }];
+    state.decisionCandidateGrants = state.grants;
     state.eventTraces = [{ event: { schemaVersion: '1.0', id: 'event-jev', source: 'email', sourceEventId: 'mail-jev', connectorId: 'email-main', type: 'mail.received', occurredAt: now, receivedAt: now, actor: { externalId: 'sender@example.com' }, content: { subject: 'Needs routing' }, provenance: { rawPayloadRef: 'inbox://safe' } }, audit: [], ruleTriggers: [{ ruleId: rule.id, matchedAt: now, rule }] }];
     state.decisions = [{ id: 'decision-1', eventId: 'event-jev', ruleId: rule.id, catalogVersion: '1.0', policyVersion: '1.0', candidateKeys: candidates.map((item) => item.key), answers: { providerModel: 'jev-latest', routeTarget: { choice: 'project:project-1', confidence: 0.8, probabilities: { ignore: 0.05, notify_user: 0.05, 'project:project-1': 0.7, 'role-agent:removed': 0.2 } }, urgency: { score: 1, confidence: 0.9, probabilities: { low: 0.1, medium: 0.8, high: 0.1 } }, risk: { score: 1, confidence: 0.9, probabilities: { low: 0.8, medium: 0.1, high: 0.1 } }, needsHitl: 0.2, retainAsEvidence: 0 }, threshold: 0.8, status: 'pending', reason: 'LOW_CONFIDENCE', createdAt: now, updatedAt: now }];
     render(<SenseCenter />);
@@ -150,6 +153,7 @@ describe('SenseCenter', () => {
     const candidate = { key: 'project:project-1', action: 'dispatch' as const, target: { kind: 'project' as const, id: 'project-1' } };
     const rule: PerceptionTriggerRule = { id: 'rule-jev', enabled: true, routingMode: 'jev', sources: ['email'], eventTypes: ['mail.received'], conditions: [], decision: { catalogVersion: '1.0', policyVersion: '1.0', candidates: [{ key: 'ignore', action: 'ignore' }, { key: 'notify_user', action: 'notify_user' }, candidate] }, execution: { requireHitl: false, maxAttempts: 1 }, createdAt: now, updatedAt: now };
     state.grants = [{ target: candidate.target, enabled: true, createdAt: now, updatedAt: now }];
+    state.decisionCandidateGrants = state.grants;
     state.eventTraces = [{ event: { schemaVersion: '1.0', id: 'event-jev', source: 'email', sourceEventId: 'mail-jev', connectorId: 'email-main', type: 'mail.received', occurredAt: now, receivedAt: now, actor: { externalId: 'sender@example.com' }, content: { subject: 'Provider failed' }, provenance: { rawPayloadRef: 'inbox://safe' } }, audit: [], ruleTriggers: [{ ruleId: rule.id, matchedAt: now, rule }] }];
     state.decisions = [{ id: 'decision-failed', eventId: 'event-jev', ruleId: rule.id, catalogVersion: '1.0', policyVersion: '1.0', candidateKeys: ['ignore', candidate.key], threshold: 0.8, status: 'failed', reason: 'JEV_TIMEOUT', createdAt: now, updatedAt: now }];
     const view = render(<SenseCenter />); fireEvent.click(screen.getByRole('button', { name: '事件记录' }));

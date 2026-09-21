@@ -32,10 +32,10 @@
 
 依赖：W2 安全 Provider 与 W3 runtime。写入范围：Desktop Perception Plugin Host/service/IPC、Core perception management facade 与集成测试。负责 subagent：Runtime/Desktop。完成证据：提交、自动/人工端到端 fake-provider 测试、重复执行计数为 1。
 
-- [ ] 4.1 在独立 `proposal-task/add-jev-perception-decisions-w4-runtime-wiring` 分支/worktree 将 Provider snapshot、Jev adapter 与 DecisionOrchestrator 注入现有 Desktop Host，验证配置热更新只影响下一请求且 Provider 故障不阻塞 direct/其他 connector
-- [ ] 4.2 实现 pending decision 查询、resolve/retry 窄用例与 Desktop IPC，人工提交时重新校验目标存在性、grant、connector/rule scope 与 HITL
-- [ ] 4.3 让自动与人工 dispatch 使用同一 decision id/`ExecutionLease`/`TriggerExecutionPort`，以重复事件、重复按钮和并发不同选择验证只产生一次副作用并恢复原 resultRef
-- [ ] 4.4 复用现有系统通知提示 pending decision，验证通知失败只记录安全诊断且不改变 receipt pending 状态
+- [x] 4.1 在独立 `proposal-task/add-jev-perception-decisions-w4-runtime-wiring` 分支/worktree 将 Provider snapshot、Jev adapter 与 DecisionOrchestrator 注入现有 Desktop Host，验证配置热更新只影响下一请求且 Provider 故障不阻塞 direct/其他 connector
+- [x] 4.2 实现 pending decision 查询、resolve/retry 窄用例与 Desktop IPC，人工提交时重新校验目标存在性、grant、connector/rule scope 与 HITL
+- [x] 4.3 让自动与人工 dispatch 使用同一 decision id/`ExecutionLease`/`TriggerExecutionPort`，以重复事件、重复按钮和并发不同选择验证只产生一次副作用并恢复原 resultRef
+- [x] 4.4 复用现有系统通知提示 pending decision，验证通知失败只记录安全诊断且不改变 receipt pending 状态
 
 ## 5. S15-W5 规则与事件交互（依赖 W1；可与 W4 并行，集成时串行）
 

@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { PerceptionStatusButton } from '@/components/os/sense-center/PerceptionStatusButton';
 import { usePerceptionStore } from '@/store/perceptionStore';
 
-const data: Pick<ReturnType<typeof usePerceptionStore.getState>, 'connectors' | 'grants' | 'rules' | 'health' | 'audit' | 'eventTraces' | 'deadLetters' | 'decisions'> = { connectors: [], grants: [], rules: [], health: [], audit: [], eventTraces: [], deadLetters: [], decisions: [] };
+const data: Pick<ReturnType<typeof usePerceptionStore.getState>, 'connectors' | 'grants' | 'decisionCandidateGrants' | 'rules' | 'health' | 'audit' | 'eventTraces' | 'deadLetters' | 'decisions'> = { connectors: [], grants: [], decisionCandidateGrants: [], rules: [], health: [], audit: [], eventTraces: [], deadLetters: [], decisions: [] };
 const response = <T,>(value: T = data as T) => ({ ok: true, json: async () => ({ success: true, data: value }) });
 const fetchMock = vi.fn();
 beforeEach(() => {

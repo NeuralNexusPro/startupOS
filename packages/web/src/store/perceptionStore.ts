@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { resolvePerceptionDecision, retryPerceptionDecision } from '@/services/perceptionDecisionService';
 
 import type {
   ConnectorHealth,
@@ -21,6 +22,7 @@ interface DashboardData {
   eventTraces: PerceptionEventTrace[];
   deadLetters: PerceptionDeadLetter[];
   decisions: JevDecisionReceipt[];
+  decisionCandidateGrants: ExternalTriggerGrant[];
 }
 interface PerceptionState extends DashboardData {
   loading: boolean;
@@ -38,7 +40,7 @@ interface PerceptionState extends DashboardData {
   retryDecision(id: string): Promise<void>;
 }
 
-const EMPTY: DashboardData = { connectors: [], grants: [], rules: [], health: [], audit: [], eventTraces: [], deadLetters: [], decisions: [] };
+const EMPTY: DashboardData = { connectors: [], grants: [], rules: [], health: [], audit: [], eventTraces: [], deadLetters: [], decisions: [], decisionCandidateGrants: [] };
 
 async function request<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   const response = await fetch(input, init);
@@ -64,8 +66,8 @@ export const usePerceptionStore = create<PerceptionState>((set, get) => ({
     const load = (pendingLoad ?? Promise.resolve()).then(async () => {
       if (!silent) set({ loading: true, error: undefined });
       try {
-        const snapshot = await request<Omit<DashboardData, 'decisions'> & { decisions?: JevDecisionReceipt[] }>('/api/perception/management');
-        set((state) => ({ ...snapshot, decisions: snapshot.decisions ?? state.decisions }));
+        const snapshot = await request<Omit<DashboardData, 'decisions' | 'decisionCandidateGrants'> & { decisions?: JevDecisionReceipt[]; decisionCandidateGrants?: ExternalTriggerGrant[] }>('/api/perception/management');
+        set((state) => ({ ...snapshot, decisions: snapshot.decisions ?? state.decisions, decisionCandidateGrants: snapshot.decisionCandidateGrants ?? state.decisionCandidateGrants }));
       } catch {
         if (!silent) set({ error: '无法加载感知中心，请稍后重试' });
       } finally {
@@ -143,18 +145,12 @@ export const usePerceptionStore = create<PerceptionState>((set, get) => ({
     await get().load();
   },
   resolveDecision: async (id, candidateKey) => {
-    const receipt = await request<JevDecisionReceipt>('/api/perception/management', {
-      method: 'PATCH', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ action: 'resolve-decision', decisionId: id, candidateKey }),
-    });
+    const receipt = await resolvePerceptionDecision(id, candidateKey);
     set((state) => ({ decisions: updateDecision(state.decisions, receipt) }));
     await get().load({ silent: true });
   },
   retryDecision: async (id) => {
-    const receipt = await request<JevDecisionReceipt>('/api/perception/management', {
-      method: 'PATCH', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ action: 'retry-decision', decisionId: id }),
-    });
+    const receipt = await retryPerceptionDecision(id);
     set((state) => ({ decisions: updateDecision(state.decisions, receipt) }));
     await get().load({ silent: true });
   },

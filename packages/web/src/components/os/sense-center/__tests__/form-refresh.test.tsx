@@ -12,6 +12,7 @@ const now = '2026-09-13T00:00:00Z';
 const data = {
   connectors: [{ id: 'email-main', source: 'email' as const, mode: 'email-poll' as const, enabled: true, settings: {}, secretConfigured: true, createdAt: now, updatedAt: now }],
   grants: [{ target: { kind: 'project' as const, id: 'project-main' }, enabled: true, createdAt: now, updatedAt: now }],
+  decisionCandidateGrants: [{ target: { kind: 'project' as const, id: 'project-main' }, enabled: true, createdAt: now, updatedAt: now }],
   rules: [], eventTraces: [], audit: [], health: [], deadLetters: [],
 };
 const fetchMock = vi.fn();
