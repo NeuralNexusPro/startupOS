@@ -40,7 +40,8 @@ export interface ExecutionLease {
 }
 export interface PerceptionAuditEntry {
   id: string;
-  action: 'inbox.accepted' | 'inbox.rejected' | 'event.created' | 'event.duplicate' | 'rule.matched' | 'target.denied' | 'lease.acquired' | 'lease.completed' | 'lease.failed' | 'trigger.dispatched';
+  action: 'inbox.accepted' | 'inbox.rejected' | 'event.created' | 'event.duplicate' | 'rule.matched' | 'target.denied' | 'lease.acquired' | 'lease.completed' | 'lease.failed' | 'trigger.dispatched'
+    | 'decision.requested' | 'decision.pending' | 'decision.resolved' | 'decision.failed';
   occurredAt: string; connectorId?: string; eventId?: string; detail?: JsonValue;
 }
 export interface PerceptionTargetResultSummary {
