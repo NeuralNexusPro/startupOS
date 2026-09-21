@@ -41,10 +41,10 @@
 
 依赖：W1 UI 契约；合并前必须与 W4 IPC 结果对齐。写入范围：`packages/web/src/components/os/sense-center/RuleWizard.tsx`、`SenseCenter.tsx`、perception store/services 与组件测试。负责 subagent：Web/UX。完成证据：提交、组件测试截图/输出、无新增页面和配置轮询证明。
 
-- [ ] 5.1 在独立 `proposal-task/add-jev-perception-decisions-w5-ui` 分支/worktree 为规则向导增加 direct/Jev 模式、授权候选多选与固定阈值说明，并验证无授权候选、Provider 未配置、0.8 文案和草稿保持
-- [ ] 5.2 扩展规则卡和事件 trace 展示 decision 版本、候选概率、confidence、HITL 原因、lease/resultRef，验证长候选折叠、400×300 单列和键盘/读屏语义
-- [ ] 5.3 实现低置信/Provider 失败的选择、忽略与重试交互，验证失效候选禁用、已解决操作禁用、重复点击恢复既有结果且不猜测默认目标
-- [ ] 5.4 复用事件页现有 5 秒刷新并验证配置页不新增轮询、store 更新不重建 Provider/规则表单
+- [x] 5.1 在独立 `proposal-task/add-jev-perception-decisions-w5-ui` 分支/worktree 为规则向导增加 direct/Jev 模式、授权候选多选与固定阈值说明，并验证无授权候选、Provider 未配置、0.8 文案和草稿保持
+- [x] 5.2 扩展规则卡和事件 trace 展示 decision 版本、候选概率、confidence、HITL 原因、lease/resultRef，验证长候选折叠、400×300 单列和键盘/读屏语义
+- [x] 5.3 实现低置信/Provider 失败的选择、忽略与重试交互，验证失效候选禁用、已解决操作禁用、重复点击恢复既有结果且不猜测默认目标
+- [x] 5.4 复用事件页现有 5 秒刷新并验证配置页不新增轮询、store 更新不重建 Provider/规则表单
 
 ## 6. S15-W6 集成、验证与交付（依赖 W2–W5；串行）
 
