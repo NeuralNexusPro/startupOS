@@ -3,11 +3,11 @@
 ## 1. 前置门与契约冻结
 
 - [x] 1.1 `ONT8-T1-A`（串行；依赖：Proposal 明确批准；角色：集成架构 subagent；写入：本 change 的 readiness evidence）核对 ONT.1–ONT.7、P2.8、9.42、9.43 与受控 pi-tasks adapter 的公共 API、版本及完成证据；以接口清单和缺口报告验证所有必需边界存在，任一缺失时停止应用源码实施。完成证据：2026-09-22 用户明确要求推进 ONT.8；strict validation 通过；`evidence/readiness-audit.md` 确认 P2.8、9.42、9.43 与 pi-tasks adapter 缺口，应用源码实施按门禁停止。
-- [ ] 1.2 `ONT8-T1-B`（串行；依赖：1.1；角色：Core contract subagent；写入：`packages/core/src/lib/features/project/` 公共 DTO/ports 与类型测试）冻结版本化请求、响应、错误和 transport parity contract；以 TypeScript 正反例、core typecheck 和公共导出测试验证无 `any`、无私有导入。
+- [x] 1.2 `ONT8-T1-B`（串行；依赖：1.1；角色：Core contract subagent；写入：`packages/core/src/lib/features/project/` 公共 DTO/ports 与类型测试）冻结版本化请求、响应、错误和 transport parity contract；以 TypeScript 正反例、core typecheck 和公共导出测试验证无 `any`、无私有导入。完成证据：新增 `ontology-cross-package-contract.ts` 并由 `project/index.ts` 公共导出；`tsc --noEmit` 通过；定向 contract tests 3/3 通过，覆盖版本锁定、非法版本和 mutation 必填 revision 正反例。
 
 ## 2. Core 应用服务
 
-- [ ] 2.1 `ONT8-T1-C`（串行；依赖：1.2；角色：Core service subagent；写入：`packages/core/src/lib/features/project/` service、exports、unit/integration tests）实现精确 ontology/contract/task/run scope 门控与只读聚合；以旧版本、越权、跨项目、缺失能力和投影重建测试验证 fail closed 且无第二事实源。
+- [x] 2.1 `ONT8-T1-C`（串行；依赖：1.2；角色：Core service subagent；写入：`packages/core/src/lib/features/project/` service、exports、unit/integration tests）实现精确 ontology/contract/task/run scope 门控与只读聚合；以旧版本、越权、跨项目、缺失能力和投影重建测试验证 fail closed 且无第二事实源。完成证据：新增 `ontology-cross-package-service.ts` 并由 `project/index.ts` 公共导出；core `tsc --noEmit` 通过；定向 service tests 4/4 通过，覆盖语义上下文、投影失败、只读 task 检查和 mutation `CAPABILITY_NOT_READY` fail closed。
 - [ ] 2.2 `ONT8-T1-D`（串行；依赖：2.1；角色：恢复协议 subagent；写入：同一 Core service 的 mutation/recovery 路径与测试）接通 intent → OSDK receipt → WorkItem acceptance → Evidence 对账；以重复 ID、内容冲突、旧 epoch、Action 后崩溃和未知外部回执测试验证不重复副作用。
 
 ## 3. Transport Adapters
