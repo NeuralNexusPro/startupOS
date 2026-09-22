@@ -12,9 +12,10 @@ const RULE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,191}$/;
 
 export function RuleWizard({ connectors, grants, jevProvider, initial, onSave, onCancel }: RuleWizardProps): JSX.Element {
   const enabledGrants = useMemo(() => grants.filter((grant) => grant.enabled), [grants]);
-  const initialCondition = initial?.conditions[0];
+  const initialConnectorId = initial?.conditions.find((condition) => condition.path === 'connectorId' && condition.operator === 'equals' && typeof condition.value === 'string')?.value;
+  const initialCondition = initial?.conditions.find((condition) => condition.path !== 'connectorId');
   const [id, setId] = useState(() => initial?.id ?? `rule-${Date.now().toString(36)}`);
-  const [connectorId, setConnectorId] = useState(() => connectors.find((item) => initial?.sources.includes(item.source))?.id ?? connectors[0]?.id ?? '');
+  const [connectorId, setConnectorId] = useState(() => connectors.find((item) => item.id === initialConnectorId)?.id ?? connectors.find((item) => initial?.sources.includes(item.source))?.id ?? connectors[0]?.id ?? '');
   const connectorGrants = useMemo(() => enabledGrants.filter((grant) =>
     (!grant.allowedConnectorIds || grant.allowedConnectorIds.includes(connectorId))
     && (!grant.allowedRuleIds || grant.allowedRuleIds.includes(id))), [connectorId, enabledGrants, id]);
@@ -52,7 +53,7 @@ export function RuleWizard({ connectors, grants, jevProvider, initial, onSave, o
     const target = grant?.target.kind === 'skill'
       ? { ...grant.target, skillOwnership: ownerKey === 'ephemeral' ? { mode: 'ephemeral' as const } : inheritedOwner(ownerKey) }
       : grant?.target;
-    const base = { id, enabled, sources: [connector.source], eventTypes: [connector.source === 'email' ? 'mail.received' as const : 'message.received' as const], conditions: value ? [{ path, operator, value }] : [], execution: { requireHitl, maxAttempts: initial?.execution.maxAttempts ?? 3 }, createdAt: initial?.createdAt ?? now, updatedAt: now };
+    const base = { id, enabled, sources: [connector.source], eventTypes: [connector.source === 'email' ? 'mail.received' as const : 'message.received' as const], conditions: [{ path: 'connectorId' as const, operator: 'equals' as const, value: connector.id }, ...(value ? [{ path, operator, value }] : [])], execution: { requireHitl, maxAttempts: initial?.execution.maxAttempts ?? 3 }, createdAt: initial?.createdAt ?? now, updatedAt: now };
     try {
       await onSave(routingMode === 'jev'
         ? { ...base, routingMode: 'jev', decision: { catalogVersion: '1.0', policyVersion: '1.0', candidates: [{ key: 'ignore', action: 'ignore' }, { key: 'notify_user', action: 'notify_user' }, ...selectedGrants.map((item) => ({ key: targetKeyOf(item.target), action: 'dispatch' as const, target: item.target }))], ...(cognitiveGuidance.trim() ? { cognitiveGuidance: cognitiveGuidance.trim() } : {}) } }

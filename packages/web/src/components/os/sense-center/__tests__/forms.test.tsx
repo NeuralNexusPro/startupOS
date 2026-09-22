@@ -82,6 +82,24 @@ describe('RuleWizard', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('当前感知源尚未获得任何目标授权');
   });
 
+  it('keeps a rule bound to its selected connector when multiple connectors use the same channel', async () => {
+    const onSave = vi.fn<[PerceptionTriggerRule], Promise<void>>(async () => undefined);
+    const wecomOne = { ...connector, id: 'wecom-one', source: 'wecom' as const, mode: 'webhook' as const };
+    const wecomTwo = { ...wecomOne, id: 'wecom-two' };
+    const initial: PerceptionTriggerRule = {
+      id: 'wecom-rule', enabled: true, sources: ['wecom'], eventTypes: ['message.received'],
+      conditions: [{ path: 'connectorId', operator: 'equals', value: 'wecom-two' }, { path: 'content.text', operator: 'contains', value: '报价' }],
+      target: { kind: 'role-agent', id: 'assistant' }, execution: { requireHitl: false, maxAttempts: 3 }, createdAt: now, updatedAt: now,
+    };
+    const grants = [{ target: { kind: 'role-agent' as const, id: 'assistant' }, enabled: true, createdAt: now, updatedAt: now }];
+    render(<RuleWizard connectors={[wecomOne, wecomTwo]} grants={grants} initial={initial} onSave={onSave} onCancel={vi.fn()} />);
+    expect(screen.getByLabelText('来源')).toHaveValue('wecom-two');
+    expect(screen.getByDisplayValue('报价')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '保存规则' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave.mock.calls[0]?.[0].conditions).toEqual(initial.conditions);
+  });
+
   it('generates a valid rule ID and explains invalid manual IDs before saving', () => {
     const onSave = vi.fn<[PerceptionTriggerRule], Promise<void>>(async () => undefined);
     const grants = [{ target: { kind: 'project' as const, id: 'project-1' }, enabled: true, createdAt: now, updatedAt: now }];
