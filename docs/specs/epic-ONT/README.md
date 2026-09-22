@@ -221,7 +221,7 @@ Skill/Agent contract 是 ONT 暴露给 P2 和 collaboration-runtime 的协议。
 | ONT.5 | OSDK Facts / Actions API | Done | Critical | 已提供类型化 facts 查询、Action submit、版本/修订检查、幂等恢复与审计 metadata |
 | ONT.6 | Skill / Agent Contract Validation API | Done | High | 已提供 contract 引用、Action 权限与 SOP required facts 连通性校验 |
 | ONT.7 | Context Projection Protocol | Done | High | 已定义最小 runtime projection DTO、JSONL append/read、公共 query/resolver 与确定性 latest 语义 |
-| ONT.8 | Cross-package Adapters 与端到端验证 | Planning（规格完成，Proposal 待审批） | High | Web API adapter、Desktop IPC adapter、P2/runtime integration tests |
+| ONT.8 | Cross-package Adapters 与端到端验证 | In Progress（T1-A Done；前置缺口阻断实施） | High | Web API adapter、Desktop IPC adapter、P2/runtime integration tests |
 
 ### 实施顺序
 
@@ -308,6 +308,7 @@ ONT.1、ONT.2、ONT.4 是架构门。下游 P2、Epic 9、Epic C/M/T 不得复�
 | Context Graph | 未形成统一协议 | ONT 定义 projection protocol，下游 runtime 写入 |
 
 ONT.1、ONT.2、ONT.3、ONT.4、ONT.5、ONT.6、ONT.7 已完成；ONT.8 仍处于规划阶段。
+ONT.8 已补齐六份 Story 规格与独立 OpenSpec Proposal，但 P2.8、9.42、9.43 前置公共能力和联合验收仍待实施。
 
 ---
 
@@ -329,6 +330,10 @@ ONT.1、ONT.2、ONT.3、ONT.4、ONT.5、ONT.6、ONT.7 已完成；ONT.8 仍处�
 |------|------|------|--------|
 | 2026-08-19 | 0.2.0 | 按 startupOS 架构围栏重构 Epic：ONT 收敛为 core ontology bounded context，只交付 schema、store、validator、OSDK、contract API 和 projection protocol；P2/runtime/memory 作为下游消费方 | Codex |
 | 2026-07-27 | 0.1.0 | 创建 Epic，覆盖统一 schema、业务聚合、规则与 Action、OSDK 契约门控和多 Agent 运行时 | Codex |
+
+## 2026-09-19：ONT.8 规格与 Proposal
+
+已补齐 [`story-ONT.8/`](story-ONT.8/README.md) 六份规格和独立 Proposal [`integrate-ontology-cross-package-adapters`](../../../openspec/changes/integrate-ontology-cross-package-adapters/proposal.md)。本轮只完成规划工件，不声称 P2.8、9.42、9.43、E01–E16 或 Windows/macOS 平台矩阵已实施通过。
 
 ## 2026-09-14：以项目语义执行闭环安排首期
 
