@@ -2117,3 +2117,9 @@ SENSE12-T3：首次启用后台本可启动，但UI快照不自动刷新；增�
 **类型**：release
 **影响模块**：Jev 感知决策、IM 路由、Agent 上下文与 Token、本体 OSDK、系统调度
 **摘要**：将 OriginOS CE 桌面端升级至 `0.3.0`。此版本包含 JEV 感知路由与 IM 会话兜底、自然语言认知规则、上下文渐进加载与 Token 统计、统一调度运行时及 canonical ontology 能力。Desktop Release 将构建 Windows、macOS arm64/x64 并发布到七牛、官网更新源和 GitHub Release。
+
+## 2026-09-22 — release：准备 v0.3.1
+
+**类型**：release
+**影响模块**：感知中心规则配置
+**摘要**：将 OriginOS CE 桌面端升级至 `0.3.1`，修复同渠道多连接下规则编辑覆盖错误，并改善感知中心编辑表单定位体验。
