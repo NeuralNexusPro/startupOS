@@ -24,3 +24,16 @@
 ## 决定
 
 按照 Proposal 任务 1.1 的 fail-closed 门禁，本轮不修改 Web/Desktop/Core 应用源码。下一步必须先完成 P2.8、9.42、9.43 与 `validate-pi-tasks-runtime-boundary` 的公共边界，再重启 ONT8-T1-B 及后续实施。
+
+## 2026-09-22 前置推进后状态更新
+
+原审计结论保持 **Blocked**。本轮已推进但未解除全部门禁：
+
+| 前置能力 | 当前状态 | 更新证据 | 剩余缺口 |
+|---|---|---|---|
+| P2.8 Solution Execution Contract | Partially ready | 公共契约、confirmed 编译门控、原子持久化、禁止覆盖、独立撤销和精确读取已合入工作区；9/9 定向测试通过 | UI 发布状态、P2.5/P2.6/P2.7 回归、80% 覆盖率 Goal |
+| 9.42 Task/Run/WorkItem 对齐 | Partially ready | approved contract 精确绑定、frozen Run snapshot、契约内 WorkItem DAG、pause/resume/cancel 持久恢复已实现；3/3 定向测试通过 | Worker 执行、Verifier、Evidence Bridge、HITL、Attempt/lease fencing、回执对账 |
+| 9.43 项目任务看板 | Partially ready | `ProjectTaskBoardService` 公共投影/控制边界、项目隔离、requestId 幂等、revision 冲突、Run/WorkItem 联动已实现；4/4 定向测试通过 | 真实 pi-tasks source、持久索引重建、Web UI、跨进程恢复和 E2E |
+| 受控 pi-tasks public adapter | Ready | ADR-010 已接受受控 Runtime patch、`@originos/pi-tasks@0.2.0-originos.1` 与 `task-runtime` 公共边界；`implement-agent-session-task-runtime` 已完成 5.2 验证并归档，Adapter 33/33、A-02 contract 13/13、Core/Desktop/Web 定向集成回归通过 | Windows x64、macOS x64/arm64 package evidence 仍待平台包验证 |
+
+因此 ONT8-T1-B 仍不得开始；尤其不得把本轮 9.42/9.43 的部分实现伪报为 Evidence 或 Task completion 能力。

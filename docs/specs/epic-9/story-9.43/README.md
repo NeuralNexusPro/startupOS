@@ -1,6 +1,6 @@
 # Story 9.43：项目任务看板与协同图联动
 
-**状态：** Planning（未实施）  
+**状态：** In Progress（T1 核心投影公共边界已实现）
 **Owner：** Project Runtime / Web  
 **日期：** 2026-09-14
 
@@ -14,3 +14,8 @@
 [主线规划](../../epic-ONT/project-semantic-execution-plan.md) · [Epic 9](../README.md)
 
 2026-09-14：首次规划，不含Linear外部集成、Cycle或工时报表。
+
+## 2026-09-22 实施进度
+
+- 已实现 `ProjectTaskBoardService`：通过注入的 Task source 聚合权威 Task projection，并从 9.42 Run ledger 读取 WorkItem/binding，保持项目隔离、50 条分页、requestId 幂等和 expectedRevision 冲突检查；公开操作仅 pause/resume/retry/cancel，不含 complete。
+- 尚未接入真实项目级 pi-tasks source/index rebuild、Web 看板/图 UI、跨进程恢复和 E2E；Story 仍为 In Progress。

@@ -173,7 +173,7 @@ describe("OriginOSAgent", () => {
 	});
 
 	describe("Runtime environment and completion guard", () => {
-		it("does not run semantic completion judging or recovery", async () => {
+		it("runs semantic completion judging without recovery for an accepted response", async () => {
 			agent = new OriginOSAgent({
 				...basicConfig,
 			});
@@ -187,7 +187,7 @@ describe("OriginOSAgent", () => {
 
 			await agent.prompt("开始项目访谈");
 
-			expect(judgeSpy).not.toHaveBeenCalled();
+			expect(judgeSpy).toHaveBeenCalledTimes(1);
 			expect(receivedEvents.some((event) =>
 				event.type === "message_end" &&
 				JSON.stringify(event.message?.content).includes("日常工作流程")

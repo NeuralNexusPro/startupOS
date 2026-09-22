@@ -154,7 +154,7 @@ interface AgentTaskExecutionStateV1 {
 1. 发布 adapter Session host 与 contract tests，保持旧 adapter exports 向后兼容。
 2. 发布 Core Task Runtime types/coordinator，并将 Session execution 字段设为可选。
 3. 接入 Desktop IPC 和恢复路径，默认 capability 可配置关闭。
-4. 接入 Agent/RoleAgent UI 入口和 Task 卡片；Skill 与普通聊天不启用入口。
+4. 接入 Agent/RoleAgent/Skill UI 入口和 Task 卡片；普通聊天不启用入口。
 5. 执行 adapter、Core、Desktop、Web、Windows package 与 macOS module-resolution 回归。
 6. 开启 capability；旧 Session 在首次创建 Task 前保持无 execution state。
 

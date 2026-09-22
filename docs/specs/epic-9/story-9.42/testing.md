@@ -169,6 +169,13 @@ pnpm --filter @originos/desktop test
 
 Goal 输出必须包含测试命令、AC/TC evidence、人工验证步骤和剩余风险。
 
+## 2026-09-22 T1 核心验收证据
+
+- `pnpm exec vitest run --config vitest.config.ts src/modules/collaboration-runtime/facade/__tests__/contract-execution.test.ts`：3/3 通过，覆盖 approved 精确绑定、contractId/hash 门控、撤销拒绝、契约内 WorkItem DAG、frozen snapshot 恢复和 pause/resume/cancel。
+- `pnpm exec tsc -p tsconfig.json --noEmit`：通过。
+- `pnpm lint:boundaries`：907 个生产文件，0 条诊断。
+- Worker 执行、Verifier、Evidence Bridge、HITL、Attempt/lease fencing 和故障注入仍未实施，不满足完整 testing Goal。
+
 ## 退出标准
 
 - runtime 无 Workflow 执行、生成、编辑或自动选择入口。

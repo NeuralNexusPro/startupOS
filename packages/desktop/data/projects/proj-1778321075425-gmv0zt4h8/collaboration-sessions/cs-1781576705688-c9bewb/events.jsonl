@@ -1,1 +1,0 @@
-{"id":"evt-welcome-1781576705693","sessionId":"cs-1781576705688-c9bewb","seq":0,"type":"ASSISTANT_MESSAGE","payload":{"content":"你好！我是多 Agent 协作系统的 Supervisor。请告诉我你想完成什么目标，我会负责分解任务并协调各 Agent 为你执行。"},"source":"supervisor","timestamp":"2026-06-16T02:25:05.693Z"}

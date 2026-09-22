@@ -6,7 +6,7 @@ Story 9.41 已完成受控 `@originos/pi-tasks` 公共边界，但产品中仍�
 
 ## What Changes
 
-- 在 Agent 与 RoleAgent 共用的输入组件增加“创建任务”入口，在当前消息区域建立只存在于 renderer 的任务草稿卡片。
+- 在 Agent、RoleAgent 与 Skill 共用的输入组件增加“创建任务”入口，在当前消息区域建立只存在于 renderer 的任务草稿卡片。
 - 用户提交草稿后，通过版本化 IPC/API 边界在当前 Pi Session/branch 建立 planning lease，并由当前 Agent 调用 `task_plan` 创建唯一正式 Task。
 - 新增 Session 级 `chat`、`task_planning`、`task_running` 执行模式与互斥 completion policy；普通聊天只运行 Chat Completion Guard，正式任务只运行 Task Runtime。
 - 新增 Task 状态事件投影和消息区 Task 卡片，展示 ordered steps、criteria、evidence、blocker、状态及可执行操作。
@@ -21,7 +21,7 @@ Story 9.41 已完成受控 `@originos/pi-tasks` 公共边界，但产品中仍�
 
 ### New Capabilities
 
-- `agent-session-task-runtime`: 定义 Agent/RoleAgent 当前 Session 的任务草稿、正式规划、互斥执行模式、状态投影、证据门控续跑与恢复行为。
+- `agent-session-task-runtime`: 定义 Agent、RoleAgent 与 Skill 当前 Session 的任务草稿、正式规划、互斥执行模式、状态投影、证据门控续跑与恢复行为。
 
 ### Modified Capabilities
 
@@ -30,7 +30,7 @@ Story 9.41 已完成受控 `@originos/pi-tasks` 公共边界，但产品中仍�
 ## Impact
 
 - Core：`packages/core/src/lib/integrations/pi-agent/` 新增产品 Task Runtime coordinator、lease/store、状态投影与 completion policy；复用 `@originos/pi-agent-adapter/task-runtime` 公共 API。
-- Web：`packages/web/src/components/ui/chat-input-bar.tsx`、Agent/RoleAgent 会话容器和消息渲染新增任务入口与 Task 卡片；不在 `app/` 放业务逻辑。
+- Web：`packages/web/src/components/ui/chat-input-bar.tsx`、Agent/RoleAgent/Skill 会话容器和消息渲染新增任务入口与 Task 卡片；不在 `app/` 放业务逻辑。
 - Desktop：`packages/desktop/src/main/services/agent-session-service.ts` 和 IPC protocol 增加任务创建、查询、控制与事件边界。
 - 持久化：扩展 Session JSON 的版本化 execution control 字段，不复制 canonical Task ledger；保持本地文件存储。
 - API/IPC：新增版本化 Task Runtime 请求、响应和事件类型；旧客户端普通聊天协议保持兼容。

@@ -2,11 +2,14 @@
 
 **Story:** Agent/RoleAgent 任务入口与 pi-tasks 直接执行
 **版本:** 2.2
-**最后更新:** 2026-08-01
+**最后更新:** 2026-09-22
 
 ## 实施目标
 
 实现当前 Agent/RoleAgent Session 的正式任务入口，以 `pi-tasks` 管理步骤、证据和完成门控，并在 `OriginOSAgent.prompt/continue` 入口选择互斥 completion policy，保证普通聊天 Guard 与 Task Runtime 不相互干扰。
+
+**2026-09-22 状态：** 产品实现已完成；OpenSpec 5.2 已补齐自动化验证证据。
+Windows x64、macOS x64 和 macOS arm64 真包验证仍待平台证据。
 
 ## 实施前置门
 

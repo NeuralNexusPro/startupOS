@@ -19,4 +19,11 @@
 | B13 | Component | 同时后台刷新与编辑筛选/表单 | 保持输入；卸载不残留订阅 |
 | B14 | E2E | 手动目标无已发布模板或语义输入缺失 | 明确设计/输入缺口，不生成临时执行拓扑 |
 
+## 2026-09-22 T1 核心验收证据
+
+- `pnpm exec vitest run --config vitest.config.ts src/lib/features/project/__tests__/task-board.test.ts`：4/4 通过，覆盖 B01/B06 的 Task/Run/WorkItem 同 revision 聚合、expectedRevision 冲突、requestId 幂等/冲突和项目越界拒绝。
+- `pnpm exec tsc -p tsconfig.json --noEmit`：通过。
+- `pnpm lint:boundaries`：907 个生产文件，0 条诊断。
+- B03/B04/B07/B08/B11/B12/B14 与 Web UI/E2E 仍未执行，不标记 Story 完成。
+
 先执行单测/接口测试，再组件测试，最后联通真实Task/Run及Windows/macOS恢复矩阵。故障注入复用主线E08–E11；API成功返回不能代替持久提交证据。测试数据使用临时项目，不操作真实外部IM。

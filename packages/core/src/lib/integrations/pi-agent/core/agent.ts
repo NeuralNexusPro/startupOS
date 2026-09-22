@@ -43,6 +43,8 @@ import {
 import {
 	assessCompletion,
 	buildCompletionFailureReport,
+	buildCompletionRecoveryMessage,
+	DEFAULT_COMPLETION_RECOVERY_LIMIT,
 	type ToolFailureSummary,
 } from "./completion-guard";
 import {
@@ -299,6 +301,10 @@ export class OriginOSAgent {
 
 	private isEmptyStopRecoveryEnabled(): boolean {
 		return this.config?.emptyStopRecoveryEnabled === true;
+	}
+
+	private isCompletionGuardEnabled(): boolean {
+		return this.config?.completionGuardEnabled !== false;
 	}
 
 	/**
@@ -596,11 +602,32 @@ export class OriginOSAgent {
 	private routeAgentEvent(event: AgentEvent): void {
 		const eventType = event.type;
 
+		if (this.isCompletionGuardEnabled() && eventType === "tool_execution_end") {
+			const status = getToolEventStatus(event);
+			this.completionToolTrace.push(
+				`${event.toolName}: ${status.failed ? "failed" : "succeeded"}${status.reason ? ` (${status.reason.slice(0, 500)})` : ""}`,
+			);
+			if (this.completionToolTrace.length > 20) {
+				this.completionToolTrace.shift();
+			}
+			if (status.failed) {
+				this.lastToolFailure = {
+					toolName: event.toolName,
+					toolCallId: event.toolCallId,
+					exitCode: status.exitCode,
+					reason: status.reason || "工具返回失败，但未提供具体原因。",
+				};
+				this.successfulToolAfterFailure = false;
+			} else if (this.lastToolFailure) {
+				this.successfulToolAfterFailure = true;
+			}
+		}
+
 		if (
-			this.isEmptyStopRecoveryEnabled() &&
+			this.isCompletionGuardEnabled() &&
 			this.activeCompletionPolicy === "chat_guard" &&
 			eventType === "agent_end" &&
-			this.pendingCompletionCandidate
+			(this.pendingPromiseStop || this.pendingCompletionCandidate)
 		) {
 			this.deferredAgentEndEvent = event;
 			return;
@@ -622,8 +649,6 @@ export class OriginOSAgent {
 			this.lastModelError = new Error(errorMessage);
 			return;
 		}
-		if (!this.isEmptyStopRecoveryEnabled()) return;
-
 		const text = Array.isArray(event.message.content)
 			? event.message.content
 					.filter((block: any) => block.type === "text" && block.text != null)
@@ -637,15 +662,14 @@ export class OriginOSAgent {
 			if (
 				this.activeCompletionPolicy === "chat_guard" &&
 				(event.message as AssistantMessage).stopReason === "stop" &&
-				toolCallCount === 0 &&
-				text.trim().length === 0
+				toolCallCount === 0
 			) {
 				this.pendingCompletionCandidate = {
 					message: event.message,
 					text,
 					stopReason: (event.message as AssistantMessage).stopReason,
 					toolCallCount,
-					repeatedResponse: false,
+					repeatedResponse: this.assistantLoopGuardTriggered,
 				};
 			}
 		}
@@ -924,6 +948,66 @@ export class OriginOSAgent {
 			};
 			this.emitCompletionFailureReport();
 		}
+	}
+
+	private async runWithCompletionGuard(
+		start: () => Promise<void>,
+	): Promise<void> {
+		if (!this.agent) {
+			throw new Error("Agent 未初始化");
+		}
+
+		await start();
+		this.throwIfModelStreamFailed();
+		if (!this.isCompletionGuardEnabled()) {
+			return;
+		}
+		await this.judgePendingCompletion();
+		let recoveryAttempt = 0;
+
+		while (
+			this.pendingPromiseStop &&
+			recoveryAttempt < DEFAULT_COMPLETION_RECOVERY_LIMIT
+		) {
+			recoveryAttempt += 1;
+			this.pendingPromiseStop = false;
+
+			const recoveryMessage: SyntheticUserMessage = {
+				role: "user",
+				content: [{
+					type: "text",
+					text: buildCompletionRecoveryMessage(
+						"",
+						this.lastToolFailure,
+						recoveryAttempt,
+					),
+				}],
+			};
+			this.hiddenMessages.add(recoveryMessage);
+			logInfo(
+				`[LLM CompletionGuard] recovering incomplete stop — attempt=${recoveryAttempt}/${DEFAULT_COMPLETION_RECOVERY_LIMIT}`,
+			);
+			try {
+				await this.agent.prompt(recoveryMessage as unknown as AgentMessage);
+				this.throwIfModelStreamFailed();
+				await this.judgePendingCompletion();
+			} catch (error) {
+				this.lastToolFailure = {
+					toolName: "agent-recovery",
+					reason: error instanceof Error ? error.message : String(error),
+				};
+				this.pendingPromiseStop = false;
+				this.emitCompletionFailureReport();
+				return;
+			}
+		}
+
+		if (!this.pendingPromiseStop) {
+			return;
+		}
+
+		this.pendingPromiseStop = false;
+		this.emitCompletionFailureReport();
 	}
 
 	private emitCompletionFailureReport(): void {
@@ -1337,8 +1421,12 @@ export class OriginOSAgent {
 			if (completionPolicy === "task_runtime") {
 				await this.agent.prompt(message as string, images);
 				this.throwIfModelStreamFailed();
-			} else {
+			} else if (this.isEmptyStopRecoveryEnabled()) {
 				await this.runWithEmptyStopRecovery(
+					() => this.agent!.prompt(message as string, images),
+				);
+			} else {
+				await this.runWithCompletionGuard(
 					() => this.agent!.prompt(message as string, images),
 				);
 			}
@@ -1387,7 +1475,11 @@ export class OriginOSAgent {
 				this.throwIfModelStreamFailed();
 				return;
 			}
-			await this.runWithEmptyStopRecovery(() => this.agent!.continue());
+			if (this.isEmptyStopRecoveryEnabled()) {
+				await this.runWithEmptyStopRecovery(() => this.agent!.continue());
+				return;
+			}
+			await this.runWithCompletionGuard(() => this.agent!.continue());
 		} finally {
 			this.activeCompletionPolicy = "chat_guard";
 		}

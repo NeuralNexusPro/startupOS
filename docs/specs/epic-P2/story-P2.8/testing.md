@@ -106,6 +106,14 @@
 - `node scripts/check-architecture-boundaries.cjs --self-test`：43 个导入用例 × 2 个 CWD 通过。
 - 本轮冻结公共契约与读取端口；文件持久化、撤销写入、UI/E2E 和 80% 覆盖率 Goal 仍属于后续实施，未伪报完成。
 
+## 2026-09-22 持久化验收证据
+
+- `pnpm exec vitest run --config vitest.config.ts src/lib/features/solution/__tests__/execution-contract.test.ts src/lib/features/solution/__tests__/execution-contract-store.test.ts`：9/9 通过，覆盖 confirmed 发布门控、确定性 hash、不可变读取、禁止覆盖、精确版本、篡改检测和独立撤销。
+- `pnpm exec tsc -p tsconfig.json --noEmit`：通过。
+- `pnpm lint:boundaries`：905 个生产文件，0 条诊断。
+- `git diff --check`：通过。
+- UI/E2E、P2.5/P2.6/P2.7 回归和 80% 覆盖率 Goal 仍未完成。
+
 ## 变更历史
 
 | 日期       | 变更         |

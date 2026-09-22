@@ -1,7 +1,7 @@
 # Story 9.42: 多 Agent 任务与解决方案执行契约对齐
 
 **Epic:** 9 - 多 Agent 协作  
-**状态:** Planning  
+**状态:** In Progress（T1 契约绑定与 Run/WorkItem ledger 已实现）
 **Owner:** OriginOS Team  
 **创建日期:** 2026-07-28  
 **最后更新:** 2026-07-28
@@ -50,7 +50,7 @@
 - [x] Story 初始化
 - [x] Workflow 设计时边界确认
 - [x] 测试用例定义
-- [ ] 对接 P2.8 的 SolutionExecutionContract 公共读取端口
+- [x] 对接 P2.8 的 SolutionExecutionContract 公共读取端口
 - [ ] 实施
 - [ ] 自动化验证 Goal
 - [ ] Review
@@ -62,6 +62,11 @@
 | 2026-07-28 | 创建 Story，定义 `pi-tasks` 与 collaboration WorkItem 分层 |
 | 2026-07-28 | Workflow 收敛到解决方案设计阶段，运行时改为执行已审批 SolutionExecutionContract |
 | 2026-07-28 | 契约编译和发布迁移到 P2.8，9.42 仅消费执行契约 |
+
+## 2026-09-22 实施进度
+
+- 已实现 `CollaborationExecutionStore`：精确读取 approved contract，校验 contractId/hash/撤销状态，创建 frozen `CollaborationRunSnapshot` 和契约内 WorkItem DAG，并支持 pause/resume/cancel 原子持久化与恢复。
+- 尚未实现真实 Worker 执行、Verifier、Evidence Bridge、HITL、Attempt/lease fencing 和操作回执对账；Story 仍为 In Progress，不得宣称验收完成。
 
 ## 2026-09-14：项目语义执行规划补充
 

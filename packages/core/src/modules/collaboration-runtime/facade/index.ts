@@ -25,6 +25,14 @@ export { subscribeToEvents, subscribeToRuntimeEvents, unsubscribeFromEvents, cli
 // Re-export — dag-runner 公共 API
 // ============================================================================
 export { executeSession, abortSession } from "./dag-runner";
+export {
+  CollaborationExecutionStore,
+  type CollaborationExecutionPort,
+  type CollaborationRunSnapshot,
+  type CollaborationWorkItem,
+  type SolutionTaskBinding,
+  type StartCollaborationRunInput,
+} from "./contract-execution";
 
 // ============================================================================
 // Re-export — hitl-dispatcher 公共 API

@@ -1,15 +1,23 @@
-## ADDED Requirements
+# Agent Session Task Runtime 规格
 
-### Requirement: Agent 与 RoleAgent 提供当前会话任务入口
-系统 SHALL 仅在 Agent 与 RoleAgent 会话输入框工具栏显示创建任务入口；点击入口 MUST 在当前消息区建立未提交任务草稿卡片，不得创建新 Session、Workflow 或正式 Task。
+## Purpose
+
+定义 Agent、RoleAgent 与 Skill 在当前 Session 中创建、执行、恢复和完成正式 `pi-tasks`
+任务的产品契约，确保普通聊天与 Task Runtime 互斥、canonical 状态唯一、Evidence Gate
+不可绕过，并保证跨进程协议与旧 Session 兼容。
+
+## Requirements
+
+### Requirement: Agent、RoleAgent 与 Skill 提供当前会话任务入口
+系统 SHALL 仅在 Agent、RoleAgent 与 Skill 会话输入框工具栏显示创建任务入口；点击入口 MUST 在当前消息区建立未提交任务草稿卡片，不得创建新 Session、Workflow 或正式 Task。
 
 #### Scenario: 创建并取消任务草稿
 - **WHEN** 用户在 Agent 或 RoleAgent 会话点击创建任务并填写目标后取消
 - **THEN** 系统移除 renderer 草稿，不写入 Session，不调用 `task_plan`，当前聊天保持可用
 
-#### Scenario: Skill 会话不显示任务入口
+#### Scenario: Skill 会话复用任务入口
 - **WHEN** 用户打开普通 Skill 会话
-- **THEN** 输入框不得显示 Story 9.41 的创建任务入口
+- **THEN** 输入框显示 Story 9.41 的创建任务入口，并复用与 Agent/RoleAgent 相同的 Runtime、IPC 与持久化边界
 
 ### Requirement: 提交草稿后在原 Session 建立唯一正式 Task
 系统 MUST 在用户提交任务草稿后，在当前 Session 与当前 Pi branch execution context 中进入 planning lease，并通过受控 task tool 创建唯一正式 Task。
@@ -140,4 +148,3 @@
 #### Scenario: Agent 创建任务
 - **WHEN** 用户在普通 Agent 输入框提交任务草稿
 - **THEN** 系统使用该 Agent 当前 Session、工作目录和工具权限创建并执行 Task
-
