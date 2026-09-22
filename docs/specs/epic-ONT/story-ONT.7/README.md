@@ -1,10 +1,10 @@
 # Story ONT.7：Context Projection Protocol
 
 **Epic:** ONT  
-**状态:** 🟡 In Progress（ONT7-T1 Done）
+**状态:** ✅ Done（ONT7-T1 / ONT7-T2 Done）
 **Owner:** Architecture / Core  
-**Task:** ONT7-T1  
-**最后更新:** 2026-09-18
+**Task:** ONT7-T1 / ONT7-T2
+**最后更新:** 2026-09-22
 
 ## User Story
 
@@ -17,8 +17,10 @@
 - [x] projection 覆盖九类最小运行语义。
 - [x] checkpoint 可表达 cursor、revision、attempt 和 lease epoch。
 - [x] ONT7-T1 不实现存储、调度或自动恢复。
+- [x] ONT7-T2 提供按 execution identity 的 projection query 与 latest 语义。
+- [x] ONT7-T2 精确解析 fact references，失败时返回结构化错误且不返回部分结果。
 
-完整 Story 仍需后续工作包实现 projection append/query 与持久化适配。
+现有 store 已提供 projection JSONL append/read；ONT7-T2 只补公共查询与只读 resolver，不提前实现上层适配、授权或恢复协调。
 
 ## 文档
 
