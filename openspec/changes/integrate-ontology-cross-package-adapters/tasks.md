@@ -8,7 +8,7 @@
 ## 2. Core 应用服务
 
 - [x] 2.1 `ONT8-T1-C`（串行；依赖：1.2；角色：Core service subagent；写入：`packages/core/src/lib/features/project/` service、exports、unit/integration tests）实现精确 ontology/contract/task/run scope 门控与只读聚合；以旧版本、越权、跨项目、缺失能力和投影重建测试验证 fail closed 且无第二事实源。完成证据：新增 `ontology-cross-package-service.ts` 并由 `project/index.ts` 公共导出；core `tsc --noEmit` 通过；定向 service tests 4/4 通过，覆盖语义上下文、投影失败、只读 task 检查和 mutation `CAPABILITY_NOT_READY` fail closed。
-- [ ] 2.2 `ONT8-T1-D`（串行；依赖：2.1；角色：恢复协议 subagent；写入：同一 Core service 的 mutation/recovery 路径与测试）接通 intent → OSDK receipt → WorkItem acceptance → Evidence 对账；以重复 ID、内容冲突、旧 epoch、Action 后崩溃和未知外部回执测试验证不重复副作用。
+- [x] 2.2 `ONT8-T1-D`（串行；依赖：2.1；角色：恢复协议 subagent；写入：同一 Core service 的 mutation/recovery 路径与测试）接通 intent → OSDK receipt → WorkItem acceptance → Evidence 对账；以重复 ID、内容冲突、旧 epoch、Action 后崩溃和未知外部回执测试验证不重复副作用。完成证据：扩展版本化 mutation 契约与 WorkItem/Evidence 恢复端口，Core service 接通 OSDK 幂等提交、精确 contract/task/run 校验、Run 启动与 Task 控制；13/13 定向 service tests 与 3/3 contract tests 覆盖重复请求、内容冲突、Action 后中断、旧 lease epoch、未知外部回执和 fail-closed 启动，core `tsc --noEmit` 通过。
 
 ## 3. Transport Adapters
 
