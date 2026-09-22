@@ -100,6 +100,17 @@ describe('RuleWizard', () => {
     expect(onSave.mock.calls[0]?.[0].conditions).toEqual(initial.conditions);
   });
 
+  it('requires an explicit connector for ambiguous legacy rules', () => {
+    const wecomOne = { ...connector, id: 'wecom-one', source: 'wecom' as const, mode: 'webhook' as const };
+    const wecomTwo = { ...wecomOne, id: 'wecom-two' };
+    const initial: PerceptionTriggerRule = { id: 'legacy-wecom', enabled: true, sources: ['wecom'], eventTypes: ['message.received'], conditions: [], target: { kind: 'role-agent', id: 'assistant' }, execution: { requireHitl: false, maxAttempts: 3 }, createdAt: now, updatedAt: now };
+    const grants = [{ target: { kind: 'role-agent' as const, id: 'assistant' }, enabled: true, createdAt: now, updatedAt: now }];
+    render(<RuleWizard connectors={[wecomOne, wecomTwo]} grants={grants} initial={initial} onSave={vi.fn()} onCancel={vi.fn()} />);
+    expect(screen.getByLabelText('来源')).toHaveValue('');
+    expect(screen.getByRole('alert')).toHaveTextContent('该历史规则未记录具体感知源');
+    expect(screen.getByRole('button', { name: '保存规则' })).toBeDisabled();
+  });
+
   it('generates a valid rule ID and explains invalid manual IDs before saving', () => {
     const onSave = vi.fn<[PerceptionTriggerRule], Promise<void>>(async () => undefined);
     const grants = [{ target: { kind: 'project' as const, id: 'project-1' }, enabled: true, createdAt: now, updatedAt: now }];

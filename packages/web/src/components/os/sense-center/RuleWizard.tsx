@@ -15,7 +15,12 @@ export function RuleWizard({ connectors, grants, jevProvider, initial, onSave, o
   const initialConnectorId = initial?.conditions.find((condition) => condition.path === 'connectorId' && condition.operator === 'equals' && typeof condition.value === 'string')?.value;
   const initialCondition = initial?.conditions.find((condition) => condition.path !== 'connectorId');
   const [id, setId] = useState(() => initial?.id ?? `rule-${Date.now().toString(36)}`);
-  const [connectorId, setConnectorId] = useState(() => connectors.find((item) => item.id === initialConnectorId)?.id ?? connectors.find((item) => initial?.sources.includes(item.source))?.id ?? connectors[0]?.id ?? '');
+  const [connectorId, setConnectorId] = useState(() => {
+    const explicit = connectors.find((item) => item.id === initialConnectorId)?.id;
+    if (explicit || !initial) return explicit ?? connectors[0]?.id ?? '';
+    const matching = connectors.filter((item) => initial.sources.includes(item.source));
+    return matching.length === 1 ? matching[0]!.id : '';
+  });
   const connectorGrants = useMemo(() => enabledGrants.filter((grant) =>
     (!grant.allowedConnectorIds || grant.allowedConnectorIds.includes(connectorId))
     && (!grant.allowedRuleIds || grant.allowedRuleIds.includes(id))), [connectorId, enabledGrants, id]);
@@ -69,7 +74,7 @@ export function RuleWizard({ connectors, grants, jevProvider, initial, onSave, o
   return <form onSubmit={(event) => void submit(event)} className="mb-4 space-y-4 rounded border border-blue-600 bg-slate-900 p-4" aria-label={initial ? '编辑触发规则' : '创建触发规则'}>
     <div className="grid gap-3 md:grid-cols-2">
       <Field label="规则 ID"><input required disabled={Boolean(initial)} aria-label="规则 ID" value={id} onChange={(event) => setId(event.target.value)} aria-describedby="rule-id-hint" className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 disabled:text-slate-500" /><span id="rule-id-hint" className="text-xs text-slate-400">{initial ? '规则 ID 创建后不可修改' : '已自动生成；如需修改，只能使用英文、数字和 . _ : -'}</span></Field>
-      <Field label="来源"><select required value={connectorId} onChange={(event) => setConnectorId(event.target.value)} className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2">{connectors.map((item) => <option key={item.id} value={item.id}>{item.id} ({item.source})</option>)}</select></Field>
+      <Field label="来源"><select required value={connectorId} onChange={(event) => setConnectorId(event.target.value)} className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2">{initial && !initialConnectorId && <option value="">请选择原规则使用的感知源</option>}{connectors.map((item) => <option key={item.id} value={item.id}>{item.id} ({item.source})</option>)}</select></Field>
       <Field label="白名单字段"><select value={path} onChange={(event) => setPath(event.target.value as TriggerFilterPath)} className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2"><option value="content.text">正文</option><option value="content.subject">主题</option><option value="actor.externalId">发送者</option><option value="conversation.externalId">会话</option><option value="type">事件类型</option></select></Field>
       <Field label="条件"><div className="flex gap-2"><select value={operator} onChange={(event) => setOperator(event.target.value as TriggerFilterOperator)} className="rounded border border-slate-700 bg-slate-950 px-2"><option value="contains">包含</option><option value="equals">等于</option><option value="startsWith">开头为</option></select><input value={value} onChange={(event) => setValue(event.target.value)} className="min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-3 py-2" /></div></Field>
     </div>
@@ -81,6 +86,7 @@ export function RuleWizard({ connectors, grants, jevProvider, initial, onSave, o
     <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={requireHitl} onChange={(event) => setRequireHitl(event.target.checked)} />高风险动作要求人工确认（HITL）</label>
     <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />{initial ? '规则已启用' : '创建后立即启用'}</label>
     {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
+    {initial && !initialConnectorId && !connectorId && <p role="alert" className="text-sm text-yellow-400">该历史规则未记录具体感知源，请选择后保存以完成绑定。</p>}
     {enabledGrants.length === 0 && <p role="alert" className="text-sm text-yellow-400">尚无允许外部触发的目标，请先在目标设置中授予权限。</p>}
     {enabledGrants.length > 0 && connectorGrants.length === 0 && <p role="alert" className="text-sm text-yellow-400">当前感知源尚未获得任何目标授权，请先在目标设置中为它授予权限。</p>}
     {routingMode === 'jev' && connectorGrants.length === 0 && <p role="alert" className="text-sm text-yellow-400">先到目标权限添加可触发资产。</p>}
