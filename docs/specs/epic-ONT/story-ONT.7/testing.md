@@ -20,3 +20,13 @@
 - `pnpm lint`：0 error，2983 条既有 warning。
 - 架构边界：879 个生产文件 0 诊断，43 个导入用例 × 2 个 CWD 自测通过。
 - OpenSpec strict validation 与 `git diff --check` 通过。
+
+## ONT7-T2 验收
+
+- 精确查询：project、ontology/version、context identity、kind、revision 各过滤项均有正反例。
+- 隔离：同一 Agent 的不同 task/work item/attempt 不得串线。
+- latest：更高 revision 胜出；同 revision 最后追加胜出；返回顺序确定。
+- resolver：完整引用返回精确 fact records；缺失、跨版本和 concept/fact type 归属错误均结构化拒绝且无部分结果。
+- 只读：成功与失败路径前后的 projection/facts JSONL 内容不变。
+- 回归：ONT7-T1 类型样例、store projection round-trip 与 OSDK facts/actions 测试继续通过。
+- 命令：core `tsc`、ontology 定向 Vitest、`pnpm lint`、`pnpm lint:boundaries`、架构 self-test、OpenSpec strict validation、`git diff --check`。
