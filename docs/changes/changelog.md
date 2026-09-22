@@ -2,6 +2,15 @@
 
 ---
 
+## 2026-09-22 — feat：完成 Context Projection 查询与 Resolver
+
+**类型**：feat
+**影响模块**：`packages/core/src/lib/features/ontology/`、`docs/specs/epic-ONT/`、OpenSpec `implement-context-projection-query-resolver`
+**摘要**：完成 ONT7-T2。`CanonicalOntologyOSDK` 新增 projection 精确查询与只读 resolver，支持 project、ontology/version、context identity、kind 和 revision 过滤；latest 视图按 id 选择最高 revision，同 revision 以最后追加为准。Resolver 要求 fact refs 与 canonical ontology 和已接纳 facts 全字段精确匹配，失败返回结构化错误且不产生部分结果，不写入 facts/projections JSONL。ONT.7 Story 标记完成，ONT.8 仍待后续实施。
+
+---
+
+## 2026-09-21 — feat：Jev 受限感知决策路由
 ## 2026-09-21 — feat：Jev 受限感知决策路由
 
 **类型**：feat

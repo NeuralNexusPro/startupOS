@@ -18,4 +18,4 @@
 
 - [x] 4.1 Proposal owner 合并 Task commit 后运行 core `tsc`、ontology 定向 Vitest、`pnpm lint`、`pnpm lint:boundaries`、架构 self-test、OpenSpec strict validation 与 `git diff --check`；依赖：3.2；写入范围：Proposal integration branch；完成证据：全部命令退出码与既有 warning 说明。
 - [x] 4.2 Proposal owner 核对 Story verification goal：查询不串 context、latest 可复现、resolver fail closed、持久化无变化且下游未提前接线；依赖：4.1；写入范围：Story/OpenSpec 验证记录；完成证据：逐项验收结果。
-- [ ] 4.3 Proposal owner 将验证通过的 Proposal 合并到约定基线，归档 OpenSpec，并清理 Task/Proposal worktree 与分支；依赖：4.2；写入范围：git/OpenSpec；完成证据：合并提交、归档 strict validation 与 worktree 清单。
+- [x] 4.3 Proposal owner 将验证通过的 Proposal 合并到约定基线，归档 OpenSpec，并清理 Task/Proposal worktree 与分支；依赖：4.2；写入范围：git/OpenSpec；完成证据：合并提交、归档 strict validation 与 worktree 清单。

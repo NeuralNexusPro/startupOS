@@ -30,3 +30,12 @@
 - 只读：成功与失败路径前后的 projection/facts JSONL 内容不变。
 - 回归：ONT7-T1 类型样例、store projection round-trip 与 OSDK facts/actions 测试继续通过。
 - 命令：core `tsc`、ontology 定向 Vitest、`pnpm lint`、`pnpm lint:boundaries`、架构 self-test、OpenSpec strict validation、`git diff --check`。
+
+## 2026-09-22 验证结果
+
+- ontology 定向 Vitest：store 与 OSDK 2 files / 15 tests 全部通过。
+- `pnpm exec tsc -p packages/core/tsconfig.json --noEmit` 通过。
+- `pnpm lint` 通过，0 error；3052 条既有 warning。
+- `pnpm lint:boundaries`：901 个生产文件 0 诊断。
+- 架构检查器 self-test：43 个导入用例 × 2 个 CWD 通过。
+- OpenSpec strict validation 与 `git diff --check` 通过。
