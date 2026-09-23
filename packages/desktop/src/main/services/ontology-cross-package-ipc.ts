@@ -1,10 +1,10 @@
 import type { IpcMainInvokeEvent } from 'electron';
 
-import type { IpcResponse } from '@originos/core/lib/integrations/electron/ipc-protocol';
+import type { IpcResponse } from '../../../../core/src/lib/integrations/electron/ipc-protocol';
 import {
   CanonicalOntologyOSDK,
   CanonicalOntologyStore,
-} from '@originos/core/lib/features/ontology';
+} from '../../../../core/src/lib/features/ontology';
 import {
   OntologyCrossPackageService,
   ProjectTaskBoardService,
@@ -14,11 +14,11 @@ import {
   type OntologyCrossPackageWorkItemRecoveryInput,
   type OntologyCrossPackageWorkItemRecoveryPort,
   type ProjectTaskSource,
-} from '@originos/core/lib/features/project';
-import { SolutionExecutionContractStore } from '@originos/core/lib/features/solution';
-import { getDataRoot } from '@originos/core/lib/paths';
+} from '../../../../core/src/lib/features/project';
+import { SolutionExecutionContractStore } from '../../../../core/src/lib/features/solution';
+import { getDataRoot } from '../../../../core/src/lib/paths';
 
-import { CollaborationExecutionStore } from '@originos/core/modules/collaboration-runtime/facade';
+import { CollaborationExecutionStore } from '../../../../core/src/modules/collaboration-runtime/facade';
 
 import { IPC_CHANNELS } from '../ipc-protocol';
 
