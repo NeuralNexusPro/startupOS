@@ -1,5 +1,10 @@
+import type { IpcResponse } from '@originos/core/lib/integrations/electron/ipc-protocol';
+
 export interface ElectronBridge {
   isElectron: true;
+  ontologyCrossPackage: {
+    invoke: (request: unknown) => Promise<IpcResponse>;
+  };
   ipcRenderer: {
     send: (channel: string, payload?: unknown) => void;
     invoke: <T>(channel: string, ...args: unknown[]) => Promise<T>;

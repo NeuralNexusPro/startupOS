@@ -87,6 +87,7 @@ export const IPC_CHANNELS = {
   ONTOLOGY_CONFIRM: 'ontology:confirm',
   ONTOLOGY_CHAT: 'ontology:chat',
   ONTOLOGY_GENERATE: 'ontology:generate',
+  ONTOLOGY_CROSS_PACKAGE_INVOKE: 'ontology:cross-package:invoke',
   USER_AGENT_LIST: 'user-agent:list',
   USER_AGENT_GET: 'user-agent:get',
   USER_SKILL_LIST: 'user-skill:list',

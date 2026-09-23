@@ -37,6 +37,7 @@
   "dependencies": {
     "@anthropic-ai/sandbox-runtime": "^0.0.51",
     "@larksuiteoapi/node-sdk": "1.73.3",
+    "@originos/core": "workspace:*",
     "@originos/perception-plugin-dingtalk": "workspace:*",
     "@originos/perception-plugin-email": "workspace:*",
     "@originos/perception-plugin-feishu": "workspace:*",

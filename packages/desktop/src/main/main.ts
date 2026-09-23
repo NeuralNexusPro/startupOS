@@ -1,5 +1,5 @@
 import './setup-data-root';
-import { app, BrowserWindow, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import path from 'node:path';
 import { spawn, type ChildProcess } from 'node:child_process';
 import net from 'node:net';
@@ -29,6 +29,10 @@ import { captureConsoleCall, serializeConsoleArgs } from './services/console-log
 import { processHealthMonitor } from './services/process-health-monitor';
 import { createDefaultDesktopChannelRuntime } from './services/channel-runtime-service';
 import { AgentTaskRuntimeIpcController } from './services/agent-task-runtime-ipc';
+import {
+  createOntologyCrossPackageService,
+  OntologyCrossPackageIpcController,
+} from './services/ontology-cross-package-ipc';
 import { JevProviderService } from './services/jev-provider/jev-provider-service';
 import { attachDevToolsContextMenu } from './devtools-context-menu';
 import { agentManager } from '../../../core/src/lib/features/agent/server/index';
@@ -440,6 +444,13 @@ app.whenReady().then(() => {
   ipcServices.push(new OntologyDataService());
   ipcServices.push(new CollaborationService());
   const taskRuntimeIpc = new AgentTaskRuntimeIpcController();
+  ipcServices.push(new OntologyCrossPackageIpcController({
+    ipc: ipcMain,
+    service: createOntologyCrossPackageService(),
+    isTrustedSender: sender => BrowserWindow.getAllWindows().some(
+      window => !window.isDestroyed() && window.webContents.id === sender.id
+    ),
+  }));
   ipcServices.push(new AgentProjectService());
   ipcServices.push(new WorkspaceService());
   ipcServices.push(new EntryExportService());
