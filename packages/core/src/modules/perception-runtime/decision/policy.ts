@@ -20,7 +20,6 @@ export function evaluateDecisionPolicy(
       return { action: 'pending', reason: 'JEV_INVALID_RESPONSE' };
     }
     if (answer.needsUserAttention < 0.5 && !forceUserAttention) return { action: 'ignore', selectedKey: 'ignore' };
-    if (answer.deliveryMode.choice === 'notify_user') return { action: 'pending', reason: 'NOTIFY_USER' };
   }
   const routeCandidates = parallelDecision ? candidates.filter((candidate) => candidate.action === 'dispatch') : candidates;
   if (!selected || !validUnit(confidence) || !validUnit(needsHitl) || !validDistribution(answer?.routeTarget?.probabilities, routeCandidates)) {
@@ -30,6 +29,7 @@ export function evaluateDecisionPolicy(
   if (selected.action === 'ignore') return { action: 'ignore', selectedKey: 'ignore' };
   if (selected.action === 'notify_user') return { action: 'pending', reason: 'NOTIFY_USER' };
   if (!hasClearWinner(answer!.routeTarget.probabilities, routeCandidates)) return { action: 'pending', reason: 'TARGET_AMBIGUOUS' };
+  if (parallelDecision && answer!.deliveryMode.choice === 'notify_user') return { action: 'pending', reason: 'NOTIFY_USER' };
   return { action: 'dispatch', selectedKey: selected.key, candidate: selected };
 }
 
