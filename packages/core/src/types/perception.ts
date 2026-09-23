@@ -104,7 +104,7 @@ export interface JevProviderSummary {
   baseUrl: string;
   model: string;
   credentialConfigured: boolean;
-  credentialSource?: 'environment' | 'secure-store';
+  credentialSource?: 'secure-store';
   updatedAt?: string;
 }
 export interface JevDecisionRequest {

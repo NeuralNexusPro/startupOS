@@ -11,7 +11,11 @@ const initial: JevProviderSummary = {
   credentialConfigured: false,
 };
 
-export function JevProviderSection() {
+export interface JevProviderSectionHandle {
+  save(): Promise<boolean>;
+}
+
+export const JevProviderSection = React.forwardRef<JevProviderSectionHandle>(function JevProviderSection(_props, ref) {
   const [draft, setDraft] = React.useState(initial);
   const [apiKey, setApiKey] = React.useState('');
   const [busy, setBusy] = React.useState(false);
@@ -25,14 +29,18 @@ export function JevProviderSection() {
     return () => { mounted = false; };
   }, []);
 
-  async function save() {
+  const save = React.useCallback(async (): Promise<boolean> => {
     setBusy(true); setMessage(null);
     try {
       const saved = await updateJevProvider({ enabled: draft.enabled, baseUrl: draft.baseUrl, model: draft.model, ...(apiKey.trim() ? { apiKey } : {}) });
       setDraft(saved); setApiKey(''); setMessage({ kind: 'status', text: 'Jev 配置已保存' });
+      return true;
     } catch (error) { setMessage({ kind: 'alert', text: errorCode(error) }); }
     finally { setBusy(false); }
-  }
+    return false;
+  }, [apiKey, draft.baseUrl, draft.enabled, draft.model]);
+
+  React.useImperativeHandle(ref, () => ({ save }), [save]);
 
   async function clearCredential() {
     if (!window.confirm('确定清除 Jev API Key？')) return;
@@ -61,18 +69,17 @@ export function JevProviderSection() {
       {message ? <p role={message.kind} className={message.kind === 'alert' ? 'text-xs text-red-200' : 'text-xs text-emerald-200'}>{message.text}</p> : null}
       <div className="flex gap-2">
         <button type="button" disabled={busy} onClick={() => void save()} className="rounded-lg bg-white/15 px-3 py-1.5 text-xs text-white disabled:opacity-40">保存 Jev 配置</button>
-        {draft.credentialConfigured && draft.credentialSource !== 'environment' ? <button type="button" disabled={busy} onClick={() => void clearCredential()} className="rounded-lg border border-red-400/20 px-3 py-1.5 text-xs text-red-200 disabled:opacity-40">清除 Jev 凭据</button> : null}
+        {draft.credentialConfigured ? <button type="button" disabled={busy} onClick={() => void clearCredential()} className="rounded-lg border border-red-400/20 px-3 py-1.5 text-xs text-red-200 disabled:opacity-40">清除 Jev 凭据</button> : null}
       </div>
     </section>
   );
-}
+});
 
 function credentialLabel(summary: JevProviderSummary): string {
-  if (summary.credentialSource === 'environment') return '已由 TYPESAFE_API_KEY 配置';
   if (summary.credentialConfigured) return '已由安全存储配置';
   return '未配置凭据';
 }
 function errorCode(error: unknown): string {
   const code = error instanceof Error ? error.message : 'INTERNAL_ERROR';
-  return code === 'SECURE_STORAGE_UNAVAILABLE' ? '当前运行环境不能安全保存 API Key，请由服务端配置 TYPESAFE_API_KEY' : code;
+  return code === 'SECURE_STORAGE_UNAVAILABLE' ? '当前运行环境不能安全保存 API Key，请在桌面应用中配置' : code;
 }

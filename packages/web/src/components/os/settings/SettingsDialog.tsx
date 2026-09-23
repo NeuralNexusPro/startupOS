@@ -13,7 +13,7 @@ import {
   subscribeToUpdateEvents,
   type UpdateState,
 } from '@originos/core/lib/integrations/electron/services/auto-update';
-import { JevProviderSection } from './JevProviderSection';
+import { JevProviderSection, type JevProviderSectionHandle } from './JevProviderSection';
 
 interface SettingsDialogProps {
   open: boolean;
@@ -41,6 +41,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     currentVersion: 'unknown',
   });
   const [updateBusy, setUpdateBusy] = React.useState(false);
+  const jevSectionRef = React.useRef<JevProviderSectionHandle | null>(null);
 
   React.useEffect(() => {
     if (open) {
@@ -93,7 +94,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   if (!open) return null;
 
-  function handleSave() {
+  async function handleSave() {
     const anthropicMapping = parseMappingText(mappingText.anthropic);
     const openaiMapping = parseMappingText(mappingText.openai);
     if (!anthropicMapping.ok || !openaiMapping.ok) {
@@ -101,6 +102,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       return;
     }
     setMappingError(null);
+    if (await jevSectionRef.current?.save() === false) return;
     saveLLMSettings({
       ...draft,
       provider: activeTab,
@@ -301,7 +303,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               <p className="text-[10px] leading-4 text-red-200/80">{mappingError}</p>
             ) : null}
           </div>
-          <JevProviderSection />
+          <JevProviderSection ref={jevSectionRef} />
           <UpdateSettingsSection
             state={updateState}
             busy={updateBusy}
@@ -320,7 +322,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
             取消
           </button>
           <button
-            onClick={handleSave}
+            onClick={() => void handleSave()}
             className="rounded-lg bg-white/15 px-4 py-1.5 text-xs font-medium text-white hover:bg-white/20 transition-colors"
           >
             保存

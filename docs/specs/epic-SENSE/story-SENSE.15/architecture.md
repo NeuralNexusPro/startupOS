@@ -124,7 +124,6 @@ interface JevDecisionReceipt {
 |---|---|
 | Provider 非敏感配置 | `data/model-providers/jev.json`（DataFile） |
 | Desktop API Key | `safeStorage` 加密记录，文件权限 0600；配置仅保存 opaque ref |
-| Server API Key | `TYPESAFE_API_KEY` / 部署 SecretProvider |
 | 决策规则 | 既有 `data/perception/rules/` |
 | 决策回执/待处理状态 | `data/perception/decisions/{decisionId}.json`（DataFile） |
 | 执行幂等 | 既有 `data/perception/leases/` |

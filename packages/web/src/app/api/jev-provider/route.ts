@@ -9,7 +9,6 @@ import {
 const MAX_BODY_BYTES = 20_000;
 function provider(): JevProviderConfigService {
   return new JevProviderConfigService(getDataRoot(), {
-    environmentApiKey: process.env['TYPESAFE_API_KEY'],
     environment: process.env['NODE_ENV'] === 'development' ? 'development' : 'production',
     allowDevelopmentLoopback: process.env['ORIGINOS_ALLOW_JEV_LOOPBACK'] === '1',
   });

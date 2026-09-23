@@ -176,7 +176,7 @@ function DecisionStage({ receipt, rule, grants, connectorId, busyAction, error, 
     { label: '是否需要人工确认', values: receipt.answers?.needsHitl === undefined ? undefined : { need_hitl: receipt.answers.needsHitl, no_hitl: 1 - receipt.answers.needsHitl } },
   ].filter((item): item is { label: string; values: Record<string, number> } => Boolean(item.values));
   return <TraceStage icon={<Activity className="h-4 w-4" />} title="Jev 决策" time={receipt.updatedAt} tone={resolved ? 'green' : receipt.status === 'failed' ? 'red' : 'yellow'}>
-    <p role="status" className={`mb-3 text-sm font-bold ${resolved ? 'text-green-400' : 'text-yellow-400'}`}>{decisionStatusLabel(receipt.status)}</p>
+    <p role="status" className={`mb-3 text-sm font-bold ${resolved ? 'text-green-400' : 'text-yellow-400'}`}>{decisionStatusLabel(receipt.status, receipt.reason)}</p>
     <div className="grid gap-3 text-sm md:grid-cols-2"><Info label="目录 / 策略版本" value={`${receipt.catalogVersion} / ${receipt.policyVersion}`} /><Info label="目标选择" value={receipt.selectedKey || receipt.answers?.routeTarget.choice || '—'} /><Info label="目标置信度" value={confidence === undefined ? '—' : String(confidence)} /><Info label="执行方式" value={delivery ? `${delivery.choice} · ${delivery.confidence}` : '—'} /><Info label="是否需要感知" value={receipt.answers?.needsUserAttention === undefined ? '—' : String(receipt.answers.needsUserAttention)} /><Info label="紧急程度" value={receipt.answers?.urgency.score === undefined ? '—' : String(receipt.answers.urgency.score)} /><Info label="HITL / 原因" value={receipt.reason || (rule?.execution.requireHitl ? '规则要求人工确认' : '无需人工确认')} /><Info label="Lease" value={receipt.leaseId || '—'} /><Info label="ResultRef" value={receipt.resultRef || '—'} /></div>
     <details className="mt-3 rounded border border-slate-700 bg-slate-950 p-3"><summary className="cursor-pointer text-xs font-bold text-blue-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">候选与完整概率（{receipt.candidateKeys.length}）</summary><ul className="mt-2 space-y-1 text-xs text-slate-300">{receipt.candidateKeys.map((key) => <li key={key} className="flex justify-between gap-3"><code className="break-all">{key}</code><span>{probabilities?.[key] ?? '—'}</span></li>)}</ul></details>
     {parallelProbabilities.length > 0 && <details className="mt-3 rounded border border-slate-700 bg-slate-950 p-3"><summary className="cursor-pointer text-xs font-bold text-blue-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">并行判断与完整概率</summary><div className="mt-2 grid gap-3 text-xs text-slate-300 md:grid-cols-2">{parallelProbabilities.map(({ label, values }) => <div key={label}><p className="mb-1 font-bold text-slate-400">{label}</p>{Object.entries(values!).map(([key, value]) => <div key={key} className="flex justify-between gap-3"><code>{key}</code><span>{value}</span></div>)}</div>)}</div></details>}
@@ -198,11 +198,12 @@ function candidateAuthorized(candidate: PerceptionDecisionCandidate, grants: Ext
     && (!grant.allowedConnectorIds || grant.allowedConnectorIds.includes(connectorId)) && (!grant.allowedRuleIds || grant.allowedRuleIds.includes(ruleId)));
 }
 function ruleRouteLabel(rule: PerceptionTriggerRule): string { return rule.routingMode === 'jev' ? `Jev 决策 / ${dispatchCandidates(rule).length} 个目标候选` : `${targetKindLabel(rule.target.kind)} / ${rule.target.id}`; }
-function decisionStatusLabel(status: JevDecisionReceipt['status']): string {
+function decisionStatusLabel(status: JevDecisionReceipt['status'], reason?: string): string {
   if (status === 'pending') return '等待你的选择';
   if (status === 'auto-executed') return '已自动执行';
   if (status === 'user-executed') return '已按你的选择执行';
   if (status === 'ignored') return '已忽略';
+  if (reason === 'JEV_UNAUTHORIZED') return 'Jev 授权失败，请更新 API Key 后重试';
   return '决策失败，可人工选择或重试';
 }
 function isRetryable(reason?: string): boolean { return Boolean(reason?.startsWith('JEV_')); }

@@ -153,15 +153,16 @@ describe('SenseCenter', () => {
     await waitFor(() => expect(resolveDecision).toHaveBeenCalledWith('decision-1', 'project:project-1'));
   });
 
-  it('offers retry for safe Provider errors and disables all actions after resolution', async () => {
+  it('explains Provider authorization failures and disables all actions after resolution', async () => {
     const now = '2026-09-04T08:00:00.000Z';
     const candidate = { key: 'project:project-1', action: 'dispatch' as const, target: { kind: 'project' as const, id: 'project-1' } };
     const rule: PerceptionTriggerRule = { id: 'rule-jev', enabled: true, routingMode: 'jev', sources: ['email'], eventTypes: ['mail.received'], conditions: [], decision: { catalogVersion: '1.0', policyVersion: '1.0', candidates: [{ key: 'ignore', action: 'ignore' }, { key: 'notify_user', action: 'notify_user' }, candidate] }, execution: { requireHitl: false, maxAttempts: 1 }, createdAt: now, updatedAt: now };
     state.grants = [{ target: candidate.target, enabled: true, createdAt: now, updatedAt: now }];
     state.decisionCandidateGrants = state.grants;
     state.eventTraces = [{ event: { schemaVersion: '1.0', id: 'event-jev', source: 'email', sourceEventId: 'mail-jev', connectorId: 'email-main', type: 'mail.received', occurredAt: now, receivedAt: now, actor: { externalId: 'sender@example.com' }, content: { subject: 'Provider failed' }, provenance: { rawPayloadRef: 'inbox://safe' } }, audit: [], ruleTriggers: [{ ruleId: rule.id, matchedAt: now, rule }] }];
-    state.decisions = [{ id: 'decision-failed', eventId: 'event-jev', ruleId: rule.id, catalogVersion: '1.0', policyVersion: '1.0', candidateKeys: ['ignore', candidate.key], threshold: 0.8, status: 'failed', reason: 'JEV_TIMEOUT', createdAt: now, updatedAt: now }];
+    state.decisions = [{ id: 'decision-failed', eventId: 'event-jev', ruleId: rule.id, catalogVersion: '1.0', policyVersion: '1.0', candidateKeys: ['ignore', candidate.key], threshold: 0.8, status: 'failed', reason: 'JEV_UNAUTHORIZED', createdAt: now, updatedAt: now }];
     const view = render(<SenseCenter />); fireEvent.click(screen.getByRole('button', { name: '事件记录' }));
+    expect(screen.getByRole('status')).toHaveTextContent('Jev 授权失败，请更新 API Key 后重试');
     fireEvent.click(screen.getByRole('button', { name: '重试决策' }));
     await waitFor(() => expect(retryDecision).toHaveBeenCalledWith('decision-failed'));
     view.unmount();

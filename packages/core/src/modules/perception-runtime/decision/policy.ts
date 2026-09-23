@@ -29,7 +29,7 @@ export function evaluateDecisionPolicy(
   if (selected.action === 'ignore') return { action: 'ignore', selectedKey: 'ignore' };
   if (selected.action === 'notify_user') return { action: 'pending', reason: 'NOTIFY_USER' };
   if (!hasClearWinner(answer!.routeTarget.probabilities, routeCandidates)) return { action: 'pending', reason: 'TARGET_AMBIGUOUS' };
-  if (parallelDecision && answer!.deliveryMode.choice === 'notify_user') return { action: 'pending', reason: 'NOTIFY_USER' };
+  if (parallelDecision && answer!.deliveryMode?.choice === 'notify_user') return { action: 'pending', reason: 'NOTIFY_USER' };
   return { action: 'dispatch', selectedKey: selected.key, candidate: selected };
 }
 
