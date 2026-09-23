@@ -2,6 +2,14 @@
 
 ---
 
+## 2026-09-23 — release：发布 OriginOS CE v0.3.2
+
+**类型**：release
+**影响模块**：`package.json`、`packages/desktop/package.json`、`docs/changes/releases/v0.3.2/`
+**摘要**：基于 `desktop-v0.3.1` 发布修复版本 `0.3.2`，只包含感知目标歧义和 Jev 配置保存两个修复，不引入 ONT 新功能。
+
+---
+
 ## 2026-09-21 — feat：Jev 受限感知决策路由
 
 **类型**：feat
