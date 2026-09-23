@@ -1,6 +1,7 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import * as React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { JevProviderSection } from '../JevProviderSection';
+import { JevProviderSection, type JevProviderSectionHandle } from '../JevProviderSection';
 
 const api = vi.hoisted(() => ({ get: vi.fn(), update: vi.fn(), clear: vi.fn() }));
 vi.mock('@/services/jevProviderService', () => ({ getJevProvider: api.get, updateJevProvider: api.update, clearJevProviderCredential: api.clear }));
@@ -30,5 +31,17 @@ describe('JevProviderSection', () => {
     fireEvent.click(screen.getByRole('button', { name: '清除 Jev 凭据' }));
     await waitFor(() => expect(api.clear).toHaveBeenCalledTimes(1));
     expect(window.confirm).toHaveBeenCalled();
+  });
+
+  it('exposes its save operation for the dialog-level save button', async () => {
+    const ref = React.createRef<JevProviderSectionHandle>();
+    render(<JevProviderSection ref={ref} />);
+    await screen.findByText('已由安全存储配置');
+    fireEvent.click(screen.getByRole('switch', { name: '启用 Jev 决策模型' }));
+    fireEvent.change(screen.getByLabelText('Jev API Key'), { target: { value: 'outer-secret-marker' } });
+    await act(async () => {
+      expect(await ref.current?.save()).toBe(true);
+    });
+    expect(api.update).toHaveBeenCalledWith(expect.objectContaining({ enabled: true, apiKey: 'outer-secret-marker' }));
   });
 });

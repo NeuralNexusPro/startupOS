@@ -11,7 +11,7 @@
 - 现有模型配置页增加独立的「Jev 决策模型」区域，不把 Jev 混入 Agent 主 LLM 选择。
 - 支持启停、`baseUrl`、`model`（默认 `jev-latest`）和 API Key 单向提交。
 - GET/IPC 只返回 `credentialConfigured` 与凭据来源，不返回 API Key、密文或 secret reference。
-- Desktop 使用系统安全存储；服务端可使用 `TYPESAFE_API_KEY`。无安全存储时拒绝页面写入，不允许退化为明文 JSON。
+- Jev API Key 只使用 Desktop 系统安全存储。无安全存储时拒绝页面写入，不允许退化为明文 JSON 或环境变量。
 
 ### R2 决策规则
 
