@@ -135,10 +135,10 @@ function capabilityFailure(requestId: string): IpcResponse<OntologyCrossPackageR
       code: 'CAPABILITY_NOT_READY',
       issues: [{
         code: 'CAPABILITY_NOT_READY',
-        message: 'The required production capability is not ready',
+        message: 'The request was rejected at the transport boundary',
       }],
       retryable: true,
-      remediation: 'Retry after the required capability is available.',
+      remediation: 'Correct the request or retry with the current references.',
     },
   };
   return {
