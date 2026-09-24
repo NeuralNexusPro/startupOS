@@ -32,6 +32,15 @@ export {
   type CollaborationWorkItem,
   type SolutionTaskBinding,
   type StartCollaborationRunInput,
+  type WorkItemExecutionRequest,
+  type WorkItemAttempt,
+  type WorkerReceipt,
+  type VerifierResult,
+  type EvidenceReceipt,
+  type WorkItemWorkerPort,
+  type WorkItemVerifierPort,
+  type WorkItemEvidenceSink,
+  type CollaborationExecutionDependencies,
 } from "./contract-execution";
 
 // ============================================================================
