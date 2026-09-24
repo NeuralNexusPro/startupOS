@@ -68,6 +68,12 @@
 - 已实现 `CollaborationExecutionStore`：精确读取 approved contract，校验 contractId/hash/撤销状态，创建 frozen `CollaborationRunSnapshot` 和契约内 WorkItem DAG，并支持 pause/resume/cancel 原子持久化与恢复。
 - 尚未实现真实 Worker 执行、Verifier、Evidence Bridge、HITL、Attempt/lease fencing 和操作回执对账；Story 仍为 In Progress，不得宣称验收完成。
 
+## 2026-09-24 实施进度
+
+- 已在 `CollaborationExecutionStore` 落地 `942-T2` Core 执行账本：WorkItem 持久化 attempt、单调 lease epoch、执行 intent、Worker receipt、Verifier result 与 Evidence receipt。
+- 已通过注入的公开 Worker、Verifier、Evidence Sink 端口完成 `intent → worker receipt → verifier → evidence receipt` 的幂等对账。失败、占位验证、未知证据回执、暂停/取消与旧 epoch 输出均 fail closed；重启只补未确认阶段，不重发已有 Worker Action。
+- 定向 Core 回归通过，但真实 Agent Worker 和 Story 9.41 `pi-tasks` Evidence Sink 的宿主装配、HITL 及完整端到端验证仍待实施；Story 保持 `In Progress`。
+
 ## 2026-09-14：项目语义执行规划补充
 
 942-T1负责按语义上下文实例化任务与就绪门控，942-T2负责持久恢复、回执核对与Evidence幂等。复用pi-tasks唯一Task事实源。9.43看板消费同一投影。仍为Planning。

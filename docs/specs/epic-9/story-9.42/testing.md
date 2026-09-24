@@ -185,6 +185,14 @@ Goal 输出必须包含测试命令、AC/TC evidence、人工验证步骤和剩�
 - Evidence、版本隔离、HITL 和恢复测试通过。
 - lint、core 回归和 package smoke 通过。
 
+## 2026-09-24 Core 验证证据
+
+- `pnpm --filter @originos/core exec vitest run src/modules/collaboration-runtime/facade/__tests__/contract-execution.test.ts src/lib/features/solution/__tests__/execution-contract.test.ts src/lib/features/solution/__tests__/execution-contract-store.test.ts`：3 个文件、19 项通过。
+- `pnpm --filter @originos/core exec tsc -p tsconfig.json --noEmit`：通过。
+- `pnpm lint:boundaries`：扫描 912 个生产文件，0 条诊断；`node scripts/check-architecture-boundaries.cjs --self-test`：43 个导入用例 × 2 个 CWD 通过。
+- 已覆盖 TC-U1–U6 的契约、精确版本、binding、状态隔离、Evidence 幂等和 Verifier fail-closed 核心路径；已覆盖 TC-I1、I2、I4、I6、I7、I9、I10 的 Core ledger 部分。
+- TC-I5 的真实 `pi-tasks` Evidence Sink、TC-I8 HITL、完整 Agent Worker 及 Windows/macOS package smoke 尚未执行，不能据此标记 Story 完成。
+
 ## 变更历史
 
 | 日期 | 变更 |
