@@ -376,3 +376,20 @@ describe("Task runtime shutdown and restore", () => {
     restored.destroy();
   });
 });
+
+
+describe("AgentTaskRuntimeCoordinator evidence boundary", () => {
+	it("submits verified evidence through the current public Session host scope", async () => {
+		const harness = createHarness({ status: "active" });
+		await harness.coordinator.createTask({ version: 1, requestId: "create-evidence-task", sessionId: "session-1", objective: "Evidence task" });
+		(harness.host.invoke as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ eventId: "evidence-event-1", revisionBefore: 1, revisionAfter: 2, stateHash: "evidence-hash-1" });
+		await expect(harness.coordinator.recordVerifiedEvidence({ version: 1, requestId: "evidence-request-1", taskId: "T1", stepId: "T1-S1", summary: "Verifier passed", references: ["verification-1"], artifactRefs: ["artifact-1"], verifier: "deterministic-fixture", contentHash: "sha256:verification-content" })).resolves.toMatchObject({ eventId: "evidence-event-1", revisionAfter: 2 });
+		expect(harness.host.invoke).toHaveBeenLastCalledWith(expect.objectContaining({ toolName: "task_evidence", scope: expect.objectContaining({ sessionId: "session-1", bridgeEpoch: 3 }), input: expect.objectContaining({ task_id: "T1", step_ids: ["T1-S1"], passed: "true" }) }));
+	});
+
+	it("rejects evidence outside the current canonical task", async () => {
+		const harness = createHarness({ status: "active" });
+		await harness.coordinator.createTask({ version: 1, requestId: "create-other-task", sessionId: "session-1", objective: "Evidence task" });
+		await expect(harness.coordinator.recordVerifiedEvidence({ version: 1, requestId: "evidence-request-2", taskId: "other-task", summary: "Verifier passed", references: ["verification-1"], artifactRefs: ["artifact-1"], verifier: "deterministic-fixture", contentHash: "sha256:verification-content" })).rejects.toThrow(/当前 Agent Session/);
+	});
+});

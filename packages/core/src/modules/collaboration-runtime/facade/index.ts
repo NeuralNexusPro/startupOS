@@ -42,6 +42,7 @@ export {
   type WorkItemEvidenceSink,
   type CollaborationExecutionDependencies,
 } from "./contract-execution";
+export { createAgentTaskEvidenceSink } from "./task-runtime-evidence-sink";
 
 // ============================================================================
 // Re-export — hitl-dispatcher 公共 API

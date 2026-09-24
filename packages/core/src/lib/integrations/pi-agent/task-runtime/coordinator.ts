@@ -13,6 +13,9 @@ import {
 	AGENT_TASK_RUNTIME_PROTOCOL_VERSION,
 	createIdleAgentTaskExecutionState,
 	type AgentTaskExecutionStateV1,
+	type AgentTaskEvidencePort,
+	type AgentTaskEvidenceReceiptV1,
+	type AgentTaskEvidenceSubmissionV1,
 	type AgentTaskProjectionV1,
 	type AgentTaskRuntimePersistenceV1,
 	type AgentTaskRuntimeSnapshotV1,
@@ -158,7 +161,7 @@ function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
-export class AgentTaskRuntimeCoordinator {
+export class AgentTaskRuntimeCoordinator implements AgentTaskEvidencePort {
 	private readonly controller = new TaskContinuationController();
 	private readonly hostFactory: TaskSessionHostFactory;
 	private host: TaskSessionHost | null = null;
@@ -248,6 +251,57 @@ export class AgentTaskRuntimeCoordinator {
 
 	getPersistenceState(): AgentTaskRuntimePersistenceV1 {
 		return structuredClone(this.state);
+	}
+
+	/** Controlled public Evidence command that retains the current Session scope. */
+	async recordVerifiedEvidence(input: AgentTaskEvidenceSubmissionV1): Promise<AgentTaskEvidenceReceiptV1> {
+		await this.initialize();
+		if (input.version !== AGENT_TASK_RUNTIME_PROTOCOL_VERSION) {
+			throw new AgentTaskRuntimeProtocolError("不支持的 Evidence protocol version");
+		}
+		if (!input.requestId.trim() || !input.taskId.trim() || !input.summary.trim()
+			|| !input.references.length || !input.artifactRefs.length || !input.verifier.trim() || !input.contentHash.trim()) {
+			throw new AgentTaskRuntimeProtocolError("Evidence 请求缺少必填字段");
+		}
+		const projection = this.state.execution.projection;
+		if (!projection || projection.taskId !== input.taskId) {
+			throw new AgentTaskRuntimeConflictError("Evidence 只能写入当前 Agent Session 的活动任务");
+		}
+		const host = this.requireHost();
+		const scope = host.getScope();
+		const result = await host.invoke({
+			version: 1,
+			requestId: input.requestId,
+			toolName: "task_evidence",
+			scope: {
+				sessionId: scope.sessionId,
+				expectedCursor: scope.cursor,
+				expectedRevision: scope.revision,
+				bridgeEpoch: scope.bridgeEpoch,
+			},
+			input: {
+				task_id: input.taskId,
+				type: "agent_output",
+				level: "runtime",
+				summary: input.summary,
+				passed: "true",
+				references: [...input.references],
+				...(input.stepId ? { step_ids: [input.stepId] } : {}),
+				quality: {
+					source: "collaboration-runtime",
+					reproducible: true,
+					verifier: input.verifier,
+					artifactRefs: [...input.artifactRefs],
+					observedOutput: input.contentHash,
+				},
+			},
+		});
+		const receipt = result as Partial<AgentTaskEvidenceReceiptV1> & { isError?: boolean };
+		if (receipt.isError || typeof receipt.eventId !== "string" || typeof receipt.revisionBefore !== "number"
+			|| typeof receipt.revisionAfter !== "number" || typeof receipt.stateHash !== "string") {
+			throw new AgentTaskRuntimeProtocolError("task_evidence 未返回可确认的回执");
+		}
+		return { version: 1, requestId: input.requestId, eventId: receipt.eventId, revisionBefore: receipt.revisionBefore, revisionAfter: receipt.revisionAfter, stateHash: receipt.stateHash };
 	}
 
 	async createTask(request: CreateAgentTaskRequestV1): Promise<AgentTaskRuntimeSnapshotV1> {

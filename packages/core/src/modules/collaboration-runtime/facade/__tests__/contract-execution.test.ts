@@ -9,6 +9,7 @@ import {
   ontology,
 } from '../../../../lib/features/solution/__tests__/execution-contract-fixtures';
 import { CollaborationExecutionStore } from '../contract-execution';
+import { createAgentTaskEvidenceSink } from '../task-runtime-evidence-sink';
 import type { SolutionExecutionContract } from '../../../../lib/features/solution';
 
 async function setup(): Promise<{
@@ -379,6 +380,54 @@ describe('WorkItem execution ledger', () => {
       recovered.workItems.find((item) => item.id === prepare.id)?.status
     ).toBe('completed');
     expect(calls).toEqual({ worker: 0, verifier: 1, evidence: 1 });
+  });
+
+  it('adapts verified WorkItem evidence through the public Agent Task runtime port', async () => {
+    const submissions: unknown[] = [];
+    const sink = createAgentTaskEvidenceSink({
+      recordVerifiedEvidence: async (submission) => {
+        submissions.push(submission);
+        return {
+          version: 1,
+          requestId: submission.requestId,
+          eventId: 'task-event-1',
+          revisionBefore: 2,
+          revisionAfter: 3,
+          stateHash: 'task-state-3',
+        };
+      },
+    });
+    const { run } = await executableSetup();
+    const item = run.workItems[0]!;
+    const attempt = {
+      attemptId: 'attempt-1',
+      leaseEpoch: 1,
+      requestId: 'request-1',
+      payloadHash: 'sha256:payload',
+      status: 'evidence_pending' as const,
+      createdAt: '2026-09-24T00:00:00.000Z',
+      updatedAt: '2026-09-24T00:00:00.000Z',
+      workerReceipt: receipt(),
+    };
+    await expect(
+      sink.record({
+        run,
+        workItem: item,
+        attempt,
+        workerReceipt: receipt(),
+        verifierResult: passingVerification((await executableSetup()).contract),
+        idempotencyKey: 'evidence-request-1',
+      })
+    ).resolves.toEqual({
+      receiptId: 'task-event-1',
+      status: 'accepted',
+      evidenceRef: 'pi-task-event:task-event-1',
+    });
+    expect(submissions[0]).toMatchObject({
+      requestId: 'evidence-request-1',
+      taskId: item.binding.parentTaskId,
+      stepId: item.binding.parentStepId,
+    });
   });
 
   it('does not auto-start paused or cancelled runs during recovery', async () => {
