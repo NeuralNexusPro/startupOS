@@ -72,7 +72,8 @@
 
 - 已在 `CollaborationExecutionStore` 落地 `942-T2` Core 执行账本：WorkItem 持久化 attempt、单调 lease epoch、执行 intent、Worker receipt、Verifier result 与 Evidence receipt。
 - 已通过注入的公开 Worker、Verifier、Evidence Sink 端口完成 `intent → worker receipt → verifier → evidence receipt` 的幂等对账。失败、占位验证、未知证据回执、暂停/取消与旧 epoch 输出均 fail closed；重启只补未确认阶段，不重发已有 Worker Action。
-- 定向 Core 回归通过，但真实 Agent Worker 和 Story 9.41 `pi-tasks` Evidence Sink 的宿主装配、HITL 及完整端到端验证仍待实施；Story 保持 `In Progress`。
+- 已将 `createAgentTaskEvidenceSink()` 装配到 Story 9.41 的公开受控 `task_evidence` 命令。Evidence 提交复用当前 Session 的 cursor、revision 与 bridge epoch，不读取或修改 `pi-tasks` 私有状态。
+- 真实 Agent Worker 和 Verifier 仍缺少接受 frozen WorkItem attempt/lease、返回结构化 receipt/artifact ref 的公共端口；旧 Supervisor DAG 只消费 manifest，不能安全接入。HITL 和完整端到端验证仍待实施；Story 保持 `In Progress`。
 
 ## 2026-09-14：项目语义执行规划补充
 
