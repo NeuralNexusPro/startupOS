@@ -44,9 +44,9 @@ describe('SenseCenter drafts during live refresh', () => {
     const connector = { id: 'wecom-main', source: 'wecom' as const, mode: 'webhook' as const, enabled: true, settings: {}, secretConfigured: true, createdAt: now, updatedAt: now };
     usePerceptionStore.setState({ ...structuredClone(data), connectors: [connector], loading: false, error: undefined });
     fetchMock.mockResolvedValue({ ok: true, json: async () => ({ success: true, data: { ...structuredClone(data), connectors: [connector] } }) });
-    services.capabilities.mockResolvedValue([{ connectorId: connector.id, state: 'available', capabilityCount: 13, identityMode: 'user', delegatedActorCount: 1, writeEnabled: false }]);
+    services.capabilities.mockResolvedValue([{ connectorId: connector.id, state: 'available', capabilityCount: 13, identityMode: 'user', writeEnabled: false }]);
     await act(async () => { render(<SenseCenter />); });
-    expect(screen.getByText('办公能力：可用 · 13 项 · 用户授权 · 白名单 1 人 · 只读')).toBeInTheDocument();
+    expect(screen.getByText('办公能力：可用 · 13 项 · 用户授权 · 当前连接来信均可调用 · 只读')).toBeInTheDocument();
   });
   it('shows an explicit unsupported state for a platform without a safe office adapter', async () => {
     const connector = { id: 'feishu-main', source: 'feishu' as const, mode: 'stream' as const, enabled: true, settings: {}, secretConfigured: true, createdAt: now, updatedAt: now };
@@ -87,17 +87,17 @@ describe('SenseCenter drafts during live refresh', () => {
     fireEvent.change(screen.getByLabelText('目标资产'), { target: { value: 'assistant' } }); fireEvent.change(screen.getByLabelText('限制感知源（可选）'), { target: { value: 'email-main' } });
     const form = screen.getByRole('form', { name: '添加目标权限' }); await act(async () => { await usePerceptionStore.getState().load({ silent: true }); });
     expect(screen.getByRole('form', { name: '添加目标权限' })).toBe(form); expect(screen.getByLabelText('目标类型')).toHaveValue('role-agent'); expect(screen.getByLabelText('目标资产')).toHaveValue('assistant'); expect(screen.getByLabelText('限制感知源（可选）')).toHaveValue('email-main');
-    expect(services.assets).toHaveBeenCalledTimes(2);
+    expect(services.assets).toHaveBeenCalledWith('role-agent');
   });
   it('retains rule edits across refresh', async () => {
     await act(async () => { render(<SenseCenter />); }); await click('触发规则'); await click('创建规则');
     fireEvent.change(screen.getByLabelText('规则 ID'), { target: { value: 'draft-rule' } });
     fireEvent.change(screen.getByLabelText('白名单字段'), { target: { value: 'content.subject' } });
-    fireEvent.click(screen.getByLabelText('Jev 决策')); fireEvent.click(screen.getByLabelText(/project\/project-main/));
+    fireEvent.click(screen.getByLabelText('智能决策模式')); fireEvent.click(screen.getByLabelText('未命名项目'));
     fireEvent.click(screen.getByLabelText('高风险动作要求人工确认（HITL）'));
     const form = screen.getByRole('form', { name: '创建触发规则' }); await act(async () => { await usePerceptionStore.getState().load({ silent: true }); });
-    expect(screen.getByRole('form', { name: '创建触发规则' })).toBe(form); expect(screen.getByLabelText('规则 ID')).toHaveValue('draft-rule'); expect(screen.getByLabelText('白名单字段')).toHaveValue('content.subject'); expect(screen.getByLabelText('高风险动作要求人工确认（HITL）')).not.toBeChecked();
-    expect(screen.getByLabelText('Jev 决策')).toBeChecked(); expect(screen.getByLabelText(/project\/project-main/)).toBeChecked(); expect(services.provider).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('form', { name: '创建触发规则' })).toBe(form); expect(screen.getByLabelText('规则 ID')).toHaveValue('draft-rule'); expect(screen.queryByLabelText('白名单字段')).not.toBeInTheDocument(); expect(screen.getByLabelText('高风险动作要求人工确认（HITL）')).not.toBeChecked();
+    expect(screen.getByLabelText('智能决策模式')).toBeChecked(); expect(screen.getByLabelText('未命名项目')).toBeChecked(); expect(services.provider).toHaveBeenCalledTimes(1);
     await tick(); expect(services.provider).toHaveBeenCalledTimes(1);
   });
   it('resets a draft when explicitly cancelled and reopened', async () => {

@@ -33,6 +33,11 @@ export function requireChannelOfficeCapabilities(): ChannelOfficeCapabilityPort 
   throw new Error('IM_CAPABILITY_UNAVAILABLE');
 }
 
+export function hasChannelOfficeCapabilities(): boolean {
+  const context = storage.getStore();
+  return Boolean((context && !context.lease.signal.aborted) || fallbackPort);
+}
+
 export function setChannelOfficeCapabilityFallback(port?: ChannelOfficeCapabilityPort): void {
   fallbackPort = port;
 }

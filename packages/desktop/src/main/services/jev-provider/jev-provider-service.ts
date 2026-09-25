@@ -52,4 +52,11 @@ export class SnapshotJevDecisionPort implements PerceptionDecisionPort {
     const snapshot = await this.provider.getSnapshot();
     return this.createAdapter(snapshot).decide(request);
   }
+
+  async classifyPendingChoiceFeedback(request: JevDecisionRequest): Promise<number> {
+    const snapshot = await this.provider.getSnapshot();
+    const adapter = this.createAdapter(snapshot);
+    if (!adapter.classifyPendingChoiceFeedback) return (await adapter.decide(request)).isChoiceFeedback ?? 0;
+    return adapter.classifyPendingChoiceFeedback(request);
+  }
 }

@@ -81,6 +81,8 @@ export class OntologyCrossPackageService {
         return this.queryFacts(request);
       case 'query_projection':
         return this.queryProjection(request);
+      case 'list_project_tasks':
+        return this.listProjectTasks(request);
       case 'inspect_bound_task':
         return this.inspectBoundTask(request);
       case 'start_bound_task':
@@ -180,6 +182,20 @@ export class OntologyCrossPackageService {
   ): Promise<OntologyCrossPackageResponse> {
     const task = await this.deps.taskBoard.getProjectTask(request.projectId, request.taskId);
     return this.success(request, task, { revision: task.task.revision });
+  }
+
+  private async listProjectTasks(
+    request: Extract<OntologyCrossPackageRequest, { type: 'list_project_tasks' }>
+  ): Promise<OntologyCrossPackageResponse> {
+    const page = await this.deps.taskBoard.listProjectTasks({
+      projectId: request.projectId,
+      ...(request.cursor === undefined ? {} : { cursor: request.cursor }),
+      ...(request.limit === undefined ? {} : { limit: request.limit }),
+    });
+    return this.success(request, page, {
+      revision: page.revision,
+      ...(page.cursor === undefined ? {} : { cursor: page.cursor }),
+    });
   }
 
   private async submitAction(

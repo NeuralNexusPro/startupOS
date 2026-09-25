@@ -56,4 +56,29 @@ describe('ontology cross package contract', () => {
     const invalidRequest: OntologyCrossPackageRequest = invalid;
     expect(invalidRequest.type).toBe('control_bound_task');
   });
+
+  it('defines a project task page request without an ontology version', () => {
+    const listRequest: OntologyCrossPackageRequest = {
+      contractVersion: '1',
+      requestId: 'request-2',
+      actorId: 'actor-1',
+      projectId: 'project-1',
+      type: 'list_project_tasks',
+      cursor: 'cursor-1',
+      limit: 50,
+    };
+
+    expect(listRequest).not.toHaveProperty('ontologyVersion');
+  });
+
+  it('preserves retry as a controlled project task action', () => {
+    const retryRequest: OntologyCrossPackageRequest = {
+      ...request,
+      type: 'control_bound_task',
+      action: 'retry',
+      expectedRevision: 1,
+    };
+
+    expect(retryRequest.action).toBe('retry');
+  });
 });

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import type {
   JsonValue,
@@ -18,7 +19,7 @@ const FORBIDDEN_ARGUMENT_KEYS = new Set([
 ]);
 
 export interface WeComOfficeCli {
-  run(args: readonly string[], signal: AbortSignal): Promise<string>;
+  run(args: readonly string[], signal: AbortSignal, configDir?: string): Promise<string>;
 }
 
 interface ServiceSchema {
@@ -47,16 +48,45 @@ function resolveCliBinary(): string {
 }
 
 class DefaultWeComOfficeCli implements WeComOfficeCli {
-  async run(args: readonly string[], signal: AbortSignal): Promise<string> {
+  async run(args: readonly string[], signal: AbortSignal, configDir?: string): Promise<string> {
     return new Promise((resolve, reject) => {
+      const env = { ...process.env };
+      if (configDir) {
+        mkdirSync(configDir, { recursive: true, mode: 0o700 });
+        // The CLI's token override takes precedence over its credential file.
+        // A parent-shell token or injected headers must not cross bot boundaries.
+        for (const key of Object.keys(env)) {
+          if (key === 'WECOM_CLI_ACCESS_TOKEN' || key === 'WECOM_CLI_LOG_DIR' || key === 'WECOM_CLI_LOG_LEVEL' ||
+            key.startsWith('WECOM_CLI_ADDITIONAL_HEADERS')) delete env[key];
+        }
+        env.WECOM_CLI_CONFIG_DIR = configDir;
+      }
       execFile(resolveCliBinary(), [...args], {
-        encoding: 'utf8', maxBuffer: MAX_OUTPUT_BYTES, timeout: 30_000, windowsHide: true, signal,
+        encoding: 'utf8', maxBuffer: MAX_OUTPUT_BYTES,
+        timeout: args[0] === 'auth' && args[1] === 'init' ? 5 * 60_000 : 30_000,
+        windowsHide: true, signal,
+        env,
       }, (error, stdout) => {
-        if (error) reject(new Error('WECOM_OFFICE_CLI_FAILED'));
-        else resolve(stdout);
+        if (error) {
+          // The CLI can exit nonzero with a structured platform rejection on stdout.
+          // Only inspect the numeric error code; never expose the response body.
+          const platformCode = parsePlatformErrorCode(stdout);
+          reject(new Error(platformCode === 850003 ? 'IM_CAPABILITY_SERVICE_AUTHORIZATION_REQUIRED'
+            : platformCode !== undefined ? 'IM_CAPABILITY_PLATFORM_REJECTED' : 'WECOM_OFFICE_CLI_FAILED'));
+        } else resolve(stdout);
       });
     });
   }
+}
+
+function parsePlatformErrorCode(output: string): number | undefined {
+  if (Buffer.byteLength(output) > MAX_OUTPUT_BYTES) return undefined;
+  try {
+    const response: unknown = JSON.parse(output);
+    if (!response || typeof response !== 'object' || Array.isArray(response)) return undefined;
+    const code = (response as Record<string, unknown>).errcode;
+    return typeof code === 'number' && Number.isInteger(code) && code !== 0 ? code : undefined;
+  } catch { return undefined; }
 }
 
 function parseObject(text: string): Record<string, JsonValue> {
@@ -171,37 +201,48 @@ function digest(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
+function catalogKey(context: PerceptionPluginRuntimeContext): string {
+  return JSON.stringify([context.connectorId, context.settings.botId, context.officeAuthDir]);
+}
+
 export class WeComOfficeCapabilityProvider implements PluginCapabilityProvider {
   private readonly cli: WeComOfficeCli;
-  private catalogPromise?: Promise<PluginCapabilityCatalog>;
-  private readonly schemas = new Map<string, Record<string, JsonValue>>();
+  private readonly catalogPromises = new Map<string, Promise<PluginCapabilityCatalog>>();
+  private readonly schemas = new Map<string, Map<string, Record<string, JsonValue>>>();
 
   constructor(cli: WeComOfficeCli = new DefaultWeComOfficeCli()) {
     this.cli = cli;
   }
 
-  list(_context: PerceptionPluginRuntimeContext, signal: AbortSignal): Promise<PluginCapabilityCatalog> {
-    return this.catalogPromise ??= this.loadCatalog(signal).catch((error) => {
-      this.catalogPromise = undefined;
+  list(context: PerceptionPluginRuntimeContext, signal: AbortSignal): Promise<PluginCapabilityCatalog> {
+    const key = catalogKey(context);
+    const cached = this.catalogPromises.get(key);
+    if (cached) return cached;
+    const loading = this.loadCatalog(context, signal).catch((error) => {
+      this.catalogPromises.delete(key);
       throw error;
     });
+    this.catalogPromises.set(key, loading);
+    return loading;
   }
 
-  private async loadCatalog(signal: AbortSignal): Promise<PluginCapabilityCatalog> {
-    const versionOutput = await this.cli.run(['--version'], signal);
+  private async loadCatalog(context: PerceptionPluginRuntimeContext, signal: AbortSignal): Promise<PluginCapabilityCatalog> {
+    const configDir = context.officeAuthDir;
+    const versionOutput = await this.cli.run(['--version'], signal, configDir);
     const providerVersion = /\b(\d+\.\d+\.\d+)\b/.exec(versionOutput)?.[1];
     if (!providerVersion) throw new Error('WECOM_OFFICE_CLI_INVALID_VERSION');
     const capabilities: PluginCapabilityCatalog['capabilities'] = [];
+    const schemas = new Map<string, Record<string, JsonValue>>();
     for (const service of SERVICES) {
-      const serviceSchema = parseObject(await this.cli.run([service, '--schema'], signal)) as unknown as ServiceSchema;
+      const serviceSchema = parseObject(await this.cli.run([service, '--schema'], signal, configDir)) as unknown as ServiceSchema;
       if (!Array.isArray(serviceSchema.methods)) throw new Error('WECOM_OFFICE_SCHEMA_INVALID');
       for (const summary of serviceSchema.methods) {
         if (!summary || typeof summary.name !== 'string' || typeof summary.description !== 'string') throw new Error('WECOM_OFFICE_SCHEMA_INVALID');
-        const operation = parseObject(await this.cli.run([...methodArgs(summary.name), '--schema'], signal)) as unknown as MethodSchema;
+        const operation = parseObject(await this.cli.run([...methodArgs(summary.name), '--schema'], signal, configDir)) as unknown as MethodSchema;
         if (operation.method !== summary.name || !operation.request || !operation.schemas) throw new Error('WECOM_OFFICE_SCHEMA_INVALID');
         const inputSchema = inlineSchema(operation.request, operation.schemas) as Record<string, JsonValue>;
         inputSchema.additionalProperties = false;
-        this.schemas.set(operation.method, inputSchema);
+        schemas.set(operation.method, inputSchema);
         capabilities.push({
           name: operation.method,
           description: operation.description || summary.description,
@@ -214,6 +255,7 @@ export class WeComOfficeCapabilityProvider implements PluginCapabilityProvider {
       }
     }
     capabilities.sort((left, right) => left.name.localeCompare(right.name));
+    this.schemas.set(catalogKey(context), schemas);
     return {
       revision: digest(JSON.stringify(capabilities)),
       provider: 'wecom-cli',
@@ -226,15 +268,22 @@ export class WeComOfficeCapabilityProvider implements PluginCapabilityProvider {
     let status: PluginCapabilityAuthorization['status'] = 'unknown';
     let identity = '';
     try {
-      const rawStatus = (await this.cli.run(['auth', 'show', '--status'], signal)).trim();
+      const rawStatus = (await this.cli.run(['auth', 'show', '--status'], signal, context.officeAuthDir)).trim();
       status = rawStatus === 'authorized' ? 'authorized' : rawStatus === 'unauthorized' ? 'needs_authorization' : 'unknown';
-      if (status === 'authorized') identity = (await this.cli.run(['identity', 'whoami'], signal)).trim();
+      const configuredBotId = typeof context.settings.botId === 'string' ? context.settings.botId.trim() : '';
+      if (status === 'authorized' && configuredBotId) {
+        const authDetails = await this.cli.run(['auth', 'show'], signal, context.officeAuthDir);
+        const authorizedBotId = /^Bot ID:\s*([^\s]+)\s*$/m.exec(authDetails)?.[1];
+        if (!authorizedBotId) status = 'unknown';
+        else if (authorizedBotId !== configuredBotId) status = 'needs_authorization';
+      }
+      if (status === 'authorized') identity = (await this.cli.run(['identity', 'whoami'], signal, context.officeAuthDir)).trim();
     } catch {
       status = 'unknown';
     }
     if (!identity) status = status === 'needs_authorization' ? status : 'unknown';
     const identityRef = identity ? `identity-${digest(identity)}` : 'identity-unavailable';
-    const catalog = this.catalogPromise ? await this.catalogPromise.catch(() => undefined) : undefined;
+    const catalog = await this.catalogPromises.get(catalogKey(context))?.catch(() => undefined);
     const scopes = status === 'authorized'
       ? [...new Set(catalog?.capabilities.flatMap((item) => item.requiredScopes) ?? [])].sort()
       : [];
@@ -248,8 +297,28 @@ export class WeComOfficeCapabilityProvider implements PluginCapabilityProvider {
     };
   }
 
-  validate(name: string, arguments_: Record<string, JsonValue>): boolean {
-    const schema = this.schemas.get(name);
+  async requestAuthorization(
+    context: PerceptionPluginRuntimeContext,
+    signal: AbortSignal
+  ): Promise<PluginCapabilityAuthorization> {
+    const current = await this.authorization(context, signal);
+    if (current.status === 'authorized') return current;
+    if (!context.officeAuthDir) throw new Error('IM_CAPABILITY_AUTHORIZATION_UNAVAILABLE');
+
+    // The CLI opens its browser-based QR flow. Its credential file is isolated
+    // by WECOM_CLI_CONFIG_DIR, so multiple WeCom connectors never share tokens.
+    try {
+      await this.cli.run(['auth', 'init', '--noninteractive'], signal, context.officeAuthDir);
+    } catch {
+      throw new Error('IM_CAPABILITY_AUTHORIZATION_REQUIRED');
+    }
+    const authorized = await this.authorization(context, signal);
+    if (authorized.status !== 'authorized') throw new Error('IM_CAPABILITY_AUTHORIZATION_REQUIRED');
+    return authorized;
+  }
+
+  validate(name: string, arguments_: Record<string, JsonValue>, context?: PerceptionPluginRuntimeContext): boolean {
+    const schema = context ? this.schemas.get(catalogKey(context))?.get(name) : undefined;
     if (!schema || containsForbiddenKey(arguments_)) return false;
     return validateSchema(schema, arguments_);
   }
@@ -260,10 +329,13 @@ export class WeComOfficeCapabilityProvider implements PluginCapabilityProvider {
     authorization: PluginCapabilityAuthorization,
     signal: AbortSignal
   ): Promise<JsonValue> {
-    if (authorization.status !== 'authorized' || !this.validate(input.name, input.arguments)) {
+    if (authorization.status !== 'authorized' || !this.validate(input.name, input.arguments, _context)) {
       throw new Error('WECOM_OFFICE_CAPABILITY_DENIED');
     }
-    const output = await this.cli.run([...methodArgs(input.name), '--json', JSON.stringify(input.arguments)], signal);
+    const output = await this.cli.run([...methodArgs(input.name), '--json', JSON.stringify(input.arguments)], signal, _context.officeAuthDir);
+    const platformCode = parsePlatformErrorCode(output);
+    if (platformCode !== undefined) throw new Error(platformCode === 850003
+      ? 'IM_CAPABILITY_SERVICE_AUTHORIZATION_REQUIRED' : 'IM_CAPABILITY_PLATFORM_REJECTED');
     return parseObject(output);
   }
 }

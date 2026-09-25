@@ -158,6 +158,10 @@ export interface CollaborationExecutionDependencies {
 export interface CollaborationExecutionPort {
   start(input: StartCollaborationRunInput): Promise<CollaborationRunSnapshot>;
   inspect(runId: string): Promise<CollaborationRunSnapshot>;
+  findByTask(
+    projectId: string,
+    parentTaskId: string,
+  ): Promise<CollaborationRunSnapshot | null>;
   pause(runId: string): Promise<CollaborationRunSnapshot>;
   resume(runId: string): Promise<CollaborationRunSnapshot>;
   cancel(runId: string): Promise<CollaborationRunSnapshot>;
@@ -315,6 +319,45 @@ export class CollaborationExecutionStore implements CollaborationExecutionPort {
   async inspect(runId: string): Promise<CollaborationRunSnapshot> {
     identifier(runId, 'runId');
     return this.readRun(runId);
+  }
+  async findByTask(
+    projectId: string,
+    parentTaskId: string,
+  ): Promise<CollaborationRunSnapshot | null> {
+    identifier(projectId, 'projectId');
+    identifier(parentTaskId, 'parentTaskId');
+    let files: Dirent[];
+    try {
+      files = await fs.readdir(
+        path.join(this.dataRoot, 'projects', projectId, 'collaboration-runs'),
+        { withFileTypes: true },
+      );
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw error;
+    }
+    const matches = await Promise.all(files
+      .filter((file) => file.isFile() && file.name.endsWith('.json'))
+      .map(async (file) => {
+        const snapshot = this.normalizeSnapshot(JSON.parse(
+          await fs.readFile(
+            path.join(this.dataRoot, 'projects', projectId, 'collaboration-runs', file.name),
+            'utf8',
+          ),
+        ) as CollaborationRunSnapshot);
+        if (snapshot.projectId !== projectId) {
+          throw new Error('Collaboration run crossed project scope');
+        }
+        assertIntegrity(await this.contractPort.verifyIntegrity(snapshot.contract));
+        return snapshot.binding.parentTaskId === parentTaskId
+          ? snapshot
+          : null;
+      }));
+    const runs = matches.filter((snapshot): snapshot is CollaborationRunSnapshot => Boolean(snapshot));
+    if (runs.length > 1) {
+      throw new Error('Multiple collaboration runs match one project task');
+    }
+    return runs[0] ?? null;
   }
   async pause(runId: string): Promise<CollaborationRunSnapshot> {
     return this.transition(runId, 'paused', ['running']);

@@ -41,7 +41,7 @@ export interface ExecutionLease {
 export interface PerceptionAuditEntry {
   id: string;
   action: 'inbox.accepted' | 'inbox.rejected' | 'event.created' | 'event.duplicate' | 'rule.matched' | 'target.denied' | 'lease.acquired' | 'lease.completed' | 'lease.failed' | 'trigger.dispatched'
-    | 'decision.requested' | 'decision.pending' | 'decision.resolved' | 'decision.failed';
+    | 'decision.requested' | 'decision.pending' | 'decision.resolved' | 'decision.failed' | 'decision.feedback' | 'decision.feedback.rejected';
   occurredAt: string; connectorId?: string; eventId?: string; detail?: JsonValue;
 }
 export interface PerceptionTargetResultSummary {
@@ -50,6 +50,7 @@ export interface PerceptionTargetResultSummary {
 export interface PerceptionRuleTriggerTrace {
   ruleId: string; matchedAt?: string; dispatchedAt?: string; finishedAt?: string;
   rule?: PerceptionTriggerRule; lease?: ExecutionLease; result?: PerceptionTargetResultSummary;
+  decisionContinuation?: { decisionId: string; originalEventId: string; status: string; reason?: string };
 }
 export interface PerceptionEventTrace {
   event: PerceptionEventV1; ruleTriggers: PerceptionRuleTriggerTrace[]; audit: PerceptionAuditEntry[];
@@ -77,6 +78,7 @@ export interface PerceptionTriggerTarget {
 export type PerceptionDecisionCandidate =
   | { key: 'ignore'; action: 'ignore' }
   | { key: 'notify_user'; action: 'notify_user' }
+  | { key: 'ask_user_to_choose_target'; action: 'ask_user_to_choose_target' }
   | { key: string; action: 'dispatch'; target: PerceptionTriggerTarget };
 export interface JevDecisionRuleConfig {
   catalogVersion: '1.0';
@@ -147,6 +149,7 @@ export interface JevDecisionReceipt {
 }
 export interface PerceptionDecisionPort {
   decide(request: JevDecisionRequest): Promise<JevDecisionAnswer>;
+  classifyPendingChoiceFeedback?(request: JevDecisionRequest): Promise<number>;
 }
 export type JevDecisionPort = PerceptionDecisionPort;
 export interface PerceptionTargetAuthorization {

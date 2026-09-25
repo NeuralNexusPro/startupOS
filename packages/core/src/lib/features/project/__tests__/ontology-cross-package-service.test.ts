@@ -382,6 +382,37 @@ describe('OntologyCrossPackageService', () => {
     });
   });
 
+  it('lists project tasks without requiring an ontology version', async () => {
+    let listInput: unknown;
+    const service = new OntologyCrossPackageService(deps({
+      taskBoard: {
+        ...taskBoard(),
+        async listProjectTasks(input) {
+          listInput = input;
+          return page;
+        },
+      },
+    }));
+
+    const response = await service.invoke({
+      contractVersion: '1',
+      requestId: 'request-1',
+      actorId: 'actor-1',
+      projectId: 'project-1',
+      type: 'list_project_tasks',
+      cursor: 'cursor-1',
+      limit: 20,
+    });
+
+    expect(listInput).toEqual({ projectId: 'project-1', cursor: 'cursor-1', limit: 20 });
+    expect(response).toMatchObject({
+      ok: true,
+      requestId: 'request-1',
+      revision: 1,
+      data: page,
+    });
+  });
+
   it('controls a bound task through the public project board boundary', async () => {
     const service = new OntologyCrossPackageService(deps());
     const response = await service.invoke({

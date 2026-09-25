@@ -8,13 +8,15 @@ import {
 import {
   OntologyCrossPackageService,
   ProjectTaskBoardService,
+  RuntimeProjectTaskSource,
   type OntologyCrossPackageRequest,
   type OntologyCrossPackageResponse,
   type OntologyCrossPackageTransportPort,
   type OntologyCrossPackageWorkItemRecoveryInput,
   type OntologyCrossPackageWorkItemRecoveryPort,
-  type ProjectTaskSource,
 } from '../../../../core/src/lib/features/project';
+import { agentSessionService } from '../../../../core/src/lib/features/agent';
+import { agentManager } from '../../../../core/src/lib/features/agent/server';
 import { SolutionExecutionContractStore } from '../../../../core/src/lib/features/solution';
 import { getDataRoot } from '../../../../core/src/lib/paths';
 
@@ -35,23 +37,10 @@ const REQUEST_TYPES = new Set([
   'query_projection',
   'submit_action',
   'start_bound_task',
+  'list_project_tasks',
   'inspect_bound_task',
   'control_bound_task',
 ]);
-
-class UnavailableProjectTaskSource implements ProjectTaskSource {
-  async list(): Promise<never> {
-    throw new Error('PROJECT_TASK_SOURCE_UNAVAILABLE');
-  }
-
-  async get(): Promise<never> {
-    throw new Error('PROJECT_TASK_SOURCE_UNAVAILABLE');
-  }
-
-  async control(): Promise<never> {
-    throw new Error('PROJECT_TASK_SOURCE_UNAVAILABLE');
-  }
-}
 
 class UnavailableWorkItemRecovery implements OntologyCrossPackageWorkItemRecoveryPort {
   async reconcile(
@@ -77,7 +66,11 @@ export function createOntologyCrossPackageService(): OntologyCrossPackageService
     contractPort,
     executionPort,
     taskBoard: new ProjectTaskBoardService(
-      new UnavailableProjectTaskSource(),
+      new RuntimeProjectTaskSource(
+        agentSessionService,
+        agentManager,
+        executionPort,
+      ),
       executionPort
     ),
     workItemRecovery: new UnavailableWorkItemRecovery(),
@@ -96,6 +89,8 @@ function isCrossPackageRequest(value: unknown): value is OntologyCrossPackageReq
   const projectId = value['projectId'];
   const type = value['type'];
   const expectedRevision = value['expectedRevision'];
+  const cursor = value['cursor'];
+  const limit = value['limit'];
   return value['contractVersion'] === '1'
     && typeof requestId === 'string'
     && requestId.trim().length > 0
@@ -103,6 +98,10 @@ function isCrossPackageRequest(value: unknown): value is OntologyCrossPackageReq
     && projectId.trim().length > 0
     && typeof type === 'string'
     && REQUEST_TYPES.has(type)
+    && (type !== 'list_project_tasks'
+      || ((cursor === undefined || (typeof cursor === 'string' && cursor.trim().length > 0))
+        && (limit === undefined || (typeof limit === 'number'
+          && Number.isSafeInteger(limit) && limit >= 1 && limit <= 50))))
     && ((type !== 'submit_action' && type !== 'control_bound_task')
       || (Number.isSafeInteger(expectedRevision) && (expectedRevision as number) >= 0));
 }

@@ -89,6 +89,53 @@ describe('OntologyCrossPackageIpcController', () => {
     expect(response.data).toEqual(successResponse());
   });
 
+  it('accepts a bounded project task page request without an ontology version', async () => {
+    const service = {
+      invoke: vi.fn(async (
+        _request: OntologyCrossPackageRequest
+      ): Promise<OntologyCrossPackageResponse> => successResponse()),
+    };
+    const harness = createHarness(service);
+    const request = {
+      contractVersion: '1',
+      requestId: 'request-2',
+      actorId: 'request-actor',
+      projectId: 'project-1',
+      type: 'list_project_tasks',
+      cursor: 'cursor-1',
+      limit: 50,
+    } as const;
+
+    await harness.invoke(request);
+
+    expect(service.invoke).toHaveBeenCalledWith({
+      ...request,
+      actorId: 'desktop-sender:7',
+    });
+  });
+
+  it('passes retry through as a controlled task action', async () => {
+    const service = {
+      invoke: vi.fn(async (
+        _request: OntologyCrossPackageRequest
+      ): Promise<OntologyCrossPackageResponse> => successResponse()),
+    };
+    const harness = createHarness(service);
+    const request = {
+      ...baseRequest,
+      type: 'control_bound_task',
+      action: 'retry',
+      expectedRevision: 1,
+    } as const;
+
+    await harness.invoke(request);
+
+    expect(service.invoke).toHaveBeenCalledWith({
+      ...request,
+      actorId: 'desktop-sender:7',
+    });
+  });
+
   it('rejects an untrusted sender before calling core', async () => {
     const service = { invoke: vi.fn() };
     const harness = createHarness(service, false);
@@ -123,6 +170,26 @@ describe('OntologyCrossPackageIpcController', () => {
 
     expect(service.invoke).not.toHaveBeenCalled();
     expect(response.error?.code).toBe('INVALID_REQUEST');
+  });
+
+  it('rejects an invalid project task page cursor or limit', async () => {
+    const service = { invoke: vi.fn() };
+    const harness = createHarness(service);
+
+    const oversized = await harness.invoke({
+      ...baseRequest,
+      type: 'list_project_tasks',
+      limit: 51,
+    });
+    const invalidCursor = await harness.invoke({
+      ...baseRequest,
+      type: 'list_project_tasks',
+      cursor: '',
+    });
+
+    expect(service.invoke).not.toHaveBeenCalled();
+    expect(oversized.error?.code).toBe('INVALID_REQUEST');
+    expect(invalidCursor.error?.code).toBe('INVALID_REQUEST');
   });
 
   it('maps a core rejection to a stable IPC error', async () => {

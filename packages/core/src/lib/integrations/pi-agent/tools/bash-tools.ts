@@ -19,6 +19,7 @@ import { delimiter, join, win32 as pathWin32 } from "path";
 import { StringDecoder } from "string_decoder";
 import { getToolContext } from "./context";
 import { getDataRoot } from '../../../paths';
+import { hasChannelOfficeCapabilities } from '../channel-office-capabilities';
 
 // ============================================================================
 // Shell detection
@@ -509,6 +510,12 @@ const DANGEROUS_PATTERNS = [
  * 检查命令是否安全
  */
 function isCommandSafe(command: string): { safe: boolean; reason?: string } {
+  if (hasChannelOfficeCapabilities() && /(^|[\s;&|()])(?:[^\s;&|()]*[/\\])?wecom-cli(?:\s|$)/i.test(command)) {
+    return {
+      safe: false,
+      reason: '当前 IM 会话必须使用 discover_im_capabilities / invoke_im_capability，以保持企微连接和授权身份一致',
+    };
+  }
   for (const dangerous of DANGEROUS_COMMANDS) {
     if (command.includes(dangerous)) {
       return { safe: false, reason: `命令包含危险操作: ${dangerous}` };

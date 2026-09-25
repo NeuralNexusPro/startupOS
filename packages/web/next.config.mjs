@@ -37,6 +37,16 @@ const nextConfig = {
 
     config.externals = config.externals || [];
     if (!Array.isArray(config.externals)) config.externals = [config.externals];
+    if (isServer) {
+      // Keep Node-only adapter bundles out of Webpack's dependency parser.
+      // Their upstream SDKs use runtime import expressions that Webpack cannot resolve.
+      config.externals.unshift(({ request }, callback) => {
+        if (request && /^@originos\/pi-agent-adapter(?:\/.*)?$/.test(request)) {
+          return callback(null, 'commonjs ' + request);
+        }
+        callback();
+      });
+    }
     config.externals.push(({ request }, callback) => {
       if (request === 'onnxruntime-node') return callback(null, 'commonjs ' + request);
       callback();
@@ -65,7 +75,7 @@ const nextConfig = {
     return config;
   },
   experimental: {
-    serverComponentsExternalPackages: ['undici', '@smithy/node-http-handler', 'proxy-agent'],
+    serverComponentsExternalPackages: ['undici', '@smithy/node-http-handler', 'proxy-agent', '@originos/pi-agent-adapter'],
     instrumentationHook: true,
     outputFileTracingRoot: path.join(__dirname, '..', '..'),
   },

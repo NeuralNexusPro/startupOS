@@ -79,9 +79,6 @@ export function assessCompletion(
 	) {
 		return { shouldRecover: true, reason: "unresolved-tool-failure" };
 	}
-	if (input.hasUnresolvedToolFailure) {
-		return { shouldRecover: true, reason: "unresolved-tool-failure" };
-	}
 
 	return { shouldRecover: false, reason: "accepted-stop" };
 }

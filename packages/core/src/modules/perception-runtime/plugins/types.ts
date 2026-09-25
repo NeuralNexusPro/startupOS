@@ -172,6 +172,8 @@ export interface PerceptionPluginRuntimeContext {
   connectorId: string;
   settings: Readonly<Record<string, JsonValue>>;
   ports: Readonly<PerceptionPluginRuntimePorts>;
+  /** Host-owned, connector-scoped directory for an office CLI's local authorization. */
+  officeAuthDir?: string;
 }
 
 export interface PerceptionPluginProvisionContext extends PerceptionPluginRuntimeContext {

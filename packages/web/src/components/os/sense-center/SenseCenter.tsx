@@ -5,9 +5,10 @@ import { Activity, AlertTriangle, Cable, CheckCircle2, ChevronDown, Clock3, Refr
 
 import { Button } from '@/components/ui/button';
 import { getJevProvider } from '@/services/jevProviderService';
+import { listPerceptionTargetAssets, type PerceptionTargetAsset } from '@/services/perceptionTargetService';
 import { usePerceptionStore } from '@/store/perceptionStore';
 import type { ConnectorSummary } from '@/store/perceptionStore';
-import type { ExternalTriggerGrant, JevDecisionReceipt, JevProviderSummary, PerceptionDecisionCandidate, PerceptionTriggerRule } from '@originos/core/types';
+import type { ExternalTriggerGrant, JevDecisionReceipt, JevProviderSummary, PerceptionDecisionCandidate, PerceptionTargetKind, PerceptionTriggerRule } from '@originos/core/types';
 import type { PluginCapabilityConnectionStatus } from '@originos/core/modules/perception-runtime';
 import { listPerceptionCapabilityStatuses } from '@/services/perceptionPluginService';
 import { ConnectorForm } from './ConnectorForm';
@@ -34,8 +35,33 @@ export function SenseCenter({ initialJevProvider }: { initialJevProvider?: JevPr
   const [providerLoaded, setProviderLoaded] = useState(Boolean(initialJevProvider));
   const [decisionAction, setDecisionAction] = useState<string>();
   const [decisionError, setDecisionError] = useState<{ id: string; message: string }>();
+  const [targetAssets, setTargetAssets] = useState<Map<string, PerceptionTargetAsset>>(() => new Map());
   const { connectors, grants, decisionCandidateGrants, rules, eventTraces, decisions, health, deadLetters, loading, error, load, startRefreshing, setConnectorEnabled, replay, saveConnector, saveRule, deleteRule, saveGrant, deleteGrant, resolveDecision, retryDecision } = usePerceptionStore();
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    let active = true;
+    const kinds: PerceptionTargetKind[] = ['project', 'role-agent', 'skill'];
+    void Promise.allSettled(kinds.map((kind) => listPerceptionTargetAssets(kind))).then((results) => {
+      if (!active) return;
+      const next = new Map<string, PerceptionTargetAsset>();
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled') for (const asset of result.value) next.set(`${kinds[index]}:${asset.id}`, asset);
+      });
+      setTargetAssets(next);
+    });
+    return () => { active = false; };
+  }, []);
+  const targetLabel = (target: ExternalTriggerGrant['target']): string => {
+    const asset = targetAssets.get(`${target.kind}:${target.id}`);
+    return asset?.name || `${targetKindLabel(target.kind)}（名称未找到）`;
+  };
+  const candidateName = (key: string): string => {
+    if (key === 'ignore') return '忽略事件';
+    if (key === 'notify_user') return '通知用户';
+    if (key === 'ask_user_to_choose_target') return '请用户选择角色或能力';
+    const candidate = rules.flatMap((rule) => rule.routingMode === 'jev' ? rule.decision.candidates : []).find((item) => item.key === key);
+    return candidate?.action === 'dispatch' ? targetLabel(candidate.target) : '能力名称未找到';
+  };
   const connectorRevision = connectors.map(({ id, updatedAt }) => `${id}:${updatedAt}`).join('|');
   useEffect(() => {
     void listPerceptionCapabilityStatuses().then(setCapabilityStatuses, () => setCapabilityStatuses([]));
@@ -87,7 +113,7 @@ export function SenseCenter({ initialJevProvider }: { initialJevProvider?: JevPr
   );
 
   function renderSourceList(): JSX.Element {
-    return <><div className="mb-4 flex justify-end"><Button onClick={() => { setEditingConnector(undefined); setShowConnectorForm((value) => !value); }}>{showConnectorForm ? '收起表单' : '添加感知源'}</Button></div>{showConnectorForm && <ConnectorForm key={editingConnector?.id ?? 'new'} initial={editingConnector} onSave={saveConnector} onProvisioned={load} onCancel={() => { setShowConnectorForm(false); setEditingConnector(undefined); }} />}{connectors.length === 0 ? <Empty icon={<Cable className="h-8 w-8" />} text="尚未配置感知源" /> : <div className="grid gap-3 md:grid-cols-2">{connectors.map((item) => { const capability = capabilityStatuses.find((status) => status.connectorId === item.id); return <article key={item.id} className="rounded border border-slate-700 bg-slate-900 p-4"><div className="flex items-start justify-between"><div><h2 className="font-bold">{item.id}</h2><p className="text-sm text-slate-400">{item.source} · {item.mode}</p></div><span className={`rounded px-2 py-1 text-xs ${item.enabled ? 'bg-green-600' : 'bg-slate-700'}`}>{item.enabled ? '已启用' : '已停用'}</span></div><p className="mt-3 text-xs text-slate-400">凭据：{item.secretConfigured ? '已安全绑定' : '未绑定'}</p>{capability && <p className="mt-1 text-xs text-slate-400">办公能力：{capabilityStatusLabel(capability)}{capability.state !== 'unsupported' && <>{capability.capabilityCount !== undefined ? ` · ${capability.capabilityCount} 项` : ''}{capability.identityMode ? ` · ${capability.identityMode === 'user' ? '用户授权' : '应用授权'}` : ''} · 白名单 {capability.delegatedActorCount ?? 0} 人{capability.writeEnabled ? ' · 允许写入' : ' · 只读'}</>}</p>}<div className="mt-3 flex gap-2"><Button variant="outline" size="sm" onClick={() => void setConnectorEnabled(item.id, !item.enabled)}>{item.enabled ? '停用' : '启用'}</Button><Button variant="outline" size="sm" onClick={() => { setEditingConnector(item); setShowConnectorForm(true); }}>重新绑定</Button></div></article>; })}</div>}</>;
+    return <><div className="mb-4 flex justify-end"><Button onClick={() => { setEditingConnector(undefined); setShowConnectorForm((value) => !value); }}>{showConnectorForm ? '收起表单' : '添加感知源'}</Button></div>{showConnectorForm && <ConnectorForm key={editingConnector?.id ?? 'new'} initial={editingConnector} onSave={saveConnector} onProvisioned={load} onCancel={() => { setShowConnectorForm(false); setEditingConnector(undefined); }} />}{connectors.length === 0 ? <Empty icon={<Cable className="h-8 w-8" />} text="尚未配置感知源" /> : <div className="grid gap-3 md:grid-cols-2">{connectors.map((item) => { const capability = capabilityStatuses.find((status) => status.connectorId === item.id); return <article key={item.id} className="rounded border border-slate-700 bg-slate-900 p-4"><div className="flex items-start justify-between"><div><h2 className="font-bold">{item.id}</h2><p className="text-sm text-slate-400">{item.source} · {item.mode}</p></div><span className={`rounded px-2 py-1 text-xs ${item.enabled ? 'bg-green-600' : 'bg-slate-700'}`}>{item.enabled ? '已启用' : '已停用'}</span></div><p className="mt-3 text-xs text-slate-400">凭据：{item.secretConfigured ? '已安全绑定' : '未绑定'}</p>{capability && <p className="mt-1 text-xs text-slate-400">办公能力：{capabilityStatusLabel(capability)}{capability.state !== 'unsupported' && <>{capability.capabilityCount !== undefined ? ` · ${capability.capabilityCount} 项` : ''}{capability.identityMode ? ` · ${capability.identityMode === 'user' ? '用户授权' : '应用授权'}` : ''} · 当前连接来信均可调用{capability.writeEnabled ? ' · 允许写入' : ' · 只读'}</>}</p>}<div className="mt-3 flex gap-2"><Button variant="outline" size="sm" onClick={() => void setConnectorEnabled(item.id, !item.enabled)}>{item.enabled ? '停用' : '启用'}</Button><Button variant="outline" size="sm" onClick={() => { setEditingConnector(item); setShowConnectorForm(true); }}>重新绑定</Button></div></article>; })}</div>}</>;
   }
 
   function renderRuleList(): JSX.Element {
@@ -100,7 +126,7 @@ export function SenseCenter({ initialJevProvider }: { initialJevProvider?: JevPr
       setRuleActionError(undefined);
       try { await deleteRule(id); } catch { setRuleActionError('规则删除失败，请刷新后重试'); }
     };
-    return <><div className="mb-4 flex justify-end"><Button onClick={() => { if (showRuleWizard) closeWizard(); else { setEditingRule(undefined); setShowRuleWizard(true); } }}>{showRuleWizard ? '收起向导' : '创建规则'}</Button></div>{ruleActionError && <p role="alert" className="mb-3 text-sm text-red-400">{ruleActionError}</p>}{showRuleWizard && <RuleWizard key={editingRule?.id ?? 'new'} connectors={connectors} grants={decisionCandidateGrants} jevProvider={jevProvider} initial={editingRule} onSave={persistRule} onCancel={closeWizard} />}{rules.length === 0 ? <Empty icon={<Router className="h-8 w-8" />} text="尚未创建触发规则" /> : <div className="space-y-3">{rules.map((item) => <article key={item.id} className="rounded border border-slate-700 bg-slate-900 p-4"><div className="flex justify-between"><h2 className="font-bold">{item.id}</h2><span className={`rounded px-2 py-1 text-xs ${item.enabled ? 'bg-green-600 text-white' : 'bg-slate-700 text-slate-300'}`}>{item.enabled ? '生效中' : '已停用'}</span></div>{item.routingMode === 'jev' ? <><p className="mt-2 text-sm text-slate-300">{ruleSourceLabel(item)} → Jev 决策（{dispatchCandidates(item).length} 个目标候选）</p><p className="mt-1 text-xs text-slate-400">目录 {item.decision.catalogVersion} · 策略 {item.decision.policyVersion} · 首二候选差值 &gt; 0.5 自动执行 · HITL {item.execution.requireHitl ? '开启' : '关闭'}</p>{item.decision.cognitiveGuidance && <p className="mt-1 whitespace-pre-wrap text-xs text-slate-400">认知规则：{item.decision.cognitiveGuidance}</p>}{ruleCandidatesChanged(item, decisionCandidateGrants) && <p className="mt-1 text-xs text-yellow-400">候选已变化，运行时将以最新授权为准。</p>}<details className="mt-2 text-xs text-slate-400"><summary className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">查看候选目录</summary><ul className="mt-2 space-y-1">{item.decision.candidates.map((candidate) => <li key={candidate.key} className="break-all font-mono">{candidate.key}</li>)}</ul></details></> : <><p className="mt-2 text-sm text-slate-300">{ruleSourceLabel(item)} → {item.target.kind}/{item.target.id}</p><p className="mt-1 text-xs text-slate-400">固定目标 · {item.conditions.length} 个白名单条件 · 最大 {item.execution.maxAttempts} 次尝试 · HITL {item.execution.requireHitl ? '开启' : '关闭'}</p></>}<div className="mt-3 flex flex-wrap gap-2"><Button variant="outline" size="sm" onClick={() => void persistRule({ ...item, enabled: !item.enabled, updatedAt: new Date().toISOString() }).catch(() => undefined)}>{item.enabled ? '停用' : '启用'}</Button><Button variant="outline" size="sm" onClick={() => { setEditingRule(item); setShowRuleWizard(true); }}>编辑</Button><Button variant="outline" size="sm" onClick={() => { if (window.confirm(`删除触发规则 ${item.id}？`)) void removeRule(item.id); }}>删除</Button></div></article>)}</div>}</>;
+    return <><div className="mb-4 flex justify-end"><Button onClick={() => { if (showRuleWizard) closeWizard(); else { setEditingRule(undefined); setShowRuleWizard(true); } }}>{showRuleWizard ? '收起向导' : '创建规则'}</Button></div>{ruleActionError && <p role="alert" className="mb-3 text-sm text-red-400">{ruleActionError}</p>}{showRuleWizard && <RuleWizard key={editingRule?.id ?? 'new'} connectors={connectors} grants={decisionCandidateGrants} jevProvider={jevProvider} initial={editingRule} onSave={persistRule} onCancel={closeWizard} />}{rules.length === 0 ? <Empty icon={<Router className="h-8 w-8" />} text="尚未创建触发规则" /> : <div className="space-y-3">{rules.map((item) => <article key={item.id} className="rounded border border-slate-700 bg-slate-900 p-4"><div className="flex justify-between"><h2 className="font-bold">{item.id}</h2><span className={`rounded px-2 py-1 text-xs ${item.enabled ? 'bg-green-600 text-white' : 'bg-slate-700 text-slate-300'}`}>{item.enabled ? '生效中' : '已停用'}</span></div>{item.routingMode === 'jev' ? <><p className="mt-2 text-sm text-slate-300">{ruleSourceLabel(item)} → 智能决策模式（{dispatchCandidates(item).length} 个目标候选）</p><p className="mt-1 text-xs text-slate-400">目录 {item.decision.catalogVersion} · 策略 {item.decision.policyVersion} · 首二候选差值 &gt; 0.5 自动执行 · HITL {item.execution.requireHitl ? '开启' : '关闭'}</p>{item.decision.cognitiveGuidance && <p className="mt-1 whitespace-pre-wrap text-xs text-slate-400">决策规则：{item.decision.cognitiveGuidance}</p>}{ruleCandidatesChanged(item, decisionCandidateGrants) && <p className="mt-1 text-xs text-yellow-400">候选已变化，运行时将以最新授权为准。</p>}<details className="mt-2 text-xs text-slate-400"><summary className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">查看候选目录</summary><ul className="mt-2 space-y-1">{item.decision.candidates.map((candidate) => <li key={candidate.key}>{candidate.action === 'dispatch' ? targetLabel(candidate.target) : candidateName(candidate.key)}</li>)}</ul></details></> : <><p className="mt-2 text-sm text-slate-300">{ruleSourceLabel(item)} → {targetLabel(item.target)}</p><p className="mt-1 text-xs text-slate-400">固定目标 · {item.conditions.length} 个白名单条件 · 最大 {item.execution.maxAttempts} 次尝试 · HITL {item.execution.requireHitl ? '开启' : '关闭'}</p></>}<div className="mt-3 flex flex-wrap gap-2"><Button variant="outline" size="sm" onClick={() => void persistRule({ ...item, enabled: !item.enabled, updatedAt: new Date().toISOString() }).catch(() => undefined)}>{item.enabled ? '停用' : '启用'}</Button><Button variant="outline" size="sm" onClick={() => { setEditingRule(item); setShowRuleWizard(true); }}>编辑</Button><Button variant="outline" size="sm" onClick={() => { if (window.confirm(`删除触发规则 ${item.id}？`)) void removeRule(item.id); }}>删除</Button></div></article>)}</div>}</>;
   }
 
   function renderTargetList(): JSX.Element {
@@ -113,9 +139,9 @@ export function SenseCenter({ initialJevProvider }: { initialJevProvider?: JevPr
       {grants.length === 0 ? <Empty icon={<ShieldCheck className="h-8 w-8" />} text="尚未授权任何外部触发目标" /> : <div className="grid gap-3 md:grid-cols-2">{grants.map((grant) => {
         const key = `${grant.target.kind}:${grant.target.id}`;
         return <article key={key} className="rounded border border-slate-700 bg-slate-900 p-4">
-          <div className="flex items-start justify-between gap-3"><div><p className="text-xs text-blue-400">{targetKindLabel(grant.target.kind)}</p><h2 className="font-bold">{grant.target.id}</h2></div><span className={`rounded px-2 py-1 text-xs ${grant.enabled ? 'bg-green-600' : 'bg-slate-700'}`}>{grant.enabled ? '允许触发' : '已停用'}</span></div>
+          <div className="flex items-start justify-between gap-3"><div><p className="text-xs text-blue-400">{targetKindLabel(grant.target.kind)}</p><h2 className="font-bold">{targetLabel(grant.target)}</h2></div><span className={`rounded px-2 py-1 text-xs ${grant.enabled ? 'bg-green-600' : 'bg-slate-700'}`}>{grant.enabled ? '允许触发' : '已停用'}</span></div>
           <p className="mt-3 text-xs text-slate-400">感知源：{grant.allowedConnectorIds?.join('、') || '全部'}</p>
-          <div className="mt-3 flex gap-2"><Button variant="outline" size="sm" onClick={() => void saveGrant({ ...grant, enabled: !grant.enabled, updatedAt: new Date().toISOString() })}>{grant.enabled ? '停用' : '启用'}</Button><Button variant="outline" size="sm" onClick={() => { if (window.confirm(`删除 ${grant.target.id} 的外部触发权限？`)) void deleteGrant(grant); }}>删除</Button></div>
+          <div className="mt-3 flex gap-2"><Button variant="outline" size="sm" onClick={() => void saveGrant({ ...grant, enabled: !grant.enabled, updatedAt: new Date().toISOString() })}>{grant.enabled ? '停用' : '启用'}</Button><Button variant="outline" size="sm" onClick={() => { if (window.confirm(`删除 ${targetLabel(grant.target)} 的外部触发权限？`)) void deleteGrant(grant); }}>删除</Button></div>
         </article>;
       })}</div>}
     </>;
@@ -137,16 +163,20 @@ export function SenseCenter({ initialJevProvider }: { initialJevProvider?: JevPr
           <div className="grid gap-3 text-sm md:grid-cols-2"><Info label="来源" value={`${event.connectorId} / ${event.source}`} /><Info label="发送者" value={event.actor.displayName ? `${event.actor.displayName} (${event.actor.externalId})` : event.actor.externalId} /><Info label="主题" value={event.content.subject || '—'} /><Info label="发生时间" value={formatTime(event.occurredAt)} /></div>
           {event.content.text && <pre className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap rounded bg-slate-950 p-3 text-xs text-slate-300">{event.content.text}</pre>}
         </TraceStage>
-        {ruleTriggers.length === 0 ? <TraceStage icon={<Router className="h-4 w-4" />} title="规则触发" tone="muted"><p className="text-sm text-slate-400">未命中规则，未派发目标。</p></TraceStage> : ruleTriggers.map((trace) => { const decision = decisions.find((item) => item.eventId === event.id && item.ruleId === trace.ruleId); return <div key={trace.ruleId}>
-          <TraceStage icon={<Router className="h-4 w-4" />} title="规则触发" time={trace.matchedAt} tone="yellow">
-            <div className="grid gap-3 text-sm md:grid-cols-2"><Info label="规则" value={trace.ruleId} /><Info label="路由" value={trace.rule ? ruleRouteLabel(trace.rule) : '规则已删除'} /><Info label="条件" value={trace.rule ? `${trace.rule.conditions.length} 个条件` : '—'} /><Info label="触发时间" value={formatTime(trace.matchedAt)} /></div>
-          </TraceStage>
-          {decision && <DecisionStage receipt={decision} rule={trace.rule} grants={decisionCandidateGrants} connectorId={event.connectorId} busyAction={decisionAction} error={decisionError?.id === decision.id ? decisionError.message : undefined} onResolve={(key) => void runDecisionAction(decision.id, key)} onRetry={() => void runDecisionAction(decision.id)} />}
-          <TraceStage icon={trace.result?.status === 'completed' ? <CheckCircle2 className="h-4 w-4" /> : <Target className="h-4 w-4" />} title="目标处理" time={trace.finishedAt ?? trace.dispatchedAt ?? trace.lease?.acquiredAt} tone={trace.result?.status === 'completed' ? 'green' : trace.result?.status === 'failed' ? 'red' : 'muted'}>
+        {ruleTriggers.length === 0 ? <TraceStage icon={<Router className="h-4 w-4" />} title="规则触发" tone="muted"><p className="text-sm text-slate-400">未命中规则，未派发目标。</p></TraceStage> : ruleTriggers.map((trace) => { const decision = (trace.decisionContinuation?.status !== 'unrelated' ? decisions.find((item) => item.id === trace.decisionContinuation?.decisionId) : undefined) ?? decisions.find((item) => item.eventId === event.id && item.ruleId === trace.ruleId); return <div key={trace.ruleId}>
+          {trace.decisionContinuation && <TraceStage icon={<Router className="h-4 w-4" />} title={trace.decisionContinuation.status === 'unrelated' ? '决策回复识别' : '决策续接'} tone={continuationTone(trace.decisionContinuation.status)}>
+            <div className="grid gap-3 text-sm md:grid-cols-2"><Info label="状态" value={continuationStatus(trace.decisionContinuation.status)} /><Info label="关联规则" value={trace.ruleId} /><Info label="原事件" value={trace.decisionContinuation.originalEventId} /><Info label="决策 ID" value={trace.decisionContinuation.decisionId} /></div>
+            {trace.decisionContinuation.reason && <p className="mt-3 text-xs text-slate-400">原因：{trace.decisionContinuation.reason}</p>}
+          </TraceStage>}
+          {(!trace.decisionContinuation || trace.matchedAt) && <TraceStage icon={<Router className="h-4 w-4" />} title="规则触发" time={trace.matchedAt} tone="yellow">
+            <div className="grid gap-3 text-sm md:grid-cols-2"><Info label="规则" value={trace.ruleId} /><Info label="路由" value={trace.rule ? ruleRouteLabel(trace.rule, targetLabel) : '规则已删除'} /><Info label="条件" value={trace.rule ? `${trace.rule.conditions.length} 个条件` : '—'} /><Info label="触发时间" value={formatTime(trace.matchedAt)} /></div>
+          </TraceStage>}
+          {decision && <DecisionStage receipt={decision} rule={trace.rule} grants={decisionCandidateGrants} connectorId={event.connectorId} candidateName={candidateName} busyAction={decisionAction} error={decisionError?.id === decision.id ? decisionError.message : undefined} onResolve={(key) => void runDecisionAction(decision.id, key)} onRetry={() => void runDecisionAction(decision.id)} />}
+          {(!trace.decisionContinuation || trace.matchedAt) && <TraceStage icon={trace.result?.status === 'completed' ? <CheckCircle2 className="h-4 w-4" /> : <Target className="h-4 w-4" />} title="目标处理" time={trace.finishedAt ?? trace.dispatchedAt ?? trace.lease?.acquiredAt} tone={trace.result?.status === 'completed' ? 'green' : trace.result?.status === 'failed' ? 'red' : 'muted'}>
             <div className="grid gap-3 text-sm md:grid-cols-2"><Info label="状态" value={executionStatus(trace.result?.status)} /><Info label="派发时间" value={formatTime(trace.dispatchedAt)} /><Info label="完成时间" value={formatTime(trace.finishedAt)} /><Info label="会话 ID" value={trace.result?.sessionId || '—'} /></div>
             {trace.result?.summary && <div className="mt-3 rounded border border-slate-700 bg-slate-950 p-3"><p className="mb-2 text-xs font-bold text-green-400">处理结果</p><p className="whitespace-pre-wrap text-sm text-slate-200">{trace.result.summary}</p></div>}
             {trace.result?.resultRef && <p className="mt-2 break-all font-mono text-xs text-slate-500">结果引用：{trace.result.resultRef}</p>}
-          </TraceStage>
+          </TraceStage>}
         </div>; })}
       </div>
       </article>
@@ -159,9 +189,9 @@ export function SenseCenter({ initialJevProvider }: { initialJevProvider?: JevPr
   }
 }
 
-function DecisionStage({ receipt, rule, grants, connectorId, busyAction, error, onResolve, onRetry }: {
+function DecisionStage({ receipt, rule, grants, connectorId, candidateName, busyAction, error, onResolve, onRetry }: {
   receipt: JevDecisionReceipt; rule?: PerceptionTriggerRule; grants: ExternalTriggerGrant[]; connectorId: string;
-  busyAction?: string; error?: string; onResolve(key: string): void; onRetry(): void;
+  candidateName(key: string): string; busyAction?: string; error?: string; onResolve(key: string): void; onRetry(): void;
 }): JSX.Element {
   const candidates = rule?.routingMode === 'jev' ? rule.decision.candidates : [];
   const resolved = receipt.status === 'auto-executed' || receipt.status === 'user-executed' || receipt.status === 'ignored';
@@ -175,12 +205,12 @@ function DecisionStage({ receipt, rule, grants, connectorId, busyAction, error, 
     { label: '自动执行风险', values: receipt.answers?.risk.probabilities },
     { label: '是否需要人工确认', values: receipt.answers?.needsHitl === undefined ? undefined : { need_hitl: receipt.answers.needsHitl, no_hitl: 1 - receipt.answers.needsHitl } },
   ].filter((item): item is { label: string; values: Record<string, number> } => Boolean(item.values));
-  return <TraceStage icon={<Activity className="h-4 w-4" />} title="Jev 决策" time={receipt.updatedAt} tone={resolved ? 'green' : receipt.status === 'failed' ? 'red' : 'yellow'}>
+  return <TraceStage icon={<Activity className="h-4 w-4" />} title="智能决策" time={receipt.updatedAt} tone={resolved ? 'green' : receipt.status === 'failed' ? 'red' : 'yellow'}>
     <p role="status" className={`mb-3 text-sm font-bold ${resolved ? 'text-green-400' : 'text-yellow-400'}`}>{decisionStatusLabel(receipt.status, receipt.reason)}</p>
-    <div className="grid gap-3 text-sm md:grid-cols-2"><Info label="目录 / 策略版本" value={`${receipt.catalogVersion} / ${receipt.policyVersion}`} /><Info label="目标选择" value={receipt.selectedKey || receipt.answers?.routeTarget.choice || '—'} /><Info label="目标置信度" value={confidence === undefined ? '—' : String(confidence)} /><Info label="执行方式" value={delivery ? `${delivery.choice} · ${delivery.confidence}` : '—'} /><Info label="是否需要感知" value={receipt.answers?.needsUserAttention === undefined ? '—' : String(receipt.answers.needsUserAttention)} /><Info label="紧急程度" value={receipt.answers?.urgency.score === undefined ? '—' : String(receipt.answers.urgency.score)} /><Info label="HITL / 原因" value={receipt.reason || (rule?.execution.requireHitl ? '规则要求人工确认' : '无需人工确认')} /><Info label="Lease" value={receipt.leaseId || '—'} /><Info label="ResultRef" value={receipt.resultRef || '—'} /></div>
-    <details className="mt-3 rounded border border-slate-700 bg-slate-950 p-3"><summary className="cursor-pointer text-xs font-bold text-blue-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">候选与完整概率（{receipt.candidateKeys.length}）</summary><ul className="mt-2 space-y-1 text-xs text-slate-300">{receipt.candidateKeys.map((key) => <li key={key} className="flex justify-between gap-3"><code className="break-all">{key}</code><span>{probabilities?.[key] ?? '—'}</span></li>)}</ul></details>
+    <div className="grid gap-3 text-sm md:grid-cols-2"><Info label="目录 / 策略版本" value={`${receipt.catalogVersion} / ${receipt.policyVersion}`} /><Info label="目标选择" value={receipt.selectedKey || receipt.answers?.routeTarget.choice ? candidateName(receipt.selectedKey || receipt.answers?.routeTarget.choice || '') : '—'} /><Info label="目标置信度" value={confidence === undefined ? '—' : String(confidence)} /><Info label="执行方式" value={delivery ? `${delivery.choice} · ${delivery.confidence}` : '—'} /><Info label="是否需要感知" value={receipt.answers?.needsUserAttention === undefined ? '—' : String(receipt.answers.needsUserAttention)} /><Info label="紧急程度" value={receipt.answers?.urgency.score === undefined ? '—' : String(receipt.answers.urgency.score)} /><Info label="HITL / 原因" value={receipt.reason || (rule?.execution.requireHitl ? '规则要求人工确认' : '无需人工确认')} /><Info label="Lease" value={receipt.leaseId || '—'} /><Info label="ResultRef" value={receipt.resultRef || '—'} /></div>
+    <details className="mt-3 rounded border border-slate-700 bg-slate-950 p-3"><summary className="cursor-pointer text-xs font-bold text-blue-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">候选与完整概率（{receipt.candidateKeys.length}）</summary><ul className="mt-2 space-y-1 text-xs text-slate-300">{receipt.candidateKeys.map((key) => <li key={key} className="flex justify-between gap-3"><span>{candidateName(key)}</span><span>{probabilities?.[key] ?? '—'}</span></li>)}</ul></details>
     {parallelProbabilities.length > 0 && <details className="mt-3 rounded border border-slate-700 bg-slate-950 p-3"><summary className="cursor-pointer text-xs font-bold text-blue-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">并行判断与完整概率</summary><div className="mt-2 grid gap-3 text-xs text-slate-300 md:grid-cols-2">{parallelProbabilities.map(({ label, values }) => <div key={label}><p className="mb-1 font-bold text-slate-400">{label}</p>{Object.entries(values!).map(([key, value]) => <div key={key} className="flex justify-between gap-3"><code>{key}</code><span>{value}</span></div>)}</div>)}</div></details>}
-    <fieldset className="mt-3 space-y-2" disabled={resolved}><legend className="text-sm font-bold text-slate-300">人工处理</legend>{candidates.filter((candidate) => candidate.action === 'dispatch' && (probabilities?.[candidate.key] ?? 1) > 0).map((candidate) => { const authorized = candidateAuthorized(candidate, grants, connectorId, receipt.ruleId); const busy = busyAction === `${receipt.id}:${candidate.key}`; return <div key={candidate.key} className="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-700 p-2"><span className="text-sm text-slate-300">{candidateLabel(candidate)}{probabilities?.[candidate.key] === undefined ? '' : ` · ${probabilities[candidate.key]}`}</span><Button size="sm" variant="outline" disabled={!authorized || Boolean(busyAction) || resolved} onClick={() => onResolve(candidate.key)}>{busy ? '提交中…' : '选择此目标'}</Button>{!authorized && <span className="w-full text-xs text-yellow-400">目标已删除或授权已撤销，请刷新候选</span>}</div>; })}<div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={Boolean(busyAction) || resolved} onClick={() => onResolve('ignore')}>{busyAction === `${receipt.id}:ignore` ? '提交中…' : '忽略'}</Button>{isRetryable(receipt.reason) && <Button size="sm" variant="outline" disabled={Boolean(busyAction) || resolved} onClick={onRetry}>{busyAction === `${receipt.id}:retry` ? '重试中…' : '重试决策'}</Button>}</div></fieldset>
+    <fieldset className="mt-3 space-y-2" disabled={resolved}><legend className="text-sm font-bold text-slate-300">人工处理</legend>{candidates.filter((candidate) => candidate.action === 'dispatch' && (probabilities?.[candidate.key] ?? 1) > 0).map((candidate) => { const authorized = candidateAuthorized(candidate, grants, connectorId, receipt.ruleId); const busy = busyAction === `${receipt.id}:${candidate.key}`; return <div key={candidate.key} className="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-700 p-2"><span className="text-sm text-slate-300">{candidateName(candidate.key)}{probabilities?.[candidate.key] === undefined ? '' : ` · ${probabilities[candidate.key]}`}</span><Button size="sm" variant="outline" disabled={!authorized || Boolean(busyAction) || resolved} onClick={() => onResolve(candidate.key)}>{busy ? '提交中…' : '选择此目标'}</Button>{!authorized && <span className="w-full text-xs text-yellow-400">目标已删除或授权已撤销，请刷新候选</span>}</div>; })}<div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={Boolean(busyAction) || resolved} onClick={() => onResolve('ignore')}>{busyAction === `${receipt.id}:ignore` ? '提交中…' : '忽略'}</Button>{isRetryable(receipt.reason) && <Button size="sm" variant="outline" disabled={Boolean(busyAction) || resolved} onClick={onRetry}>{busyAction === `${receipt.id}:retry` ? '重试中…' : '重试决策'}</Button>}</div></fieldset>
     {resolved && <p className="mt-3 text-xs text-slate-400">最终处理：{receipt.status === 'auto-executed' ? '自动' : '用户'} · {formatTime(receipt.updatedAt)}。已解决操作不可重复执行。</p>}
     {error && <p role="alert" className="mt-3 text-sm text-red-400">{error}</p>}
   </TraceStage>;
@@ -192,12 +222,11 @@ function ruleSourceLabel(rule: PerceptionTriggerRule): string {
   return typeof connectorId === 'string' ? connectorId : rule.sources.join('、');
 }
 function ruleCandidatesChanged(rule: PerceptionTriggerRule, grants: ExternalTriggerGrant[]): boolean { return dispatchCandidates(rule).some((candidate) => candidate.action === 'dispatch' && !grants.some((grant) => grant.enabled && grant.target.kind === candidate.target.kind && grant.target.id === candidate.target.id && (!grant.allowedRuleIds || grant.allowedRuleIds.includes(rule.id)))); }
-function candidateLabel(candidate: PerceptionDecisionCandidate): string { return candidate.action === 'dispatch' ? `${targetKindLabel(candidate.target.kind)} / ${candidate.target.id}` : candidate.key; }
 function candidateAuthorized(candidate: PerceptionDecisionCandidate, grants: ExternalTriggerGrant[], connectorId: string, ruleId: string): boolean {
   return candidate.action === 'dispatch' && grants.some((grant) => grant.enabled && grant.target.kind === candidate.target.kind && grant.target.id === candidate.target.id
     && (!grant.allowedConnectorIds || grant.allowedConnectorIds.includes(connectorId)) && (!grant.allowedRuleIds || grant.allowedRuleIds.includes(ruleId)));
 }
-function ruleRouteLabel(rule: PerceptionTriggerRule): string { return rule.routingMode === 'jev' ? `Jev 决策 / ${dispatchCandidates(rule).length} 个目标候选` : `${targetKindLabel(rule.target.kind)} / ${rule.target.id}`; }
+function ruleRouteLabel(rule: PerceptionTriggerRule, targetLabel: (target: ExternalTriggerGrant['target']) => string): string { return rule.routingMode === 'jev' ? `智能决策模式 / ${dispatchCandidates(rule).length} 个目标候选` : targetLabel(rule.target); }
 function decisionStatusLabel(status: JevDecisionReceipt['status'], reason?: string): string {
   if (status === 'pending') return '等待你的选择';
   if (status === 'auto-executed') return '已自动执行';
@@ -235,11 +264,30 @@ function executionStatus(status?: 'acquired' | 'completed' | 'failed'): string {
   return '尚未派发';
 }
 
-function traceSummaryStatus(ruleTriggers: Array<{ result?: { status: 'acquired' | 'completed' | 'failed' } }>): string {
+function traceSummaryStatus(ruleTriggers: Array<{ result?: { status: 'acquired' | 'completed' | 'failed' }; decisionContinuation?: { status: string } }>): string {
   if (ruleTriggers.length === 0) return '未命中规则';
+  const continuation = ruleTriggers.find((trace) => trace.decisionContinuation)?.decisionContinuation;
+  if (continuation) return continuationStatus(continuation.status);
   if (ruleTriggers.some((trace) => trace.result?.status === 'failed')) return '处理失败';
   if (ruleTriggers.some((trace) => trace.result?.status === 'acquired' || !trace.result)) return '处理中';
   return '处理完成';
+}
+
+function continuationStatus(status: string): string {
+  if (status === 'pending') return '等待进一步选择';
+  if (status === 'dispatched') return '已选择并派发';
+  if (status === 'ignored') return '已按反馈忽略';
+  if (status === 'failed') return '续接处理失败';
+  if (status === 'duplicate') return '原决策已处理';
+  if (status === 'unrelated') return '未识别为原决策回复，已按新事件处理';
+  return '已接续原决策';
+}
+
+function continuationTone(status: string): 'yellow' | 'green' | 'red' | 'muted' {
+  if (status === 'pending') return 'yellow';
+  if (status === 'failed') return 'red';
+  if (status === 'dispatched' || status === 'ignored' || status === 'duplicate') return 'green';
+  return 'muted';
 }
 
 function targetKindLabel(kind: 'project' | 'role-agent' | 'skill'): string {

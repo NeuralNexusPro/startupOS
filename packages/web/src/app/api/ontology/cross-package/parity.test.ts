@@ -179,4 +179,44 @@ describe('ontology cross-package transport parity', () => {
       },
     });
   });
+
+  it('accepts list_project_tasks on both transports and preserves unavailable semantics', async () => {
+    invoke.mockRejectedValue(new Error('PROJECT_TASK_SOURCE_UNAVAILABLE'));
+    const request = {
+      contractVersion: '1',
+      requestId: 'request-2',
+      actorId: 'untrusted-request-actor',
+      projectId: 'project-1',
+      type: 'list_project_tasks',
+      cursor: 'cursor-1',
+      limit: 50,
+    };
+
+    const webResponse = await POST(new NextRequest('http://localhost/api/ontology/cross-package', {
+      method: 'POST',
+      body: JSON.stringify(request),
+      headers: { 'x-originos-actor-id': 'web-actor' },
+    })) as NextResponse;
+    const web = await webResponse.json() as OntologyCrossPackageResponse;
+
+    const handlers = new Map<string, RegisteredHandler>();
+    const controller = new OntologyCrossPackageIpcController({
+      ipc: { handle: (channel, listener): void => { handlers.set(channel, listener as RegisteredHandler); } },
+      service: { invoke },
+      isTrustedSender: (): boolean => true,
+    });
+    controller.registerHandlers();
+    const handler = handlers.get('ontology:cross-package:invoke');
+    if (!handler) throw new Error('Missing handler');
+    const desktopResponse = await handler({ sender: { id: 7 } }, request);
+    const desktop = desktopResponse.data ?? desktopResponse.error?.details;
+
+    expect(webResponse.status).toBe(503);
+    expect(desktop).toEqual(web);
+    expect(web).toMatchObject({
+      ok: false,
+      requestId: 'request-2',
+      error: { category: 'unavailable', code: 'CAPABILITY_NOT_READY' },
+    });
+  });
 });

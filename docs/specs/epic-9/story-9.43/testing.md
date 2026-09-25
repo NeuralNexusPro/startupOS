@@ -1,6 +1,6 @@
 # 测试：项目任务看板
 
-**状态：** 用例已规划，全部待执行；2026-09-14。
+**状态：** 943-T1 定向验收完成；UI/E2E 用例待执行；2026-09-24。
 
 | ID | 层级 | Given / When | Then |
 |---|---|---|---|
@@ -25,5 +25,13 @@
 - `pnpm exec tsc -p tsconfig.json --noEmit`：通过。
 - `pnpm lint:boundaries`：907 个生产文件，0 条诊断。
 - B03/B04/B07/B08/B11/B12/B14 与 Web UI/E2E 仍未执行，不标记 Story 完成。
+
+## 2026-09-24 真实任务源验收证据
+
+- `pnpm --filter @originos/core exec vitest run ...project-task-source.test.ts ...task-board.test.ts ...session-title.test.ts ...agent-manager.test.ts ...contract-execution.test.ts`：26/26 通过，覆盖项目隔离、50 条分页、持久投影重建、不可用降级、Task/Run 关联和公开 Runtime 控制适配。
+- `pnpm --filter @originos/core exec tsc -p tsconfig.json --noEmit` 与 `pnpm --filter @originos/desktop exec tsc -p tsconfig.json --noEmit`：通过。
+- `pnpm lint:boundaries`：914 个生产文件，0 条诊断；`node scripts/check-architecture-boundaries.cjs --self-test`：43 个导入用例通过。
+- `openspec validate implement-project-task-board-source --strict` 与 `git diff --check`：通过。
+- B08、B12 及所有 Web UI/E2E 用例仍待执行。
 
 先执行单测/接口测试，再组件测试，最后联通真实Task/Run及Windows/macOS恢复矩阵。故障注入复用主线E08–E11；API成功返回不能代替持久提交证据。测试数据使用临时项目，不操作真实外部IM。

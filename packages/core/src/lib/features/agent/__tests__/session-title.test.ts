@@ -5,6 +5,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentSessionService } from '../session-service';
+import type { AgentTaskRuntimePersistenceV1 } from '../../../integrations/pi-agent/task-runtime';
 
 let directory: string;
 
@@ -19,6 +20,35 @@ afterEach(() => {
 });
 
 describe('AgentSessionService conversation titles', () => {
+  it('lists only persisted task runtime sessions for one project', async () => {
+    const service = new AgentSessionService();
+    const session = await service.createSession({
+      sessionId: 'task-runtime-session', projectId: 'project-a', projectName: 'Project A',
+    });
+    await service.updateSession(session.sessionId, {
+      taskRuntime: {
+        schemaVersion: 1,
+        branchEntries: [],
+        execution: {
+          schemaVersion: 1,
+          mode: 'task_running',
+          status: 'running',
+          bridgeEpoch: 1,
+          expectedRevision: 1,
+          expectedCursor: null,
+          continuationCount: 0,
+          noProgressCount: 0,
+          updatedAt: '2026-09-24T00:00:00.000Z',
+        },
+      } as AgentTaskRuntimePersistenceV1,
+    }, 'project-a');
+
+    await expect(service.listTaskRuntimeSessions('project-a')).resolves.toMatchObject([
+      { sessionId: 'task-runtime-session', projectId: 'project-a' },
+    ]);
+    await expect(service.listTaskRuntimeSessions('project-b')).resolves.toEqual([]);
+  });
+
   it('derives distinct titles from the most informative history content', async () => {
     const service = new AgentSessionService();
     const skill = await service.createSession({

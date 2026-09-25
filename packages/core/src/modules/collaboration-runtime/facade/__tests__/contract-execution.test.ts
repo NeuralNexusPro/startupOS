@@ -69,6 +69,18 @@ describe('contract-bound collaboration execution', () => {
     await expect(execution.inspect(snapshot.runId)).resolves.toEqual(snapshot);
   });
 
+  it('finds a run by its exact project Task binding', async () => {
+    const { contract, execution } = await setup();
+    const snapshot = await execution.start(startInput(contract));
+
+    await expect(
+      execution.findByTask(contract.projectId, 'task-1')
+    ).resolves.toEqual(snapshot);
+    await expect(
+      execution.findByTask(contract.projectId, 'other-task')
+    ).resolves.toBeNull();
+  });
+
   it('rejects revoked and hash-mismatched contracts before creating a run', async () => {
     const { contract, contractStore, execution } = await setup();
     await contractStore.revoke(

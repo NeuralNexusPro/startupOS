@@ -7,3 +7,4 @@ export { MarkdownEditor } from './MarkdownEditor';
 export { CreateFileDialog } from './CreateFileDialog';
 export { DeleteConfirmDialog } from './DeleteConfirmDialog';
 export { ProjectSidebar } from './ProjectSidebar';
+export { ProjectTaskBoard } from './project-task-board';

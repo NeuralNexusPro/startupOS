@@ -7,6 +7,7 @@ export * from './storage/inbox-store';
 export * from './storage/event-store';
 export * from './storage/lease-store';
 export * from './storage/audit-store';
+export * from './storage/sticky-route-store';
 export * from './gateway/errors';
 export * from './gateway/connector-registry';
 export * from './gateway/replay-guard';

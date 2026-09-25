@@ -15,8 +15,7 @@ export const feishuManifest: PerceptionPluginManifest = {
     { key: 'appSecret', label: 'App Secret', type: 'password', required: true, sensitive: true },
     { key: 'domain', label: '服务区域', type: 'select', defaultValue: 'feishu', options: [{ value: 'feishu', label: '飞书（中国）' }, { value: 'lark', label: 'Lark（国际）' }] },
     { key: 'officeCapabilitiesEnabled', label: '启用飞书办公能力', type: 'boolean', defaultValue: false, help: '使用独立的 lark-cli 用户授权，不使用机器人 App Secret' },
-    { key: 'officeAllowedActorIds', label: '办公能力授权发送者 ID', type: 'text', defaultValue: '', help: '多个 ID 用逗号分隔；留空时全部拒绝' },
-    { key: 'officeWriteEnabled', label: '允许办公写操作', type: 'boolean', defaultValue: false, help: '仅对白名单发送者生效；破坏性操作仍禁止' },
+    { key: 'officeWriteEnabled', label: '允许办公写操作', type: 'boolean', defaultValue: false, help: '启用后，当前连接收到的消息可创建或修改办公事项；破坏性操作仍禁止' },
   ] },
 };
 

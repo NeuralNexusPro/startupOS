@@ -101,6 +101,26 @@ describe("completion guard", () => {
 		expect(assessCompletion({
 			role: "assistant",
 			stopReason: "stop",
+			text: "替代能力处理完成。",
+			hasUnresolvedToolFailure: true,
+			hasSuccessfulToolAfterFailure: true,
+		})).toEqual({
+			shouldRecover: false,
+			reason: "completion-marker",
+		});
+		expect(assessCompletion({
+			role: "assistant",
+			stopReason: "stop",
+			text: "替代能力已经返回结果。",
+			hasUnresolvedToolFailure: true,
+			hasSuccessfulToolAfterFailure: true,
+		})).toEqual({
+			shouldRecover: false,
+			reason: "accepted-stop",
+		});
+		expect(assessCompletion({
+			role: "assistant",
+			stopReason: "stop",
 			text: "命令执行失败了。",
 			hasUnresolvedToolFailure: true,
 		})).toEqual({

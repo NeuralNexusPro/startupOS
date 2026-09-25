@@ -22,6 +22,25 @@ it('uses host-bound connection context and derives callId from the tool call', a
   expect(invoke).toHaveBeenCalledWith({ name: 'calendar.create', catalogRevision: 'r1', callId: 'trusted-call-id', arguments: { title: 'Review' } });
 });
 
+it('returns the exact capability schema when an IM call contains an unsupported argument', async () => {
+  const discover = vi.fn(async () => ({ revision: 'r2', capabilities: [{
+    name: 'calendar.schedules.list',
+    inputSchema: { type: 'object', properties: { begin_time: { type: 'string' }, end_time: { type: 'string' } }, additionalProperties: false },
+  }] }));
+  const invoke = vi.fn(async () => { throw new Error('IM_CAPABILITY_INVALID_INPUT'); });
+  await withChannelOfficeCapabilities({ discover, invoke }, async () => {
+    const result = await imCapabilityTools[1].execute('bad-list-call', {
+      name: 'calendar.schedules.list', catalogRevision: 'r2', arguments: { begin_time: '2026-09-24', limit: 50 },
+    });
+    expect(result.details).toMatchObject({
+      ok: false, code: 'IM_CAPABILITY_INVALID_INPUT', catalog: { revision: 'r2', capabilities: [{
+        name: 'calendar.schedules.list', inputSchema: { properties: { begin_time: {}, end_time: {} }, additionalProperties: false },
+      }] },
+    });
+  });
+  expect(discover).toHaveBeenCalledWith('', 'calendar.schedules.list');
+});
+
 it('proxies worker tool calls through the host-bound session without exposing routing fields', async () => {
   const discover = vi.fn(async () => ({ revision: 'r1', capabilities: [] }));
   const invoke = vi.fn(async () => ({ id: 'external-1' }));

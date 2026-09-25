@@ -4,6 +4,7 @@ import type { ExternalTriggerGrant, JevDecisionReceipt, PerceptionAuditEntry, Pe
 
 const provider = vi.hoisted(() => ({ get: vi.fn(() => new Promise<never>(() => undefined)) }));
 vi.mock('@/services/jevProviderService', () => ({ getJevProvider: provider.get }));
+vi.mock('@/services/perceptionTargetService', () => ({ listPerceptionTargetAssets: async (kind: string) => kind === 'project' ? [{ id: 'project-1', name: '项目一' }] : [] }));
 
 const load = vi.fn(async () => undefined);
 const startRefreshing = vi.fn(() => { void load(); return vi.fn(); });
@@ -64,6 +65,23 @@ describe('SenseCenter', () => {
     expect(screen.getByText('已完成邮件分析')).toBeInTheDocument();
   });
 
+  it('shows an IM reply as a continuation of the original decision', () => {
+    const now = '2026-09-24T08:00:00.000Z';
+    state.eventTraces = [{
+      event: { schemaVersion: '1.0', id: 'feedback-1', source: 'wecom', sourceEventId: 'message-2', connectorId: 'wecom-main', type: 'message.received', occurredAt: now, receivedAt: now, actor: { externalId: 'user-1' }, content: { text: '让鹰眼处理' }, provenance: { rawPayloadRef: 'plugin-state://reply-2' } },
+      audit: [],
+      ruleTriggers: [{ ruleId: 'rule-1', decisionContinuation: { decisionId: 'decision-1', originalEventId: 'event-1', status: 'dispatched' } }],
+    }];
+
+    render(<SenseCenter />);
+    fireEvent.click(screen.getByRole('button', { name: '事件记录' }));
+
+    expect(screen.getByText('决策续接')).toBeInTheDocument();
+    expect(screen.getAllByText('已选择并派发')).toHaveLength(2);
+    expect(screen.getByText('event-1')).toBeInTheDocument();
+    expect(screen.queryByText('未命中规则，未派发目标。')).not.toBeInTheDocument();
+  });
+
   it('collapses event traces independently and expands only the newest by default', () => {
     const now = '2026-09-04T08:00:00.000Z';
     state.eventTraces = ['newest', 'older'].map((id) => ({ event: { schemaVersion: '1.0' as const, id, source: 'email' as const, sourceEventId: `mail-${id}`, connectorId: 'email-main', type: 'mail.received' as const, occurredAt: now, receivedAt: now, actor: { externalId: 'sender@example.com' }, content: { subject: `${id} subject`, text: `${id} body` }, provenance: { rawPayloadRef: 'inbox://safe' } }, audit: [], ruleTriggers: [] }));
@@ -97,7 +115,7 @@ describe('SenseCenter', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     render(<SenseCenter />);
     fireEvent.click(screen.getByRole('button', { name: '目标权限' }));
-    expect(screen.getByText('project-1')).toBeInTheDocument();
+    expect(await screen.findByText('项目一')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '停用' }));
     expect(state.saveGrant).toHaveBeenCalledWith(expect.objectContaining({ enabled: false }));
     fireEvent.click(screen.getByRole('button', { name: '删除' }));
@@ -136,9 +154,11 @@ describe('SenseCenter', () => {
     state.decisions = [{ id: 'decision-1', eventId: 'event-jev', ruleId: rule.id, catalogVersion: '1.0', policyVersion: '1.0', candidateKeys: candidates.map((item) => item.key), answers: { providerModel: 'jev-latest', routeTarget: { choice: 'project:project-1', confidence: 0.8, probabilities: { ignore: 0.05, notify_user: 0.05, 'project:project-1': 0.7, 'role-agent:removed': 0.2 } }, needsUserAttention: 0.9, deliveryMode: { choice: 'invoke_target', confidence: 0.9, probabilities: { notify_user: 0.1, invoke_target: 0.9 } }, urgency: { score: 1, confidence: 0.9, probabilities: { low: 0.1, medium: 0.8, high: 0.1 } }, risk: { score: 1, confidence: 0.9, probabilities: { low: 0.8, medium: 0.1, high: 0.1 } }, needsHitl: 0.2, retainAsEvidence: 0 }, threshold: 0.8, status: 'pending', reason: 'TARGET_AMBIGUOUS', createdAt: now, updatedAt: now }];
     render(<SenseCenter />);
     fireEvent.click(screen.getByRole('button', { name: '触发规则' }));
-    expect(screen.getByText('email → Jev 决策（2 个目标候选）')).toBeInTheDocument();
+    expect(screen.getByText('email → 智能决策模式（2 个目标候选）')).toBeInTheDocument();
     expect(screen.getByText(/目录 1.0 · 策略 1.0 · 首二候选差值 > 0.5 自动执行/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '事件记录' }));
+    expect(await screen.findByText('项目一 · 0.7')).toBeInTheDocument();
+    expect(screen.queryByText('project:project-1')).not.toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('等待你的选择');
     expect(screen.getAllByText('执行方式')).toHaveLength(2);
     expect(screen.getByText('invoke_target · 0.9')).toBeInTheDocument();

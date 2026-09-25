@@ -23,10 +23,10 @@ export class DecisionOrchestrator {
     private readonly hashSalt: string,
   ) {}
 
-  async decide(event: PerceptionEventV1, rule: JevRule, candidates: readonly AuthorizedDecisionCandidate[]): Promise<DecisionOutcome> {
+  async decide(event: PerceptionEventV1, rule: JevRule, candidates: readonly AuthorizedDecisionCandidate[], context?: DecisionConversationContext): Promise<DecisionOutcome> {
     const id = this.receipts.stableId(event.id, rule.id, rule.decision.catalogVersion);
     const now = new Date().toISOString();
-    const request = buildDecisionRequest(event, candidates, this.hashSalt, undefined, rule.decision.cognitiveGuidance);
+    const request = buildDecisionRequest(event, candidates, this.hashSalt, context, rule.decision.cognitiveGuidance);
     const reserved = await this.receipts.reserve({
       id,
       eventId: event.id,
@@ -42,7 +42,7 @@ export class DecisionOrchestrator {
     });
     if (!reserved.created) return recover(reserved.receipt, candidates);
 
-    return this.request(event, rule, candidates, id);
+    return this.request(event, rule, candidates, id, context);
   }
 
   async retry(event: PerceptionEventV1, rule: JevRule, candidates: readonly AuthorizedDecisionCandidate[]): Promise<DecisionOutcome> {
@@ -55,6 +55,44 @@ export class DecisionOrchestrator {
     return this.request(event, rule, candidates, id);
   }
 
+  async requestUserTargetSelection(event: PerceptionEventV1, rule: JevRule, candidates: readonly AuthorizedDecisionCandidate[]): Promise<DecisionOutcome> {
+    const id = this.receipts.stableId(event.id, rule.id, rule.decision.catalogVersion);
+    const now = new Date().toISOString();
+    const request = buildDecisionRequest(event, candidates, this.hashSalt, undefined, rule.decision.cognitiveGuidance);
+    const reserved = await this.receipts.reserve({
+      id,
+      eventId: event.id,
+      ruleId: rule.id,
+      catalogVersion: rule.decision.catalogVersion,
+      policyVersion: rule.decision.policyVersion,
+      candidateKeys: request.candidateKeys,
+      threshold: 0.8,
+      status: 'pending',
+      reason: 'USER_TARGET_SELECTION_REQUIRED',
+      createdAt: now,
+      updatedAt: now,
+    });
+    if (!reserved.created) return recover(reserved.receipt, candidates);
+    if (!candidates.some(({ candidate }) => candidate.action === 'dispatch')) {
+      return { action: 'pending', receipt: await this.defer(id, 'NO_AUTHORIZED_CANDIDATE'), requested: false };
+    }
+    return { action: 'pending', receipt: reserved.receipt, requested: false };
+  }
+
+  async selectTargetForEvent(
+    event: PerceptionEventV1,
+    rule: JevRule,
+    candidates: readonly AuthorizedDecisionCandidate[],
+    selectedKey: string,
+  ): Promise<DecisionOutcome> {
+    const pending = await this.requestUserTargetSelection(event, rule, candidates);
+    if (pending.action !== 'pending') return pending;
+    const candidate = candidates.find((item) => item.candidate.key === selectedKey)?.candidate;
+    if (candidate?.action !== 'dispatch') return pending;
+    const receipt = await this.select(pending.receipt.id, selectedKey);
+    return { action: 'dispatch', receipt, target: candidate.target, requested: false };
+  }
+
   async reconsider(id: string, event: PerceptionEventV1, rule: JevRule, candidates: readonly AuthorizedDecisionCandidate[], context: DecisionConversationContext): Promise<DecisionOutcome> {
     const receipt = this.receipts.get(id);
     if (!receipt) throw new Error('DECISION_NOT_FOUND');
@@ -64,12 +102,12 @@ export class DecisionOrchestrator {
 
   async isPendingChoiceFeedback(event: PerceptionEventV1, candidates: readonly AuthorizedDecisionCandidate[], context: DecisionConversationContext): Promise<boolean> {
     if (!candidates.some(({ candidate }) => candidate.action === 'dispatch')) return false;
-    try {
-      const answer = await this.decisions.decide(buildDecisionRequest(event, candidates, this.hashSalt, { ...context, pendingChoiceFeedback: true }));
-      return (answer.isChoiceFeedback ?? 0) >= 0.5;
-    } catch {
-      return false;
+    const request = buildDecisionRequest(event, candidates, this.hashSalt, { ...context, pendingChoiceFeedback: true });
+    if (this.decisions.classifyPendingChoiceFeedback) {
+      return (await this.decisions.classifyPendingChoiceFeedback(request)) >= 0.5;
     }
+    const answer = await this.decisions.decide(request);
+    return (answer.isChoiceFeedback ?? 0) >= 0.5;
   }
 
   get(id: string): JevDecisionReceipt | null { return this.receipts.get(id) }

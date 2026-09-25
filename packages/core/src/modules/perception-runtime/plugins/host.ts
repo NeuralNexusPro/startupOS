@@ -13,6 +13,7 @@ import type {
 import { PerceptionPluginRegistry } from './registry';
 import { assertPluginEvent } from './validation';
 import { createPluginSdkLogger, writePluginLog } from './logging';
+import { resolvePerceptionPath } from '../storage/paths';
 
 interface PluginInstance {
   context: PerceptionPluginRuntimeContext;
@@ -124,7 +125,10 @@ export class PerceptionPluginHost {
         },
       };
     }
-    return Object.freeze({ pluginId, connectorId, settings: Object.freeze({ ...settings }), ports: Object.freeze(exposed) });
+    return Object.freeze({ pluginId, connectorId, settings: Object.freeze({ ...settings }), ports: Object.freeze(exposed),
+      ...(approved.has('office-capabilities') && this.capabilityOptions
+        ? { officeAuthDir: resolvePerceptionPath(this.capabilityOptions.dataRoot, 'office-auth', pluginId, connectorId) } : {}),
+    });
   }
 
   async start(pluginId: string, connectorId: string, settings: Readonly<Record<string, JsonValue>> = {}): Promise<PerceptionPluginInstanceStatus> {
@@ -153,7 +157,14 @@ export class PerceptionPluginHost {
     if (!entry) throw new Error(`Plugin not registered: ${pluginId}`);
     if (!entry.plugin.provision) return { settings };
     const context = this.context(pluginId, connectorId, settings);
-    try { return await entry.plugin.provision(Object.freeze({ ...context, secrets: Object.freeze({ ...secrets }) })); }
+    try {
+      const result = await entry.plugin.provision(Object.freeze({ ...context, secrets: Object.freeze({ ...secrets }) }));
+      if (settings['officeCapabilitiesEnabled'] === true && entry.plugin.officeCapabilities?.requestAuthorization) {
+        const authorization = await entry.plugin.officeCapabilities.requestAuthorization(context, new AbortController().signal);
+        if (authorization.status !== 'authorized') throw new Error('IM_CAPABILITY_AUTHORIZATION_REQUIRED');
+      }
+      return result;
+    }
     catch (error) { writePluginLog(context.ports.log, { level: 'error', stage: 'lifecycle.provision', error }); throw error; }
   }
 

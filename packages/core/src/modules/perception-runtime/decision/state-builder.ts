@@ -83,6 +83,10 @@ function eventSummary(event: PerceptionEventV1, externalIds: readonly string[]):
 function candidateCriterion(candidate: PerceptionDecisionCandidate, authorization?: PerceptionTargetAuthorization, profile?: PerceptionTargetProfile): JsonValue {
   if (candidate.action === 'ignore') return { action: 'ignore', description: 'No user attention or target action is needed.' };
   if (candidate.action === 'notify_user') return { action: 'notify_user', description: 'Notify the user directly without invoking a target capability.' };
+  if (candidate.action === 'ask_user_to_choose_target') return {
+    action: 'ask_user_to_choose_target',
+    description: 'Ask the user to choose which authorized role or capability should handle the request.',
+  };
   return {
     action: 'dispatch',
     targetKind: candidate.target.kind,

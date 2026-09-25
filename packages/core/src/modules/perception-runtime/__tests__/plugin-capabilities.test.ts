@@ -71,6 +71,15 @@ describe('connection capability boundary', () => {
     await expect(session.invoke(actor, { ...request, name: drive.name })).resolves.toEqual({ capability: drive.name, count: 1 });
   });
 
+  it('finds capabilities from natural-language queries without requiring every synonym to match', async () => {
+    const { session } = setup();
+    const discovered = await session.discover(actor, '日历');
+    expect(discovered.capabilities.map(item => item.name)).toEqual(['calendar.create']);
+    expect(discovered.authorizationStatus).toBe('authorized');
+    const empty = await session.discover(actor, '完全无关的能力');
+    expect(empty).toMatchObject({ authorizationStatus: 'authorized', capabilities: [] });
+  });
+
   it('validates descriptions and lazily returns schema, enforcing live scopes and actor policy', async () => {
     const { session, provider, policy, auth } = setup();
     expect(await session.inspect()).toEqual({ state: 'available', provider: catalog.provider, providerVersion: catalog.providerVersion, capabilityCount: 1, identityMode: 'user' });
@@ -83,6 +92,15 @@ describe('connection capability boundary', () => {
     expect(provider.invoke).not.toHaveBeenCalled();
     expect(() => validateCapabilityCatalog({ ...catalog, capabilities: [...catalog.capabilities, ...catalog.capabilities] })).toThrow('INVALID_CATALOG');
     expect(() => validateCapabilityCatalog({ ...catalog, capabilities: [{ ...catalog.capabilities[0], inputSchema: { type: 'object', properties: { x: { $ref: 'https://bad/schema' } } } }] })).toThrow('INVALID_CATALOG');
+  });
+
+  it('reports an uninitialized connection as needing authorization before catalog discovery', async () => {
+    const { root, provider, policy, auth } = setup();
+    provider.authorization = vi.fn(async () => ({ ...auth, status: 'needs_authorization', scopes: [] }));
+    provider.list = vi.fn(async () => { throw new Error('schema requires authorization'); });
+    const session = new PluginCapabilitySession(context, provider, policy, root);
+    expect(await session.inspect()).toMatchObject({ state: 'needs_authorization', identityMode: 'user' });
+    expect(provider.list).not.toHaveBeenCalled();
   });
 
   it('blocks unknown auth, identity mismatch, policy denial, invalid arguments, and stale schema', async () => {
@@ -119,6 +137,15 @@ describe('connection capability boundary', () => {
     await expect(session.invoke(actor, request)).rejects.toThrow('RESULT_UNCERTAIN');
     await expect(session.discover(actor)).rejects.toThrow('UNAVAILABLE');
     await expect(new PluginCapabilitySession(context, provider, policy, root).invoke(actor, request)).rejects.toThrow('RESULT_UNCERTAIN');
+    expect(provider.invoke).toHaveBeenCalledTimes(1);
+  });
+
+  it('restores legacy WeCom 850003 receipts as a service grant requirement without replaying the write', async () => {
+    const { session, provider, policy, root } = setup();
+    provider.invoke = vi.fn(async () => { throw new Error('IM_CAPABILITY_AUTHORIZATION_EXPIRED'); });
+    await expect(session.invoke(actor, request)).rejects.toThrow('IM_CAPABILITY_AUTHORIZATION_EXPIRED');
+    const restored = new PluginCapabilitySession(context, provider, policy, root);
+    await expect(restored.invoke(actor, request)).rejects.toThrow('IM_CAPABILITY_SERVICE_AUTHORIZATION_REQUIRED');
     expect(provider.invoke).toHaveBeenCalledTimes(1);
   });
 
@@ -168,18 +195,55 @@ describe('connection capability boundary', () => {
   it('keeps old plugins compatible and requires explicit host approval and opt-in', async () => {
     const { root, provider, policy } = setup();
     const registry = new PerceptionPluginRegistry();
+    const start = vi.fn(async (_pluginContext: PerceptionPluginRuntimeContext) => {});
     registry.register({ plugin: { manifest: { id: context.pluginId, name: 'Test', version: '1.0.0', hostApi: '1.0', entry: '@test/plugin', source: 'wecom', transport: 'stream',
       capabilities: ['office-capabilities'], permissions: ['office-capabilities'], configurationSchema: { version: '1.0', fields: [] } },
-      officeCapabilities: provider, start: async () => {}, stop: async () => {}, }, approvedPermissions: ['office-capabilities'] });
+      officeCapabilities: provider, start, stop: async () => {}, }, approvedPermissions: ['office-capabilities'] });
     const ports: PerceptionPluginHostPorts = { credentials: { bind: vi.fn(), resolve: vi.fn(), remove: vi.fn() }, events: { submit: vi.fn() }, network: { request: vi.fn() },
       schedule: { every: vi.fn(), cancel: vi.fn() }, state: { read: vi.fn(), write: vi.fn(), remove: vi.fn() }, health: { report: vi.fn() }, audit: { record: vi.fn() } };
     const host = new PerceptionPluginHost(registry, ports, { dataRoot: root, policy });
     await host.start(context.pluginId, context.connectorId);
     await expect(host.discoverCapabilities(context.pluginId, context.connectorId, actor)).rejects.toThrow('UNAVAILABLE');
     await host.restart(context.pluginId, context.connectorId, { officeCapabilitiesEnabled: true });
+    await host.start(context.pluginId, 'connection-2', { officeCapabilitiesEnabled: true });
+    expect(start.mock.calls.at(-2)?.[0].officeAuthDir).toBe(path.join(root, 'perception/office-auth/test.plugin/connection-1'));
+    expect(start.mock.calls.at(-1)?.[0].officeAuthDir).toBe(path.join(root, 'perception/office-auth/test.plugin/connection-2'));
     expect(await host.inspectCapabilities(context.pluginId, context.connectorId)).toMatchObject({ connectorId: context.connectorId, state: 'available', capabilityCount: 1 });
     expect((await host.discoverCapabilities(context.pluginId, context.connectorId, actor)).capabilities[0].availability).toBe('available');
     await host.stop(context.pluginId, context.connectorId);
     await expect(host.invokeCapability(context.pluginId, context.connectorId, actor, request)).rejects.toThrow('UNAVAILABLE');
+  });
+
+  it('requests connector-scoped office authorization while provisioning only when enabled', async () => {
+    const { root, provider, policy, auth } = setup();
+    provider.requestAuthorization = vi.fn(async () => auth);
+    const registry = new PerceptionPluginRegistry();
+    registry.register({
+      plugin: {
+        manifest: {
+          id: context.pluginId, name: 'Test', version: '1.0.0', hostApi: '1.0', entry: '@test/plugin', source: 'wecom', transport: 'stream',
+          capabilities: ['office-capabilities'], permissions: ['credentials', 'office-capabilities'], configurationSchema: { version: '1.0', fields: [] },
+        },
+        officeCapabilities: provider,
+        provision: vi.fn(async () => ({ settings: { transport: 'stream' } })),
+        start: async () => {}, stop: async () => {},
+      },
+      approvedPermissions: ['credentials', 'office-capabilities'],
+    });
+    const host = new PerceptionPluginHost(registry, {
+      credentials: { bind: vi.fn(), resolve: vi.fn(), remove: vi.fn() }, events: { submit: vi.fn() }, network: { request: vi.fn() },
+      schedule: { every: vi.fn(), cancel: vi.fn() }, state: { read: vi.fn(), write: vi.fn(), remove: vi.fn() }, health: { report: vi.fn() }, audit: { record: vi.fn() },
+    }, { dataRoot: root, policy });
+
+    await host.provision(context.pluginId, 'connection-1', { officeCapabilitiesEnabled: false }, {});
+    expect(provider.requestAuthorization).not.toHaveBeenCalled();
+    await host.provision(context.pluginId, 'connection-2', { officeCapabilitiesEnabled: true }, {});
+    expect(provider.requestAuthorization).toHaveBeenCalledWith(
+      expect.objectContaining({
+        connectorId: 'connection-2',
+        officeAuthDir: path.join(root, 'perception/office-auth/test.plugin/connection-2'),
+      }),
+      expect.any(AbortSignal)
+    );
   });
 });

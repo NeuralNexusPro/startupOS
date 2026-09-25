@@ -14,6 +14,7 @@ const REQUEST_TYPES = new Set([
   'query_projection',
   'submit_action',
   'start_bound_task',
+  'list_project_tasks',
   'inspect_bound_task',
   'control_bound_task',
 ]);
@@ -30,6 +31,8 @@ function isCrossPackageRequest(value: unknown): value is OntologyCrossPackageReq
   const projectId = value['projectId'];
   const type = value['type'];
   const expectedRevision = value['expectedRevision'];
+  const cursor = value['cursor'];
+  const limit = value['limit'];
   return value['contractVersion'] === '1'
     && typeof requestId === 'string'
     && requestId.trim().length > 0
@@ -37,6 +40,10 @@ function isCrossPackageRequest(value: unknown): value is OntologyCrossPackageReq
     && projectId.trim().length > 0
     && typeof type === 'string'
     && REQUEST_TYPES.has(type)
+    && (type !== 'list_project_tasks'
+      || ((cursor === undefined || (typeof cursor === 'string' && cursor.trim().length > 0))
+        && (limit === undefined || (typeof limit === 'number'
+          && Number.isSafeInteger(limit) && limit >= 1 && limit <= 50))))
     && ((type !== 'submit_action' && type !== 'control_bound_task')
       || (Number.isSafeInteger(expectedRevision) && (expectedRevision as number) >= 0));
 }

@@ -115,6 +115,13 @@ describe('Jev decision state and rule boundary', () => {
     const ambiguousCandidates = [...candidates, { key: 'project:project-2', action: 'dispatch' as const, target: { kind: 'project' as const, id: 'project-2' } }];
     expect(evaluateDecisionPolicy({ ...answer(), routeTarget: { choice: 'project:project-1', confidence: 0.54, probabilities: { 'project:project-1': 0.54, 'project:project-2': 0.46 } }, needsUserAttention: 0.42, deliveryMode: { choice: 'notify_user', confidence: 0.95, probabilities: { notify_user: 0.97, invoke_target: 0.03 } } }, ambiguousCandidates, false, true)).toMatchObject({ action: 'pending', reason: 'TARGET_AMBIGUOUS' });
     expect(evaluateDecisionPolicy({ ...answer(), routeTarget: { choice: 'project:project-1', confidence: 0.07, probabilities: { 'project:project-1': 1 } }, needsUserAttention: 0.9, deliveryMode: { choice: 'invoke_target', confidence: 0.07, probabilities: { notify_user: 0.46, invoke_target: 0.54 } } }, candidates, false)).toMatchObject({ action: 'dispatch' });
+    const selectableCandidates = [...candidates, { key: 'ask_user_to_choose_target', action: 'ask_user_to_choose_target' as const }];
+    expect(evaluateDecisionPolicy({
+      ...answer(),
+      routeTarget: { choice: 'ask_user_to_choose_target', confidence: 0.9, probabilities: { 'project:project-1': 0.1, ask_user_to_choose_target: 0.9 } },
+      needsUserAttention: 0.9,
+      deliveryMode: { choice: 'invoke_target', confidence: 1, probabilities: { notify_user: 0, invoke_target: 1 } },
+    }, selectableCandidates, false)).toMatchObject({ action: 'pending', reason: 'USER_TARGET_SELECTION_REQUIRED' });
   });
 });
 
@@ -188,6 +195,93 @@ describe('Jev decision receipts and policy', () => {
 });
 
 describe('PerceptionRouter Jev integration', () => {
+  it('keeps a successful IM target sticky for the same sender and conversation', async () => {
+    const dataRoot = root();
+    const secondCandidate = { key: 'project:project-2', action: 'dispatch' as const, target: { kind: 'project' as const, id: 'project-2' } };
+    const imRule = {
+      ...rule(),
+      sources: ['wecom' as const],
+      eventTypes: ['message.received' as const],
+      decision: { ...rule().decision, candidates: [...rule().decision.candidates, secondCandidate] },
+    };
+    const imEvent = (id: string, minute: number, actor = 'sender-1', text = `message-${id}`): PerceptionEventV1 => ({
+      ...event(),
+      id,
+      sourceEventId: id,
+      source: 'wecom',
+      connectorId: 'wecom-main',
+      type: 'message.received',
+      occurredAt: `2026-09-01T08:${String(minute).padStart(2, '0')}:00.000Z`,
+      receivedAt: `2026-09-01T08:${String(minute).padStart(2, '0')}:01.000Z`,
+      actor: { externalId: actor },
+      conversation: { externalId: 'direct-1', kind: 'direct' },
+      content: { text },
+    });
+    const decisionAnswer = (choice: 'project:project-1' | 'project:project-2'): JevDecisionAnswer => ({
+      ...answer(1, 0, choice),
+      needsUserAttention: 1,
+      deliveryMode: { choice: 'invoke_target', confidence: 1, probabilities: { notify_user: 0, invoke_target: 1 } },
+      routeTarget: { choice, confidence: 1, probabilities: { 'project:project-1': choice === 'project:project-1' ? 1 : 0, 'project:project-2': choice === 'project:project-2' ? 1 : 0 } },
+    });
+    const decide = vi.fn(async () => decisionAnswer('project:project-1'))
+      .mockResolvedValueOnce(decisionAnswer('project:project-1'))
+      .mockResolvedValueOnce(decisionAnswer('project:project-2'))
+      .mockResolvedValueOnce(decisionAnswer('project:project-1'));
+    const authorize = vi.fn(async () => ({ authorized: true }));
+    const dispatch = vi.fn(async ({ event: dispatched }: { event: PerceptionEventV1 }) => ({ resultRef: `perception://session/${dispatched.id}` }));
+    const router = new PerceptionRouter(dataRoot, { list: () => [imRule] }, { authorize }, { dispatch }, undefined,
+      new DecisionOrchestrator({ decide }, new DecisionReceiptStore(dataRoot), 'stable-salt'));
+    const events = new PerceptionEventStore(dataRoot);
+    const route = async (value: PerceptionEventV1) => {
+      events.save(value);
+      return router.route(value);
+    };
+
+    expect(await route(imEvent('first', 0))).toEqual([expect.objectContaining({ status: 'dispatched' })]);
+    expect(await route(imEvent('second', 5))).toEqual([expect.objectContaining({ status: 'dispatched' })]);
+    expect(decide).toHaveBeenCalledOnce();
+    expect(dispatch).toHaveBeenCalledTimes(2);
+    expect(new DecisionReceiptStore(dataRoot).get(new DecisionReceiptStore(dataRoot).stableId('second', imRule.id, '1.0'))).toBeNull();
+    expect(new PerceptionAuditStore(dataRoot).list({ eventId: 'second' })).toContainEqual(expect.objectContaining({
+      action: 'decision.resolved',
+      detail: expect.objectContaining({ action: 'sticky-dispatch', candidateKey: 'project:project-1' }),
+    }));
+
+    expect(await route(imEvent('switch', 6, 'sender-1', '换一个助手处理'))).toEqual([expect.objectContaining({ status: 'pending', reason: 'USER_TARGET_SELECTION_REQUIRED' })]);
+    expect(decide).toHaveBeenCalledOnce();
+    const switchDecisionId = new DecisionReceiptStore(dataRoot).stableId('switch', imRule.id, '1.0');
+    expect(new DecisionReceiptStore(dataRoot).get(switchDecisionId)).toMatchObject({
+      status: 'pending',
+      reason: 'USER_TARGET_SELECTION_REQUIRED',
+      candidateKeys: expect.arrayContaining(['ask_user_to_choose_target', 'project:project-1', 'project:project-2']),
+    });
+    expect(new PerceptionAuditStore(dataRoot).list({ eventId: 'switch' })).toContainEqual(expect.objectContaining({
+      action: 'decision.resolved',
+      detail: expect.objectContaining({ action: 'sticky-reset', candidateKey: 'project:project-1', mode: 'choose' }),
+    }));
+    expect(await router.resolveDecision(switchDecisionId, 'project:project-2')).toMatchObject({ status: 'dispatched' });
+    await route(imEvent('after-switch', 7));
+    expect(decide).toHaveBeenCalledOnce();
+    expect(new PerceptionAuditStore(dataRoot).list({ eventId: 'after-switch' })).toContainEqual(expect.objectContaining({
+      action: 'decision.resolved',
+      detail: expect.objectContaining({ action: 'sticky-dispatch', candidateKey: 'project:project-2' }),
+    }));
+
+    expect(await route(imEvent('named-switch', 8, 'sender-1', '换成 project-1 处理'))).toEqual([expect.objectContaining({ status: 'dispatched' })]);
+    expect(decide).toHaveBeenCalledOnce();
+    expect(new DecisionReceiptStore(dataRoot).get(new DecisionReceiptStore(dataRoot).stableId('named-switch', imRule.id, '1.0'))).toMatchObject({
+      status: 'user-executed',
+      selectedKey: 'project:project-1',
+    });
+    expect(new PerceptionAuditStore(dataRoot).list({ eventId: 'named-switch' })).toContainEqual(expect.objectContaining({
+      action: 'decision.resolved',
+      detail: expect.objectContaining({ action: 'user-selection', candidateKey: 'project:project-1' }),
+    }));
+
+    await route(imEvent('other-sender', 9, 'sender-2'));
+    expect(decide).toHaveBeenCalledTimes(2);
+  });
+
   it('decides after authorization, reauthorizes before the shared lease/dispatch path, and restores the terminal receipt', async () => {
     const dataRoot = root();
     const decide = vi.fn(async () => answer());
@@ -295,7 +389,7 @@ describe('PerceptionRouter Jev integration', () => {
       { notify: vi.fn(), logDecision },
     );
     await router.route(event());
-    expect(logDecision).toHaveBeenCalledWith(expect.objectContaining({ phase: 'requested', candidateKeys: ['ignore', 'notify_user', 'project:project-1'] }));
+    expect(logDecision).toHaveBeenCalledWith(expect.objectContaining({ phase: 'requested', candidateKeys: ['ignore', 'notify_user', 'project:project-1', 'ask_user_to_choose_target'] }));
     expect(logDecision).toHaveBeenCalledWith(expect.objectContaining({ phase: 'completed', receipt: expect.objectContaining({ answers: expect.objectContaining({ routeTarget: expect.anything() }) }) }));
     expect(logDecision).toHaveBeenCalledWith(expect.objectContaining({ phase: 'dispatched' }));
   });

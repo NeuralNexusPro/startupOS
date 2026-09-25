@@ -75,9 +75,14 @@ export type OntologyCrossPackageRequest =
       readonly taskId: string;
     })
   | (OntologyCrossPackageRequestBase & {
+      readonly type: 'list_project_tasks';
+      readonly cursor?: string;
+      readonly limit?: number;
+    })
+  | (OntologyCrossPackageRequestBase & {
       readonly type: 'control_bound_task';
       readonly taskId: string;
-      readonly action: 'pause' | 'resume' | 'cancel';
+      readonly action: 'pause' | 'resume' | 'retry' | 'cancel';
       readonly expectedRevision: number;
     });
 

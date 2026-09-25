@@ -126,6 +126,31 @@ describe('/api/ontology/cross-package', () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 
+  it('accepts a bounded project task page request without an ontology version', async () => {
+    invoke.mockRejectedValueOnce(new Error('PROJECT_TASK_SOURCE_UNAVAILABLE'));
+    const response = await post(JSON.stringify({
+      contractVersion: '1',
+      requestId: 'request-2',
+      actorId: 'request-actor',
+      projectId: 'project-1',
+      type: 'list_project_tasks',
+      cursor: 'cursor-1',
+      limit: 50,
+    }));
+
+    expect(response.status).toBe(503);
+    expect(invoke).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'list_project_tasks',
+      projectId: 'project-1',
+      cursor: 'cursor-1',
+      limit: 50,
+      actorId: 'actor-1',
+    }));
+    expect(await response.json()).toMatchObject({
+      error: { category: 'unavailable', code: 'CAPABILITY_NOT_READY' },
+    });
+  });
+
   it('maps missing production capabilities without leaking diagnostics', async () => {
     invoke.mockRejectedValueOnce(new Error('PROJECT_TASK_SOURCE_UNAVAILABLE'));
     const unavailable = await post(JSON.stringify(baseRequest));

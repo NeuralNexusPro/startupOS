@@ -1,6 +1,6 @@
 # Story 9.43：项目任务看板与协同图联动
 
-**状态：** In Progress（T1 核心投影公共边界已实现）
+**状态：** In Progress（943-T1 真实任务源与 Desktop 装配已完成）
 **Owner：** Project Runtime / Web  
 **日期：** 2026-09-14
 
@@ -18,4 +18,6 @@
 ## 2026-09-22 实施进度
 
 - 已实现 `ProjectTaskBoardService`：通过注入的 Task source 聚合权威 Task projection，并从 9.42 Run ledger 读取 WorkItem/binding，保持项目隔离、50 条分页、requestId 幂等和 expectedRevision 冲突检查；公开操作仅 pause/resume/retry/cancel，不含 complete。
-- 尚未接入真实项目级 pi-tasks source/index rebuild、Web 看板/图 UI、跨进程恢复和 E2E；Story 仍为 In Progress。
+- 已接入真实项目级 Task Runtime source：从持久会话投影读取、缺失索引时重建、只读关联同项目 Run，并在 Desktop IPC 装配。实时控制仅在对应 Agent Runtime 已恢复时可用；否则明确返回 unavailable。
+- 已接入项目工作区“任务”页签：六状态看板、当前页搜索、详情/WorkItem 与受控任务操作均消费 Desktop IPC 的权威投影；Web 环境明确显示不可用。
+- 图定位、键盘菜单、拖拽、Agent/优先级数据投影、跨进程恢复联合验收与 E2E 尚未完成；Story 仍为 In Progress。
