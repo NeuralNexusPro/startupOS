@@ -3,6 +3,29 @@ import type {
   CanonicalFactReference,
   CanonicalOperationRecord,
 } from '../ontology';
+import type {
+  ProjectTaskBoardStatus,
+  ProjectTaskDetail,
+  ProjectTaskEvidenceGap,
+  ProjectTaskSummary,
+} from './task-board';
+import type {
+  AgentTaskProjectMetadataMutationReceiptV1,
+  AgentTaskProjectPriorityV1,
+} from '../../integrations/pi-agent/task-runtime';
+import type {
+  WorkItemHandoffCandidate,
+  WorkItemHandoffReceipt,
+} from '../../../modules/collaboration-runtime/facade';
+import type {
+  ApprovedProjectTaskCreationReceipt,
+  ProjectTaskSemanticInput,
+} from './project-task-creation';
+import type {
+  DesignGap,
+  SemanticFactPolicy,
+  SemanticObjectSlot,
+} from '../solution';
 
 export const ONTOLOGY_CROSS_PACKAGE_CONTRACT_VERSION = '1';
 
@@ -67,6 +90,7 @@ export type OntologyCrossPackageRequest =
       readonly contractHash: string;
       readonly parentTaskId: string;
       readonly parentStepId: string;
+      readonly parentSessionId?: string;
       readonly taskRevision: number;
       readonly inputRefs: readonly string[];
     })
@@ -84,7 +108,76 @@ export type OntologyCrossPackageRequest =
       readonly taskId: string;
       readonly action: 'pause' | 'resume' | 'retry' | 'cancel';
       readonly expectedRevision: number;
+    })
+  | (OntologyCrossPackageRequestBase & {
+      readonly type: 'transition_project_task';
+      readonly taskId: string;
+      readonly targetStatus: ProjectTaskBoardStatus;
+      readonly expectedRevision: number;
+      readonly expectedLeaseEpoch?: number;
+      readonly reason?: string;
+    })
+  | (OntologyCrossPackageRequestBase & {
+      readonly type: 'update_project_task_priority';
+      readonly taskId: string;
+      readonly priority: AgentTaskProjectPriorityV1;
+      readonly expectedRevision: number;
+      readonly expectedCursor: string | null;
+      readonly bridgeEpoch: number;
+    })
+  | (OntologyCrossPackageRequestBase & {
+      readonly type: 'list_work_item_handoff_candidates';
+      readonly runId: string;
+      readonly workItemId: string;
+    })
+  | (OntologyCrossPackageRequestBase & {
+      readonly type: 'handoff_work_item';
+      readonly runId: string;
+      readonly workItemId: string;
+      readonly targetAgentId: string;
+      readonly expectedRunRevision: number;
+      readonly expectedWorkItemRevision: number;
+      readonly expectedLeaseEpoch: number;
+    })
+  | (OntologyCrossPackageRequestBase & {
+      readonly type: 'list_approved_task_templates';
+    })
+  | (OntologyCrossPackageRequestBase & {
+      readonly type: 'create_approved_project_task';
+      readonly solutionId: string;
+      readonly solutionVersion: string;
+      readonly contractId: string;
+      readonly contractHash: string;
+      readonly taskTemplateId: string;
+      readonly objective: string;
+      readonly semanticInputs: readonly ProjectTaskSemanticInput[];
     });
+
+export interface OntologyApprovedTaskTemplateSummary {
+  readonly id: string;
+  readonly designNodeId: string;
+  readonly objective: string;
+  readonly candidateAgentIds: readonly string[];
+  readonly candidateSkillIds: readonly string[];
+}
+
+export interface OntologyApprovedTaskContractSummary {
+  readonly solutionId: string;
+  readonly solutionVersion: string;
+  readonly contractId: string;
+  readonly contractHash: string;
+  readonly ontologyId: string;
+  readonly ontologyVersion: string;
+  readonly objectSlots: readonly SemanticObjectSlot[];
+  readonly factPolicies: readonly SemanticFactPolicy[];
+  readonly taskTemplates: readonly OntologyApprovedTaskTemplateSummary[];
+}
+
+export interface OntologyApprovedTaskTemplateCatalogData {
+  readonly contracts: readonly OntologyApprovedTaskContractSummary[];
+}
+
+export type OntologyApprovedProjectTaskData = ApprovedProjectTaskCreationReceipt;
 
 export type OntologyCrossPackageErrorCategory =
   | 'authorization'
@@ -105,6 +198,9 @@ export interface OntologyCrossPackageError {
   readonly issues: readonly OntologyCrossPackageIssue[];
   readonly retryable: boolean;
   readonly remediation: string;
+  readonly authoritative?: ProjectTaskSummary;
+  readonly gaps?: readonly ProjectTaskEvidenceGap[];
+  readonly designGaps?: readonly DesignGap[];
 }
 
 export interface OntologyCrossPackageSuccess<TData> {
@@ -130,6 +226,26 @@ export interface OntologyCrossPackageRunData {
   readonly status: 'running' | 'paused' | 'canceled';
   readonly revision: number;
   readonly workItemCount: number;
+}
+
+export interface OntologyCrossPackageTaskPriorityData {
+  readonly receipt: AgentTaskProjectMetadataMutationReceiptV1;
+  readonly task: ProjectTaskDetail;
+}
+
+export interface OntologyCrossPackageHandoffCandidatesData {
+  readonly candidates: readonly WorkItemHandoffCandidate[];
+  readonly authority: {
+    readonly runRevision: number;
+    readonly workItemRevision: number;
+    readonly leaseEpoch: number;
+    readonly assignedAgentId: string;
+  };
+}
+
+export interface OntologyCrossPackageWorkItemHandoffData {
+  readonly receipt: WorkItemHandoffReceipt;
+  readonly task: ProjectTaskDetail;
 }
 
 export interface OntologyCrossPackageWorkItemRecoveryInput {

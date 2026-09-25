@@ -185,6 +185,13 @@ Goal 输出必须包含测试命令、AC/TC evidence、人工验证步骤和剩�
 - Evidence、版本隔离、HITL 和恢复测试通过。
 - lint、core 回归和 package smoke 通过。
 
+## 2026-09-25 942-T3-E 恢复验收证据
+
+- 生产公共 composition 的真实文件故障矩阵覆盖 readiness、Worker artifact、Verifier、ONT Action 与 Evidence 五个阶段强退；恢复不重复 Worker、Fact、accepted operation 或 Evidence。
+- 覆盖同一 Agent 两个并发 WorkItem、Web/Desktop 双宿主文件 CAS、maxTokens、持久 HITL 重启与 Run completed/failed 聚合。
+- `verify-ontology-runtime.js` 已从 app.asar 解包公共 production composition，实际完成一条 frozen WorkItem 的 Worker→Verifier→Action→Evidence 全链路，并验证重启后 Agent 只执行一次。
+- 详细命令与断言见 `openspec/changes/complete-contract-bound-workitem-execution/evidence/942-t3-e-recovery-qa.md`；Story 仍待 942-T3-F 完成全量集成门禁后关闭。
+
 ## 2026-09-24 Core 验证证据
 
 - `pnpm --filter @originos/core exec vitest run src/modules/collaboration-runtime/facade/__tests__/contract-execution.test.ts src/lib/integrations/pi-agent/task-runtime/__tests__/coordinator.test.ts`：2 个文件、27 项通过。
@@ -219,3 +226,12 @@ Goal 输出必须包含测试命令、AC/TC evidence、人工验证步骤和剩�
 
 
 完整依赖、状态所有权及验收场景见[主线规划](../../epic-ONT/project-semantic-execution-plan.md)。
+
+## 2026-09-25 942-T3-F 最终集成验收
+
+- Core 14 files / 93 tests、Web 8 files / 34 tests、Desktop 2 files / 12 tests 通过。
+- Core、Web、Desktop TypeScript strict 通过；`pnpm lint` 为 0 error（3150 条存量 warning）。
+- 架构扫描 939 个生产文件、0 条诊断；架构 self-test 43 个用例 × 2 个 CWD 通过。
+- `complete-contract-bound-workitem-execution` strict validation 与 `git diff --check` 通过。
+- TC-U1–U6、TC-I1–I10、SX01–SX08 已由契约、阶段机、生产 composition、恢复故障矩阵和 package verifier 覆盖；SX09 的执行期最新输入门控由版本化 readiness/fact policy 拒绝旧 revision 覆盖。
+- Story verification Goal 完成；Windows/macOS 正式产物矩阵由 ONT.8 的平台验收继续负责，不改变 9.42 runtime 关闭结论。

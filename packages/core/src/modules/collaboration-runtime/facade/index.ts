@@ -41,6 +41,41 @@ export {
   type WorkItemVerifierPort,
   type WorkItemEvidenceSink,
   type CollaborationExecutionDependencies,
+  type AcceptedExternalOutputInput,
+  type AcceptedExternalOutputResult,
+  type CollaborationRunStatus,
+  type CollaborationRunTerminalStatus,
+  type WorkItemStatus,
+  type AttemptStatus,
+  type WorkItemUsage,
+  type WorkItemExecutionStage,
+  type WorkItemReadinessInput,
+  type WorkItemReadinessResult,
+  type WorkItemReadinessReceipt,
+  type WorkItemReadinessPort,
+  type WorkerExecutionInput,
+  type VerifierExecutionInput,
+  type OutcomeCommitInput,
+  type OutcomeReceipt,
+  type WorkItemOutcomePort,
+  type EvidenceSubmissionInput,
+  type WorkItemHitlRequest,
+  type WorkItemHitlPort,
+  type HitlOpenInput,
+  type HitlDecision,
+  type HitlTrigger,
+  type ResolveWorkItemHitlInput,
+  type CollaborationMutationLockPort,
+  type WorkItemStageClaim,
+  type WorkItemHandoffCandidate,
+  type ListWorkItemHandoffCandidatesInput,
+  type WorkItemHandoffInput,
+  type WorkItemHandoffReceipt,
+  type WorkItemHandoffResult,
+  FileCollaborationMutationLock,
+  CollaborationMutationConflictError,
+  CollaborationReconciliationError,
+  CollaborationWorkItemHandoffError,
 } from "./contract-execution";
 export { createAgentTaskEvidenceSink } from "./task-runtime-evidence-sink";
 
@@ -48,11 +83,6 @@ export { createAgentTaskEvidenceSink } from "./task-runtime-evidence-sink";
 // Re-export — hitl-dispatcher 公共 API
 // ============================================================================
 export { sendMessageToSupervisor, respondToHumanReview } from "./hitl-dispatcher";
-
-// ============================================================================
-// Re-export — topology 工具（从 engine 层 re-export）
-// ============================================================================
-export { loadProjectTopology } from "../../../modules/collaboration-runtime/engine/supervisor-dag";
 
 // ============================================================================
 // createSession — 组装层：注入 eventEmitter

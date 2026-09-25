@@ -126,6 +126,64 @@ describe('/api/ontology/cross-package', () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 
+  it('accepts target transition intent without translating it', async () => {
+    invoke.mockResolvedValue(success());
+    const request = {
+      ...baseRequest,
+      type: 'transition_project_task',
+      targetStatus: 'review',
+      expectedRevision: 3,
+      expectedLeaseEpoch: 9,
+      reason: 'Ready for review',
+    };
+    const response = await post(JSON.stringify(request));
+
+    expect(response.status).toBe(200);
+    expect(invoke).toHaveBeenCalledWith({ ...request, actorId: 'actor-1' });
+  });
+
+  it('accepts approved template catalog and exact create requests', async () => {
+    invoke.mockResolvedValue(success());
+    const catalog = {
+      ...baseRequest, requestId: 'catalog-1', type: 'list_approved_task_templates',
+    };
+    const create = {
+      ...baseRequest, requestId: 'create-1', type: 'create_approved_project_task',
+      solutionId: 'solution-1', solutionVersion: '1', contractId: 'contract-1',
+      contractHash: `sha256:${'a'.repeat(64)}`, taskTemplateId: 'template-1',
+      objective: '处理订单', semanticInputs: [],
+    };
+
+    expect((await post(JSON.stringify(catalog))).status).toBe(200);
+    expect((await post(JSON.stringify(create))).status).toBe(200);
+    expect(invoke).toHaveBeenNthCalledWith(1, { ...catalog, actorId: 'actor-1' });
+    expect(invoke).toHaveBeenNthCalledWith(2, { ...create, actorId: 'actor-1' });
+  });
+
+  it('rejects malformed task creation fields before calling core', async () => {
+    const response = await post(JSON.stringify({
+      ...baseRequest, type: 'create_approved_project_task',
+      solutionId: 'solution-1', solutionVersion: '1', contractId: 'contract-1',
+      contractHash: 'invalid', taskTemplateId: 'template-1', objective: '处理订单',
+      semanticInputs: [],
+    }));
+
+    expect(response.status).toBe(400);
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed transition intent before calling core', async () => {
+    const response = await post(JSON.stringify({
+      ...baseRequest,
+      type: 'transition_project_task',
+      targetStatus: 'invented-status',
+      expectedRevision: 3,
+    }));
+
+    expect(response.status).toBe(400);
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
   it('accepts a bounded project task page request without an ontology version', async () => {
     invoke.mockRejectedValueOnce(new Error('PROJECT_TASK_SOURCE_UNAVAILABLE'));
     const response = await post(JSON.stringify({

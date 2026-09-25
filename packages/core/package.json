@@ -79,7 +79,6 @@
     "./modules/collaboration-runtime/ui/*": "./src/modules/collaboration-runtime/ui/*.tsx",
     "./modules/collaboration-runtime/sandbox/*": "./src/modules/collaboration-runtime/sandbox/*.ts",
     "./modules/collaboration-runtime/session/*": "./src/modules/collaboration-runtime/session/*.ts",
-    "./modules/collaboration-runtime/engine/*": "./src/modules/collaboration-runtime/engine/*.ts",
     "./modules/collaboration-runtime/facade": "./src/modules/collaboration-runtime/facade/index.ts",
     "./modules/collaboration-runtime/facade/*": "./src/modules/collaboration-runtime/facade/*.ts",
     "./modules/collaboration-runtime/integrations/*": "./src/modules/collaboration-runtime/integrations/*.ts",

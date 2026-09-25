@@ -16,8 +16,8 @@ export async function GET(request: Request): Promise<NextResponse> {
       );
     }
 
-    const { loadProjectTopology } = await import("@/modules/collaboration-runtime/facade");
-    const topology = await loadProjectTopology(projectId);
+    const { loadProjectSolutionTopologyProjection } = await import("@originos/core/lib/features/solution");
+    const topology = await loadProjectSolutionTopologyProjection({ projectId });
 
     if (topology === null) {
       return NextResponse.json(

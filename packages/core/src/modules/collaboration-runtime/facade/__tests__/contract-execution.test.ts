@@ -123,6 +123,37 @@ describe('contract-bound collaboration execution', () => {
       /Cannot transition/
     );
   });
+
+  it('isolates two tasks assigned to the same Agent and freezes the v1 contract after v2 publication', async () => {
+    const { contract, contractStore, execution } = await setup();
+    const first = await execution.start(startInput(contract));
+    const second = await execution.start({
+      ...startInput(contract),
+      parentTaskId: 'task-2',
+      parentStepId: 'step-2',
+      inputRefs: ['input-2'],
+    });
+    const v2Body = {
+      ...body(),
+      contractId: 'orders-solution@2.0',
+      solutionVersion: '2.0',
+    };
+    const v2 = await contractStore.publishCompiled(ontology(), 'confirmed', v2Body);
+    expect(v2.ok).toBe(true);
+
+    expect(first.runId).not.toBe(second.runId);
+    expect(first.workItems[0]?.assignedAgentId).toBe(second.workItems[0]?.assignedAgentId);
+    expect(first.workItems[0]?.id).not.toBe(second.workItems[0]?.id);
+    expect(first.workItems[0]?.inputRefs).toEqual(['input-1']);
+    expect(second.workItems[0]?.inputRefs).toEqual(['input-2']);
+    const restoredV1 = await execution.inspect(first.runId);
+    expect(restoredV1.contract.solutionVersion).toBe('1.0');
+    expect(restoredV1.contract.contractHash).toBe(contract.contractHash);
+    expect(restoredV1.contract.semanticContext).toMatchObject({
+      ontology: { ontologyId: 'orders', ontologyVersion: '3' },
+      sourceRefs: [{ sourceType: 'interview', sourceId: 'interview-1' }],
+    });
+  });
 });
 
 function receipt() {
@@ -130,6 +161,7 @@ function receipt() {
     receiptId: 'worker-receipt-1',
     outputRefs: ['artifact-1'],
     outputHash: 'sha256:worker-output',
+    usage: { durationMs: 10, tokens: 100 },
   };
 }
 
@@ -162,6 +194,15 @@ async function executableSetup(
   if (!publication.ok) throw new Error('Fixture contract must publish');
   const calls = { worker: 0, verifier: 0, evidence: 0 };
   const execution = new CollaborationExecutionStore(contractStore, dataRoot, {
+    readiness: {
+      check: async ({ workItem, run }) => ({
+        status: 'ready' as const,
+        receiptId: 'readiness-1',
+        inputRefs: workItem.inputRefs,
+        grantedPermissions: run.contract.permissions.allowed,
+        targetAvailable: true as const,
+      }),
+    },
     worker: {
       execute: async () => {
         calls.worker += 1;
@@ -176,6 +217,14 @@ async function executableSetup(
           ? passingVerification(publication.published.contract)
           : { status, reason: 'fixture verifier result' };
       },
+    },
+    outcome: {
+      commit: async () => ({
+        receiptId: 'outcome-1',
+        status: 'accepted' as const,
+        operationRef: 'operation-1',
+        contentHash: 'sha256:outcome-1',
+      }),
     },
     evidenceSink: {
       record: async () => {
@@ -201,6 +250,21 @@ async function executableSetup(
 }
 
 describe('WorkItem execution ledger', () => {
+  it('blocks downstream execution before required upstream facts are accepted', async () => {
+    const { execution, run, calls } = await executableSetup();
+    const publish = run.workItems.find((item) => item.designNodeId === 'publish')!;
+    await expect(execution.executeWorkItem({
+      runId: run.runId,
+      workItemId: publish.id,
+      requestId: 'request-downstream-early',
+      payloadHash: 'sha256:downstream-early',
+    })).rejects.toThrow(/dependencies are not satisfied/);
+    expect(calls).toEqual({ worker: 0, verifier: 0, evidence: 0 });
+    expect((await execution.inspect(run.runId)).workItems.find(
+      (item) => item.id === publish.id,
+    )?.attempts).toEqual([]);
+  });
+
   it('records intent, receipt, verification and evidence once for an idempotent request', async () => {
     const { execution, run, calls } = await executableSetup();
     const prepare = run.workItems.find(
@@ -350,7 +414,17 @@ describe('WorkItem execution ledger', () => {
     const prepare = run.workItems.find(
       (item) => item.designNodeId === 'prepare'
     )!;
+    const readiness = {
+      check: async ({ workItem, run }: Parameters<NonNullable<ConstructorParameters<typeof CollaborationExecutionStore>[2]>['readiness']['check']>[0]) => ({
+        status: 'ready' as const,
+        receiptId: 'readiness-restart',
+        inputRefs: workItem.inputRefs,
+        grantedPermissions: run.contract.permissions.allowed,
+        targetAvailable: true as const,
+      }),
+    };
     const firstHost = new CollaborationExecutionStore(contractStore, dataRoot, {
+      readiness,
       worker: { execute: async () => receipt() },
     });
     const blocked = await firstHost.executeWorkItem({
@@ -364,6 +438,7 @@ describe('WorkItem execution ledger', () => {
     ).toBe('blocked');
     const calls = { worker: 0, verifier: 0, evidence: 0 };
     const restarted = new CollaborationExecutionStore(contractStore, dataRoot, {
+      readiness,
       worker: {
         execute: async () => {
           calls.worker += 1;
@@ -375,6 +450,14 @@ describe('WorkItem execution ledger', () => {
           calls.verifier += 1;
           return passingVerification(contract);
         },
+      },
+      outcome: {
+        commit: async () => ({
+          receiptId: 'outcome-restart',
+          status: 'accepted' as const,
+          operationRef: 'operation-restart',
+          contentHash: 'sha256:outcome-restart',
+        }),
       },
       evidenceSink: {
         record: async () => {
@@ -434,6 +517,7 @@ describe('WorkItem execution ledger', () => {
       receiptId: 'task-event-1',
       status: 'accepted',
       evidenceRef: 'pi-task-event:task-event-1',
+      revision: 3,
     });
     expect(submissions[0]).toMatchObject({
       requestId: 'evidence-request-1',
@@ -450,5 +534,94 @@ describe('WorkItem execution ledger', () => {
     await execution.cancel(run.runId);
     expect((await execution.recover(run.runId)).status).toBe('canceled');
     expect(calls).toEqual({ worker: 0, verifier: 0, evidence: 0 });
+  });
+});
+
+describe('accepted external output reconciliation', () => {
+  it('persists an accepted ontology output and replays it after restart without duplicate Evidence', async () => {
+    const dataRoot = await mkdtemp(path.join(tmpdir(), 'collaboration-reconcile-'));
+    const contractStore = new SolutionExecutionContractStore(dataRoot);
+    const publication = await contractStore.publishCompiled(ontology(), 'confirmed', body());
+    if (!publication.ok) throw new Error('Fixture contract must publish');
+    let evidenceCalls = 0;
+    const dependencies = {
+      evidenceSink: {
+        record: async () => {
+          evidenceCalls += 1;
+          return {
+            receiptId: 'task-evidence-1',
+            status: 'accepted' as const,
+            evidenceRef: 'pi-task-event:task-evidence-1',
+            revision: 9,
+          };
+        },
+      },
+    };
+    const execution = new CollaborationExecutionStore(contractStore, dataRoot, dependencies);
+    const run = await execution.start(startInput(publication.published.contract));
+    const item = run.workItems[0]!;
+    const input = {
+      projectId: run.projectId,
+      runId: run.runId,
+      workItemId: item.id,
+      attemptId: `${item.id}:external-1`,
+      leaseEpoch: 1,
+      expectedWorkItemRevision: 0,
+      requestId: 'ontology-request-1',
+      payloadHash: 'sha256:ontology-output-1',
+      workerReceipt: {
+        receiptId: 'ontology-operation-1',
+        outputRefs: ['ontology-fact:orders:3:order:ready:fact-1:1'],
+        outputHash: 'sha256:ontology-output-1',
+      },
+      verifierResult: passingVerification(publication.published.contract),
+    };
+
+    const accepted = await execution.reconcileAcceptedOutput(input);
+    expect(accepted).toMatchObject({
+      status: 'accepted',
+      evidenceRevision: 9,
+      workItemRevision: 2,
+    });
+    const restarted = new CollaborationExecutionStore(contractStore, dataRoot, dependencies);
+    const replay = await restarted.reconcileAcceptedOutput(input);
+    expect(replay.status).toBe('recovered');
+    expect(replay.snapshot.workItems[0]?.attempts).toHaveLength(1);
+    expect(evidenceCalls).toBe(1);
+  });
+
+  it('keeps an unknown Evidence receipt pending for manual reconciliation', async () => {
+    const dataRoot = await mkdtemp(path.join(tmpdir(), 'collaboration-unknown-'));
+    const contractStore = new SolutionExecutionContractStore(dataRoot);
+    const publication = await contractStore.publishCompiled(ontology(), 'confirmed', body());
+    if (!publication.ok) throw new Error('Fixture contract must publish');
+    const execution = new CollaborationExecutionStore(contractStore, dataRoot, {
+      evidenceSink: {
+        record: async () => ({ receiptId: 'unknown-1', status: 'unknown' }),
+      },
+    });
+    const run = await execution.start(startInput(publication.published.contract));
+    const item = run.workItems[0]!;
+
+    await expect(execution.reconcileAcceptedOutput({
+      projectId: run.projectId,
+      runId: run.runId,
+      workItemId: item.id,
+      attemptId: `${item.id}:external-unknown`,
+      leaseEpoch: 1,
+      expectedWorkItemRevision: 0,
+      requestId: 'ontology-request-unknown',
+      payloadHash: 'sha256:ontology-output-unknown',
+      workerReceipt: {
+        receiptId: 'ontology-operation-unknown',
+        outputRefs: ['ontology-fact:unknown'],
+        outputHash: 'sha256:ontology-output-unknown',
+      },
+      verifierResult: passingVerification(publication.published.contract),
+    })).rejects.toMatchObject({ code: 'UNKNOWN_EXTERNAL_RECEIPT' });
+
+    const persisted = await execution.inspect(run.runId);
+    expect(persisted.workItems[0]).toMatchObject({ status: 'verifying' });
+    expect(persisted.workItems[0]?.attempts[0]?.evidenceReceipt).toBeUndefined();
   });
 });

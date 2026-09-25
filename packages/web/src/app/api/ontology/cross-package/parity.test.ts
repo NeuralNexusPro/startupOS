@@ -4,7 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { OntologyCrossPackageIpcController } from '../../../../../../desktop/src/main/services/ontology-cross-package-ipc';
 
-import type { OntologyCrossPackageResponse } from '@originos/core/lib/features/project';
+import type {
+  OntologyCrossPackageResponse,
+  ProjectTaskSummary,
+} from '@originos/core/lib/features/project';
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 
@@ -60,10 +63,12 @@ function successResponse(): OntologyCrossPackageResponse {
   };
 }
 
-async function invokeWeb(): Promise<{ status: number; body: OntologyCrossPackageResponse }> {
+async function invokeWeb(
+  request: Record<string, unknown> = baseRequest
+): Promise<{ status: number; body: OntologyCrossPackageResponse }> {
   const response = await POST(new NextRequest('http://localhost/api/ontology/cross-package', {
     method: 'POST',
-    body: JSON.stringify(baseRequest),
+    body: JSON.stringify(request),
     headers: { 'x-originos-actor-id': 'web-actor' },
   })) as NextResponse;
   return {
@@ -72,7 +77,9 @@ async function invokeWeb(): Promise<{ status: number; body: OntologyCrossPackage
   };
 }
 
-async function invokeDesktop(): Promise<OntologyCrossPackageResponse> {
+async function invokeDesktop(
+  request: Record<string, unknown> = baseRequest
+): Promise<OntologyCrossPackageResponse> {
   const handlers = new Map<string, RegisteredHandler>();
   const controller = new OntologyCrossPackageIpcController({
     ipc: {
@@ -88,7 +95,7 @@ async function invokeDesktop(): Promise<OntologyCrossPackageResponse> {
   if (!handler) {
     throw new Error('Missing handler');
   }
-  const response = await handler({ sender: { id: 7 } }, baseRequest);
+  const response = await handler({ sender: { id: 7 } }, request);
   return response.data ?? response.error?.details ?? {
     ok: false,
     requestId: 'unknown',
@@ -137,6 +144,99 @@ describe('ontology cross-package transport parity', () => {
     expect(statusFor(desktop)).toBe(expectedStatus);
     expect(desktop).toEqual(coreResponse);
     expect(web.body).toEqual(coreResponse);
+  });
+
+  it('preserves transition intent, authoritative state, and evidence gaps identically', async () => {
+    const request = {
+      ...baseRequest,
+      type: 'transition_project_task',
+      targetStatus: 'done',
+      expectedRevision: 7,
+      expectedLeaseEpoch: 4,
+      reason: 'Approve completion',
+    };
+    const authoritative: ProjectTaskSummary = {
+      projectId: 'project-1', taskId: 'task-1', title: 'Task 1', status: 'review', revision: 7,
+      progress: 100, blockerCount: 0, evidenceCount: 0, actions: [], runtimeStatus: 'running',
+      runtimeAvailability: 'controllable', assignedAgentIds: [], workItemCount: 1, artifactRefs: [],
+      leaseEpoch: 4, transitions: [{ capability: 'approve_completion', targetStatus: 'done' }],
+    };
+    const coreResponse: OntologyCrossPackageResponse = {
+      ok: false,
+      requestId: 'request-1',
+      error: {
+        category: 'validation',
+        code: 'EVIDENCE_GATE_FAILED',
+        issues: [{
+          code: 'PROJECT_TASK_CRITERION_EVIDENCE_GAP',
+          message: 'Criterion Evidence is missing',
+          field: 'task.criterion_evidence.criterion-1',
+        }],
+        retryable: false,
+        remediation: 'Resolve the reported task gaps.',
+        authoritative,
+        gaps: [{
+          kind: 'criterion_evidence',
+          id: 'criterion-1',
+          message: 'Criterion Evidence is missing',
+        }],
+      },
+    };
+    invoke.mockResolvedValue(coreResponse);
+
+    const web = await invokeWeb(request);
+    const desktop = await invokeDesktop(request);
+
+    expect(web.status).toBe(400);
+    expect(web.body).toEqual(coreResponse);
+    expect(desktop).toEqual(coreResponse);
+    expect(invoke.mock.calls[0][0]).toMatchObject({
+      type: 'transition_project_task',
+      targetStatus: 'done',
+      expectedRevision: 7,
+      expectedLeaseEpoch: 4,
+      reason: 'Approve completion',
+      actorId: 'web-actor',
+    });
+    expect(invoke.mock.calls[1][0]).toMatchObject({
+      type: 'transition_project_task',
+      targetStatus: 'done',
+      actorId: 'desktop-sender:7',
+    });
+  });
+
+  it('preserves approved task creation DesignGap identically', async () => {
+    const request = {
+      ...baseRequest, type: 'create_approved_project_task', solutionId: 'solution-1',
+      solutionVersion: '1', contractId: 'contract-1', contractHash: `sha256:${'a'.repeat(64)}`,
+      taskTemplateId: 'missing-template', objective: '处理订单', semanticInputs: [],
+    };
+    const designGap = {
+      code: 'TASK_TEMPLATE_NOT_FOUND', severity: 'error' as const, scope: 'contract' as const,
+      path: 'taskTemplateId', refId: 'missing-template', message: '模板不存在',
+      remediation: '返回方案设计',
+    };
+    const coreResponse: OntologyCrossPackageResponse = {
+      ok: false, requestId: 'request-1', error: {
+        category: 'validation', code: 'PROJECT_TASK_DESIGN_GAP',
+        issues: [{ code: designGap.code, message: designGap.message, field: designGap.path }],
+        retryable: false, remediation: designGap.remediation, designGaps: [designGap],
+      },
+    };
+    invoke.mockResolvedValue(coreResponse);
+
+    const web = await invokeWeb(request);
+    const desktop = await invokeDesktop(request);
+
+    expect(web.status).toBe(400);
+    expect(web.body).toEqual(coreResponse);
+    expect(desktop).toEqual(coreResponse);
+    expect(invoke.mock.calls[0][0]).toMatchObject({
+      type: 'create_approved_project_task', taskTemplateId: 'missing-template', actorId: 'web-actor',
+    });
+    expect(invoke.mock.calls[1][0]).toMatchObject({
+      type: 'create_approved_project_task', taskTemplateId: 'missing-template', actorId: 'desktop-sender:7',
+    });
   });
 
   it('preserves idempotent retry semantics without transport-side state', async () => {

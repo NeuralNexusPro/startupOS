@@ -5,6 +5,7 @@ import type {
   CanonicalOntologyReference,
   CanonicalSkillContract,
   CanonicalSourceReference,
+  CanonicalOntology,
 } from '../ontology';
 
 export const SOLUTION_EXECUTION_CONTRACT_SCHEMA_VERSION = '1.0.0' as const;
@@ -52,10 +53,38 @@ export interface RuntimeBudgetPolicy {
   readonly maxTokens: number;
 }
 
+export type SemanticConceptResolution =
+  | {
+      readonly status: 'confirmed';
+      readonly evidenceSourceRefIds: readonly string[];
+    }
+  | {
+      readonly status: 'ambiguous';
+      readonly candidateConceptIds: readonly string[];
+      readonly reason: string;
+    };
+
 export interface SemanticObjectSlot {
   readonly id: string;
   readonly concept: CanonicalConceptReference;
   readonly required: boolean;
+  readonly resolution: SemanticConceptResolution;
+}
+
+export type SemanticFactStatePolicy =
+  | { readonly mode: 'any' }
+  | { readonly mode: 'required'; readonly stateIds: readonly string[] };
+
+export type SemanticFactFreshnessPolicy =
+  | { readonly mode: 'any' }
+  | { readonly mode: 'max_age'; readonly maxAgeMs: number };
+
+export interface SemanticFactPolicy {
+  readonly factType: CanonicalConceptReference & {
+    readonly factTypeId: string;
+  };
+  readonly state: SemanticFactStatePolicy;
+  readonly freshness: SemanticFactFreshnessPolicy;
 }
 
 export interface SolutionTaskTemplate {
@@ -70,6 +99,7 @@ export interface SemanticContextContract {
   readonly ontology: CanonicalOntologyReference;
   readonly sourceRefs: readonly CanonicalSourceReference[];
   readonly objectSlots: readonly SemanticObjectSlot[];
+  readonly factPolicies: readonly SemanticFactPolicy[];
   readonly allowedActionIds: readonly string[];
   readonly taskTemplates: readonly SolutionTaskTemplate[];
 }
@@ -153,3 +183,68 @@ export interface SolutionExecutionContractPort {
     contract: SolutionExecutionContract
   ): Promise<ContractIntegrityResult>;
 }
+
+/** Read-only project catalog used by task creation surfaces. */
+export interface SolutionExecutionContractCatalogPort {
+  listProject(
+    projectId: string
+  ): Promise<readonly PublishedSolutionExecutionContract[]>;
+}
+
+export type SolutionDesignStatus = 'draft' | 'reviewing' | 'confirmed';
+
+export interface SolutionExecutionContractDesign {
+  readonly ontology: CanonicalOntology;
+  readonly status: SolutionDesignStatus;
+  readonly body: SolutionExecutionContractBody;
+}
+
+export type SolutionDesignSourceResult =
+  | {
+      readonly ok: true;
+      readonly design: SolutionExecutionContractDesign;
+    }
+  | {
+      readonly ok: false;
+      readonly gaps: readonly DesignGap[];
+    };
+
+/**
+ * Narrow boundary implemented by project adapters that understand the
+ * persisted P2.5/P2.6/P2.7 design bundle. The publishing service deliberately
+ * does not parse project files or invent missing semantic fields.
+ */
+export type SolutionDesignSourceFormat =
+  'versioned_bundle' | 'legacy_compatibility';
+
+export interface SolutionDesignLoadOptions {
+  readonly sourceFormat: SolutionDesignSourceFormat;
+}
+
+export interface SolutionContractCompilationInput extends SolutionVersionRef {
+  /** Defaults to the canonical versioned bundle. Legacy input requires opt-in. */
+  readonly sourceFormat?: SolutionDesignSourceFormat;
+}
+
+export interface SolutionDesignSource {
+  load(
+    input: SolutionVersionRef,
+    options: SolutionDesignLoadOptions
+  ): Promise<SolutionDesignSourceResult | null>;
+}
+
+export interface RevokeSolutionExecutionContractInput extends ContractRef {
+  readonly reason: string;
+}
+
+export type SolutionContractPublishingErrorCategory =
+  'validation' | 'not_found' | 'conflict' | 'integrity' | 'internal';
+
+export type SolutionContractPublishingErrorCode =
+  | 'INVALID_REQUEST'
+  | 'DESIGN_NOT_FOUND'
+  | 'CONTRACT_NOT_FOUND'
+  | 'CONTRACT_VERSION_CONFLICT'
+  | 'CONTRACT_ID_MISMATCH'
+  | 'CONTRACT_INTEGRITY_FAILED'
+  | 'INTERNAL_ERROR';

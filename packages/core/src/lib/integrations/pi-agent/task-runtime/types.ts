@@ -15,6 +15,25 @@ export type AgentTaskExecutionStatus =
 
 export type AgentTaskAction = "stop" | "cancel" | "resume" | "retry" | "return_to_chat";
 
+export type AgentTaskProjectPriorityV1 = "low" | "medium" | "high" | "urgent";
+
+export interface AgentTaskProjectInputVersionV1 {
+	readonly inputRef: string;
+	readonly version: string;
+}
+
+/**
+ * Optional project-owned metadata stored with the authoritative Task Runtime
+ * state. The nested version lets later board features evolve these fields
+ * without migrating legacy sessions during reads.
+ */
+export interface AgentTaskProjectMetadataV1 {
+	readonly version: 1;
+	readonly priority?: AgentTaskProjectPriorityV1;
+	readonly semanticRefs: readonly string[];
+	readonly inputVersions: readonly AgentTaskProjectInputVersionV1[];
+}
+
 export interface AgentTaskRuntimeErrorV1 {
 	code: string;
 	message: string;
@@ -71,6 +90,9 @@ export interface AgentTaskExecutionStateV1 {
 	schemaVersion: 1;
 	mode: AgentTaskExecutionMode;
 	status: AgentTaskExecutionStatus;
+	projectMetadata?: AgentTaskProjectMetadataV1;
+	/** Bounded idempotency receipts for controlled project metadata writes. */
+	projectMetadataMutationReceipts?: readonly AgentTaskProjectMetadataMutationReceiptV1[];
 	requestId?: string;
 	draft?: {
 		title?: string;
@@ -144,6 +166,41 @@ export interface AgentTaskRuntimeResultV1 {
 	error?: AgentTaskRuntimeErrorV1;
 }
 
+export interface AgentTaskProjectMetadataMutationRequestV1 {
+	readonly version: 1;
+	readonly projectId: string;
+	readonly sessionId: string;
+	readonly taskId: string;
+	readonly requestId: string;
+	readonly priority: AgentTaskProjectPriorityV1;
+	readonly expectedRevision: number;
+	readonly expectedCursor: string | null;
+	readonly bridgeEpoch: number;
+}
+
+export interface AgentTaskProjectMetadataMutationReceiptV1 {
+	readonly version: 1;
+	readonly projectId: string;
+	readonly sessionId: string;
+	readonly taskId: string;
+	readonly requestId: string;
+	readonly priority: AgentTaskProjectPriorityV1;
+	readonly revisionBefore: number;
+	readonly revisionAfter: number;
+	readonly cursorBefore: string | null;
+	readonly cursorAfter: string | null;
+	readonly bridgeEpoch: number;
+	readonly metadata: AgentTaskProjectMetadataV1;
+	readonly acceptedAt: string;
+}
+
+/** Public CAS boundary for project-owned Task Runtime metadata. */
+export interface ProjectTaskMetadataMutationPort {
+	updateProjectTaskMetadata(
+		input: AgentTaskProjectMetadataMutationRequestV1,
+	): Promise<AgentTaskProjectMetadataMutationReceiptV1>;
+}
+
 export function createIdleAgentTaskExecutionState(
 	bridgeEpoch = 1,
 	updatedAt = new Date().toISOString(),
@@ -201,4 +258,22 @@ export interface AgentTaskEvidenceReceiptV1 {
 
 export interface AgentTaskEvidencePort {
 	recordVerifiedEvidence(input: AgentTaskEvidenceSubmissionV1): Promise<AgentTaskEvidenceReceiptV1>;
+}
+
+export interface AgentTaskReviewRequestV1 {
+	readonly version: 1;
+	readonly requestId: string;
+	readonly sessionId: string;
+	readonly taskId: string;
+	readonly expectedRevision: number;
+	readonly expectedCursor: string | null;
+	/** The Task Session Host bridge epoch is the public mutation lease. */
+	readonly leaseEpoch: number;
+	readonly reason?: string;
+}
+
+export interface AgentTaskReviewPort {
+	requestReview(input: AgentTaskReviewRequestV1): Promise<AgentTaskRuntimeSnapshotV1>;
+	approveCompletion(input: AgentTaskReviewRequestV1): Promise<AgentTaskRuntimeSnapshotV1>;
+	rejectReview(input: AgentTaskReviewRequestV1): Promise<AgentTaskRuntimeSnapshotV1>;
 }

@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { OriginOSAgent } from "../../core/agent";
-import type { AgentTaskRuntimePersistenceV1 } from "../types";
+import type { AgentTaskProjectMetadataV1, AgentTaskRuntimePersistenceV1 } from "../types";
 import { AgentTaskRuntimeCoordinator } from "../coordinator";
 
-function canonicalSnapshot(status: "active" | "blocked" | "done" = "active") {
+function canonicalSnapshot(status: "active" | "blocked" | "review" | "done" = "active") {
+	const completionReady = status === "review" || status === "done";
 	return {
 		version: 1,
 		stateHash: `hash-${status}`,
@@ -20,17 +21,17 @@ function canonicalSnapshot(status: "active" | "blocked" | "done" = "active") {
 						id: "T1-S1",
 						text: "实现",
 						expectedOutput: "代码",
-						status: status === "done" ? "done" : "active",
+					status: completionReady ? "done" : "active",
 						evidenceRequired: true,
-						evidenceIds: status === "done" ? ["E1"] : [],
+						evidenceIds: completionReady ? ["E1"] : [],
 					}],
 					acceptanceCriteria: [{
 						id: "T1-AC1",
 						text: "测试通过",
-						status: status === "done" ? "satisfied" : "pending",
-						evidenceIds: status === "done" ? ["E1"] : [],
+						status: completionReady ? "satisfied" : "pending",
+						evidenceIds: completionReady ? ["E1"] : [],
 					}],
-					evidence: status === "done" ? [{ id: "E1" }] : [],
+					evidence: completionReady ? [{ id: "E1" }] : [],
 					blockers: status === "blocked" ? [{
 						id: "B1",
 						reason: "需要用户输入",
@@ -44,7 +45,7 @@ function canonicalSnapshot(status: "active" | "blocked" | "done" = "active") {
 	};
 }
 
-function createHarness(options: { createTaskOnPrompt?: boolean; status?: "active" | "blocked" | "done"; initialBridgeEpoch?: number } = {}) {
+function createHarness(options: { createTaskOnPrompt?: boolean; status?: "active" | "blocked" | "review" | "done"; initialBridgeEpoch?: number; initialProjectMetadata?: AgentTaskProjectMetadataV1 } = {}) {
 	let hostSnapshot: ReturnType<typeof canonicalSnapshot> | { version: 1; stateHash: string; scope: Record<string, unknown>; state: { tasks: Record<string, unknown> } } = {
 		version: 1,
 		stateHash: "empty",
@@ -76,11 +77,43 @@ function createHarness(options: { createTaskOnPrompt?: boolean; status?: "active
 			parameters: {},
 			execute: vi.fn(),
 		}, { name: "task_next", label: "Next", description: "Read next action", parameters: {}, execute: next }],
-		invoke: vi.fn(async (command: { toolName?: string }) => {
+		invoke: vi.fn(async (command: { toolName?: string; input?: Record<string, unknown> }) => {
 			if (command.toolName === "task_plan" && options.createTaskOnPrompt !== false) {
 				hostSnapshot = canonicalSnapshot(options.status ?? "blocked");
 				listener?.({
 					scope: { sessionId: "session-1", cursor: "entry-1", revision: 1, bridgeEpoch: 3 },
+					snapshot: hostSnapshot,
+				});
+			}
+			if (command.toolName === "task_update" && command.input?.status === "review") {
+				hostSnapshot = canonicalSnapshot("review");
+				hostSnapshot.scope = { sessionId: "session-1", revision: 2, cursor: "entry-2" };
+				listener?.({ scope: { sessionId: "session-1", cursor: "entry-2", revision: 2, bridgeEpoch: 3 }, snapshot: hostSnapshot });
+			}
+			if (command.toolName === "task_update" && command.input?.status === "active"
+				&& (hostSnapshot.state.tasks as Record<string, { status?: string }>).T1?.status === "review") {
+				hostSnapshot = canonicalSnapshot("active");
+				hostSnapshot.scope = { sessionId: "session-1", revision: 2, cursor: "entry-2" };
+				listener?.({ scope: { sessionId: "session-1", cursor: "entry-2", revision: 2, bridgeEpoch: 3 }, snapshot: hostSnapshot });
+			}
+			if (command.toolName === "task_complete") {
+				hostSnapshot = canonicalSnapshot("done");
+				hostSnapshot.scope = { sessionId: "session-1", revision: 2, cursor: "entry-2" };
+				listener?.({ scope: { sessionId: "session-1", cursor: "entry-2", revision: 2, bridgeEpoch: 3 }, snapshot: hostSnapshot });
+			}
+			if (command.toolName === "task_update" && command.input?.activity
+				&& command.input?.status === undefined) {
+				const currentRevision = typeof hostSnapshot.scope.revision === "number"
+					? hostSnapshot.scope.revision : 0;
+				hostSnapshot = structuredClone(hostSnapshot);
+				hostSnapshot.scope = {
+					sessionId: "session-1",
+					revision: currentRevision + 1,
+					cursor: `entry-${currentRevision + 1}`,
+				};
+				hostSnapshot.stateHash = `hash-metadata-${currentRevision + 1}`;
+				listener?.({
+					scope: { sessionId: "session-1", cursor: `entry-${currentRevision + 1}`, revision: currentRevision + 1, bridgeEpoch: 3 },
 					snapshot: hostSnapshot,
 				});
 			}
@@ -114,6 +147,7 @@ function createHarness(options: { createTaskOnPrompt?: boolean; status?: "active
 
 	const coordinator = new AgentTaskRuntimeCoordinator({
 		sessionId: "session-1",
+		projectId: "project-1",
 		agent: agent as unknown as OriginOSAgent,
 		initialState: {
 			schemaVersion: 1,
@@ -121,6 +155,7 @@ function createHarness(options: { createTaskOnPrompt?: boolean; status?: "active
 				schemaVersion: 1,
 				mode: "chat",
 				status: "idle",
+				...(options.initialProjectMetadata ? { projectMetadata: options.initialProjectMetadata } : {}),
 				bridgeEpoch: options.initialBridgeEpoch ?? 3,
 				expectedRevision: 0,
 				expectedCursor: null,
@@ -391,5 +426,92 @@ describe("AgentTaskRuntimeCoordinator evidence boundary", () => {
 		const harness = createHarness({ status: "active" });
 		await harness.coordinator.createTask({ version: 1, requestId: "create-other-task", sessionId: "session-1", objective: "Evidence task" });
 		await expect(harness.coordinator.recordVerifiedEvidence({ version: 1, requestId: "evidence-request-2", taskId: "other-task", summary: "Verifier passed", references: ["verification-1"], artifactRefs: ["artifact-1"], verifier: "deterministic-fixture", contentHash: "sha256:verification-content" })).rejects.toThrow(/当前 Agent Session/);
+	});
+});
+
+describe("AgentTaskRuntimeCoordinator project metadata boundary", () => {
+	it("creates versioned metadata for a legacy task and returns a stable idempotent receipt", async () => {
+		const harness = createHarness({ status: "active" });
+		await harness.coordinator.createTask({ version: 1, requestId: "create-priority-task", sessionId: "session-1", objective: "Priority task" });
+		await harness.coordinator.controlTask({ version: 1, requestId: "pause-priority-task", sessionId: "session-1", action: "stop", expectedRevision: 1, expectedCursor: "entry-1", bridgeEpoch: 3 });
+		harness.host.invoke.mockClear();
+		const request = {
+			version: 1 as const,
+			projectId: "project-1",
+			sessionId: "session-1",
+			taskId: "T1",
+			requestId: "priority-1",
+			priority: "urgent" as const,
+			expectedRevision: 1,
+			expectedCursor: "entry-1",
+			bridgeEpoch: 3,
+		};
+		const first = await harness.coordinator.updateProjectTaskMetadata(request);
+		const repeated = await harness.coordinator.updateProjectTaskMetadata(request);
+		expect(repeated).toEqual(first);
+		expect(first).toMatchObject({ revisionBefore: 1, revisionAfter: 2, cursorAfter: "entry-2", metadata: { version: 1, priority: "urgent", semanticRefs: [], inputVersions: [] } });
+		expect(harness.host.invoke).toHaveBeenCalledTimes(1);
+		expect(harness.coordinator.getSnapshot().execution.projectMetadata).toEqual(first.metadata);
+	});
+
+	it("serializes concurrent CAS updates and preserves semantic metadata", async () => {
+		const initialProjectMetadata: AgentTaskProjectMetadataV1 = {
+			version: 1,
+			priority: "low",
+			semanticRefs: ["ontology://project/concept"],
+			inputVersions: [{ inputRef: "fact://input", version: "7" }],
+		};
+		const harness = createHarness({ status: "active" });
+		await harness.coordinator.createTask({ version: 1, requestId: "create-cas-task", sessionId: "session-1", objective: "CAS task" });
+		await harness.coordinator.controlTask({ version: 1, requestId: "pause-cas-task", sessionId: "session-1", action: "stop", expectedRevision: 1, expectedCursor: "entry-1", bridgeEpoch: 3 });
+		const persisted = harness.coordinator.getPersistenceState();
+		persisted.execution.projectMetadata = initialProjectMetadata;
+		harness.coordinator.destroy();
+		const restored = new AgentTaskRuntimeCoordinator({ sessionId: "session-1", projectId: "project-1", agent: harness.agent as unknown as OriginOSAgent, initialState: persisted, persist: harness.persist, hostFactory: async () => harness.host });
+		await restored.initialize();
+		harness.host.invoke.mockClear();
+		const base = { version: 1 as const, projectId: "project-1", sessionId: "session-1", taskId: "T1", expectedRevision: 1, expectedCursor: "entry-1", bridgeEpoch: 3 };
+		const [first, second] = await Promise.allSettled([
+			restored.updateProjectTaskMetadata({ ...base, requestId: "priority-a", priority: "high" }),
+			restored.updateProjectTaskMetadata({ ...base, requestId: "priority-b", priority: "medium" }),
+		]);
+		expect([first.status, second.status].sort()).toEqual(["fulfilled", "rejected"]);
+		expect(harness.host.invoke).toHaveBeenCalledTimes(1);
+		expect(restored.getSnapshot().execution.projectMetadata).toEqual({
+			...initialProjectMetadata,
+			priority: "high",
+		});
+	});
+
+	it("rejects cross-project writes and requestId reuse with different content", async () => {
+		const harness = createHarness({ status: "active" });
+		await harness.coordinator.createTask({ version: 1, requestId: "create-scope-task", sessionId: "session-1", objective: "Scope task" });
+		await harness.coordinator.controlTask({ version: 1, requestId: "pause-scope-task", sessionId: "session-1", action: "stop", expectedRevision: 1, expectedCursor: "entry-1", bridgeEpoch: 3 });
+		const base = { version: 1 as const, projectId: "project-1", sessionId: "session-1", taskId: "T1", requestId: "priority-scope", priority: "high" as const, expectedRevision: 1, expectedCursor: "entry-1", bridgeEpoch: 3 };
+		await harness.coordinator.updateProjectTaskMetadata(base);
+		await expect(harness.coordinator.updateProjectTaskMetadata({ ...base, priority: "low" })).rejects.toThrow(/requestId/);
+		await expect(harness.coordinator.updateProjectTaskMetadata({ ...base, requestId: "other", projectId: "project-2", expectedRevision: 2, expectedCursor: "entry-2" })).rejects.toThrow(/Project/);
+	});
+});
+
+describe("AgentTaskRuntimeCoordinator public review boundary", () => {
+	it("requests review and approves completion through exact revision/cursor/lease CAS", async () => {
+		const harness = createHarness({ status: "active" });
+		await harness.coordinator.createTask({ version: 1, requestId: "create-review-task", sessionId: "session-1", objective: "Review task" });
+		await harness.coordinator.controlTask({ version: 1, requestId: "pause-before-review", sessionId: "session-1", action: "stop", expectedRevision: 1, expectedCursor: "entry-1", bridgeEpoch: 3 });
+		const reviewed = await harness.coordinator.requestReview({ version: 1, requestId: "review-1", sessionId: "session-1", taskId: "T1", expectedRevision: 1, expectedCursor: "entry-1", leaseEpoch: 3 });
+		expect(reviewed.projection?.status).toBe("review");
+		expect(harness.host.invoke).toHaveBeenLastCalledWith(expect.objectContaining({ toolName: "task_update", scope: expect.objectContaining({ expectedRevision: 1, expectedCursor: "entry-1", bridgeEpoch: 3 }), input: expect.objectContaining({ status: "review" }) }));
+		const completed = await harness.coordinator.approveCompletion({ version: 1, requestId: "approve-1", sessionId: "session-1", taskId: "T1", expectedRevision: 2, expectedCursor: "entry-2", leaseEpoch: 3 });
+		expect(completed.projection?.status).toBe("done");
+		expect(harness.host.invoke).toHaveBeenLastCalledWith(expect.objectContaining({ toolName: "task_complete", input: expect.objectContaining({ evidence_ids: ["E1"], criterion_results: [expect.objectContaining({ criterionId: "T1-AC1", evidenceIds: ["E1"] })] }) }));
+	});
+
+	it("rejects a stale lease before invoking the host", async () => {
+		const harness = createHarness({ status: "active" });
+		await harness.coordinator.createTask({ version: 1, requestId: "create-stale-review", sessionId: "session-1", objective: "Review task" });
+		harness.host.invoke.mockClear();
+		await expect(harness.coordinator.requestReview({ version: 1, requestId: "review-stale", sessionId: "session-1", taskId: "T1", expectedRevision: 1, expectedCursor: "entry-1", leaseEpoch: 2 })).rejects.toThrow(/lease/);
+		expect(harness.host.invoke).not.toHaveBeenCalled();
 	});
 });

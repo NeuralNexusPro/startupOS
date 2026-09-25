@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   CanonicalOntologyOSDK,
@@ -32,9 +32,16 @@ import type {
 } from '../ontology-cross-package-contract';
 import {
   ProjectTaskBoardService,
+  ProjectTaskRevisionConflictError,
+  ProjectTaskTransitionRejectedError,
   type ProjectTaskRecord,
   type ProjectTaskSource,
+  type ProjectTaskSummary,
 } from '../task-board';
+import {
+  ProjectTaskRuntimeRecoveryConflictError,
+  ProjectTaskSourceUnavailableError,
+} from '../project-task-source';
 
 const projection: CanonicalContextProjectionRecord = {
   id: 'projection-1',
@@ -98,7 +105,10 @@ function osdk(): Pick<
 
 function taskBoard(): Pick<
   ProjectTaskBoardService,
-  'listProjectTasks' | 'getProjectTask' | 'requestProjectTaskAction'
+  | 'listProjectTasks'
+  | 'getProjectTask'
+  | 'requestProjectTaskAction'
+  | 'requestProjectTaskTransition'
 > {
   return {
     async listProjectTasks() {
@@ -134,6 +144,29 @@ function taskBoard(): Pick<
         evidenceCount: 0,
         actions: [],
         workItemCount: 0,
+        task,
+        workItems: [],
+      };
+    },
+    async requestProjectTaskTransition() {
+      const task = taskProjection(2);
+      task.status = 'review';
+      return {
+        projectId: 'project-1',
+        taskId: 'task-1',
+        title: 'Task 1',
+        status: 'review',
+        revision: 2,
+        progress: 0,
+        blockerCount: 0,
+        evidenceCount: 0,
+        actions: [],
+        runtimeStatus: 'running',
+        runtimeAvailability: 'controllable',
+        assignedAgentIds: [],
+        workItemCount: 0,
+        artifactRefs: [],
+        transitions: [],
         task,
         workItems: [],
       };
@@ -190,6 +223,9 @@ function deps(
   overrides: Partial<OntologyCrossPackageServiceDeps> = {}
 ): OntologyCrossPackageServiceDeps {
   return {
+    projectAccess: {
+      async authorize() { return { authorized: true }; },
+    },
     osdk: osdk(),
     taskBoard: taskBoard(),
     contractPort: {
@@ -207,11 +243,116 @@ function deps(
       async inspect() {
         throw new Error('execution inspect is not configured');
       },
+      async listWorkItemHandoffCandidates() {
+        return [];
+      },
+      async handoffWorkItem() {
+        throw new Error('work item handoff is not configured');
+      },
     },
     workItemRecovery: new MemoryWorkItemRecovery(),
+    taskPriority: {
+      async updateProjectTaskPriority(input) {
+        return {
+          version: 1,
+          projectId: input.projectId,
+          sessionId: 'session-1',
+          taskId: input.taskId,
+          requestId: input.requestId,
+          priority: input.priority,
+          revisionBefore: input.expectedRevision,
+          revisionAfter: input.expectedRevision + 1,
+          cursorBefore: input.expectedCursor,
+          cursorAfter: 'cursor-2',
+          bridgeEpoch: input.bridgeEpoch,
+          metadata: {
+            version: 1,
+            priority: input.priority,
+            semanticRefs: [],
+            inputVersions: [],
+          },
+          acceptedAt: instant.toISOString(),
+        };
+      },
+    },
     ...overrides,
   };
 }
+
+describe('OntologyCrossPackageService approved task creation transport', () => {
+  it('returns only safe summaries for valid, active published templates', async () => {
+    const validContract = {
+      ...body(),
+      contractHash: `sha256:${'a'.repeat(64)}`,
+    };
+    const service = new OntologyCrossPackageService(deps({
+      contractPort: {
+        async load() { return null; },
+        async verifyIntegrity() { return { valid: true }; },
+      },
+      contractCatalog: {
+        async listProject() {
+          return [
+            { contract: validContract },
+            { contract: { ...validContract, contractId: 'revoked-contract' }, revocation: {
+              contractId: 'revoked-contract', revokedAt: instant.toISOString(), reason: 'superseded',
+            } },
+          ];
+        },
+      },
+    }));
+
+    const response = await service.invoke({
+      contractVersion: '1', requestId: 'catalog-1', actorId: 'actor-1',
+      projectId: validContract.projectId, type: 'list_approved_task_templates',
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      data: { contracts: [{
+        contractId: validContract.contractId,
+        contractHash: validContract.contractHash,
+        taskTemplates: validContract.semanticContext.taskTemplates,
+      }] },
+    });
+    expect(JSON.stringify(response)).not.toContain('permissions');
+    expect(JSON.stringify(response)).not.toContain('createdAt');
+  });
+
+  it('passes an exact create request and preserves every DesignGap', async () => {
+    const designGap = {
+      code: 'REQUIRED_SEMANTIC_OBJECT_MISSING', severity: 'error' as const,
+      scope: 'contract' as const, path: 'semanticInputs.order', refId: 'order',
+      message: '缺少订单', remediation: '绑定订单事实',
+    };
+    const create = vi.fn(async () => ({ ok: false as const, gaps: [designGap] }));
+    const service = new OntologyCrossPackageService(deps({ taskCreation: { create } }));
+    const request: OntologyCrossPackageRequest = {
+      contractVersion: '1', requestId: 'create-1', actorId: 'actor-1', projectId: 'project-1',
+      type: 'create_approved_project_task', solutionId: 'solution-1', solutionVersion: '1',
+      contractId: 'contract-1', contractHash: `sha256:${'b'.repeat(64)}`,
+      taskTemplateId: 'template-1', objective: '处理订单', semanticInputs: [],
+    };
+
+    const response = await service.invoke(request);
+
+    expect(create).toHaveBeenCalledWith({
+      projectId: 'project-1', requestId: 'create-1', solutionId: 'solution-1',
+      solutionVersion: '1', contractId: 'contract-1', contractHash: request.contractHash,
+      taskTemplateId: 'template-1', objective: '处理订单', semanticInputs: [],
+    });
+    expect(response).toEqual({
+      ok: false,
+      requestId: 'create-1',
+      error: {
+        category: 'validation', code: 'PROJECT_TASK_DESIGN_GAP', retryable: false,
+        remediation: 'Resolve the reported solution design gaps before creating the task.',
+        issues: [{ code: designGap.code, message: designGap.message, field: designGap.path }],
+        designGaps: [designGap],
+      },
+    });
+  });
+});
 
 class MemoryTaskSource implements ProjectTaskSource {
   private record: ProjectTaskRecord;
@@ -313,6 +454,44 @@ function startRequest(
     taskRevision: 1,
     inputRefs: ['raw-1'],
     ...overrides,
+  };
+}
+
+function handoffContractBody() {
+  const source = body();
+  const primary = source.agents[0]!;
+  const reviewer = { ...structuredClone(primary), agentId: 'reviewer' };
+  return {
+    ...source,
+    agents: [primary, reviewer],
+    semanticContext: {
+      ...source.semanticContext,
+      taskTemplates: source.semanticContext.taskTemplates.map((template) => ({
+        ...template,
+        candidateAgentIds: [primary.agentId, reviewer.agentId],
+      })),
+    },
+  };
+}
+
+function authoritativeTask(): ProjectTaskSummary {
+  return {
+    projectId: 'project-1',
+    taskId: 'task-1',
+    title: 'Task 1',
+    status: 'review',
+    revision: 7,
+    progress: 100,
+    blockerCount: 1,
+    evidenceCount: 0,
+    actions: [],
+    runtimeStatus: 'running',
+    runtimeAvailability: 'controllable',
+    assignedAgentIds: [],
+    workItemCount: 1,
+    artifactRefs: [],
+    leaseEpoch: 4,
+    transitions: [{ capability: 'approve_completion', targetStatus: 'done' }],
   };
 }
 
@@ -429,6 +608,202 @@ describe('OntologyCrossPackageService', () => {
       ok: true,
       revision: 2,
       data: { taskId: 'task-1', status: 'blocked' },
+    });
+  });
+
+  it('preserves stable recovery conflict and unavailable errors across the public boundary', async () => {
+    const request = {
+      contractVersion: '1' as const,
+      requestId: 'recovery-control-1',
+      actorId: 'actor-1',
+      projectId: 'project-1',
+      type: 'control_bound_task' as const,
+      taskId: 'task-1',
+      action: 'resume' as const,
+      expectedRevision: 1,
+    };
+    const stale = new OntologyCrossPackageService(deps({
+      taskBoard: {
+        ...taskBoard(),
+        async requestProjectTaskAction() {
+          throw new ProjectTaskRuntimeRecoveryConflictError('stale recovery authority');
+        },
+      },
+    }));
+    const unavailable = new OntologyCrossPackageService(deps({
+      taskBoard: {
+        ...taskBoard(),
+        async requestProjectTaskAction() {
+          throw new ProjectTaskSourceUnavailableError(new Error('SESSION_NOT_FOUND'));
+        },
+      },
+    }));
+
+    await expect(stale.invoke(request)).resolves.toMatchObject({
+      ok: false,
+      error: {
+        category: 'conflict',
+        code: 'PROJECT_TASK_RUNTIME_STALE',
+        retryable: true,
+        issues: [{
+          code: 'PROJECT_TASK_RUNTIME_STALE',
+          field: 'taskId',
+        }],
+      },
+    });
+    await expect(unavailable.invoke(request)).resolves.toMatchObject({
+      ok: false,
+      error: {
+        category: 'unavailable',
+        code: 'PROJECT_TASK_SOURCE_UNAVAILABLE',
+        retryable: true,
+        issues: [{
+          code: 'PROJECT_TASK_SOURCE_UNAVAILABLE',
+          field: 'taskId',
+        }],
+      },
+    });
+  });
+
+
+  it('passes target transition intent and CAS fields to the task board unchanged', async () => {
+    let received: unknown;
+    const service = new OntologyCrossPackageService(deps({
+      taskBoard: {
+        ...taskBoard(),
+        async requestProjectTaskTransition(input) {
+          received = input;
+          return taskBoard().requestProjectTaskTransition(input);
+        },
+      },
+    }));
+    const response = await service.invoke({
+      contractVersion: '1',
+      requestId: 'transition-1',
+      actorId: 'actor-1',
+      projectId: 'project-1',
+      type: 'transition_project_task',
+      taskId: 'task-1',
+      targetStatus: 'review',
+      expectedRevision: 1,
+      expectedLeaseEpoch: 4,
+      reason: 'Ready for review',
+    });
+
+    expect(received).toEqual({
+      projectId: 'project-1',
+      taskId: 'task-1',
+      targetStatus: 'review',
+      requestId: 'transition-1',
+      expectedRevision: 1,
+      expectedLeaseEpoch: 4,
+      reason: 'Ready for review',
+    });
+    expect(response).toMatchObject({ ok: true, revision: 2, data: { status: 'review' } });
+  });
+
+  it('preserves stable transition conflicts, authoritative state, and evidence gaps', async () => {
+    const authoritative = authoritativeTask();
+    const gap = {
+      kind: 'criterion_evidence' as const,
+      id: 'criterion-1',
+      message: 'Criterion Evidence is missing',
+    };
+    const rejectedService = new OntologyCrossPackageService(deps({
+      taskBoard: {
+        ...taskBoard(),
+        async requestProjectTaskTransition() {
+          throw new ProjectTaskTransitionRejectedError(
+            'EVIDENCE_GATE_FAILED',
+            'Task completion Evidence Gate failed',
+            authoritative,
+            [gap],
+          );
+        },
+      },
+    }));
+    const staleService = new OntologyCrossPackageService(deps({
+      taskBoard: {
+        ...taskBoard(),
+        async requestProjectTaskTransition() {
+          throw new ProjectTaskRevisionConflictError('stale revision', authoritative);
+        },
+      },
+    }));
+    const request = {
+      contractVersion: '1' as const,
+      requestId: 'transition-2',
+      actorId: 'actor-1',
+      projectId: 'project-1',
+      type: 'transition_project_task' as const,
+      taskId: 'task-1',
+      targetStatus: 'done' as const,
+      expectedRevision: 7,
+    };
+
+    await expect(rejectedService.invoke(request)).resolves.toMatchObject({
+      ok: false,
+      error: {
+        category: 'validation',
+        code: 'EVIDENCE_GATE_FAILED',
+        authoritative,
+        gaps: [gap],
+        issues: [{
+          code: 'PROJECT_TASK_CRITERION_EVIDENCE_GAP',
+          field: 'task.criterion_evidence.criterion-1',
+        }],
+      },
+    });
+    await expect(staleService.invoke(request)).resolves.toMatchObject({
+      ok: false,
+      error: {
+        category: 'conflict',
+        code: 'REVISION_CONFLICT',
+        authoritative,
+      },
+    });
+  });
+
+  it('passes priority revision, cursor, and epoch to Task Runtime and returns authority', async () => {
+    let received: unknown;
+    const service = new OntologyCrossPackageService(deps({
+      taskPriority: {
+        async updateProjectTaskPriority(input) {
+          received = input;
+          return deps().taskPriority.updateProjectTaskPriority(input);
+        },
+      },
+    }));
+    const response = await service.invoke({
+      contractVersion: '1',
+      requestId: 'priority-1',
+      actorId: 'actor-1',
+      projectId: 'project-1',
+      type: 'update_project_task_priority',
+      taskId: 'task-1',
+      priority: 'urgent',
+      expectedRevision: 1,
+      expectedCursor: null,
+      bridgeEpoch: 4,
+    });
+
+    expect(received).toEqual({
+      projectId: 'project-1',
+      taskId: 'task-1',
+      requestId: 'priority-1',
+      priority: 'urgent',
+      expectedRevision: 1,
+      expectedCursor: null,
+      bridgeEpoch: 4,
+    });
+    expect(response).toMatchObject({
+      ok: true,
+      revision: 1,
+      receiptRef: 'priority-1',
+      data: {
+        receipt: { priority: 'urgent', revisionBefore: 1, revisionAfter: 2 },
+        task: { taskId: 'task-1' },
+      },
     });
   });
 });
@@ -561,7 +936,11 @@ describe('OntologyCrossPackageService bound task starts', () => {
   beforeEach(async () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'ontology-cross-package-start-'));
     contractStore = new SolutionExecutionContractStore(root);
-    const publication = await contractStore.publishCompiled(contractOntology(), 'confirmed', body());
+    const publication = await contractStore.publishCompiled(
+      contractOntology(),
+      'confirmed',
+      handoffContractBody(),
+    );
     expect(publication.ok).toBe(true);
     if (!publication.ok) throw new Error('Fixture contract must publish');
     contractId = publication.published.contract.contractId;
@@ -637,6 +1016,68 @@ describe('OntologyCrossPackageService bound task starts', () => {
     expect(response).toMatchObject({
       ok: false,
       error: { category: 'conflict', code: 'TASK_REVISION_CONFLICT', retryable: true },
+    });
+  });
+
+  it('passes frozen handoff candidates and both Run/WorkItem CAS scopes', async () => {
+    const instance = service();
+    const started = await instance.invoke(startRequest(contractId, contractHash));
+    if (!started.ok) throw new Error('Start request must succeed');
+    const runId = (started.data as { runId: string }).runId;
+    source.attachRun(runId);
+    const run = await execution.inspect(runId);
+    const item = run.workItems[0]!;
+
+    const candidates = await instance.invoke({
+      contractVersion: '1',
+      requestId: 'candidates-1',
+      actorId: 'actor-1',
+      projectId: 'project-1',
+      type: 'list_work_item_handoff_candidates',
+      runId,
+      workItemId: item.id,
+    });
+    expect(candidates).toMatchObject({
+      ok: true,
+      data: {
+        candidates: expect.arrayContaining([
+          expect.objectContaining({ agentId: 'reviewer' }),
+        ]),
+        authority: {
+          runRevision: run.revision,
+          workItemRevision: item.revision,
+          leaseEpoch: item.leaseEpoch,
+          assignedAgentId: item.assignedAgentId,
+        },
+      },
+    });
+
+    const handed = await instance.invoke({
+      contractVersion: '1',
+      requestId: 'handoff-1',
+      actorId: 'actor-1',
+      projectId: 'project-1',
+      type: 'handoff_work_item',
+      runId,
+      workItemId: item.id,
+      targetAgentId: 'reviewer',
+      expectedRunRevision: run.revision,
+      expectedWorkItemRevision: item.revision,
+      expectedLeaseEpoch: item.leaseEpoch,
+    });
+    expect(handed).toMatchObject({
+      ok: true,
+      receiptRef: expect.any(String),
+      data: {
+        receipt: {
+          assignedAgentId: 'reviewer',
+          runRevisionBefore: run.revision,
+          workItemRevisionBefore: item.revision,
+          leaseEpochBefore: item.leaseEpoch,
+          leaseEpochAfter: item.leaseEpoch + 1,
+        },
+        task: { assignedAgentIds: expect.arrayContaining(['reviewer']) },
+      },
     });
   });
 });

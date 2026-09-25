@@ -21,6 +21,7 @@ const zipPath = process.env.WINDOWS_ZIP_PATH
   ? path.resolve(process.env.WINDOWS_ZIP_PATH)
   : path.join(releaseDir, `OriginOS CE-${desktopPackage.version}-x64.zip`);
 const verifyAsarRequiresScript = path.join(desktopDir, 'scripts', 'verify-asar-relative-requires.js');
+const verifyOntologyRuntimeScript = path.join(desktopDir, 'scripts', 'verify-ontology-runtime.js');
 const bundledSkillEntries = fs
   .readdirSync(path.join(repoRoot, 'templates', 'skills'), { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
@@ -121,11 +122,18 @@ async function verifyAsar() {
     'dist-electron/core/src/lib/integrations/pi-agent/tools/loop-detector.js',
     'dist-electron/core/src/lib/features/agent/tools/schedule-tools.js',
     'dist-electron/core/src/lib/features/skills/service.js',
+    'dist-electron/core/src/lib/features/project/ontology-cross-package-service.js',
+    'dist-electron/core/src/lib/features/project/ontology-work-item-recovery.js',
+    'dist-electron/core/src/lib/features/project/contract-bound-runtime-composition.js',
+    'dist-electron/core/src/lib/features/project/project-task-source.js',
+    'dist-electron/core/src/modules/collaboration-runtime/facade/contract-execution.js',
     'dist-electron/core/src/lib/features/services/launcher/skill.js',
     'dist-electron/core/src/lib/integrations/electron/workspace-paths.js',
     'dist-electron/desktop/src/main/services/workspace-service.js',
     'dist-electron/desktop/src/main/services/entry-export-service.js',
+    'dist-electron/desktop/src/main/services/ontology-cross-package-ipc.js',
     'dist-electron/desktop/src/main/main.js',
+    'dist-electron/desktop/src/main/ipc-protocol.js',
     'node_modules/@originos/pi-agent-adapter/index.js',
     'node_modules/@originos/pi-agent-adapter/ai.js',
     'node_modules/@originos/pi-agent-adapter/goal.js',
@@ -152,10 +160,16 @@ async function verifyAsar() {
     'dist-electron/core/src/lib/integrations/pi-agent/tools/loop-detector.js',
     'dist-electron/core/src/lib/features/agent/tools/schedule-tools.js',
     'dist-electron/core/src/lib/features/skills/service.js',
+    'dist-electron/core/src/lib/features/project/ontology-cross-package-service.js',
+    'dist-electron/core/src/lib/features/project/ontology-work-item-recovery.js',
+    'dist-electron/core/src/lib/features/project/contract-bound-runtime-composition.js',
+    'dist-electron/core/src/lib/features/project/project-task-source.js',
+    'dist-electron/core/src/modules/collaboration-runtime/facade/contract-execution.js',
     'dist-electron/core/src/lib/features/services/launcher/skill.js',
     'dist-electron/core/src/lib/integrations/electron/workspace-paths.js',
     'dist-electron/desktop/src/main/services/workspace-service.js',
     'dist-electron/desktop/src/main/services/entry-export-service.js',
+    'dist-electron/desktop/src/main/services/ontology-cross-package-ipc.js',
   ];
 
   asar.extractAll(asarPath, smokeDir);
@@ -163,6 +177,35 @@ async function verifyAsar() {
   const smokeRequire = createRequire(path.join(smokeDir, 'package.json'));
   for (const modulePath of modules) {
     smokeRequire.resolve(path.join(smokeDir, modulePath));
+  }
+  const ontologyService = smokeRequire(path.join(
+    smokeDir,
+    'dist-electron/core/src/lib/features/project/ontology-cross-package-service.js',
+  ));
+  const ontologyRecovery = smokeRequire(path.join(
+    smokeDir,
+    'dist-electron/core/src/lib/features/project/ontology-work-item-recovery.js',
+  ));
+  const projectRuntimeComposition = smokeRequire(path.join(
+    smokeDir,
+    'dist-electron/core/src/lib/features/project/contract-bound-runtime-composition.js',
+  ));
+  const projectTaskSource = smokeRequire(path.join(
+    smokeDir,
+    'dist-electron/core/src/lib/features/project/project-task-source.js',
+  ));
+  if (typeof ontologyService.OntologyCrossPackageService !== 'function') {
+    fail('ONT cross-package service is not resolvable from app.asar');
+  }
+  if (typeof ontologyRecovery.OntologyWorkItemRecovery !== 'function') {
+    fail('ONT WorkItem recovery is not resolvable from app.asar');
+  }
+  if (typeof projectRuntimeComposition.ProjectContractTaskRuntimeRecovery !== 'function'
+    || typeof projectRuntimeComposition.createProjectContractRuntimeComposition !== 'function') {
+    fail('Project Task Runtime recovery composition is not resolvable from app.asar');
+  }
+  if (typeof projectTaskSource.RuntimeProjectTaskSource !== 'function') {
+    fail('Project Task Runtime source is not resolvable from app.asar');
   }
   smokeRequire.resolve('@originos/pi-agent-adapter');
   const piAgentRuntime = smokeRequire('@originos/pi-agent-adapter');
@@ -249,6 +292,10 @@ async function verifyAsar() {
   console.log('[verify-windows-package] pi task runtime ok', {
     hash: piTaskReport.hash,
     platform: piTaskReport.platform,
+  });
+  run(process.execPath, [verifyOntologyRuntimeScript, asarPath], {
+    stdio: 'inherit',
+    env: { ...process.env, NODE_OPTIONS: '' },
   });
   console.log('[verify-windows-package] app.asar module smoke ok');
 }

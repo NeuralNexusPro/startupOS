@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   ProjectTaskBoardService,
+  ProjectTaskTransitionRejectedError,
+  summarizeProjectTaskRun,
   type ProjectTaskRecord,
   type ProjectTaskSource,
 } from '../task-board';
@@ -40,6 +42,7 @@ function taskProjection(revision = 1): AgentTaskProjectionV1 {
 
 class MemoryTaskSource implements ProjectTaskSource {
   private record: ProjectTaskRecord;
+  readonly transitions: string[] = [];
 
   constructor(
     record: ProjectTaskRecord,
@@ -73,6 +76,20 @@ class MemoryTaskSource implements ProjectTaskSource {
     };
     return this.record;
   }
+
+  async transition(input: { capability: string }) {
+    this.transitions.push(input.capability);
+    const status = input.capability === 'request_review' ? 'review'
+      : input.capability === 'approve_completion' ? 'done'
+        : input.capability === 'cancel' ? 'cancelled'
+          : input.capability === 'pause' ? 'blocked' : 'active';
+    this.record = {
+      ...this.record,
+      runtimeStatus: status === 'done' ? 'completed' : 'running',
+      task: { ...this.record.task, status, revision: this.record.task.revision + 1 },
+    };
+    return this.record;
+  }
 }
 
 async function setup() {
@@ -101,7 +118,9 @@ async function setup() {
     projectId: 'project-1',
     taskId: 'task-1',
     updatedAt: '2026-09-22T09:00:00.000Z',
-    runId: run.runId,
+    runtimeStatus: 'running',
+    runtimeAvailability: 'controllable',
+    ...summarizeProjectTaskRun(run),
     task: taskProjection(),
   };
   return { execution, run, record };
@@ -119,9 +138,32 @@ describe('project task board projection', () => {
     const detail = await board.getProjectTask('project-1', 'task-1');
     expect(page.items[0]?.revision).toBe(1);
     expect(page.items[0]?.runId).toBe(record.runId);
+    expect(page.items[0]?.assignedAgentIds.length).toBeGreaterThan(0);
+    expect(page.items[0]?.workItemCount).toBe(2);
     expect(detail.binding?.parentTaskId).toBe('task-1');
     expect(detail.workItems).toHaveLength(2);
     expect(detail.revision).toBe(detail.task.revision);
+  });
+
+  it('does not derive Task status from a completed WorkItem summary', async () => {
+    const { execution, record } = await setup();
+    const board = new ProjectTaskBoardService(
+      new MemoryTaskSource({
+        ...record,
+        workItemCount: 1,
+        assignedAgentIds: ['agent-a'],
+        artifactRefs: ['artifact-1'],
+      }),
+      execution
+    );
+
+    const page = await board.listProjectTasks({ projectId: 'project-1' });
+    expect(page.items[0]).toMatchObject({
+      status: 'active',
+      workItemCount: 1,
+      assignedAgentIds: ['agent-a'],
+      artifactRefs: ['artifact-1'],
+    });
   });
 
   it('rejects a source record that crosses project scope', async () => {
@@ -181,5 +223,142 @@ describe('project task board projection', () => {
     await expect(
       board.requestProjectTaskAction({ ...request, action: 'resume' })
     ).rejects.toMatchObject({ code: 'REQUEST_ID_CONFLICT' });
+  });
+
+  it('resolves one public target capability and replays the same transition request', async () => {
+    const { execution, record } = await setup();
+    const source = new MemoryTaskSource({
+      ...record,
+      leaseEpoch: 7,
+      reviewCapabilitiesAvailable: true,
+    });
+    const board = new ProjectTaskBoardService(source, execution);
+    const request = {
+      projectId: 'project-1',
+      taskId: 'task-1',
+      targetStatus: 'review' as const,
+      requestId: 'transition-review-1',
+      expectedRevision: 1,
+      expectedLeaseEpoch: 7,
+    };
+    const first = await board.requestProjectTaskTransition(request);
+    const replay = await board.requestProjectTaskTransition(request);
+    expect(first.status).toBe('review');
+    expect(replay).toEqual(first);
+    expect(source.transitions).toEqual(['request_review']);
+  });
+
+  it('rejects unavailable, ambiguous, stale revision and stale lease with zero writes', async () => {
+    const { execution, record } = await setup();
+    const source = new MemoryTaskSource({ ...record, leaseEpoch: 5 });
+    const board = new ProjectTaskBoardService(source, execution);
+    await expect(board.requestProjectTaskTransition({ projectId: 'project-1', taskId: 'task-1', targetStatus: 'pending', requestId: 'unavailable-1', expectedRevision: 1, expectedLeaseEpoch: 5 }))
+      .rejects.toMatchObject({ code: 'TRANSITION_NOT_AVAILABLE' });
+    await expect(board.requestProjectTaskTransition({ projectId: 'project-1', taskId: 'task-1', targetStatus: 'review', requestId: 'stale-revision-1', expectedRevision: 0, expectedLeaseEpoch: 5 }))
+      .rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
+    await expect(board.requestProjectTaskTransition({ projectId: 'project-1', taskId: 'task-1', targetStatus: 'review', requestId: 'stale-lease-1', expectedRevision: 1, expectedLeaseEpoch: 4 }))
+      .rejects.toMatchObject({ code: 'LEASE_CONFLICT' });
+    expect(source.transitions).toHaveLength(0);
+
+    const ambiguousSource = new MemoryTaskSource({
+      ...record,
+      task: { ...record.task, status: 'review' },
+      runtimeStatus: 'paused',
+      reviewCapabilitiesAvailable: true,
+      leaseEpoch: 5,
+    });
+    const ambiguousBoard = new ProjectTaskBoardService(ambiguousSource, execution);
+    await expect(ambiguousBoard.requestProjectTaskTransition({ projectId: 'project-1', taskId: 'task-1', targetStatus: 'active', requestId: 'ambiguous-1', expectedRevision: 1, expectedLeaseEpoch: 5 }))
+      .rejects.toMatchObject({ code: 'TRANSITION_AMBIGUOUS' });
+    expect(ambiguousSource.transitions).toHaveLength(0);
+  });
+
+  it('does not let completed WorkItems substitute for Task Step/Criterion Evidence', async () => {
+    const { execution, record } = await setup();
+    const source = new MemoryTaskSource({
+      ...record,
+      task: {
+        ...record.task,
+        status: 'review',
+        steps: [{ id: 'step-1', text: 'Deliver', expectedOutput: 'artifact', status: 'done', evidenceRequired: true, evidenceCount: 0 }],
+        criteria: [{ id: 'criterion-1', text: 'Verified', status: 'satisfied', evidenceCount: 0 }],
+        evidenceCount: 0,
+      },
+      runtimeStatus: 'running',
+      reviewCapabilitiesAvailable: true,
+      workItemCount: 2,
+      artifactRefs: ['work-item-output'],
+    });
+    const board = new ProjectTaskBoardService(source, execution);
+    const rejection = board.requestProjectTaskTransition({ projectId: 'project-1', taskId: 'task-1', targetStatus: 'done', requestId: 'complete-with-workitems-1', expectedRevision: 1 });
+    await expect(rejection).rejects.toBeInstanceOf(ProjectTaskTransitionRejectedError);
+    await expect(rejection).rejects.toMatchObject({
+      code: 'EVIDENCE_GATE_FAILED',
+      gaps: expect.arrayContaining([
+        expect.objectContaining({ kind: 'step_evidence', id: 'step-1' }),
+        expect.objectContaining({ kind: 'criterion_evidence', id: 'criterion-1' }),
+        expect.objectContaining({ kind: 'task_evidence' }),
+      ]),
+    });
+    expect(source.transitions).toHaveLength(0);
+  });
+
+  it('rejects completion while any Task blocker remains unresolved without mutating the task', async () => {
+    const { execution, record } = await setup();
+    const source = new MemoryTaskSource({
+      ...record,
+      task: {
+        ...record.task,
+        status: 'review',
+        steps: [{ id: 'step-1', text: 'Deliver', expectedOutput: 'artifact', status: 'done', evidenceRequired: true, evidenceCount: 1 }],
+        criteria: [{ id: 'criterion-1', text: 'Verified', status: 'satisfied', evidenceCount: 1 }],
+        blockers: [{ id: 'blocker-1', reason: 'Security approval', blockedBy: 'reviewer', neededToUnblock: 'Approve release', resolved: false }],
+        evidenceCount: 1,
+      },
+      runtimeStatus: 'running',
+      reviewCapabilitiesAvailable: true,
+      leaseEpoch: 8,
+    });
+    const board = new ProjectTaskBoardService(source, execution);
+
+    await expect(board.requestProjectTaskTransition({
+      projectId: 'project-1',
+      taskId: 'task-1',
+      targetStatus: 'done',
+      requestId: 'complete-blocked-1',
+      expectedRevision: 1,
+      expectedLeaseEpoch: 8,
+    })).rejects.toMatchObject({
+      code: 'EVIDENCE_GATE_FAILED',
+      authoritative: expect.objectContaining({ status: 'review', revision: 1 }),
+      gaps: [expect.objectContaining({ kind: 'blocker', id: 'blocker-1' })],
+    });
+    expect(source.transitions).toHaveLength(0);
+    await expect(board.getProjectTask('project-1', 'task-1')).resolves.toMatchObject({
+      status: 'review',
+      revision: 1,
+    });
+  });
+
+  it('approves completion only after Step/Criterion Evidence and blockers pass', async () => {
+    const { execution, record } = await setup();
+    const source = new MemoryTaskSource({
+      ...record,
+      task: {
+        ...record.task,
+        status: 'review',
+        steps: [{ id: 'step-1', text: 'Deliver', expectedOutput: 'artifact', status: 'done', evidenceRequired: true, evidenceCount: 1 }],
+        criteria: [{ id: 'criterion-1', text: 'Verified', status: 'satisfied', evidenceCount: 1 }],
+        blockers: [{ id: 'blocker-1', reason: 'Approval', blockedBy: 'user', neededToUnblock: 'Approved', resolved: true }],
+        evidenceCount: 1,
+      },
+      runtimeStatus: 'running',
+      reviewCapabilitiesAvailable: true,
+      leaseEpoch: 8,
+    });
+    const board = new ProjectTaskBoardService(source, execution);
+    const completed = await board.requestProjectTaskTransition({ projectId: 'project-1', taskId: 'task-1', targetStatus: 'done', requestId: 'complete-1', expectedRevision: 1, expectedLeaseEpoch: 8 });
+    expect(completed.status).toBe('done');
+    expect(source.transitions).toEqual(['approve_completion']);
   });
 });

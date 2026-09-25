@@ -57,8 +57,18 @@ export function ontology(): CanonicalOntology {
     businessStates: [],
     transitions: [],
     factTypes: [
-      { id: 'order-raw', conceptId: 'order', name: 'Raw order', propertyIds: [] },
-      { id: 'order-ready', conceptId: 'order', name: 'Ready order', propertyIds: [] },
+      {
+        id: 'order-raw',
+        conceptId: 'order',
+        name: 'Raw order',
+        propertyIds: [],
+      },
+      {
+        id: 'order-ready',
+        conceptId: 'order',
+        name: 'Ready order',
+        propertyIds: [],
+      },
     ],
     rules: [],
     actions: [
@@ -134,7 +144,9 @@ export function body(): SolutionExecutionContractBody {
           hitlPolicyId: 'approve-publication',
         },
       ],
-      edges: [{ fromNodeId: 'prepare', toNodeId: 'publish', factType: readyFact }],
+      edges: [
+        { fromNodeId: 'prepare', toNodeId: 'publish', factType: readyFact },
+      ],
       externalInputs: [rawFact],
     },
     agents: [agent()],
@@ -157,6 +169,22 @@ export function body(): SolutionExecutionContractBody {
             conceptId: 'order',
           },
           required: true,
+          resolution: {
+            status: 'confirmed',
+            evidenceSourceRefIds: ['interview-1'],
+          },
+        },
+      ],
+      factPolicies: [
+        {
+          factType: rawFact,
+          state: { mode: 'any' },
+          freshness: { mode: 'max_age', maxAgeMs: 300_000 },
+        },
+        {
+          factType: readyFact,
+          state: { mode: 'any' },
+          freshness: { mode: 'any' },
         },
       ],
       allowedActionIds: ['prepare-order'],

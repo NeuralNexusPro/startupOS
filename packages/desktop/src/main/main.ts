@@ -444,13 +444,15 @@ app.whenReady().then(() => {
   ipcServices.push(new OntologyDataService());
   ipcServices.push(new CollaborationService());
   const taskRuntimeIpc = new AgentTaskRuntimeIpcController();
-  ipcServices.push(new OntologyCrossPackageIpcController({
+  const ontologyCrossPackageIpc = new OntologyCrossPackageIpcController({
     ipc: ipcMain,
     service: createOntologyCrossPackageService(),
     isTrustedSender: sender => BrowserWindow.getAllWindows().some(
       window => !window.isDestroyed() && window.webContents.id === sender.id
     ),
-  }));
+  });
+  ontologyCrossPackageIpc.registerHandlers();
+  ipcServices.push(ontologyCrossPackageIpc);
   ipcServices.push(new AgentProjectService());
   ipcServices.push(new WorkspaceService());
   ipcServices.push(new EntryExportService());

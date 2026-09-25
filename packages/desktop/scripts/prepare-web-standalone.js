@@ -39,6 +39,15 @@ function materializeSymlink(linkPath) {
   const realPath = fs.realpathSync(linkPath);
   const stats = fs.statSync(realPath);
   fs.rmSync(linkPath, { recursive: true, force: true });
+  const relativeDestination = path.relative(realPath, linkPath);
+  if (relativeDestination && !relativeDestination.startsWith('..')
+    && !path.isAbsolute(relativeDestination)) {
+    // Workspace package links can point at an ancestor of the packaging tree
+    // (for example @originos/desktop). Copying that ancestor into its own
+    // .packaging directory recurses forever; it is not a runtime dependency
+    // of the standalone Web server, so omit the link from the staged tree.
+    return;
+  }
   if (stats.isDirectory()) {
     fs.cpSync(realPath, linkPath, {
       recursive: true,

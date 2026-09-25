@@ -73,6 +73,20 @@ function ontologyGap(issue: CanonicalValidationIssue): DesignGap {
   };
 }
 
+function factTypeKey(reference: {
+  readonly ontologyId: string;
+  readonly ontologyVersion: string;
+  readonly conceptId: string;
+  readonly factTypeId: string;
+}): string {
+  return [
+    reference.ontologyId,
+    reference.ontologyVersion,
+    reference.conceptId,
+    reference.factTypeId,
+  ].join('/');
+}
+
 function duplicates(values: readonly string[]): Set<string> {
   const seen = new Set<string>();
   const repeated = new Set<string>();
@@ -469,6 +483,9 @@ export function validateSolutionExecutionContract(
   }
   const conceptIds = new Set(ontology.concepts.map(({ id }) => id));
   const actionIds = new Set(ontology.actions.map(({ id }) => id));
+  const sourceRefIds = new Set(
+    body.semanticContext.sourceRefs.map(({ sourceId }) => sourceId)
+  );
   body.semanticContext.objectSlots.forEach((slot, index) => {
     if (
       slot.concept.ontologyId !== ontology.id ||
@@ -486,7 +503,156 @@ export function validateSolutionExecutionContract(
         )
       );
     }
+    if (slot.resolution.status === 'ambiguous') {
+      gaps.push(
+        gap(
+          'SEMANTIC_CONCEPT_AMBIGUOUS',
+          'contract',
+          `semanticContext.objectSlots[${index}].resolution`,
+          `Object slot ${slot.id} still has an ambiguous concept binding.`,
+          'Resolve the ambiguity and record the confirming source evidence.',
+          slot.id
+        )
+      );
+    } else {
+      if (!slot.resolution.evidenceSourceRefIds.length) {
+        gaps.push(
+          gap(
+            'CONCEPT_CONFIRMATION_REQUIRED',
+            'contract',
+            `semanticContext.objectSlots[${index}].resolution.evidenceSourceRefIds`,
+            `Object slot ${slot.id} has no confirming source evidence.`,
+            'Record at least one source reference that confirms the concept binding.',
+            slot.id
+          )
+        );
+      }
+      slot.resolution.evidenceSourceRefIds.forEach((sourceId) => {
+        if (!sourceRefIds.has(sourceId)) {
+          gaps.push(
+            gap(
+              'MISSING_REFERENCE',
+              'contract',
+              `semanticContext.objectSlots[${index}].resolution.evidenceSourceRefIds`,
+              `Unknown concept confirmation source: ${sourceId}`,
+              'Reference evidence declared in semanticContext.sourceRefs.',
+              slot.id
+            )
+          );
+        }
+      });
+    }
   });
+
+  const requiredFactTypes = [
+    ...body.topology.externalInputs,
+    ...body.agents.flatMap(({ inputs }) =>
+      inputs.filter(({ required }) => required).map(({ factType }) => factType)
+    ),
+    ...body.skills.flatMap(({ inputs }) =>
+      inputs.filter(({ required }) => required).map(({ factType }) => factType)
+    ),
+  ];
+  const requiredFactKeys = new Set(requiredFactTypes.map(factTypeKey));
+  const policyKeys = body.semanticContext.factPolicies.map(({ factType }) =>
+    factTypeKey(factType)
+  );
+  duplicates(policyKeys).forEach((key) =>
+    gaps.push(
+      gap(
+        'DUPLICATE_FACT_POLICY',
+        'policy',
+        'semanticContext.factPolicies',
+        `Fact policy is declared more than once: ${key}`,
+        'Keep exactly one state and freshness policy for each required FactType.',
+        key
+      )
+    )
+  );
+  const declaredPolicyKeys = new Set(policyKeys);
+  requiredFactKeys.forEach((key) => {
+    if (!declaredPolicyKeys.has(key)) {
+      gaps.push(
+        gap(
+          'MISSING_FACT_POLICY',
+          'policy',
+          'semanticContext.factPolicies',
+          `Required FactType has no state and freshness policy: ${key}`,
+          'Explicitly define both state and freshness policy; no default is inferred.',
+          key
+        )
+      );
+    }
+  });
+  const factTypeById = new Map(
+    ontology.factTypes.map((item) => [item.id, item])
+  );
+  const stateById = new Map(
+    ontology.businessStates.map((item) => [item.id, item])
+  );
+  body.semanticContext.factPolicies.forEach((policy, index) => {
+    const factType = factTypeById.get(policy.factType.factTypeId);
+    if (
+      policy.factType.ontologyId !== ontology.id ||
+      policy.factType.ontologyVersion !== ontology.version ||
+      !factType ||
+      factType.conceptId !== policy.factType.conceptId
+    ) {
+      gaps.push(
+        gap(
+          'MISSING_REFERENCE',
+          'policy',
+          `semanticContext.factPolicies[${index}].factType`,
+          `Fact policy references an unknown FactType: ${factTypeKey(policy.factType)}`,
+          'Bind the policy to a FactType in the exact ontology version.'
+        )
+      );
+    }
+    if (
+      policy.freshness.mode === 'max_age' &&
+      (!Number.isSafeInteger(policy.freshness.maxAgeMs) ||
+        policy.freshness.maxAgeMs < 1)
+    ) {
+      gaps.push(
+        gap(
+          'INVALID_FACT_FRESHNESS_POLICY',
+          'policy',
+          `semanticContext.factPolicies[${index}].freshness.maxAgeMs`,
+          'Maximum fact age must be a positive safe integer.',
+          'Set an explicit positive maximum age or choose the explicit any policy.'
+        )
+      );
+    }
+    if (policy.state.mode === 'required') {
+      if (!policy.state.stateIds.length) {
+        gaps.push(
+          gap(
+            'INVALID_FACT_STATE_POLICY',
+            'policy',
+            `semanticContext.factPolicies[${index}].state.stateIds`,
+            'A required fact state policy must name at least one state.',
+            'Select reviewed business states or choose the explicit any policy.'
+          )
+        );
+      }
+      policy.state.stateIds.forEach((stateId) => {
+        const state = stateById.get(stateId);
+        if (!state || state.conceptId !== policy.factType.conceptId) {
+          gaps.push(
+            gap(
+              'INVALID_FACT_STATE_POLICY',
+              'policy',
+              `semanticContext.factPolicies[${index}].state.stateIds`,
+              `Unknown or incompatible business state: ${stateId}`,
+              'Reference a state belonging to the FactType concept.',
+              stateId
+            )
+          );
+        }
+      });
+    }
+  });
+
   body.semanticContext.allowedActionIds.forEach((actionId, index) => {
     if (!actionIds.has(actionId))
       gaps.push(

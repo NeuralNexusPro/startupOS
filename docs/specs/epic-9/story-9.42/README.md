@@ -1,7 +1,7 @@
 # Story 9.42: 多 Agent 任务与解决方案执行契约对齐
 
 **Epic:** 9 - 多 Agent 协作  
-**状态:** In Progress（T1 契约绑定与 Run/WorkItem ledger 已实现）
+**状态:** Done
 **Owner:** OriginOS Team  
 **创建日期:** 2026-07-28  
 **最后更新:** 2026-07-28
@@ -21,14 +21,14 @@
 
 ## 简要验收标准
 
-- [ ] 多 Agent Task 必须绑定 approved solutionId、solutionVersion 和 contractHash。
-- [ ] 缺少、未审批、版本不匹配或 hash 不一致的契约不能启动。
-- [ ] runtime 不调用模型生成/修改 Workflow、拓扑或 Agent 分工。
-- [ ] runtime 只把契约实例化为 Run 和 WorkItems，不创建第二套用户 Task。
-- [ ] WorkItem completed 不等于父 Task completed。
-- [ ] 真实 verifier 通过后才能登记 Step/Criterion evidence。
-- [ ] 方案变更必须返回解决方案设计并产生新版本，不能热改 active run。
-- [ ] reload/resume 不重复执行已确认 WorkItem 或重复登记 evidence。
+- [x] 多 Agent Task 必须绑定 approved solutionId、solutionVersion 和 contractHash。
+- [x] 缺少、未审批、版本不匹配或 hash 不一致的契约不能启动。
+- [x] runtime 不调用模型生成/修改 Workflow、拓扑或 Agent 分工。
+- [x] runtime 只把契约实例化为 Run 和 WorkItems，不创建第二套用户 Task。
+- [x] WorkItem completed 不等于父 Task completed。
+- [x] 真实 verifier 通过后才能登记 Step/Criterion evidence。
+- [x] 方案变更必须返回解决方案设计并产生新版本，不能热改 active run。
+- [x] reload/resume 不重复执行已确认 WorkItem 或重复登记 evidence。
 
 ## 依赖
 
@@ -51,9 +51,9 @@
 - [x] Workflow 设计时边界确认
 - [x] 测试用例定义
 - [x] 对接 P2.8 的 SolutionExecutionContract 公共读取端口
-- [ ] 实施
-- [ ] 自动化验证 Goal
-- [ ] Review
+- [x] 实施
+- [x] 自动化验证 Goal
+- [x] Review
 
 ## 变更历史
 
@@ -74,6 +74,12 @@
 - 已通过注入的公开 Worker、Verifier、Evidence Sink 端口完成 `intent → worker receipt → verifier → evidence receipt` 的幂等对账。失败、占位验证、未知证据回执、暂停/取消与旧 epoch 输出均 fail closed；重启只补未确认阶段，不重发已有 Worker Action。
 - 已将 `createAgentTaskEvidenceSink()` 装配到 Story 9.41 的公开受控 `task_evidence` 命令。Evidence 提交复用当前 Session 的 cursor、revision 与 bridge epoch，不读取或修改 `pi-tasks` 私有状态。
 - 真实 Agent Worker 和 Verifier 仍缺少接受 frozen WorkItem attempt/lease、返回结构化 receipt/artifact ref 的公共端口；旧 Supervisor DAG 只消费 manifest，不能安全接入。HITL 和完整端到端验证仍待实施；Story 保持 `In Progress`。
+
+## 2026-09-25 恢复验收进度
+
+- 已完成统一生产 composition 的阶段故障注入、同 Agent 并发、双宿主 CAS、预算、持久 HITL 和 Run 终态自动化验收。
+- Worker 已支持在 receipt 回写前退出后复用同一执行实例落盘 artifact，避免恢复时重复调用 Agent。
+- package verifier 已实际运行 frozen WorkItem 全链路并验证重启幂等；942-T3-F 全量门禁通过，Story 已关闭。
 
 ## 2026-09-14：项目语义执行规划补充
 

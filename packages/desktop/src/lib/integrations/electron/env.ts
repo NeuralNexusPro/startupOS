@@ -1,9 +1,19 @@
 import type { IpcResponse } from '@originos/core/lib/integrations/electron/ipc-protocol';
+import type {
+  ProjectTaskSubscriptionEvent,
+  ProjectTaskSubscriptionTermination,
+} from '@originos/core/lib/features/project';
 
 export interface ElectronBridge {
   isElectron: true;
   ontologyCrossPackage: {
     invoke: (request: unknown) => Promise<IpcResponse>;
+    subscribeProjectTasks: (
+      projectId: string,
+      listener: (
+        event: ProjectTaskSubscriptionEvent | ProjectTaskSubscriptionTermination
+      ) => void
+    ) => () => void;
   };
   ipcRenderer: {
     send: (channel: string, payload?: unknown) => void;

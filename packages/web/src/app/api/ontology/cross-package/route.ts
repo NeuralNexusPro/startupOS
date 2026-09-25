@@ -17,10 +17,37 @@ const REQUEST_TYPES = new Set([
   'list_project_tasks',
   'inspect_bound_task',
   'control_bound_task',
+  'transition_project_task',
+  'list_approved_task_templates',
+  'create_approved_project_task',
+]);
+
+const TASK_STATUSES = new Set([
+  'pending',
+  'active',
+  'blocked',
+  'review',
+  'done',
+  'cancelled',
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object';
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isSemanticInputs(value: unknown): boolean {
+  return Array.isArray(value) && value.every((entry) => {
+    if (!isRecord(entry) || !isNonEmptyString(entry['slotId']) || !isRecord(entry['factRef'])) {
+      return false;
+    }
+    const factRef = entry['factRef'];
+    return ['ontologyId', 'ontologyVersion', 'conceptId', 'factTypeId', 'factId', 'factVersion']
+      .every((field) => isNonEmptyString(factRef[field]));
+  });
 }
 
 function isCrossPackageRequest(value: unknown): value is OntologyCrossPackageRequest {
@@ -33,6 +60,10 @@ function isCrossPackageRequest(value: unknown): value is OntologyCrossPackageReq
   const expectedRevision = value['expectedRevision'];
   const cursor = value['cursor'];
   const limit = value['limit'];
+  const taskId = value['taskId'];
+  const targetStatus = value['targetStatus'];
+  const expectedLeaseEpoch = value['expectedLeaseEpoch'];
+  const reason = value['reason'];
   return value['contractVersion'] === '1'
     && typeof requestId === 'string'
     && requestId.trim().length > 0
@@ -44,8 +75,26 @@ function isCrossPackageRequest(value: unknown): value is OntologyCrossPackageReq
       || ((cursor === undefined || (typeof cursor === 'string' && cursor.trim().length > 0))
         && (limit === undefined || (typeof limit === 'number'
           && Number.isSafeInteger(limit) && limit >= 1 && limit <= 50))))
-    && ((type !== 'submit_action' && type !== 'control_bound_task')
-      || (Number.isSafeInteger(expectedRevision) && (expectedRevision as number) >= 0));
+    && ((type !== 'submit_action' && type !== 'control_bound_task'
+      && type !== 'transition_project_task')
+      || (Number.isSafeInteger(expectedRevision) && (expectedRevision as number) >= 0))
+    && (type !== 'transition_project_task'
+      || (typeof taskId === 'string'
+        && taskId.trim().length > 0
+        && typeof targetStatus === 'string'
+        && TASK_STATUSES.has(targetStatus)
+        && (expectedLeaseEpoch === undefined
+          || (Number.isSafeInteger(expectedLeaseEpoch) && (expectedLeaseEpoch as number) >= 0))
+        && (reason === undefined || (typeof reason === 'string' && reason.trim().length > 0))))
+    && (type !== 'create_approved_project_task'
+      || (isNonEmptyString(value['solutionId'])
+        && isNonEmptyString(value['solutionVersion'])
+        && isNonEmptyString(value['contractId'])
+        && typeof value['contractHash'] === 'string'
+        && /^sha256:[a-f0-9]{64}$/i.test(value['contractHash'])
+        && isNonEmptyString(value['taskTemplateId'])
+        && isNonEmptyString(value['objective'])
+        && isSemanticInputs(value['semanticInputs'])));
 }
 
 function statusForError(category: OntologyCrossPackageErrorCategory): number {

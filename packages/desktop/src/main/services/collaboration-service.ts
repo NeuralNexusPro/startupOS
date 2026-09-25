@@ -4,6 +4,7 @@ import type { IpcResponse } from '../../../../core/src/lib/integrations/electron
 import { addElectronForwarder } from '../../../../core/src/modules/collaboration-runtime/facade/event-bus';
 import { persistRuntimeLLMConfig } from '../../../../core/src/lib/features/user-config';
 import type { RuntimeLLMConfig } from '../../../../core/src/lib/integrations/pi-agent/llm-config';
+import { loadProjectSolutionTopologyProjection } from '../../../../core/src/lib/features/solution';
 
 // Dynamic import wrapper — collaboration-runtime is a heavy module
 let facade: typeof import('../../../../core/src/modules/collaboration-runtime/facade') | null = null;
@@ -59,8 +60,7 @@ export class CollaborationService {
               timestamp: new Date().toISOString(),
             };
           }
-          const f = await getFacade();
-          const topology = await f.loadProjectTopology(request.projectId);
+          const topology = await loadProjectSolutionTopologyProjection({ projectId: request.projectId });
           if (!topology) {
             return {
               success: false,

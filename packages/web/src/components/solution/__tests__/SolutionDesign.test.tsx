@@ -1,18 +1,24 @@
 import { StrictMode } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ initialize: vi.fn(), stream: vi.fn(), send: vi.fn(), create: vi.fn(), list: vi.fn(), error: '' }));
-vi.mock('@originos/core/lib/integrations/electron/services/project', () => ({ initializeSolution: mocks.create, listSolutions: mocks.list, getSolution: vi.fn() }));
+const mocks = vi.hoisted(() => ({ initialize: vi.fn(), stream: vi.fn(), send: vi.fn(), create: vi.fn(), list: vi.fn(), get: vi.fn(), readContract: vi.fn(), checkContract: vi.fn(), publishContract: vi.fn(), revokeContract: vi.fn(), error: '' }));
+vi.mock('@originos/core/lib/integrations/electron/services/project', () => ({ initializeSolution: mocks.create, listSolutions: mocks.list, getSolution: mocks.get }));
 vi.mock('@originos/core/lib/integrations/pi-agent/client-hooks', () => ({ usePiAgent: () => ({ isThinking: false, isRunning: false, messages: [], artifactVersion: 0, initialize: mocks.initialize, sendMessage: mocks.send, sendMessageStream: mocks.stream, abort: vi.fn(), uiState: { errorMessage: mocks.error } }) }));
 vi.mock('@originos/core/lib/integrations/pi-agent/client', () => ({ normalizeRuntimeLLMConfig: () => ({}) }));
 vi.mock('@/store/settingsStore', () => { const get = () => ({}); return { useSettingsStore: () => get }; });
 vi.mock('@/components/interview/CUIDialogPanel', () => ({ CUIDialogPanel: ({ messages, onSendMessage }: { messages: { content: string }[]; onSendMessage: (text: string) => Promise<void> }) => <div>{messages.map((m, i) => <p key={i}>{m.content}</p>)}<button onClick={() => void onSendMessage('后续需求')}>发送</button></div> }));
 vi.mock('../TopologyGraph', () => ({ SolutionGraphView: () => null }));
-vi.mock('../SolutionList', () => ({ SolutionList: () => null }));
+vi.mock('../SolutionList', () => ({ SolutionList: ({ onSelect }: { onSelect: (version: string) => void }) => <button onClick={() => onSelect('v1')}>加载方案 v1</button> }));
 vi.mock('@/components/os/workspace', () => ({ WorkspaceWindow: () => null }));
 vi.mock('@/services/AppWindowManager', () => ({ AppWindowManager: {} }));
+vi.mock('@/services/solution-execution-contract-client', () => ({
+  checkSolutionExecutionContract: mocks.checkContract,
+  publishSolutionExecutionContract: mocks.publishContract,
+  readSolutionExecutionContract: mocks.readContract,
+  revokeSolutionExecutionContract: mocks.revokeContract,
+}));
 const { SolutionDesign } = await import('../SolutionDesign');
-beforeEach(() => { vi.clearAllMocks(); sessionStorage.clear(); mocks.error = ''; mocks.create.mockResolvedValue({ success: true, data: { sessionId: 'session-1', projectDir: '/data/projects/p1' } }); mocks.initialize.mockResolvedValue(undefined); mocks.list.mockResolvedValue({ success: true, data: [] }); mocks.stream.mockResolvedValue(undefined); });
+beforeEach(() => { vi.clearAllMocks(); sessionStorage.clear(); mocks.error = ''; mocks.create.mockResolvedValue({ success: true, data: { sessionId: 'session-1', projectDir: '/data/projects/p1' } }); mocks.initialize.mockResolvedValue(undefined); mocks.list.mockResolvedValue({ success: true, data: [] }); mocks.get.mockResolvedValue({ success: false }); mocks.readContract.mockResolvedValue({ success: false, error: { category: 'not_found', code: 'CONTRACT_NOT_FOUND', message: '未找到', retryable: false } }); mocks.stream.mockResolvedValue(undefined); });
 it('initializes explicit skill ownership and uses streaming for opening and later messages', async () => {
   const view = render(<SolutionDesign projectId="p1" projectName="项目" />);
   await waitFor(() => expect(mocks.stream).toHaveBeenCalledTimes(1));
@@ -45,4 +51,35 @@ it('finishes StrictMode initialization without a stranded module-wide lock', asy
   await waitFor(() => expect(mocks.stream).toHaveBeenCalledTimes(1));
   expect(mocks.create).toHaveBeenCalledTimes(1);
   expect(mocks.initialize).toHaveBeenCalledTimes(1);
+});
+it('mounts contract publishing in the real topology path with the selected exact solution', async () => {
+  mocks.get.mockResolvedValue({
+    success: true,
+    data: {
+      manifest: {
+        solutionId: 'solution-1',
+        status: 'confirmed',
+        modeling: { dimension: 'task' },
+        businessModelSummary: { goal: '交付目标' },
+      },
+      agents: [],
+      skills: [],
+      solutionVersion: 'v1',
+    },
+  });
+  render(<SolutionDesign projectId="p1" projectName="项目" />);
+  await waitFor(() => expect(mocks.stream).toHaveBeenCalledTimes(1));
+  fireEvent.click(screen.getByRole('button', { name: '加载方案 v1' }));
+  expect(
+    await screen.findByRole('heading', { name: '执行契约发布' })
+  ).toBeInTheDocument();
+  expect(mocks.readContract).toHaveBeenCalledWith({
+    actorId: 'originos.solution-designer',
+    projectId: 'p1',
+    solutionId: 'solution-1',
+    solutionVersion: 'v1',
+  });
+  expect(screen.getByTestId('publishing-status')).toHaveTextContent(
+    '已确认，待发布'
+  );
 });

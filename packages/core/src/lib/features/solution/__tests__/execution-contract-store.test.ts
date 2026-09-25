@@ -1,12 +1,14 @@
 import { promises as fs } from 'node:fs';
 import { mkdtemp } from 'node:fs/promises';
-import path from 'node:path';
 import { tmpdir } from 'node:os';
+import path from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 import { SolutionExecutionContractStore } from '../execution-contract-store';
-import type { SolutionExecutionContract } from '../types';
 import { body, ontology } from './execution-contract-fixtures';
+
+import type { SolutionExecutionContract } from '../types';
 
 async function publish(
   store: SolutionExecutionContractStore,
@@ -25,7 +27,9 @@ async function publish(
         }
   );
   expect(result.ok).toBe(true);
-  if (!result.ok) throw new Error('Fixture contract must publish');
+  if (!result.ok) {
+    throw new Error('Fixture contract must publish');
+  }
   return result.published.contract;
 }
 
@@ -41,7 +45,7 @@ describe('solution execution contract store', () => {
   it('publishes and reads the exact immutable version', async () => {
     const { store } = await newStore();
     const first = await publish(store, '1.0');
-    const second = await publish(store, '1.1');
+    await publish(store, '1.1');
 
     await expect(
       store.load({
@@ -52,11 +56,11 @@ describe('solution execution contract store', () => {
     ).resolves.toEqual({ contract: first });
   });
 
-  it('refuses to overwrite a published version', async () => {
+  it('returns the existing contract for an identical publication retry', async () => {
     const { store } = await newStore();
     const published = await publish(store, '1.0');
 
-    await expect(publish(store, '1.0')).rejects.toThrow(/already exists/);
+    await expect(publish(store, '1.0')).resolves.toEqual(published);
     await expect(
       store.load({
         projectId: published.projectId,
@@ -108,5 +112,28 @@ describe('solution execution contract store', () => {
     await expect(store.revoke(reference, 'Different reason')).resolves.toEqual(
       revoked
     );
+  });
+
+  it('lists exact project publications with revocation state', async () => {
+    const { store } = await newStore();
+    const first = await publish(store, '1.0');
+    const second = await publish(store, '1.1');
+    await store.revoke({
+      projectId: second.projectId,
+      solutionId: second.solutionId,
+      solutionVersion: second.solutionVersion,
+      contractId: second.contractId,
+    }, 'Superseded');
+
+    const catalog = await store.listProject(first.projectId);
+
+    expect(catalog).toHaveLength(2);
+    expect(catalog.map(({ contract }) => contract.solutionVersion)).toEqual(['1.0', '1.1']);
+    expect(catalog[0]).toEqual({ contract: first });
+    expect(catalog[1]).toMatchObject({
+      contract: second,
+      revocation: { contractId: second.contractId, reason: 'Superseded' },
+    });
+    await expect(store.listProject('other-project')).resolves.toEqual([]);
   });
 });

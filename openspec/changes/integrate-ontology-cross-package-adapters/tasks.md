@@ -18,8 +18,8 @@
 
 ## 4. 端到端与平台验收
 
-- [ ] 4.1 `ONT8-T1-H`（串行；依赖：3.3；角色：E2E QA subagent；写入：临时项目 fixture、跨包 integration tests、Story testing evidence）执行 E01–E07、E12–E16，覆盖访谈→方案→Task/Run→Verifier/Evidence→看板的成功、设计缺口、版本隔离、并发和 1000 Task/50 条分页场景；逐项记录可复核测试输出。
-- [ ] 4.2 `ONT8-T1-I`（串行；依赖：4.1；角色：Recovery QA subagent；写入：故障注入 harness 与 Story testing evidence）执行 E08–E11，在 intent、Action、接纳、Evidence 前后强退并验证重启、暂停、取消、未知副作用与旧 lease；完成证据必须证明无重复 fact/Action/Evidence 和无幽灵完成。
+- [x] 4.1 `ONT8-T1-H`（串行；依赖：3.3；角色：E2E QA subagent；写入：临时项目 fixture、跨包 integration tests、Story testing evidence）执行 E01–E07、E12–E16，覆盖访谈→方案→Task/Run→Verifier/Evidence→看板的成功、设计缺口、版本隔离、并发和 1000 Task/50 条分页场景；逐项记录可复核测试输出。完成证据：`evidence/e2e-and-recovery-matrix.md`；Core 11 files/87 tests、Web 4 files/22 tests、Desktop 2 files/12 tests 通过。
+- [x] 4.2 `ONT8-T1-I`（串行；依赖：4.1；角色：Recovery QA subagent；写入：故障注入 harness 与 Story testing evidence）执行 E08–E11，在 intent、Action、接纳、Evidence 前后强退并验证重启、暂停、取消、未知副作用与旧 lease；完成证据必须证明无重复 fact/Action/Evidence 和无幽灵完成。完成证据：新增正式 `OntologyWorkItemRecovery` 与真实文件故障注入；Action accepted 后 Evidence 边界中断可恢复，unknown receipt 保持人工核对，pause/cancel/旧 lease 均 fail closed。
 - [ ] 4.3 `ONT8-T1-J`（可按平台并行；依赖：4.2；角色：Packaging QA subagent；写入：desktop test scripts/workflow 与平台 evidence，不修改业务实现）验证 development、Windows x64、macOS x64/arm64 的 module resolution、preload channel 和进程恢复 smoke；每个平台保留独立日志，未执行项不得标记通过。
 
 ## 5. 回归、审查与集成

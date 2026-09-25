@@ -10,10 +10,10 @@
 
 ## 前置条件
 
-- [ ] P2.5 的方案版本和确认状态可用。
-- [ ] P2.6 的 I/O 契约定义稳定。
-- [ ] P2.7 的 Workflow/Team、Agent/Skill 拓扑可序列化。
-- [ ] 本 Story testing.md 已评审。
+- [x] P2.5 的方案版本和确认状态可用。
+- [x] P2.6 的 I/O 契约定义稳定。
+- [x] P2.7 的 Workflow/Team、Agent/Skill 拓扑可序列化。
+- [x] 本 Story testing.md 已评审。
 
 ## 实施步骤
 
@@ -54,23 +54,23 @@
 
 ### 6. 解决方案 UI
 
-- [ ] 增加检查、发布和创建新版本操作。
-- [ ] 分类展示 DesignGap 并支持定位节点。
-- [ ] 发布成功后显示 contractId/version/hash。
-- [ ] 明确发布后不可编辑。
+- [x] 增加检查、发布和创建新版本操作。
+- [x] 分类展示 DesignGap 并支持定位节点。
+- [x] 发布成功后显示 contractId/version/hash。
+- [x] 明确发布后不可编辑。
 
 ### 7. 兼容迁移
 
-- [ ] 提供 legacy manifest 显式迁移入口。
-- [ ] 迁移走完整校验和发布管线。
-- [ ] 缺失 verifier/I/O/policy 时返回 DesignGap。
+- [x] 提供 legacy manifest 显式兼容选择入口。
+- [x] 显式兼容输入走完整校验和发布管线。
+- [x] 缺失 verifier/I/O/policy 时返回 DesignGap。
 
 ### 8. 回归与验证 Goal
 
-- [ ] 执行 compiler、validator、storage 和 UI 测试。
-- [ ] 执行 P2.5/P2.6/P2.7 回归。
-- [ ] 创建自动化测试验证 Goal，目标为“通过 Story P2.8 testing.md 中定义的测试 case”。
-- [ ] 记录自动化 evidence、人工步骤和剩余风险。
+- [x] 执行 compiler、validator、storage 和 UI 测试。
+- [x] 执行 P2.5/P2.6/P2.7 回归。
+- [x] 创建自动化测试验证 Goal，目标为“通过 Story P2.8 testing.md 中定义的测试 case”。
+- [x] 记录自动化 evidence、人工步骤和剩余风险。
 
 ## 文件级改动范围
 
@@ -114,10 +114,8 @@
 
 ## 2026-09-14：项目语义执行规划补充
 
-- [ ] P28-T1：前置ONT.1/3/6/7最小能力及P2.5/6/7必要接线。
-- [ ] 实施访谈语义绑定、上下文编译、发布门控与UI。
-- [ ] 独立Proposal、隔离Task源码工作区、类型/架构与Story验证goal。
-
-以上尚未执行；不修改既有完成项。
+- [x] P28-T1：前置ONT.1/3/6/7最小能力及P2.5/6/7必要接线。
+- [x] 实施访谈语义绑定、上下文编译、发布门控与UI。
+- [x] 独立Proposal、隔离Task源码工作区、类型/架构与Story验证goal。
 
 完整依赖、状态所有权及验收场景见[主线规划](../../epic-ONT/project-semantic-execution-plan.md)。

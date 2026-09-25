@@ -18,11 +18,11 @@ import { getDataRoot } from '../../../lib/paths';
 import { streamSimple as _streamSimpleRaw } from "@originos/pi-agent-adapter/ai";
 
 import {
-  parseTopology,
-  DagExecutor,
   Blackboard,
   UpstreamResults,
 } from "../../../modules/collaboration-runtime";
+import { parseTopology } from "./topology-parser";
+import { DagExecutor } from "./dag-executor";
 import { selectExecutionMode, type ExecutionMode } from "../../../modules/collaboration-runtime/engine/mode-router";
 import { type SubTask } from "../../../modules/collaboration-runtime/engine/supervisor";
 import { getGlobalSpawner, type AgentProcess } from "../../../modules/collaboration-runtime/sandbox";

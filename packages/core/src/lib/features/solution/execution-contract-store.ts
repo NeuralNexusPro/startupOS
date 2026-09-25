@@ -2,11 +2,12 @@ import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
-import { getDataRoot } from '../../paths';
 import {
   compileSolutionExecutionContract,
   verifySolutionExecutionContractIntegrity,
 } from './execution-contract';
+import { getDataRoot } from '../../paths';
+
 import type {
   ContractRef,
   DesignGap,
@@ -18,13 +19,37 @@ import type {
 
 const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._@-]*$/;
 
+export type SolutionExecutionContractStoreErrorCode =
+  | 'INVALID_REFERENCE'
+  | 'NOT_FOUND'
+  | 'VERSION_CONFLICT'
+  | 'CONTRACT_ID_MISMATCH'
+  | 'INTEGRITY_FAILURE';
+
+export class SolutionExecutionContractStoreError extends Error {
+  constructor(
+    readonly code: SolutionExecutionContractStoreErrorCode,
+    message: string,
+    override readonly cause?: unknown
+  ) {
+    super(message);
+    this.name = 'SolutionExecutionContractStoreError';
+  }
+}
+
 export type SolutionContractPublicationResult =
-  | { readonly ok: true; readonly published: PublishedSolutionExecutionContract }
+  | {
+      readonly ok: true;
+      readonly published: PublishedSolutionExecutionContract;
+    }
   | { readonly ok: false; readonly gaps: readonly DesignGap[] };
 
 function identifier(value: string, field: string): void {
   if (!IDENTIFIER.test(value) || value.includes('..')) {
-    throw new TypeError(`Invalid ${field}: ${value}`);
+    throw new SolutionExecutionContractStoreError(
+      'INVALID_REFERENCE',
+      `Invalid ${field}: ${value}`
+    );
   }
 }
 
@@ -43,7 +68,9 @@ async function readJson<T>(filePath: string): Promise<T | null> {
   try {
     return JSON.parse(await fs.readFile(filePath, 'utf8')) as T;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return null;
+    }
     throw error;
   }
 }
@@ -63,18 +90,25 @@ export class SolutionExecutionContractStore {
       solutionStatus,
       body
     );
-    if (compilation.ok === false) return { ok: false, gaps: compilation.gaps };
+    if (compilation.ok === false) {
+      return { ok: false, gaps: compilation.gaps };
+    }
     return {
       ok: true,
-      published: await this.publish(compilation.contract),
+      published: await this.publishContract(compilation.contract),
     };
   }
 
-  private async publish(
+  async publishContract(
     contract: SolutionExecutionContract
   ): Promise<PublishedSolutionExecutionContract> {
     const integrity = this.verifyIntegrity(contract);
-    if (integrity.valid !== true) throw new Error(integrity.message);
+    if (integrity.valid !== true) {
+      throw new SolutionExecutionContractStoreError(
+        'INTEGRITY_FAILURE',
+        integrity.message
+      );
+    }
     const input: ContractRef = {
       projectId: contract.projectId,
       solutionId: contract.solutionId,
@@ -94,39 +128,58 @@ export class SolutionExecutionContractStore {
       try {
         await fs.link(temporary, filePath);
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
-          throw new Error(
-            `Execution contract already exists for ${input.solutionId}@${input.solutionVersion}`
-          );
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
+          throw error;
         }
-        throw error;
+        const existing = await this.readContract(input);
+        if (
+          existing?.contract.contractId === contract.contractId &&
+          existing.contract.contractHash === contract.contractHash
+        ) {
+          return existing;
+        }
+        throw new SolutionExecutionContractStoreError(
+          'VERSION_CONFLICT',
+          `Execution contract already exists with different content for ${input.solutionId}@${input.solutionVersion}`
+        );
       } finally {
         await fs.unlink(temporary).catch((error: unknown) => {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+            throw error;
+          }
         });
       }
       return { contract };
     });
   }
 
-  async revoke(input: ContractRef, reason: string): Promise<PublishedSolutionExecutionContract> {
+  async revoke(
+    input: ContractRef,
+    reason: string
+  ): Promise<PublishedSolutionExecutionContract> {
     assertContractRef(input);
-    if (!reason.trim()) throw new TypeError('Revocation reason is required');
+    if (!reason.trim()) {
+      throw new TypeError('Revocation reason is required');
+    }
     const contractPath = this.contractPath(input);
     const revocationPath = this.revocationPath(input);
     return this.enqueue(contractPath, async () => {
       const published = await this.readContract(input);
       if (!published) {
-        throw new Error(
+        throw new SolutionExecutionContractStoreError(
+          'NOT_FOUND',
           `Execution contract not found for ${input.solutionId}@${input.solutionVersion}`
         );
       }
       if (published.contract.contractId !== input.contractId) {
-        throw new Error(
+        throw new SolutionExecutionContractStoreError(
+          'CONTRACT_ID_MISMATCH',
           `Execution contract ID ${published.contract.contractId} does not match ${input.contractId}`
         );
       }
-      if (published.revocation) return published;
+      if (published.revocation) {
+        return published;
+      }
       const revocation = {
         contractId: input.contractId,
         revokedAt: new Date().toISOString(),
@@ -134,12 +187,27 @@ export class SolutionExecutionContractStore {
       };
       await fs.mkdir(path.dirname(revocationPath), { recursive: true });
       const temporary = `${revocationPath}.${randomUUID()}.tmp`;
-      await fs.writeFile(temporary, JSON.stringify(revocation, null, 2), 'utf8');
+      await fs.writeFile(
+        temporary,
+        JSON.stringify(revocation, null, 2),
+        'utf8'
+      );
       try {
         await fs.link(temporary, revocationPath);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
+          throw error;
+        }
+        const existing = await this.readContract(input);
+        if (existing?.revocation) {
+          return existing;
+        }
+        throw error;
       } finally {
         await fs.unlink(temporary).catch((error: unknown) => {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+            throw error;
+          }
         });
       }
       return { contract: published.contract, revocation };
@@ -151,6 +219,48 @@ export class SolutionExecutionContractStore {
   ): Promise<PublishedSolutionExecutionContract | null> {
     assertRef(input);
     return this.readContract(input);
+  }
+
+  async listProject(
+    projectId: string
+  ): Promise<readonly PublishedSolutionExecutionContract[]> {
+    identifier(projectId, 'projectId');
+    const directory = path.join(
+      this.dataRoot,
+      'projects',
+      projectId,
+      'solutions',
+      'contracts'
+    );
+    let names: readonly string[];
+    try {
+      names = await fs.readdir(directory);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        return [];
+      }
+      throw error;
+    }
+    const published: PublishedSolutionExecutionContract[] = [];
+    for (const name of names.filter((candidate) => candidate.endsWith('-contract.json')).sort()) {
+      const stored = await readJson<{ contract?: SolutionExecutionContract }>(
+        path.join(directory, name)
+      );
+      const contract = stored?.contract;
+      if (!contract || contract.projectId !== projectId) {
+        throw new SolutionExecutionContractStoreError(
+          'INTEGRITY_FAILURE',
+          'Execution contract catalog contains an invalid project reference'
+        );
+      }
+      const item = await this.readContract({
+        projectId,
+        solutionId: contract.solutionId,
+        solutionVersion: contract.solutionVersion,
+      });
+      if (item) published.push(item);
+    }
+    return published;
   }
 
   verifyIntegrity(
@@ -173,14 +283,24 @@ export class SolutionExecutionContractStore {
       stored.contract.solutionId !== input.solutionId ||
       stored.contract.solutionVersion !== input.solutionVersion
     ) {
-      throw new Error('Execution contract reference does not match its file');
+      throw new SolutionExecutionContractStoreError(
+        'INTEGRITY_FAILURE',
+        'Execution contract reference does not match its file'
+      );
     }
     const integrity = this.verifyIntegrity(stored.contract);
-    if (integrity.valid !== true) throw new Error(integrity.message);
-    const revocation = await readJson<PublishedSolutionExecutionContract['revocation']>(
-      this.revocationPath(input)
-    );
-    return revocation ? { contract: stored.contract, revocation } : { contract: stored.contract };
+    if (integrity.valid !== true) {
+      throw new SolutionExecutionContractStoreError(
+        'INTEGRITY_FAILURE',
+        integrity.message
+      );
+    }
+    const revocation = await readJson<
+      PublishedSolutionExecutionContract['revocation']
+    >(this.revocationPath(input));
+    return revocation
+      ? { contract: stored.contract, revocation }
+      : { contract: stored.contract };
   }
 
   private contractPath(input: SolutionVersionRef): string {
@@ -209,12 +329,15 @@ export class SolutionExecutionContractStore {
     key: string,
     operation: () => Promise<T>
   ): Promise<T> {
-    const queued = this.queues.get(key)?.then(operation, operation) ?? operation();
+    const queued =
+      this.queues.get(key)?.then(operation, operation) ?? operation();
     this.queues.set(key, queued);
     try {
       return await queued;
     } finally {
-      if (this.queues.get(key) === queued) this.queues.delete(key);
+      if (this.queues.get(key) === queued) {
+        this.queues.delete(key);
+      }
     }
   }
 }

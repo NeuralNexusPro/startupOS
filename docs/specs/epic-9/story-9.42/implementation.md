@@ -10,9 +10,9 @@
 
 ## 前置条件
 
-- [ ] Story 9.41 的 `pi-tasks` adapter、Evidence Gate 和 Task Runtime 可用。
-- [ ] Story P2.8 已提供稳定 `SolutionExecutionContract` 公共类型和读取端口。
-- [ ] Story 9.42 测试用例已评审。
+- [x] Story 9.41 的 `pi-tasks` adapter、Evidence Gate 和 Task Runtime 可用。
+- [x] Story P2.8 已提供稳定 `SolutionExecutionContract` 公共类型和读取端口。
+- [x] Story 9.42 测试用例已评审。
 
 ## 实施步骤
 
@@ -25,16 +25,16 @@
 
 ### 2. Contract Port
 
-- [ ] 实现 load/verify 接口。
-- [ ] 校验 approved、版本、hash、Agent/Skill、权限和预算。
-- [ ] 错误使用结构化分类并反馈设计缺口。
-- [ ] 禁止 runtime 调用 LLM 生成替代 contract 或执行 Workflow。
+- [x] 实现 load/verify 接口。
+- [x] 校验 approved、版本、hash、Agent/Skill、权限和预算。
+- [x] 错误使用结构化分类并反馈设计缺口。
+- [x] 禁止 runtime 调用 LLM 生成替代 contract 或执行 Workflow。
 
 ### 3. Task/Step 绑定
 
 - [x] 多 Agent Task 启动要求 solutionId/version/contractId/hash。
 - [x] 创建 `SolutionTaskBinding`。
-- [ ] 将 binding 传播到 Run、WorkItem、event、snapshot 和 evidence。
+- [x] 将 binding 传播到 Run、WorkItem、event、snapshot 和 evidence。
 - [x] active run 使用 frozen contract snapshot。
 
 ### 4. WorkItem 实例化
@@ -42,44 +42,44 @@
 - [x] 根据 contract topology 创建 WorkItems。
 - [x] 每个 WorkItem 必须关联 designNodeId、Agent、Skill、依赖和 I/O refs。
 - [x] runtime 不创建契约外协作节点。
-- [ ] 保留并行、依赖、有限重试和 HITL。
+- [x] 保留并行、依赖、有限重试和 HITL。
 
 ### 5. 修复 Verifier
 
-- [ ] 移除生产路径默认 `passed: true`。
-- [ ] 按 contract verification policy 执行真实 verifier。
-- [ ] 保存 method、artifact refs、result ref、hash 和 checkedAt。
-- [ ] 无 verifier、失败或占位结果不得登记 passed evidence。
+- [x] 移除生产路径默认 `passed: true`。
+- [x] 按 contract verification policy 执行真实 verifier。
+- [x] 保存 method、artifact refs、result ref、hash 和 checkedAt。
+- [x] 无 verifier、失败或占位结果不得登记 passed evidence。
 
 ### 6. Evidence Bridge
 
-- [ ] 将 verifier 通过结果转换为 evidence candidate。
-- [ ] 通过 TaskEvidenceSink 写入 `pi-tasks`。
-- [ ] 实现 contractHash/evidenceHash 幂等。
-- [ ] 只有 Step gate 通过才能推进 Step。
-- [ ] 只有 `task_complete` 能完成父 Task。
+- [x] 将 verifier 通过结果转换为 evidence candidate。
+- [x] 通过 TaskEvidenceSink 写入 `pi-tasks`。
+- [x] 实现 contractHash/evidenceHash 幂等。
+- [x] 只有 Step gate 通过才能推进 Step。
+- [x] 只有 `task_complete` 能完成父 Task。
 
 ### 7. Design Gap 和 HITL
 
-- [ ] 运行时发现契约缺失时产生 design gap，不热改拓扑。
-- [ ] 设计声明的 HITL 返回父协作 Session。
-- [ ] 新方案版本只用于后续新 run。
-- [ ] Task 取消后拒绝迟到事件。
+- [x] 运行时发现契约缺失时产生 design gap，不热改拓扑。
+- [x] 设计声明的 HITL 返回父协作 Session。
+- [x] 新方案版本只用于后续新 run。
+- [x] Task 取消后拒绝迟到事件。
 
 ### 8. Snapshot/UI
 
-- [ ] 展示 solutionVersion、contract status、Run 和 WorkItem。
-- [ ] 不提供生成/编辑 Workflow 或运行时模式切换。
-- [ ] design gap 提供返回解决方案设计入口。
-- [ ] 高频 progress 节流，artifact 使用引用。
+- [x] 展示 solutionVersion、contract status、Run 和 WorkItem。
+- [x] 不提供生成/编辑 Workflow 或运行时模式切换。
+- [x] design gap 提供返回解决方案设计入口。
+- [x] 高频 progress 节流，artifact 使用引用。
 
 ### 9. 回归与验证 Goal
 
-- [ ] 使用 P2.8 发布契约 fixture 运行 version/hash/consumer 测试。
-- [ ] 运行 collaboration DAG、Worker、Verifier、HITL 回归。
-- [ ] 运行 pi-tasks Evidence Bridge 集成测试。
-- [ ] 创建自动化测试验证 Goal，目标为“通过 Story 9.42 testing.md 中定义的测试 case”。
-- [ ] 输出自动化 evidence、人工步骤和剩余风险。
+- [x] 使用 P2.8 发布契约 fixture 运行 version/hash/consumer 测试。
+- [x] 运行 collaboration DAG、Worker、Verifier、HITL 回归。
+- [x] 运行 pi-tasks Evidence Bridge 集成测试。
+- [x] 创建自动化测试验证 Goal，目标为“通过 Story 9.42 testing.md 中定义的测试 case”。
+- [x] 输出自动化 evidence、人工步骤和剩余风险。
 
 ## 主要改动范围
 
@@ -125,10 +125,10 @@
 
 ## 2026-09-14：项目语义执行规划补充
 
-- [ ] 942-T1：消费P28-T1、ONT5/7和9.41公开端口，实施语义绑定、WorkItem/Attempt隔离与就绪门控。
-- [ ] 942-T2：前者完成后实施操作意图/回执、Evidence幂等、lease fencing、checkpoint/replay与故障注入。
-- [ ] 旧运行只读或显式校验迁移，不能直接写新Evidence。
-- [ ] 每Task独立Proposal和隔离工作区；恢复验收先于看板正式交付。
+- [x] 942-T1：消费P28-T1、ONT5/7和9.41公开端口，实施语义绑定、WorkItem/Attempt隔离与就绪门控。
+- [x] 942-T2：前者完成后实施操作意图/回执、Evidence幂等、lease fencing、checkpoint/replay与故障注入。
+- [x] 旧运行只读或显式校验迁移，不能直接写新Evidence。
+- [x] 每Task独立Proposal和隔离工作区；恢复验收先于看板正式交付。
 
 
 完整依赖、状态所有权及验收场景见[主线规划](../../epic-ONT/project-semantic-execution-plan.md)。

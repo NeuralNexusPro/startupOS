@@ -134,3 +134,15 @@
 | SC06 | v2发布时v1仍运行                   | v1不热更新                       |
 
 完整依赖、状态所有权及验收场景见[主线规划](../../epic-ONT/project-semantic-execution-plan.md)。
+
+## 2026-09-25 P28-T1-E 最终集成验收
+
+完整 TC-U1–U6、TC-I1–I5、TC-C1–C2、TC-E1–E2、TC-A1 与 SC01–SC06 均通过。Core 94、Web 34、Desktop 12 项定向测试通过；三包 TypeScript strict 通过；核心编译/校验/hash/store/publishing 的 V8 statements/lines 为 96.52%；200 节点编译满足小于 5 秒。runtime 公共 API 已移除 Workflow 设计解析、DAG 构造和 manifest 选择接口，兼容拓扑查看归属 solution feature 的只读投影。
+
+可复核命令、逐项映射和 consumer 回归见 `openspec/changes/complete-solution-execution-contract-publishing/evidence/p28-t1-e-integration-acceptance.md`。
+
+- [x] 核心成功路径、失败路径和边界测试通过。
+- [x] 编译、校验、hash 核心逻辑覆盖率不低于 80%。
+- [x] 关键集成点全部有自动化测试。
+- [x] 架构测试证明 runtime 不包含 Workflow 设计能力。
+- [x] 验证 Goal 完成并保存 evidence。

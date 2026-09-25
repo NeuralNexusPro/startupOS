@@ -8,13 +8,31 @@ import type {
   CollaborationExecutionPort,
   CollaborationRunSnapshot,
 } from '../../../modules/collaboration-runtime/facade';
-import type { SolutionExecutionContractPort } from '../solution';
+import { CollaborationWorkItemHandoffError } from '../../../modules/collaboration-runtime/facade';
+import {
+  AgentTaskRuntimeConflictError,
+  AgentTaskRuntimeProtocolError,
+  type AgentTaskProjectMetadataMutationReceiptV1,
+  type AgentTaskProjectPriorityV1,
+} from '../../integrations/pi-agent/task-runtime';
+import type {
+  DesignGap,
+  SolutionExecutionContractCatalogPort,
+  SolutionExecutionContractPort,
+} from '../solution';
 import {
   ProjectTaskRequestIdConflictError,
   ProjectTaskRevisionConflictError,
+  ProjectTaskTransitionRejectedError,
   type ProjectTaskBoardService,
+  type ProjectTaskEvidenceGap,
   type ProjectTaskPage,
+  type ProjectTaskSummary,
 } from './task-board';
+import {
+  ProjectTaskRuntimeRecoveryConflictError,
+  ProjectTaskSourceUnavailableError,
+} from './project-task-source';
 import type {
   OntologyCrossPackageActionData,
   OntologyCrossPackageErrorCategory,
@@ -22,22 +40,67 @@ import type {
   OntologyCrossPackageRequest,
   OntologyCrossPackageResponse,
   OntologyCrossPackageRunData,
+  OntologyApprovedTaskTemplateCatalogData,
+  OntologyCrossPackageTaskPriorityData,
+  OntologyCrossPackageWorkItemHandoffData,
   OntologyCrossPackageWorkItemRecoveryPort,
   OntologyCrossPackageWorkItemRecoveryResult,
 } from './ontology-cross-package-contract';
+import {
+  ProjectTaskCreationError,
+  type ApprovedProjectTaskCreationService,
+} from './project-task-creation';
+import {
+  PROJECT_ACCESS_DENIED_CODE,
+  ProjectAccessDeniedError,
+  isProjectAccessAuthorized,
+  projectAccessCapabilityForRequest,
+  type ProjectAccessPort,
+  type ProjectTaskSubscription,
+  type ProjectTaskSubscriptionInput,
+  type ProjectTaskSubscriptionObserver,
+  type ProjectTaskSubscriptionPort,
+} from './project-task-access-subscription';
+
+export interface ProjectTaskPriorityMutationInput {
+  readonly projectId: string;
+  readonly taskId: string;
+  readonly requestId: string;
+  readonly priority: AgentTaskProjectPriorityV1;
+  readonly expectedRevision: number;
+  readonly expectedCursor: string | null;
+  readonly bridgeEpoch: number;
+}
+
+export interface ProjectTaskPriorityMutationPort {
+  updateProjectTaskPriority(
+    input: ProjectTaskPriorityMutationInput,
+  ): Promise<AgentTaskProjectMetadataMutationReceiptV1>;
+}
 
 export interface OntologyCrossPackageServiceDeps {
+  readonly projectAccess?: ProjectAccessPort;
   readonly osdk: Pick<
     CanonicalOntologyOSDK,
     'queryFacts' | 'queryProjections' | 'resolveProjection' | 'submitAction'
   >;
   readonly contractPort: Pick<SolutionExecutionContractPort, 'load' | 'verifyIntegrity'>;
-  readonly executionPort: Pick<CollaborationExecutionPort, 'start' | 'inspect'>;
+  readonly executionPort: Pick<
+    CollaborationExecutionPort,
+    'start' | 'inspect' | 'listWorkItemHandoffCandidates' | 'handoffWorkItem'
+  >;
   readonly taskBoard: Pick<
     ProjectTaskBoardService,
-    'listProjectTasks' | 'getProjectTask' | 'requestProjectTaskAction'
+    | 'listProjectTasks'
+    | 'getProjectTask'
+    | 'requestProjectTaskAction'
+    | 'requestProjectTaskTransition'
   >;
   readonly workItemRecovery: OntologyCrossPackageWorkItemRecoveryPort;
+  readonly taskPriority: ProjectTaskPriorityMutationPort;
+  readonly contractCatalog?: Pick<SolutionExecutionContractCatalogPort, 'listProject'>;
+  readonly taskCreation?: Pick<ApprovedProjectTaskCreationService, 'create'>;
+  readonly taskSubscriptions?: ProjectTaskSubscriptionPort;
 }
 
 interface SemanticContextData {
@@ -74,6 +137,13 @@ export class OntologyCrossPackageService {
   constructor(private readonly deps: OntologyCrossPackageServiceDeps) {}
 
   async invoke(request: OntologyCrossPackageRequest): Promise<OntologyCrossPackageResponse> {
+    const authorized = await isProjectAccessAuthorized(this.deps.projectAccess, {
+      actorId: request.actorId,
+      projectId: request.projectId,
+      capability: projectAccessCapabilityForRequest(request),
+    });
+    if (!authorized) return this.accessDenied(request);
+
     switch (request.type) {
       case 'read_semantic_context':
         return this.readSemanticContext(request);
@@ -91,6 +161,131 @@ export class OntologyCrossPackageService {
         return this.submitAction(request);
       case 'control_bound_task':
         return this.controlBoundTask(request);
+      case 'transition_project_task':
+        return this.transitionProjectTask(request);
+      case 'update_project_task_priority':
+        return this.updateProjectTaskPriority(request);
+      case 'list_work_item_handoff_candidates':
+        return this.listWorkItemHandoffCandidates(request);
+      case 'handoff_work_item':
+        return this.handoffWorkItem(request);
+      case 'list_approved_task_templates':
+        return this.listApprovedTaskTemplates(request);
+      case 'create_approved_project_task':
+        return this.createApprovedProjectTask(request);
+    }
+  }
+
+  async subscribeProjectTasks(
+    input: ProjectTaskSubscriptionInput,
+    observer: ProjectTaskSubscriptionObserver,
+  ): Promise<ProjectTaskSubscription> {
+    const authorized = await isProjectAccessAuthorized(this.deps.projectAccess, {
+      actorId: input.actorId,
+      projectId: input.projectId,
+      capability: 'subscribe',
+    });
+    if (!authorized) throw new ProjectAccessDeniedError();
+    if (!this.deps.taskSubscriptions) {
+      throw new Error('Project task subscriptions are unavailable');
+    }
+    return this.deps.taskSubscriptions.subscribeProjectTasks(input, observer);
+  }
+
+  private accessDenied(request: OntologyCrossPackageRequest): OntologyCrossPackageResponse {
+    return this.failure(request, 'authorization', PROJECT_ACCESS_DENIED_CODE, [{
+      code: PROJECT_ACCESS_DENIED_CODE,
+      message: 'Project access is denied',
+    }], false, 'Request access to the project before retrying.');
+  }
+
+  private async listApprovedTaskTemplates(
+    request: Extract<OntologyCrossPackageRequest, { type: 'list_approved_task_templates' }>
+  ): Promise<OntologyCrossPackageResponse> {
+    if (!this.deps.contractCatalog) {
+      return this.failure(request, 'unavailable', 'TASK_TEMPLATE_CATALOG_UNAVAILABLE', [{
+        code: 'TASK_TEMPLATE_CATALOG_UNAVAILABLE',
+        message: 'Published task template catalog is not available',
+      }], true, 'Retry after the project contract catalog is available.');
+    }
+    try {
+      const published = await this.deps.contractCatalog.listProject(request.projectId);
+      const contracts: OntologyApprovedTaskTemplateCatalogData['contracts'][number][] = [];
+      for (const item of published) {
+        if (item.revocation || item.contract.status !== 'approved') {
+          continue;
+        }
+        const integrity = await this.deps.contractPort.verifyIntegrity(item.contract);
+        if (!integrity.valid || item.contract.semanticContext.taskTemplates.length === 0) {
+          continue;
+        }
+        const { contract } = item;
+        contracts.push({
+          solutionId: contract.solutionId,
+          solutionVersion: contract.solutionVersion,
+          contractId: contract.contractId,
+          contractHash: contract.contractHash,
+          ontologyId: contract.semanticContext.ontology.ontologyId,
+          ontologyVersion: contract.semanticContext.ontology.ontologyVersion,
+          objectSlots: contract.semanticContext.objectSlots,
+          factPolicies: contract.semanticContext.factPolicies,
+          taskTemplates: contract.semanticContext.taskTemplates.map((template) => ({
+            id: template.id,
+            designNodeId: template.designNodeId,
+            objective: template.objective,
+            candidateAgentIds: template.candidateAgentIds,
+            candidateSkillIds: template.candidateSkillIds,
+          })),
+        });
+      }
+      contracts.sort((left, right) => left.solutionId.localeCompare(right.solutionId)
+        || left.solutionVersion.localeCompare(right.solutionVersion)
+        || left.contractId.localeCompare(right.contractId));
+      return this.success(request, { contracts } satisfies OntologyApprovedTaskTemplateCatalogData);
+    } catch {
+      return this.failure(request, 'unavailable', 'TASK_TEMPLATE_CATALOG_UNAVAILABLE', [{
+        code: 'TASK_TEMPLATE_CATALOG_UNAVAILABLE',
+        message: 'Published task template catalog could not be read safely',
+      }], true, 'Retry after checking the project contract catalog.');
+    }
+  }
+
+  private async createApprovedProjectTask(
+    request: Extract<OntologyCrossPackageRequest, { type: 'create_approved_project_task' }>
+  ): Promise<OntologyCrossPackageResponse> {
+    if (!this.deps.taskCreation) {
+      return this.failure(request, 'unavailable', 'TASK_CREATION_UNAVAILABLE', [{
+        code: 'TASK_CREATION_UNAVAILABLE',
+        message: 'Approved project task creation is not available',
+      }], true, 'Retry after the project task runtime is available.');
+    }
+    try {
+      const result = await this.deps.taskCreation.create({
+        projectId: request.projectId,
+        solutionId: request.solutionId,
+        solutionVersion: request.solutionVersion,
+        contractId: request.contractId,
+        contractHash: request.contractHash,
+        taskTemplateId: request.taskTemplateId,
+        objective: request.objective,
+        semanticInputs: request.semanticInputs,
+        requestId: request.requestId,
+      });
+      if (result.ok === false) {
+        return this.failure(request, 'validation', 'PROJECT_TASK_DESIGN_GAP', result.gaps.map((gap) => ({
+          code: gap.code,
+          message: gap.message,
+          ...(gap.path === undefined ? {} : { field: gap.path }),
+        })), false, 'Resolve the reported solution design gaps before creating the task.', {
+          designGaps: result.gaps,
+        });
+      }
+      return this.success(request, result.receipt, {
+        revision: result.receipt.task.task.revision,
+        receiptRef: result.receipt.run.runId,
+      });
+    } catch (error) {
+      return this.taskCreationFailure(request, error);
     }
   }
 
@@ -338,6 +533,9 @@ export class OntologyCrossPackageService {
         executionContractId: request.executionContractId,
         contractHash: request.contractHash,
         inputRefs: request.inputRefs,
+        ...(request.parentSessionId === undefined
+          ? {}
+          : { parentSessionId: request.parentSessionId }),
       });
       return this.runSuccess(request, run);
     } catch (error) {
@@ -389,6 +587,109 @@ export class OntologyCrossPackageService {
     }
   }
 
+  private async transitionProjectTask(
+    request: Extract<OntologyCrossPackageRequest, { type: 'transition_project_task' }>
+  ): Promise<OntologyCrossPackageResponse> {
+    try {
+      const task = await this.deps.taskBoard.requestProjectTaskTransition({
+        projectId: request.projectId,
+        taskId: request.taskId,
+        targetStatus: request.targetStatus,
+        requestId: request.requestId,
+        expectedRevision: request.expectedRevision,
+        ...(request.expectedLeaseEpoch === undefined
+          ? {}
+          : { expectedLeaseEpoch: request.expectedLeaseEpoch }),
+        ...(request.reason === undefined ? {} : { reason: request.reason }),
+      });
+      return this.success(request, task, { revision: task.task.revision });
+    } catch (error) {
+      return this.mutationError(request, error);
+    }
+  }
+
+  private async updateProjectTaskPriority(
+    request: Extract<OntologyCrossPackageRequest, { type: 'update_project_task_priority' }>
+  ): Promise<OntologyCrossPackageResponse> {
+    try {
+      const receipt = await this.deps.taskPriority.updateProjectTaskPriority({
+        projectId: request.projectId,
+        taskId: request.taskId,
+        requestId: request.requestId,
+        priority: request.priority,
+        expectedRevision: request.expectedRevision,
+        expectedCursor: request.expectedCursor,
+        bridgeEpoch: request.bridgeEpoch,
+      });
+      const task = await this.deps.taskBoard.getProjectTask(request.projectId, request.taskId);
+      const data: OntologyCrossPackageTaskPriorityData = { receipt, task };
+      return this.success(request, data, {
+        revision: task.task.revision,
+        receiptRef: receipt.requestId,
+      });
+    } catch (error) {
+      return this.mutationError(request, error);
+    }
+  }
+
+  private async listWorkItemHandoffCandidates(
+    request: Extract<OntologyCrossPackageRequest, { type: 'list_work_item_handoff_candidates' }>
+  ): Promise<OntologyCrossPackageResponse> {
+    try {
+      const candidates = await this.deps.executionPort.listWorkItemHandoffCandidates({
+        projectId: request.projectId,
+        runId: request.runId,
+        workItemId: request.workItemId,
+      });
+      const snapshot = await this.deps.executionPort.inspect(request.runId);
+      if (snapshot.projectId !== request.projectId) {
+        throw new Error('PROJECT_SCOPE_MISMATCH');
+      }
+      const workItem = snapshot.workItems.find(({ id }) => id === request.workItemId);
+      if (!workItem) throw new Error('WORK_ITEM_NOT_FOUND');
+      return this.success(request, {
+        candidates,
+        authority: {
+          runRevision: snapshot.revision,
+          workItemRevision: workItem.revision,
+          leaseEpoch: workItem.leaseEpoch,
+          assignedAgentId: workItem.assignedAgentId,
+        },
+      });
+    } catch (error) {
+      return this.mutationError(request, error);
+    }
+  }
+
+  private async handoffWorkItem(
+    request: Extract<OntologyCrossPackageRequest, { type: 'handoff_work_item' }>
+  ): Promise<OntologyCrossPackageResponse> {
+    try {
+      const result = await this.deps.executionPort.handoffWorkItem({
+        projectId: request.projectId,
+        runId: request.runId,
+        workItemId: request.workItemId,
+        targetAgentId: request.targetAgentId,
+        requestId: request.requestId,
+        expectedRunRevision: request.expectedRunRevision,
+        expectedWorkItemRevision: request.expectedWorkItemRevision,
+        expectedLeaseEpoch: request.expectedLeaseEpoch,
+      });
+      const taskId = result.snapshot.binding.parentTaskId;
+      const task = await this.deps.taskBoard.getProjectTask(request.projectId, taskId);
+      const data: OntologyCrossPackageWorkItemHandoffData = {
+        receipt: result.receipt,
+        task,
+      };
+      return this.success(request, data, {
+        revision: task.task.revision,
+        receiptRef: result.receipt.receiptId,
+      });
+    } catch (error) {
+      return this.mutationError(request, error);
+    }
+  }
+
   private canonicalFailure(
     request: OntologyCrossPackageRequest,
     issues: readonly CanonicalValidationIssue[]
@@ -426,15 +727,75 @@ export class OntologyCrossPackageService {
     request: OntologyCrossPackageRequest,
     error: unknown
   ): OntologyCrossPackageResponse {
+    if (error instanceof AgentTaskRuntimeConflictError) {
+      return this.failure(request, 'conflict', 'TASK_METADATA_CONFLICT', [
+        { code: 'TASK_METADATA_CONFLICT', message: error.message, field: 'expectedRevision' },
+      ], true, 'Reload the task and retry with its current revision, cursor and epoch.');
+    }
+    if (error instanceof AgentTaskRuntimeProtocolError) {
+      return this.failure(request, 'validation', 'TASK_METADATA_REJECTED', [
+        { code: 'TASK_METADATA_REJECTED', message: error.message, field: 'priority' },
+      ], false, 'Correct the priority request before retrying.');
+    }
+    if (error instanceof CollaborationWorkItemHandoffError) {
+      const conflict = error.code === 'HANDOFF_REVISION_CONFLICT'
+        || error.code === 'HANDOFF_LEASE_CONFLICT'
+        || error.code === 'HANDOFF_REQUEST_ID_CONFLICT'
+        || error.code === 'STALE_LEASE_EPOCH';
+      return this.failure(
+        request,
+        conflict ? 'conflict' : error.code === 'HANDOFF_TARGET_UNAUTHORIZED'
+          ? 'authorization'
+          : 'validation',
+        error.code,
+        [{ code: error.code, message: error.message, field: 'workItemId' }],
+        conflict,
+        conflict
+          ? 'Reload the run and work item before retrying.'
+          : 'Choose an authorized Agent from the current frozen contract.',
+      );
+    }
+    if (error instanceof ProjectTaskRuntimeRecoveryConflictError) {
+      return this.failure(request, 'conflict', error.code, [
+        { code: error.code, message: error.message, field: 'taskId' },
+      ], true, 'Reload the task and retry against its recovered runtime.');
+    }
+    if (error instanceof ProjectTaskSourceUnavailableError) {
+      return this.failure(request, 'unavailable', error.code, [
+        { code: error.code, message: error.message, field: 'taskId' },
+      ], true, 'Retry after the original Task Runtime is available.');
+    }
     if (error instanceof ProjectTaskRevisionConflictError) {
       return this.failure(request, 'conflict', 'REVISION_CONFLICT', [
         { code: 'REVISION_CONFLICT', message: 'Task revision does not match', field: 'expectedRevision' },
-      ], true, 'Reload the task and retry with its current revision.');
+      ], true, 'Reload the task and retry with its current revision.', {
+        ...(error.authoritative === undefined ? {} : { authoritative: error.authoritative }),
+      });
     }
     if (error instanceof ProjectTaskRequestIdConflictError) {
       return this.failure(request, 'conflict', 'REQUEST_ID_CONFLICT', [
         { code: 'REQUEST_ID_CONFLICT', message: 'Request ID was already used with different input', field: 'requestId' },
       ], false);
+    }
+    if (error instanceof ProjectTaskTransitionRejectedError) {
+      const conflict = error.code === 'LEASE_CONFLICT';
+      return this.failure(
+        request,
+        conflict ? 'conflict' : 'validation',
+        error.code,
+        error.gaps.length > 0
+          ? error.gaps.map((gap) => ({
+              code: `PROJECT_TASK_${gap.kind.toUpperCase()}_GAP`,
+              message: gap.message,
+              field: `task.${gap.kind}.${gap.id}`,
+            }))
+          : [{ code: error.code, message: error.message, field: 'targetStatus' }],
+        conflict,
+        conflict
+          ? 'Reload the task and retry with its current lease.'
+          : 'Resolve the reported task gaps or choose an available transition.',
+        { authoritative: error.authoritative, gaps: error.gaps },
+      );
     }
     if (error instanceof TypeError) {
       return this.failure(request, 'validation', 'INVALID_REQUEST', [
@@ -444,6 +805,33 @@ export class OntologyCrossPackageService {
     return this.failure(request, 'internal', 'MUTATION_FAILED', [
       { code: 'MUTATION_FAILED', message: 'The mutation could not be completed safely', field: 'requestId' },
     ], false, 'Inspect the authoritative ledgers before retrying.');
+  }
+
+  private taskCreationFailure(
+    request: OntologyCrossPackageRequest,
+    error: unknown
+  ): OntologyCrossPackageResponse {
+    if (error instanceof ProjectTaskCreationError) {
+      if (error.code === 'REQUEST_ID_CONFLICT') {
+        return this.failure(request, 'conflict', error.code, [{
+          code: error.code,
+          message: 'Request ID was already used with different task creation input',
+          field: 'requestId',
+        }], false, 'Use the original input or a new requestId.');
+      }
+      if (error.code === 'INVALID_REQUEST') {
+        return this.failure(request, 'validation', error.code, [{
+          code: error.code,
+          message: 'Task creation request fields are invalid',
+          field: 'request',
+        }], false, 'Correct the task creation request and retry.');
+      }
+    }
+    return this.failure(request, 'internal', 'TASK_CREATION_FAILED', [{
+      code: 'TASK_CREATION_FAILED',
+      message: 'The task creation operation could not be completed safely',
+      field: 'requestId',
+    }], false, 'Inspect the authoritative task creation ledger before retrying.');
   }
 
   private success<TData>(
@@ -467,7 +855,12 @@ export class OntologyCrossPackageService {
     code: string,
     issues: readonly OntologyCrossPackageIssue[],
     retryable: boolean,
-    remediation = 'Check the request scope and retry with current references.'
+    remediation = 'Check the request scope and retry with current references.',
+    taskContext: {
+      readonly authoritative?: ProjectTaskSummary;
+      readonly gaps?: readonly ProjectTaskEvidenceGap[];
+      readonly designGaps?: readonly DesignGap[];
+    } = {},
   ): OntologyCrossPackageResponse {
     return {
       ok: false,
@@ -478,6 +871,13 @@ export class OntologyCrossPackageService {
         issues,
         retryable,
         remediation,
+        ...(taskContext.authoritative === undefined
+          ? {}
+          : { authoritative: taskContext.authoritative }),
+        ...(taskContext.gaps === undefined ? {} : { gaps: taskContext.gaps }),
+        ...(taskContext.designGaps === undefined
+          ? {}
+          : { designGaps: taskContext.designGaps }),
       },
     };
   }

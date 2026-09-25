@@ -8,3 +8,12 @@ export type { OwnedCognitiveProviderBundle } from '../cognitive/provider-factory
 export type { AgentMemoryOwnership, AgentTaskRuntimeBindingOptions } from '../../../integrations/pi-agent/agent-manager';
 
 export { agentSessionService } from '../session-service';
+export {
+  ContractBoundAgentSkillWorker,
+  ContractBoundWorkerError,
+  type ContractBoundAgentSkillRuntimePort,
+  type ContractBoundRuntimeRequest,
+  type ContractBoundRuntimeResult,
+  type ContractBoundWorkerInputRefs,
+  type ContractBoundWorkerTarget,
+} from './contract-bound-worker';

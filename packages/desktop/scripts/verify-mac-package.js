@@ -32,6 +32,7 @@ const perceptionRuntimeDependencies = [
   'imapflow',
   'mailparser',
 ];
+const verifyOntologyRuntimeScript = path.join(__dirname, 'verify-ontology-runtime.js');
 const candidateAppPaths = [
   path.join(releaseDir, 'mac-arm64', productName),
   path.join(releaseDir, 'mac', productName),
@@ -67,8 +68,15 @@ async function verifyApp(appPath) {
   const requiredEntries = [
     'dist-electron/core/src/lib/integrations/pi-agent/core/agent.js',
     'dist-electron/core/src/lib/features/skills/service.js',
+    'dist-electron/core/src/lib/features/project/ontology-cross-package-service.js',
+    'dist-electron/core/src/lib/features/project/ontology-work-item-recovery.js',
+    'dist-electron/core/src/lib/features/project/contract-bound-runtime-composition.js',
+    'dist-electron/core/src/lib/features/project/project-task-source.js',
+    'dist-electron/core/src/modules/collaboration-runtime/facade/contract-execution.js',
     'dist-electron/core/src/lib/features/services/launcher/skill.js',
     'dist-electron/desktop/src/main/main.js',
+    'dist-electron/desktop/src/main/ipc-protocol.js',
+    'dist-electron/desktop/src/main/services/ontology-cross-package-ipc.js',
     'dist-electron/desktop/src/main/services/entry-export-service.js',
     'node_modules/@originos/pi-agent-adapter/index.js',
     'node_modules/@originos/pi-agent-adapter/ai.js',
@@ -125,6 +133,35 @@ async function verifyApp(appPath) {
       smokeDir,
       'dist-electron/core/src/lib/integrations/pi-agent/core/agent.js',
     ));
+    const ontologyService = smokeRequire(path.join(
+      smokeDir,
+      'dist-electron/core/src/lib/features/project/ontology-cross-package-service.js',
+    ));
+    const ontologyRecovery = smokeRequire(path.join(
+      smokeDir,
+      'dist-electron/core/src/lib/features/project/ontology-work-item-recovery.js',
+    ));
+    const projectRuntimeComposition = smokeRequire(path.join(
+      smokeDir,
+      'dist-electron/core/src/lib/features/project/contract-bound-runtime-composition.js',
+    ));
+    const projectTaskSource = smokeRequire(path.join(
+      smokeDir,
+      'dist-electron/core/src/lib/features/project/project-task-source.js',
+    ));
+    if (typeof ontologyService.OntologyCrossPackageService !== 'function') {
+      fail('ONT cross-package service is not resolvable from app.asar');
+    }
+    if (typeof ontologyRecovery.OntologyWorkItemRecovery !== 'function') {
+      fail('ONT WorkItem recovery is not resolvable from app.asar');
+    }
+    if (typeof projectRuntimeComposition.ProjectContractTaskRuntimeRecovery !== 'function'
+      || typeof projectRuntimeComposition.createProjectContractRuntimeComposition !== 'function') {
+      fail('Project Task Runtime recovery composition is not resolvable from app.asar');
+    }
+    if (typeof projectTaskSource.RuntimeProjectTaskSource !== 'function') {
+      fail('Project Task Runtime source is not resolvable from app.asar');
+    }
     const skillServiceRuntime = fs.readFileSync(
       path.join(smokeDir, 'dist-electron/core/src/lib/features/skills/service.js'),
       'utf8',
@@ -152,6 +189,11 @@ async function verifyApp(appPath) {
     console.log('[verify-mac-package] pi task runtime ok', {
       hash: piTaskReport.hash,
       platform: piTaskReport.platform,
+    });
+    execFileSync(process.execPath, [verifyOntologyRuntimeScript, asarPath], {
+      cwd: repoRoot,
+      stdio: 'inherit',
+      env: { ...process.env, NODE_OPTIONS: '' },
     });
     console.log('[verify-mac-package] app.asar runtime ok', {
       appPath: path.relative(repoRoot, appPath),

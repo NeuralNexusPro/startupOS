@@ -66,10 +66,10 @@
 
 | 平台 | Module resolution | Preload/IPC | 强退恢复 | Evidence 状态 |
 |---|---|---|---|---|
-| Electron development | 待执行 | 待执行 | 待执行 | Pending |
-| Windows x64 package | 待执行 | 待执行 | 待执行 | Pending |
-| macOS x64 package | 待执行 | 待执行 | 待执行 | Pending |
-| macOS arm64 package | 待执行 | 待执行 | 待执行 | Pending |
+| Electron development | 通过 | 通过 | 通过 | Passed（2026-09-25） |
+| Windows x64 package | verifier 已接线，待 runner | verifier 已接线，待 runner | verifier 已接线，待 runner | Pending |
+| macOS x64 package | 通过 | 通过 | 通过 | Passed（本地 unsigned smoke） |
+| macOS arm64 package | 通过 | 通过 | 通过 | Passed（本地 unsigned smoke） |
 
 未在对应平台/runner 执行时必须保留 Pending；不得以另一平台结果代填。
 
@@ -114,11 +114,11 @@ git diff --check
 - E01–E16 均有真实公共 adapter/持久化 evidence。
 - 四个平台独立通过或 Story 保持未完成。
 - 无敏感信息泄露、私有 import、第二事实源、重复副作用或静默迁移。
-- 当前剩余风险：P2.8、9.42、9.43 仍处于 Planning；在其公共能力完成前，ONT8-T1 只能完成规格与 readiness audit，不能完成联合验收。
+- 当前剩余风险：Windows x64 实际 runner 尚未执行；对应平台保持 Pending，不能完成 ONT8-T1 平台验收声明。
 
 ## 变更历史
 
 | 日期 | 版本 | 变更 |
 |---|---|---|
 | 2026-09-19 | 0.1.0 | 建立 AC、E01–E16、故障注入和平台验收矩阵 |
-
+| 2026-09-25 | 0.2.0 | 完成 E01–E16 自动化证据与 development/macOS 双架构 package smoke；Windows 保持 Pending |

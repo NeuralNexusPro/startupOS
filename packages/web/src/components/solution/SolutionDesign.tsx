@@ -11,6 +11,9 @@ import { usePiAgent } from '@originos/core/lib/integrations/pi-agent/client-hook
 import { normalizeRuntimeLLMConfig } from '@originos/core/lib/integrations/pi-agent/client';
 import { useSettingsStore } from '@/store/settingsStore';
 import { AppWindowManager } from '@/services/AppWindowManager';
+import { SolutionContractPublishingContainer } from './SolutionContractPublishingContainer';
+
+import type { SolutionDesignStatus } from '@originos/core/lib/features/solution';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -22,6 +25,7 @@ interface Message {
 interface SolutionManifest {
   solutionId: string;
   solutionVersion: string;
+  status: SolutionDesignStatus;
   modelingDimension: 'task' | 'role';
   businessGoal: string;
   agents: Array<{
@@ -239,8 +243,13 @@ export function SolutionDesign({
 
       const { manifest: m, agents, skills, solutionVersion } = result.data as { manifest: Record<string, unknown>; agents: unknown[]; skills: unknown[]; solutionVersion: string };
       const normalized: SolutionManifest = {
-        solutionId: projectId,
+        solutionId:
+          typeof m['solutionId'] === 'string' ? m['solutionId'] : projectId,
         solutionVersion: solutionVersion,
+        status:
+          m['status'] === 'reviewing' || m['status'] === 'confirmed'
+            ? m['status']
+            : 'draft',
         modelingDimension: (m as any).modeling?.dimension === 'role' ? 'role' : 'task',
         businessGoal: (m as any).businessModelSummary?.goal || '',
         agents: agents as SolutionManifest['agents'],
@@ -490,6 +499,22 @@ export function SolutionDesign({
                 <SolutionGraphView agents={manifest.agents as any} skillDefs={manifest.skills} />
               </div>
 
+              <div className="mt-4">
+                <SolutionContractPublishingContainer
+                  key={`${manifest.solutionId}:${manifest.solutionVersion}`}
+                  projectId={projectId}
+                  solutionId={manifest.solutionId}
+                  solutionVersion={manifest.solutionVersion}
+                  designStatus={manifest.status}
+                  onCreateVersion={() => {
+                    setActiveTab('chat');
+                    void handleSendMessage(
+                      `请基于方案 ${manifest.solutionVersion} 创建一个新版本。`
+                    );
+                  }}
+                />
+              </div>
+
               <div className="mt-4 flex flex-wrap gap-4 text-xs text-gray-600">
                 <div className="flex items-center gap-1.5">
                   <div className="w-3 h-3 rounded-full border border-blue-500 bg-blue-500/20" />
@@ -529,8 +554,13 @@ export const ExtendedSolutionDesign = ({ projectId, projectName }: SolutionDesig
         if (bundleResult?.success && bundleResult.data) {
           const { manifest: m, agents, skills, solutionVersion } = bundleResult.data as { manifest: Record<string, unknown>; agents: unknown[]; skills: unknown[]; solutionVersion: string };
           setManifest({
-            solutionId: projectId,
+            solutionId:
+              typeof m['solutionId'] === 'string' ? m['solutionId'] : projectId,
             solutionVersion: solutionVersion,
+            status:
+              m['status'] === 'reviewing' || m['status'] === 'confirmed'
+                ? m['status']
+                : 'draft',
             modelingDimension: (m as any).modeling?.dimension === 'role' ? 'role' : 'task',
             businessGoal: (m as any).businessModelSummary?.goal || '',
             agents: agents as SolutionManifest['agents'],

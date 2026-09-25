@@ -62,7 +62,7 @@ function readOptionalString(value: unknown): string | undefined {
 }
 
 function maskSecret(value?: string): string | undefined {
-	return value ? `${value.substring(0, 20)}...` : undefined;
+	return value ? "[REDACTED]" : undefined;
 }
 
 function isAnthropicOAuthTokenValue(value?: string): boolean {

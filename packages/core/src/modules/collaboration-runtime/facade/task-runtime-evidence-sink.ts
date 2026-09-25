@@ -42,6 +42,7 @@ export function createAgentTaskEvidenceSink(
         receiptId: receipt.eventId,
         status: 'accepted',
         evidenceRef: `pi-task-event:${receipt.eventId}`,
+        revision: receipt.revisionAfter,
       };
     },
   };

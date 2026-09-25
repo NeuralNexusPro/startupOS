@@ -21,6 +21,7 @@ import {
   type ControlAgentTaskRequestV1,
   type AgentTaskRuntimeSnapshotV1,
   type AgentTaskRuntimePersistenceV1,
+  type AgentTaskReviewRequestV1,
 } from './task-runtime';
 import { loadFrozenSessionContext } from './session-prompt-context';
 
@@ -338,6 +339,7 @@ export class AgentManager {
     const agent = await this.getOrRestoreAgentRuntime(session);
     const runtime = new AgentTaskRuntimeCoordinator({
       sessionId: session.sessionId,
+      projectId: session.projectContext.projectId,
       agent,
       initialState: session.taskRuntime,
       ...options,
@@ -364,6 +366,24 @@ export class AgentManager {
       throw new Error('AGENT_TASK_RUNTIME_UNAVAILABLE');
     }
     return runtime.controlTask(request);
+  }
+
+  async requestTaskReview(request: AgentTaskReviewRequestV1): Promise<AgentTaskRuntimeSnapshotV1> {
+    const runtime = this.getTaskRuntime(request.sessionId);
+    if (!runtime) throw new Error('AGENT_TASK_RUNTIME_UNAVAILABLE');
+    return runtime.requestReview(request);
+  }
+
+  async approveTaskCompletion(request: AgentTaskReviewRequestV1): Promise<AgentTaskRuntimeSnapshotV1> {
+    const runtime = this.getTaskRuntime(request.sessionId);
+    if (!runtime) throw new Error('AGENT_TASK_RUNTIME_UNAVAILABLE');
+    return runtime.approveCompletion(request);
+  }
+
+  async rejectTaskReview(request: AgentTaskReviewRequestV1): Promise<AgentTaskRuntimeSnapshotV1> {
+    const runtime = this.getTaskRuntime(request.sessionId);
+    if (!runtime) throw new Error('AGENT_TASK_RUNTIME_UNAVAILABLE');
+    return runtime.rejectReview(request);
   }
 
   /**
