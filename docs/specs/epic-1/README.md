@@ -201,6 +201,8 @@ Agent: "项目已经创建好了。接下来，这个项目有哪些团队成员
 | 1.4 | Ontology Skill 集成 (实时创建) | ⏸️ Pending | High |
 | 1.5 | 本体预览与编辑界面 | ⏸️ Pending | Medium |
 | 1.6 | 项目创建完成与跳转 | ⏸️ Pending | High |
+| [1.7](story-1.7/README.md) | 访谈概念业务分类与图谱表达 | Planning（设计待评审） | High |
+| [1.8](story-1.8/README.md) | 访谈业务行为契约草稿与确认 | Planning（依赖 1.7） | High |
 
 ---
 

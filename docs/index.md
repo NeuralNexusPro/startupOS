@@ -96,7 +96,7 @@
 | Epic | 状态 | 优先级 | 文档路径 |
 |------|------|--------|---------|
 | **Epic 0**: 技术架构实施层 | 🟡 In Progress | Critical | [specs/epic-0/README.md](./specs/epic-0/README.md) |
-| **Epic 1**: 项目访谈与创建 | ✅ Complete | High | [specs/epic-1/README.md](./specs/epic-1/README.md) |
+| **Epic 1**: 项目访谈与创建 | 基础已交付；1.7/1.8 设计待评审 | High | [specs/epic-1/README.md](./specs/epic-1/README.md) |
 | **Epic OS**: OS 交互基础 | ✅ Complete | Critical | [specs/epic-OS/STATUS.md](./specs/epic-OS/STATUS.md) |
 | **Epic R**: RoleAgent pi-agent 循环 | ✅ Complete | High | [specs/epic-R/README.md](./specs/epic-R/README.md) |
 | **Epic C**: 认知系统 | ✅ 设计完成 | High | [specs/epic-C/README.md](./specs/epic-C/README.md) |
@@ -263,6 +263,8 @@
 
 - [Epic 0: 技术架构实施层](./specs/epic-0/README.md) - pi-agent-core 集成（基础设施）
 - [Epic 1: 项目访谈与创建](./specs/epic-1/README.md) - 项目访谈流程（重设计中）
+  - [Story 1.7：访谈概念业务分类与图谱表达](./specs/epic-1/story-1.7/README.md) — 分类、纠错、关系同步与旧数据显式确认。
+  - [Story 1.8：访谈业务行为契约草稿与确认](./specs/epic-1/story-1.8/README.md) — 活动到行动契约的澄清、确认与原子定义接纳。
 - [Epic OS: OS 交互基础](./specs/epic-OS/STATUS.md) - Desktop、Agent、统一 Channel、调度与系统交互 Stories
 - [Epic R: RoleAgent pi-agent 循环](./specs/epic-R/README.md) - RoleAgent 思维循环机制 ✅
 - [Epic C: 认知系统](./specs/epic-C/README.md) - 知识库、实践日志、经验模式
