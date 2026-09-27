@@ -86,7 +86,9 @@ Core contract 冻结后步骤 2 与 3 可在互不重叠的 Task worktree 并行
 
 ## Proposal 映射
 
-唯一 Proposal：[`integrate-ontology-cross-package-adapters`](../../../../openspec/changes/integrate-ontology-cross-package-adapters/proposal.md)。其 `tasks.md` 中 ONT8-T1-A 至 ONT8-T1-M 是本 Story 的实施工作包，不再拆出第二个 ONT8-T1 Proposal。
+主 Proposal：[`integrate-ontology-cross-package-adapters`](../../../../openspec/changes/integrate-ontology-cross-package-adapters/proposal.md)。其 `tasks.md` 中 ONT8-T1-A 至 ONT8-T1-M 是本 Story 的主实施工作包。
+
+2026-09-27 发现项目入口切换 canonical 后编辑器仍返回 `CANONICAL_EDIT_UNAVAILABLE`，作为独立可交付缺口由补充 Proposal [`add-canonical-ontology-authoring-actions`](../../../../openspec/changes/add-canonical-ontology-authoring-actions/proposal.md) 修复。该任务只覆盖 canonical 定义 authoring、跨包 adapter 和项目本体编辑 UI，不替代主 Proposal 的 E01–E16 或平台矩阵验收。
 
 ## 变更历史
 

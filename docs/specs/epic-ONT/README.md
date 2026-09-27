@@ -221,7 +221,7 @@ Skill/Agent contract 是 ONT 暴露给 P2 和 collaboration-runtime 的协议。
 | ONT.5 | OSDK Facts / Actions API | Done | Critical | 已提供类型化 facts 查询、Action submit、版本/修订检查、幂等恢复与审计 metadata |
 | ONT.6 | Skill / Agent Contract Validation API | Done | High | 已提供 contract 引用、Action 权限与 SOP required facts 连通性校验 |
 | ONT.7 | Context Projection Protocol | Done | High | 已定义最小 runtime projection DTO、JSONL append/read、公共 query/resolver 与确定性 latest 语义 |
-| ONT.8 | Cross-package Adapters 与端到端验证 | In Progress（T1-A Done；前置缺口阻断实施） | High | Web API adapter、Desktop IPC adapter、P2/runtime integration tests |
+| ONT.8 | Cross-package Adapters 与端到端验证 | In Progress（canonical authoring 闭环完成；平台矩阵待验收） | High | Web API adapter、Desktop IPC adapter、P2/runtime integration tests |
 
 ### 实施顺序
 
@@ -307,8 +307,8 @@ ONT.1、ONT.2、ONT.4 是架构门。下游 P2、Epic 9、Epic C/M/T 不得复�
 | 运行门控 | 匹配评分为主 | collaboration-runtime 消费 OSDK / Action gate |
 | Context Graph | 未形成统一协议 | ONT 定义 projection protocol，下游 runtime 写入 |
 
-ONT.1、ONT.2、ONT.3、ONT.4、ONT.5、ONT.6、ONT.7 已完成；项目创建、项目 Agent 与 Web/Desktop 项目入口已改为 canonical ontology，旧项目仍须显式迁移。ONT.8 的跨包端到端平台矩阵仍处于规划/验收阶段。
-ONT.8 已补齐六份 Story 规格与独立 OpenSpec Proposal，但 P2.8、9.42、9.43 前置公共能力和联合验收仍待实施。
+ONT.1、ONT.2、ONT.3、ONT.4、ONT.5、ONT.6、ONT.7 已完成；项目创建、项目 Agent 与 Web/Desktop 项目入口已改为 canonical ontology，旧项目仍须显式迁移。ONT.8 已补齐 canonical 定义编辑事务、Web/Desktop adapter 和项目本体结构编辑 UI；跨包端到端平台矩阵仍待验收。
+P2.8、9.42、9.43 的文档状态仍需按仓库实现重新核对，ONT.8 联合验收不得仅依据旧状态文字判断前置缺口。
 
 ---
 

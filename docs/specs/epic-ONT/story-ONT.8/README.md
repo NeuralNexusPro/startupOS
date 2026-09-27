@@ -1,7 +1,7 @@
 # Story ONT.8：Cross-package Adapters 与端到端验证
 
 **Epic:** ONT - Ontology Core 语义底座  
-**状态:** 🟡 In Progress（Proposal 已批准；T1-A Readiness Audit 发现前置缺口）
+**状态:** 🟡 In Progress（canonical authoring 闭环已完成；跨平台端到端矩阵待验收）
 **Owner:** Architecture / Core / Web / Desktop / QA  
 **Task:** ONT8-T1  
 **创建日期:** 2026-09-19  
@@ -45,6 +45,7 @@ ONT8-T1 交付 core 项目语义执行应用服务、Web API adapter、Desktop I
 - [x] Story 六份规格完成。
 - [x] 独立 OpenSpec proposal/spec/design/tasks 已生成并通过工件完整性检查。
 - [x] Proposal 审查与明确批准。完成证据：2026-09-22 用户明确要求推进 ONT.8。
+- [x] Canonical ontology 定义编辑闭环。完成证据：2026-09-27 `add-canonical-ontology-authoring-actions` 已实现 Core CAS/幂等事务、Web/Desktop adapter 与领域/概念/属性/关系编辑 UI；27 个集成定向测试和三包 strict typecheck 通过。
 - [x] 前置能力 readiness audit。完成证据：`openspec/changes/integrate-ontology-cross-package-adapters/evidence/readiness-audit.md`；P2.8、9.42、9.43 与 pi-tasks adapter 尚未全部 ready。
 - [ ] 隔离 Task worktree 实施。
 - [ ] E01–E16、架构回归与平台矩阵通过。
