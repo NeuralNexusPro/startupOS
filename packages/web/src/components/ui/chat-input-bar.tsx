@@ -19,7 +19,7 @@ interface ChatInputBarProps {
   /** Optional stop button — rendered above the send button during generation */
   onStop?: () => void;
   isGenerating?: boolean;
-  /** Whether to use white background (for light theme contexts) */
+  /** @deprecated Input colors always inherit the active application theme. */
   lightBg?: boolean;
   /** Files that have been uploaded and should be shown as chips */
   uploadedFiles?: UploadedFileDisplay[];
@@ -87,7 +87,7 @@ export function ChatInputBar({
   className,
   onStop,
   isGenerating,
-  lightBg = false,
+  lightBg: _lightBg = false,
   uploadedFiles,
   onRemoveFile,
   uploadError,
@@ -115,16 +115,12 @@ export function ChatInputBar({
     [handleSubmit],
   );
 
-  const inputBgClass = lightBg
-    ? 'bg-background border border-border text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/50'
-    : 'bg-input-dark border border-border text-foreground placeholder:text-muted-foreground focus:ring-1 focus:ring-primary';
+  const inputBgClass = 'bg-input-dark border border-border text-text-primary placeholder:text-text-secondary focus:ring-1 focus:ring-primary';
 
-  const uploadBtnClass = lightBg
-    ? 'bg-gray-200 border border-gray-300 text-gray-700 hover:bg-gray-300'
-    : 'bg-white/10 border border-white/20 text-gray-400 hover:text-gray-300 hover:bg-white/20';
+  const uploadBtnClass = 'bg-muted border border-border text-muted-foreground hover:text-foreground hover:bg-accent';
 
   return (
-    <div className={cn('border-t border-white/20 px-4 py-3', className)}>
+    <div className={cn('border-t border-border bg-background px-4 py-3', className)}>
       {/* Upload progress / error indicators */}
       {(uploading || uploadError) && (
         <div className="mb-2 px-3">
