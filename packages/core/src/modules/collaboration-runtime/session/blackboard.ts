@@ -6,6 +6,7 @@
  */
 
 import fs from "fs/promises";
+import { parseMemoryKey } from "./memory-keys";
 import path from "path";
 import type {
   RuntimeEvent,
@@ -52,6 +53,32 @@ export class Blackboard {
   constructor(sessionId: string, snapshotDir: string) {
     this.sessionId = sessionId;
     this.snapshotDir = snapshotDir;
+  }
+
+  /** Derived from sharedData on demand, including after snapshot restoration. */
+  get memoryIndex(): Record<string, Record<string, string[]>> {
+    const index: Record<string, Record<string, string[]>> = Object.create(null);
+    for (const key of Object.keys(this.sharedData)) {
+      const parsed = parseMemoryKey(key);
+      if (!parsed?.role || !parsed.category) continue;
+      const categories = index[parsed.role] ??= Object.create(null);
+      (categories[parsed.category] ??= []).push(key);
+    }
+    return index;
+  }
+
+  reportTask(taskId: string, output: unknown): void {
+    const task = this.findTask(taskId);
+    if (!task || task.status !== "running") throw new Error("Task is not running");
+    task.status = "reported";
+    task.output = output;
+  }
+
+  acceptTask(taskId: string): void {
+    const task = this.findTask(taskId);
+    if (!task || task.status !== "reported") throw new Error("Task is not reported");
+    task.status = "completed";
+    task.completedAt = new Date().toISOString();
   }
 
   // ==========================================================================
@@ -139,6 +166,12 @@ export class Blackboard {
         const taskId = event.payload["taskId"] as string;
         const task = this.tasks.find((t) => t.id === taskId);
         if (task) task.status = "running";
+        break;
+      }
+
+      case "TASK_REPORTED": {
+        const task = this.tasks.find(item => item.id === event.payload["taskId"]);
+        if (task) { task.status = "reported"; task.output = event.payload["output"]; }
         break;
       }
 

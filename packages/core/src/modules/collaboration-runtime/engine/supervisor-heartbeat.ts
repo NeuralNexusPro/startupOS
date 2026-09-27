@@ -9,6 +9,7 @@
  * - 每 2 分钟写入 swarm$queen$royal-report
  */
 
+import type { TaskItem } from "../session/types";
 import type { Blackboard } from "../session/blackboard";
 import {
   buildSupervisorKey,
@@ -95,6 +96,8 @@ export class SupervisorHeartbeat {
       this.writeRoyalReport();
     }, this.reportIntervalMs);
 
+    this.heartbeatTimer.unref?.();
+    this.reportTimer.unref?.();
     console.error(
       `[SupervisorHeartbeat] Started: supervisor=${this.supervisorId}, interval=${this.intervalMs}ms, reportInterval=${this.reportIntervalMs}ms`
     );
@@ -218,7 +221,7 @@ export class SupervisorHeartbeat {
   /**
    * 确定 Swarm 状态
    */
-  private determineSwarmState(tasks: any[]): SupervisorStatus["status"] {
+  private determineSwarmState(tasks: TaskItem[]): SupervisorStatus["status"] {
     const failed = tasks.filter((t) => t.status === "failed").length;
     const blocked = tasks.filter((t) => t.status === "blocked").length;
 
@@ -234,7 +237,7 @@ export class SupervisorHeartbeat {
   /**
    * 提取活跃 Worker
    */
-  private extractActiveWorkers(tasks: any[]): string[] {
+  private extractActiveWorkers(tasks: TaskItem[]): string[] {
     return Array.from(
       new Set(tasks.filter((t) => t.status === "running").map((t) => t.assignedTo))
     ).filter(Boolean);
@@ -243,7 +246,7 @@ export class SupervisorHeartbeat {
   /**
    * 提取已下发指令
    */
-  private extractDirectives(tasks: any[]): string[] {
+  private extractDirectives(tasks: TaskItem[]): string[] {
     return tasks
       .filter((t) => t.status === "assigned" || t.status === "running")
       .map((t) => `dispatch-${t.id}`);
@@ -303,7 +306,7 @@ export class SupervisorHeartbeat {
   /**
    * 生成推荐
    */
-  private generateRecommendations(tasks: any[]): string[] {
+  private generateRecommendations(tasks: TaskItem[]): string[] {
     const recommendations: string[] = [];
     const blocked = tasks.filter((t) => t.status === "blocked").length;
     const pending = tasks.filter((t) => t.status === "pending").length;

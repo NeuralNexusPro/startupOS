@@ -75,8 +75,8 @@ export interface WorkspaceTaskSnapshot {
     totalCompletedTasks: number;
     totalFailedTasks: number;
     totalBlockedTasks: number;
-    avgMemoryMb: number;
-    avgCpuPercentage: number;
+    avgMemoryMb?: number;
+    avgCpuPercentage?: number;
   };
   /** 快照时间 */
   snapshotAt: string;
@@ -169,7 +169,7 @@ export class AgentTaskSnapshot {
         totalAgents: agentIds.size,
         activeAgents: activeTasks.length,
         totalActiveTasks: activeTasks.length,
-        totalCompletedTasks: completedTasks.length,
+        totalCompletedTasks: completedTasks.filter((task) => task.status === "completed").length,
         totalFailedTasks: failedTasks.length,
         totalBlockedTasks: blockedTasks.length,
         avgMemoryMb: this.calculateAvgMemory(agents),
@@ -281,12 +281,12 @@ export class AgentTaskSnapshot {
   /**
    * 计算平均内存使用
    */
-  private calculateAvgMemory(agents: AgentTaskSnapshotData[]): number {
+  private calculateAvgMemory(agents: AgentTaskSnapshotData[]): number | undefined {
     const usages = agents
       .map((a) => a.resourceUsage?.memoryMbAvg ?? 0)
       .filter((v) => v > 0);
 
-    return usages.length > 0 ? usages.reduce((sum, m) => sum + m, 0) / usages.length : 0;
+    return usages.length > 0 ? usages.reduce((sum, m) => sum + m, 0) / usages.length : undefined;
   }
 
   /**
@@ -295,12 +295,12 @@ export class AgentTaskSnapshot {
   /**
    * 计算平均 CPU 使用
    */
-  private calculateAvgCpu(agents: AgentTaskSnapshotData[]): number {
+  private calculateAvgCpu(agents: AgentTaskSnapshotData[]): number | undefined {
     const usages = agents
-      .map((a) => a.resourceUsage?.cpuPercentageAvg ?? 0)
-      .filter((v) => v >= 0);
+      .map((a) => a.resourceUsage?.cpuPercentageAvg)
+      .filter((v): v is number => v !== undefined && v >= 0);
 
-    return usages.length > 0 ? usages.reduce((sum, c) => sum + c, 0) / usages.length : 0;
+    return usages.length > 0 ? usages.reduce((sum, c) => sum + c, 0) / usages.length : undefined;
   }
 
   /**

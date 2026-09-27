@@ -1,6 +1,6 @@
 # Story 9.36: 借鉴 Ruflo/Multica 的 Supervisor/Worker 模式重构
 
-**状态:** 📋 Planning
+**状态:** 🚧 In Progress（936-T1 已实施，待 0.4.x 集成验收）
 **优先级:** High
 **依赖:** 9.13, 9.28, 9.30
 **估计工时:** 5-7 天
@@ -732,7 +732,7 @@ export class AgentTaskSnapshot {
 
 **集成：**
 - 在 `CollaborationRuntime` 中注册 `AgentTaskSnapshot` 实例
-- 添加 `/api/collaboration/sessions/[id]/snapshot` 路由，返回 `WorkspaceTaskSnapshot`
+- 添加 `/api/collaboration/sessions/[id]/snapshot` 路由，返回 `WorkspaceTaskSnapshot` 及权威 Run/WorkItem 只读投影
 - UI 使用该快照展示 Agent 活动仪表盘
 
 ---
@@ -1133,7 +1133,7 @@ outputOntologies:
 | P4 | 依赖检查前置机制缺失 | Ruflo：Worker 开始前检查依赖 | M5 | DependencyChecker，TASK_STARTED 前必查依赖 |
 | P5 | 缺少 Worker 活动快照 | Multica：agent-task-snapshot | M4 | AgentTaskSnapshot，活跃任务 + 最近终端任务 |
 | P6 | 状态更新不强制，异常检测困难 | Ruflo：心跳超时检测 | M2+M3 | 双心跳机制（Queen+Worker），超时触发异常 |
-| P7 | 资源分配不透明 | Ruflo：资源使用统计 | M6 | CapabilityMatcher 增资源感知（内存/CPU） |
+| P7 | 资源分配不透明 | Ruflo：资源使用统计 | M6 | CapabilityMatcher 使用真实任务负载与验收历史 |
 | P8 | 结果交付不结构化 | Ruflo：`deliverables` 明确 | M3 | `completeTask()` 传入结构化输出 |
 
 ---
@@ -1182,9 +1182,9 @@ src/app/api/collaboration/sessions/
 - [ ] **M3 - Worker 阻塞报告**：依赖缺失时立即写入 `worker-[ID]$blocked`
 - [ ] **M3 - Worker 完成报告**：任务完成时写入 `worker-[ID]$complete`，包含结构化 `deliverables`
 - [ ] **M4 - Agent Task 快照**：`getSnapshot()` 返回所有活跃任务 + 每个 Agent 的最近终端任务
-- [ ] **M4 - 快照 API**：`/api/collaboration/sessions/[id]/snapshot` 返回 `WorkspaceTaskSnapshot`
+- [ ] **M4 - 快照 API**：`/api/collaboration/sessions/[id]/snapshot` 返回 `WorkspaceTaskSnapshot` 及权威 Run/WorkItem 只读投影
 - [ ] **M5 - 依赖检查**：`TASK_STARTED` 前检查上游依赖，不满足则写入 `blocked`
-- [ ] **M6 - CapabilityMatcher 增强**：考虑资源使用指标（内存/CPU）和历史成功率
+- [ ] **M6 - CapabilityMatcher 增强**：使用真实活跃任务负载和已验收历史成功率；CPU/内存仅可选遥测，未知不得伪造
 - [ ] **集成测试**：完整执行 3-agent 直线拓扑 + 3-agent 并行拓扑，验证所有机制正常工作
 - [ ] **性能测试**：10 个 Agent 并发执行，快照查询延迟 < 100ms
 
@@ -1213,3 +1213,5 @@ src/app/api/collaboration/sessions/
 936-T1：见 openspec/changes/integrate-supervisor-worker-protocol。用户已确认按审计缺口推进；未完成验收前保持 In Progress，不因存在组件类而标 Done。
 
 本轮修订：Run/WorkItem ledger 为业务事实源；Blackboard 的索引、心跳、进度和快照均为观测投影。Worker 成功返回只能 reported，不能替代业务验收。CPU/内存是可选遥测；必需能力与实际任务负载为分配依据，不伪造未知指标。
+
+实施和测试映射见 [936-T1 实施证据](implementation-evidence-936-t1.md)。旧静态 `executeMultiAgentDag` 的历史调度/HITL 语义不在本轮改写范围。

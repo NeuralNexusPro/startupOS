@@ -1,3 +1,4 @@
+import { stopProtocolObserver } from "../engine/protocol-observer";
 /**
  * Facade — DAG 启动 + abort
  *
@@ -136,6 +137,7 @@ export async function startDag(
 
 // abortSession 通过集成层取消正在运行的 DAG
 export async function abortSession(id: string): Promise<void> {
+  await stopProtocolObserver(id, true);
   await loadPersistedSessions();
 
   const session = sessions.get(id);

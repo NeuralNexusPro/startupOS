@@ -79,13 +79,13 @@ export class DependencyChecker {
   ): DependencySpec[] {
     const dependencies: DependencySpec[] = [];
     const incomingEdges = topology.edges.filter(
-      (e) => e.to === agentId && e.type === "trigger"
+      (e) => e.to === agentId && (e.type === "trigger" || e.type === "depend")
     );
 
     for (const edge of incomingEdges) {
       dependencies.push({
         agentId: edge.from,
-        taskId: undefined, // 只要上游完成了即可
+        taskId: this.blackboard.getTasks().filter(task => task.assignedTo === edge.from).at(-1)?.id, // Latest dispatch, never an older accepted attempt
         outputKey: undefined,
         type: "agent-complete",
       });
@@ -110,10 +110,9 @@ export class DependencyChecker {
 
     for (const depId of thisTask.dependsOn) {
       const depTask = allTasks.find((t) => t.id === depId);
-      if (!depTask) continue;
 
       dependencies.push({
-        agentId: depTask.assignedTo ?? "",
+        agentId: depTask?.assignedTo ?? "",
         taskId: depId,
         type: "task-complete",
       });
@@ -219,26 +218,17 @@ export class DependencyChecker {
    * 检查单个依赖是否满足
    */
   private checkSingleDependency(dep: DependencySpec): boolean {
-    if (dep.type === "task-complete" && dep.taskId) {
-      // 检查特定任务是否完成
-      const task = this.blackboard.getTasks().find((t) => t.id === dep.taskId);
-      if (!task) return false;
-      return task.status === "completed" && !!task.completedAt;
-    } else {
-      // 检查 Agent 是否有任何已完成任务
-      const tasks = this.blackboard.getTasks();
-      const agentCompletedTasks = tasks.filter(
-        (t) => t.assignedTo === dep.agentId && (t.status === "completed" || t.status === "reported")
-      );
-
-      if (dep.type === "agent-complete") {
-        return agentCompletedTasks.length > 0;
-      }
-
-      // 默认：只要上游有任务（非 pending）即可
-      const agentTasks = tasks.filter((t) => t.assignedTo === dep.agentId);
-      return agentTasks.some((t) => t.status !== "pending");
+    if (dep.outputKey) {
+      const output = this.blackboard.getDataEntry(dep.outputKey);
+      if (output?.value === undefined || output.provenance.writer !== dep.agentId) return false;
     }
+    const tasks = this.blackboard.getTasks();
+    if (dep.taskId) {
+      const task = tasks.find((item) => item.id === dep.taskId);
+      return task?.status === "completed" && (!dep.agentId || task.assignedTo === dep.agentId);
+    }
+    if (dep.type === "task-complete" || !dep.agentId) return false;
+    return tasks.some((task) => task.assignedTo === dep.agentId && task.status === "completed");
   }
 
   /**
@@ -263,7 +253,7 @@ export class DependencyChecker {
     if (!topology) return [];
 
     const upstreamAgents = topology.edges
-      .filter((e) => e.to === agentId && e.type === "trigger")
+      .filter((e) => e.to === agentId && (e.type === "trigger" || e.type === "depend"))
       .map((e) => e.from);
 
     return upstreamAgents.map((upstreamAgentId) => ({
