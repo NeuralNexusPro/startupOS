@@ -66,6 +66,8 @@ export const IPC_CHANNELS = {
   PROJECT_DELETE: 'project:delete',
   PROJECT_ARTIFACT_GET: 'project:artifact:get',
   PROJECT_INITIALIZE: 'project:initialize',
+  PROJECT_ONTOLOGY_ENTRY_GET: 'project:ontology-entry:get',
+  PROJECT_LEGACY_ONTOLOGY_MIGRATE: 'project:legacy-ontology:migrate',
   PROJECT_SYNC_ONTOLOGY: 'project:sync-ontology',
   PROJECT_SOLUTION_INITIALIZE: 'project:solution:initialize',
   PROJECT_SOLUTION_LIST: 'project:solution:list',

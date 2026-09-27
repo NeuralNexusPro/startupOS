@@ -12,7 +12,9 @@
 
 - [ ] 2.1 `ONT-ENTRY-T1-C`（可与 2.2 并行；依赖：1.2；角色：Web 本体 UI subagent；写入：`packages/web/src/app/api/` 薄 routes、`packages/web/src/components/interview/` 与 `packages/web/src/components/os/workspace/` 及测试）将访谈完成、本体/数据编辑器加载改为 Core canonical 入口，删除 mount 自动 `business-model.json` 同步；legacy 项目展示迁移状态。验证：Web route/组件测试覆盖 canonical、legacy、迁移后、无自动写入与错误脱敏。
 
-- [ ] 2.2 `ONT-ENTRY-T1-D`（可与 2.1 并行；依赖：1.2；角色：Desktop 项目本体 adapter subagent；写入：`packages/desktop/src/main/services/`、IPC/preload 必要适配与测试）将 Desktop 项目服务和 Agent project service 改为 Core canonical 入口，保留显式 legacy migration command；删除自动 sync 写入。验证：IPC/service 测试覆盖 canonical、legacy migration-required、迁移后和 Web/Desktop 业务状态对等。
+- [x] 2.2 `ONT-ENTRY-T1-D`（可与 2.1 并行；依赖：1.2；角色：Desktop 项目本体 adapter subagent；写入：`packages/desktop/src/main/services/`、IPC/preload 必要适配与测试）将 Desktop 项目服务和 Agent project service 改为 Core canonical 入口，保留显式 legacy migration command；删除自动 sync 写入。验证：IPC/service 测试覆盖 canonical、legacy migration-required、迁移后和 Web/Desktop 业务状态对等。
+
+完成证据（2026-09-27）：Desktop `project:ontology-entry:get` 直接透传 Core 的 canonical/legacy 状态；`project:legacy-ontology:migrate` 使用固定项目内相对源路径，先 dry-run、后显式确认迁移并由 Core 绑定精确 ontologyRef。历史 `project:sync-ontology` 与 `ontology-data:sync` 不再写入；未 canonical 化的 ontology-data 写操作返回 `CANONICAL_EDIT_UNAVAILABLE`。Desktop IPC 定向 Vitest 2 files / 10 tests、Desktop `tsc`、生产源码 boundary scan 与 self-test、`git diff --check` 通过；局部 ESLint 为 0 error（保留既有 warning）。Web/Desktop 业务状态的最终跨端对等回归留待 3.1，与 2.1 集成后执行。
 
 ## 3. 集成验收（串行）
 
