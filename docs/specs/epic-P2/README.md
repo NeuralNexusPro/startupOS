@@ -54,7 +54,7 @@
 | P2.4 | 沙盒推演与本体反馈回路 | 🔴 仅有类型定义 | High | 场景生成、模拟运行、缺口报告 |
 | P2.5 | 方案版本管理与执行清单 | 🔴 部分（Skill 写文件） | Medium | 左侧版本列表、确认锁定、清单下载 |
 | P2.6 | SOP I/O 契约（本体数据流） | ✅ 已完成（本地 0.4.x） | High | Skill inputContract/outputContract、SOP 数据流验证 |
-| P2.7 | Agent-Skill 协作图谱与建模维度扩展 | ⬜ 未开始 | High | Workflow/Team 设计视图和 Agent-Skill 拓扑 |
+| P2.7 | Agent-Skill 协作图谱与建模维度扩展 | ✅ 已完成（本地 0.4.x） | High | Workflow/Team 设计视图和 Agent-Skill 拓扑 |
 | P2.8 | Workflow 设计与解决方案执行契约发布 | 🟡 Planning | Critical | 设计门控、不可变契约编译、版本化发布 |
 
 ---
