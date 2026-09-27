@@ -1,4 +1,4 @@
-import type { CanonicalContract } from '@originos/core/lib/features/ontology';
+import type { CanonicalContract } from '@originos/core/lib/features/ontology/types';
 
 export interface TopologySkill {
   id?: string;

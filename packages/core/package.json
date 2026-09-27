@@ -24,6 +24,7 @@
     "./lib/features/*": "./src/lib/features/*/index.ts",
     "./lib/features/project/client": "./src/lib/features/project/client.ts",
     "./lib/features/*/types": "./src/lib/features/*/types.ts",
+    "./lib/features/ontology/authoring-types": "./src/lib/features/ontology/authoring-types.ts",
     "./lib/features/*/config": "./src/lib/features/*/config.ts",
     "./lib/features/*/config.*": "./src/lib/features/*/config.*",
     "./lib/features/*/export": "./src/lib/features/*/export.ts",

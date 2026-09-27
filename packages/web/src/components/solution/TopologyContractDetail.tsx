@@ -1,7 +1,7 @@
 import type {
   CanonicalContract,
   CanonicalInputFact,
-} from '@originos/core/lib/features/ontology';
+} from '@originos/core/lib/features/ontology/types';
 
 function Facts({
   title,

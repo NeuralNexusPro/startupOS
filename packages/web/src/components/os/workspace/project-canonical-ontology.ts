@@ -1,12 +1,14 @@
 import {
   AUTHORING_REVISION_METADATA_KEY,
   CANONICAL_ONTOLOGY_AUTHOR_PERMISSION,
-  type CanonicalOntology,
   type CanonicalOntologyAuthoringBase,
   type CanonicalOntologyAuthoringCommand,
   type CanonicalOntologyAuthoringResult,
-  type CanonicalValidationIssue,
-} from '@originos/core/lib/features/ontology';
+} from '@originos/core/lib/features/ontology/authoring-types';
+import type {
+  CanonicalOntology,
+  CanonicalValidationIssue,
+} from '@originos/core/lib/features/ontology/types';
 
 import type { ProjectOntologyEntryResult } from '@originos/core/lib/features/project';
 import type { OntologyModel } from '@originos/core/types';

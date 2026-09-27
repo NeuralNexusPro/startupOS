@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { OntologyTabView } from './OntologyTabView';
 
-import type { CanonicalOntology } from '@originos/core/lib/features/ontology';
+import type { CanonicalOntology } from '@originos/core/lib/features/ontology/types';
 
 function ontology(name: string, revision: number): CanonicalOntology {
   const now = new Date('2026-09-27T00:00:00.000Z');

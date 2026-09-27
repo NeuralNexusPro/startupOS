@@ -8,7 +8,7 @@ import type { ProjectCanonicalOntologyMutation } from '../workspace/project-cano
 import type {
   CanonicalOntology,
   CanonicalValueType,
-} from '@originos/core/lib/features/ontology';
+} from '@originos/core/lib/features/ontology/types';
 
 interface CanonicalOntologyEditorProps {
   ontology: CanonicalOntology;
