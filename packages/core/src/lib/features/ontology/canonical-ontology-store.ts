@@ -6,6 +6,7 @@ import { getDataRoot } from '../../paths';
 import type { DataFile } from '../../storage/json-store';
 import {
   CANONICAL_ONTOLOGY_SCHEMA_VERSION,
+  CANONICAL_SEMANTIC_KINDS,
   type CanonicalConcept,
   type CanonicalContextProjectionRecord,
   type CanonicalDomain,
@@ -133,9 +134,19 @@ function decodeOntology(stored: StoredOntology): CanonicalOntology {
     domains: stored.domains.map((value, index) =>
       decodeTimed(value, `domains[${index}]`)
     ),
-    concepts: stored.concepts.map((value, index) =>
-      decodeTimed(value, `concepts[${index}]`)
-    ),
+    concepts: stored.concepts.map((value, index) => {
+      const concept = decodeTimed(value, `concepts[${index}]`);
+      const semanticKind = concept.semanticKind;
+      if (
+        semanticKind !== undefined &&
+        !CANONICAL_SEMANTIC_KINDS.includes(semanticKind)
+      ) {
+        throw new Error(`Invalid semanticKind at concepts[${index}].semanticKind`);
+      }
+      return semanticKind === undefined
+        ? { ...concept, semanticKind: 'unclassified' }
+        : concept;
+    }),
     instances: stored.instances.map((value, index) =>
       decodeTimed(value, `instances[${index}]`)
     ),

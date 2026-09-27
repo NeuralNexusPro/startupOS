@@ -108,6 +108,17 @@ describe('CanonicalOntologyStore', () => {
     expect((await fs.readdir(path.join(root, 'ontology'))).some((name) => name.endsWith('.tmp'))).toBe(false);
   });
 
+  it('reads a legacy concept as unclassified without rewriting its snapshot', async () => {
+    await store.writeOntology('project-1', ontology('1'));
+    const snapshotPath = path.join(root, 'ontology', 'project-1-ontology.json');
+    const before = await fs.readFile(snapshotPath, 'utf8');
+
+    const loaded = await store.readOntology('project-1');
+
+    expect(loaded?.data.concepts[0]?.semanticKind).toBe('unclassified');
+    expect(await fs.readFile(snapshotPath, 'utf8')).toBe(before);
+  });
+
   it('removes the temporary snapshot after a failed rename', async () => {
     vi.spyOn(fs, 'rename').mockRejectedValueOnce(new Error('rename failed'));
     await expect(store.writeOntology('project-1', ontology('1'))).rejects.toThrow('rename failed');

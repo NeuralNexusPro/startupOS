@@ -15,6 +15,20 @@ const sourceReference = z.object({
   sourceVersion: z.string().optional(),
   locator: z.string().optional(),
 }).strict();
+const semanticKind = z.enum([
+  'role',
+  'organization',
+  'object',
+  'activity',
+  'document',
+  'standard',
+  'unclassified',
+]);
+const classificationSource = z.object({
+  sourceRef: sourceReference.optional(),
+  classifiedBy: z.enum(['agent', 'user']),
+  userConfirmed: z.boolean(),
+}).strict();
 
 const domain = z.object({
   id: identifier,
@@ -31,6 +45,8 @@ const concept = z.object({
   domainId: identifier,
   name: identifier,
   type: identifier,
+  semanticKind: semanticKind.optional(),
+  classificationSource: classificationSource.optional(),
   attributes: metadata,
   description: z.string().optional(),
   propertyIds: stringArray.optional(),

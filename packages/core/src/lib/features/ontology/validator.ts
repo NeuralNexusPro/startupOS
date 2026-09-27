@@ -1,9 +1,11 @@
 import type {
+  CanonicalClassificationSource,
   CanonicalActionValidationInput,
   CanonicalOntology,
   CanonicalValidationIssue,
   CanonicalValidationResult,
 } from './types';
+import { CANONICAL_SEMANTIC_KINDS } from './types';
 
 type Identified = { id: string };
 
@@ -56,6 +58,16 @@ function requireConceptBinding(
   }
 }
 
+function isClassificationSource(
+  value: CanonicalClassificationSource | undefined
+): boolean {
+  if (value === undefined) return true;
+  return (
+    (value.classifiedBy === 'agent' || value.classifiedBy === 'user') &&
+    typeof value.userConfirmed === 'boolean'
+  );
+}
+
 export function validateCanonicalOntology(ontology: CanonicalOntology): CanonicalValidationResult {
   const issues: CanonicalValidationIssue[] = [];
   const domains = indexCollection(ontology.domains, 'domains', issues);
@@ -72,6 +84,27 @@ export function validateCanonicalOntology(ontology: CanonicalOntology): Canonica
   indexCollection(ontology.projections, 'projections', issues);
 
   ontology.concepts.forEach((concept, index) => {
+    if (
+      concept.semanticKind !== undefined &&
+      !CANONICAL_SEMANTIC_KINDS.includes(concept.semanticKind)
+    ) {
+      issues.push(
+        issue(
+          'INVALID_SEMANTIC_KIND',
+          `concepts[${index}].semanticKind`,
+          `Unsupported semantic kind: ${String(concept.semanticKind)}`
+        )
+      );
+    }
+    if (!isClassificationSource(concept.classificationSource)) {
+      issues.push(
+        issue(
+          'INVALID_CLASSIFICATION_SOURCE',
+          `concepts[${index}].classificationSource`,
+          'classificationSource must identify who classified the concept and whether the user confirmed it'
+        )
+      );
+    }
     requireReference(domains, concept.domainId, `concepts[${index}].domainId`, 'domain', issues);
     concept.propertyIds?.forEach((propertyId, propertyIndex) => {
       const path = `concepts[${index}].propertyIds[${propertyIndex}]`;

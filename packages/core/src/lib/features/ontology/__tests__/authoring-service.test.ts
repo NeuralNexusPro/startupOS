@@ -300,12 +300,19 @@ describe('CanonicalOntologyAuthoringService', () => {
     });
 
     const invalid = await service.execute(
-      command({ type: 'domain.delete', domainId: 'sales' }, 'invalid')
+      command(
+        {
+          type: 'concept.update',
+          conceptId: 'order',
+          patch: { semanticKind: 'person' as 'activity' },
+        },
+        'invalid'
+      )
     );
     expect(invalid).toMatchObject({
       ok: false,
       issues: expect.arrayContaining([
-        expect.objectContaining({ code: 'MISSING_REFERENCE' }),
+        expect.objectContaining({ code: 'INVALID_SEMANTIC_KIND' }),
       ]),
     });
     expect(
@@ -324,16 +331,20 @@ describe('CanonicalOntologyAuthoringService', () => {
     const [left, right] = await Promise.all([
       service.execute(
         command(
-          { type: 'domain.update', domainId: 'sales', patch: { name: 'Left' } },
+          {
+            type: 'concept.update',
+            conceptId: 'order',
+            patch: { semanticKind: 'role' },
+          },
           'left'
         )
       ),
       otherService.execute(
         command(
           {
-            type: 'domain.update',
-            domainId: 'sales',
-            patch: { name: 'Right' },
+            type: 'concept.update',
+            conceptId: 'order',
+            patch: { semanticKind: 'activity' },
           },
           'right'
         )
@@ -351,11 +362,25 @@ describe('CanonicalOntologyAuthoringService', () => {
       )
     ).toBe(1);
     expect(await store.readAuthoringReceipts('project-1')).toHaveLength(1);
+    expect(['role', 'activity']).toContain(
+      (await store.readOntology('project-1'))!.data.concepts[0]?.semanticKind
+    );
   });
 
   it('returns the persisted receipt after restart and rejects operationId reuse', async () => {
     const original = command(
-      { type: 'domain.update', domainId: 'sales', patch: { name: 'Revenue' } },
+      {
+        type: 'concept.update',
+        conceptId: 'order',
+        patch: {
+          semanticKind: 'organization',
+          classificationSource: {
+            sourceRef: { sourceType: 'interview', sourceId: 'interview-1' },
+            classifiedBy: 'user',
+            userConfirmed: true,
+          },
+        },
+      },
       'stable-operation'
     );
     const first = await service.execute(original);
@@ -365,10 +390,10 @@ describe('CanonicalOntologyAuthoringService', () => {
     const retry = await restarted.execute(original);
     const conflict = await restarted.execute(
       command(
-        {
-          type: 'domain.update',
-          domainId: 'sales',
-          patch: { name: 'Different' },
+          {
+            type: 'concept.update',
+            conceptId: 'order',
+            patch: { semanticKind: 'standard' },
         },
         'stable-operation'
       )
@@ -386,6 +411,9 @@ describe('CanonicalOntologyAuthoringService', () => {
       )
     ).toBe(1);
     expect(await store.readAuthoringReceipts('project-1')).toHaveLength(1);
+    const loaded = (await store.readOntology('project-1'))!.data.concepts[0]!;
+    expect(loaded.semanticKind).toBe('organization');
+    expect(loaded.classificationSource?.userConfirmed).toBe(true);
   });
 
   it('recovers an accepted snapshot when receipt append failed', async () => {
@@ -395,9 +423,9 @@ describe('CanonicalOntologyAuthoringService', () => {
     );
     const original = command(
       {
-        type: 'domain.update',
-        domainId: 'sales',
-        patch: { name: 'Recovered' },
+        type: 'concept.update',
+        conceptId: 'order',
+        patch: { semanticKind: 'document' },
       },
       'recover-operation'
     );
@@ -414,9 +442,7 @@ describe('CanonicalOntologyAuthoringService', () => {
       ok: true,
       receipt: { beforeRevision: 0, afterRevision: 1 },
     });
-    expect((await store.readOntology('project-1'))!.data.domains[0]?.name).toBe(
-      'Recovered'
-    );
+    expect((await store.readOntology('project-1'))!.data.concepts[0]?.semanticKind).toBe('document');
     expect(await store.readAuthoringReceipts('project-1')).toHaveLength(1);
   });
 

@@ -137,11 +137,39 @@ export interface CanonicalDomain {
   updatedAt: Date;
 }
 
+export const CANONICAL_SEMANTIC_KINDS = [
+  'role',
+  'organization',
+  'object',
+  'activity',
+  'document',
+  'standard',
+  'unclassified',
+] as const;
+
+export type CanonicalSemanticKind =
+  (typeof CANONICAL_SEMANTIC_KINDS)[number];
+
+export interface CanonicalClassificationSource {
+  /** The interview, manual input, import, or runtime record supporting this classification. */
+  sourceRef?: CanonicalSourceReference;
+  /** Whether an agent proposed the classification or a user set it. */
+  classifiedBy: 'agent' | 'user';
+  /** Whether a user has explicitly confirmed the classification. */
+  userConfirmed: boolean;
+}
+
 export interface CanonicalConcept {
   id: string;
   domainId: string;
   name: string;
   type: string;
+  /**
+   * Business-facing classification, deliberately independent from the legacy
+   * structural `type`. Missing values are interpreted as `unclassified` when read.
+   */
+  semanticKind?: CanonicalSemanticKind;
+  classificationSource?: CanonicalClassificationSource;
   attributes: Record<string, unknown>;
   description?: string;
   propertyIds?: string[];
