@@ -1,0 +1,4 @@
+# teamai side branch — machine-local artifacts should never be tracked here
+reports-wt/
+learnings-wt/
+knowledge-wt/
