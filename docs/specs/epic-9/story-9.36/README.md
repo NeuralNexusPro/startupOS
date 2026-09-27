@@ -1206,3 +1206,10 @@ src/app/api/collaboration/sessions/
 | 日期 | 变更内容 | 变更人 |
 |------|---------|--------|
 | 2026-05-22 | 初始版本：对比 Ruflo/Multica，识别 8 个问题，设计 6 个修正方案 | AI |
+
+
+## 0.4.x 补齐任务（2026-09-27）
+
+936-T1：见 openspec/changes/integrate-supervisor-worker-protocol。用户已确认按审计缺口推进；未完成验收前保持 In Progress，不因存在组件类而标 Done。
+
+本轮修订：Run/WorkItem ledger 为业务事实源；Blackboard 的索引、心跳、进度和快照均为观测投影。Worker 成功返回只能 reported，不能替代业务验收。CPU/内存是可选遥测；必需能力与实际任务负载为分配依据，不伪造未知指标。
