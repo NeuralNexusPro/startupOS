@@ -33,7 +33,7 @@ export interface WorkerProgress {
 
 export interface WorkerStatus {
   agent: string;
-  status: "idle" | "task-received" | "executing" | "blocked" | "completed" | "failed";
+  status: "idle" | "task-received" | "executing" | "blocked" | "reported" | "completed" | "failed";
   assignedTask?: string;
   assignedAt?: number;
   estimatedCompletion?: number;
@@ -42,7 +42,7 @@ export interface WorkerStatus {
 }
 
 export interface WorkerCompleted {
-  status: "complete";
+  status: "reported";
   task: string;
   deliverables: {
     files: string[];
@@ -55,7 +55,7 @@ export interface WorkerCompleted {
     };
   };
   timeTakenMs: number;
-  resourcesUsed: {
+  resourcesUsed?: {
     memoryMb: number;
     cpuPercentage: number;
   };
@@ -79,6 +79,7 @@ export class WorkerProgressReporter {
   private timer?: NodeJS.Timeout;
   private currentTaskId: string | null = null;
   private lastProgress: WorkerProgress | null = null;
+  private startedAt = 0;
   private status: WorkerStatus["status"] = "idle";
 
   constructor(
@@ -96,6 +97,8 @@ export class WorkerProgressReporter {
    * 开始任务时注册
    */
   startTask(taskId: string, estimatedMs: number, dependencies: string[] = []): void {
+    this.clearBlock();
+    this.startedAt = Date.now();
     this.currentTaskId = taskId;
     this.status = "task-received";
 
@@ -128,6 +131,7 @@ export class WorkerProgressReporter {
       return;
     }
 
+    this.clearBlock();
     this.status = "executing";
     this.lastProgress = {
       ...this.lastProgress,
@@ -200,7 +204,9 @@ export class WorkerProgressReporter {
     rationale?: string,
     suggestedAction?: string
   ): void {
+    this.stopHeartbeat();
     this.status = "blocked";
+    this.writeStatus();
 
     const blocked: WorkerBlocked = {
       blockedOn,
@@ -235,14 +241,13 @@ export class WorkerProgressReporter {
     };
   }): void {
     this.stopHeartbeat();
+    this.clearBlock();
 
     const status: WorkerStatus = {
       agent: this.workerId,
-      status: "completed",
+      status: "reported",
       assignedTask: this.lastProgress?.taskId,
-      assignedAt: this.lastProgress?.estimatedCompletion
-        ? this.lastProgress.estimatedCompletion - this.lastProgress.progressPercentage / 100 * (this.lastProgress.estimatedCompletion - Date.now())
-        : undefined,
+      assignedAt: this.startedAt,
       dependencies: [],
       timestamp: Date.now(),
     };
@@ -253,13 +258,11 @@ export class WorkerProgressReporter {
     });
 
     const complete: WorkerCompleted = {
-      status: "complete",
+      status: "reported",
       task: this.lastProgress?.taskId ?? "unknown",
       deliverables: deliverables as WorkerCompleted['deliverables'],
-      timeTakenMs: this.lastProgress
-        ? Date.now() - (this.lastProgress.estimatedCompletion - this.lastProgress.progressPercentage / 100 * (this.lastProgress.estimatedCompletion - Date.now()))
-        : 0,
-      resourcesUsed: this.lastProgress?.resourcesUsed ?? { memoryMb: 0, cpuPercentage: 0 },
+      timeTakenMs: Date.now() - this.startedAt,
+      resourcesUsed: this.lastProgress?.resourcesUsed,
       timestamp: Date.now(),
     };
 
@@ -276,11 +279,19 @@ export class WorkerProgressReporter {
     this.lastProgress = null;
   }
 
+  updateReportedDeliverables(taskId: string, files: string[]): void {
+    const key = buildWorkerKey(MemoryKeyCategory.COMPLETE, this.workerId);
+    const entry = this.blackboard.getDataEntry(key)?.value as WorkerCompleted | undefined;
+    if (entry?.task !== taskId) return;
+    this.blackboard.setData(key, { ...entry, deliverables: { ...entry.deliverables, files } }, this.workerId);
+  }
+
   /**
    * 标记任务失败
    */
   failTask(error: string): void {
     this.stopHeartbeat();
+    this.clearBlock();
 
     const status: WorkerStatus = {
       agent: this.workerId,
@@ -306,6 +317,7 @@ export class WorkerProgressReporter {
    */
   setIdle(): void {
     this.stopHeartbeat();
+    this.clearBlock();
 
     const status: WorkerStatus = {
       agent: this.workerId,
@@ -324,14 +336,23 @@ export class WorkerProgressReporter {
     console.error(`[WorkerProgressReporter] Idle: worker=${this.workerId}`);
   }
 
+  private clearBlock(): void {
+    this.blackboard.deleteData(buildWorkerKey(MemoryKeyCategory.BLOCKED, this.workerId), this.workerId);
+  }
+
+  resumeHeartbeat(): void {
+    if (this.currentTaskId && this.status !== "blocked") this.startHeartbeat();
+  }
+
   private startHeartbeat(): void {
     this.stopHeartbeat();
     this.timer = setInterval(() => {
       this.writeProgress();
     }, this.intervalMs);
+    this.timer.unref?.();
   }
 
-  private stopHeartbeat(): void {
+  stopHeartbeat(): void {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = undefined;
@@ -348,9 +369,7 @@ export class WorkerProgressReporter {
       agent: this.workerId,
       status: this.status,
       assignedTask: this.currentTaskId?.toString(),
-      assignedAt: this.lastProgress?.estimatedCompletion
-        ? this.lastProgress.estimatedCompletion - this.lastProgress.progressPercentage / 100 * (this.lastProgress.estimatedCompletion - Date.now())
-        : undefined,
+      assignedAt: this.startedAt,
       estimatedCompletion: this.lastProgress?.estimatedCompletion,
       dependencies,
       timestamp: Date.now(),

@@ -52,6 +52,7 @@ export type EventType =
   | "TASK_CREATED"
   | "TASK_ASSIGNED"
   | "TASK_STARTED"
+  | "TASK_REPORTED"
   | "TASK_COMPLETED"
   | "TASK_FAILED"
   | "TASK_REASSIGNED"

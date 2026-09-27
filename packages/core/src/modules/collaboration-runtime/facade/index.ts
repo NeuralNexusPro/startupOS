@@ -96,3 +96,5 @@ export async function createSession(input: CreateSessionInput): Promise<Collabor
   const { parseAgentDefinition, parseToolDefinition } = await import("../../../lib/integrations/pi-agent/persistent-agent");
   return _createSession(input, eventEmitter, { parseAgentDefinition, parseToolDefinition });
 }
+
+export { getSessionTaskSnapshot } from './protocol-snapshot';

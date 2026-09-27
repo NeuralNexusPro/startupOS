@@ -312,7 +312,7 @@ describe("Story 9.36: Ruflo/Multica Supervisor/Worker 模式重构", () => {
       const completeEntry = blackboard.getDataEntry(completeKey);
       expect(completeEntry?.value).toBeDefined();
       const complete = completeEntry?.value as { status: string; deliverables: unknown };
-      expect(complete?.status).toBe("complete");
+      expect(complete?.status).toBe("reported");
       expect((complete.deliverables as { files: string[] }).files).toEqual(["file1.js", "file2.js"]);
     });
 

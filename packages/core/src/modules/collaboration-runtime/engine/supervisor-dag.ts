@@ -1,3 +1,6 @@
+import { CapabilityMatcher } from "./capability-matcher";
+import { ProtocolObserver, registerProtocolObserver, stopProtocolObserver } from "./protocol-observer";
+import { DependencyChecker } from "./dependency-checker";
 /**
  * Multi-Agent Executor — 集成层：加载 Solution Manifest → 构建拓扑 → DAG 执行。
  *
@@ -1056,6 +1059,11 @@ export async function executeSupervisorDag(
     blackboard = new Blackboard(config.sessionId ?? config.projectId, blackboardDir);
   }
   const bb = blackboard;
+  const protocol = new ProtocolObserver(bb, `supervisor-${bb.sessionId}`, blackboardDir);
+  await registerProtocolObserver(protocol);
+  const workerTaskIds = new Map<string, string>();
+  try {
+
   const upstreamResults = new UpstreamResults(bb);
   const workerModel = runtimeLLMConfigToWorkerModel(config.llmConfig);
   logRuntime("dag.worker_model.resolved", {
@@ -1161,8 +1169,12 @@ export async function executeSupervisorDag(
     supervisorRejectDone = reject;
   });
 
+  protocol.onCancel = () => supervisorRejectDone(new Error("SESSION_ABORTED"));
+
   // 事件处理器 — 拦截 SUPERVISOR_TOOL_CALL 事件
   const onSupervisorEvent = (event: RuntimeEvent): void => {
+    if (protocol.isClosed) return;
+    if (event.type === "AGENT_FAIL_TASK") supervisorRejectDone(new Error("SUPERVISOR_FAILED"));
     supervisorEvents.push(event);
     void eventStore.append(event);
     eventEmitter?.emit(event);
@@ -1175,9 +1187,11 @@ export async function executeSupervisorDag(
 
     // Supervisor called escalate_to_human inside the worker (HITL_PAUSE path) — register resume handler
     if (event.type === "HUMAN_REVIEW_REQUEST" && event.source === supervisorAgentId) {
+      protocol.pause();
       // Register resume handler: when user replies, call supervisorProc.resume()
       if (config.sessionId) {
         hitlResumerRegistry.set(config.sessionId, (reply: string) => {
+          protocol.start();
           const sup = getGlobalSpawner().get(supervisorAgentId);
           if (sup) {
             sup.resume(reply).catch((err: Error) => {
@@ -1201,12 +1215,32 @@ export async function executeSupervisorDag(
     }
   };
 
+  function recordTaskEvent(type: RuntimeEvent["type"], payload: Record<string, unknown>, source = "supervisor"): void {
+    const event: RuntimeEvent = { id: `protocol-${Date.now()}-${Math.random()}`, sessionId: bb.sessionId, seq: 0, type, payload, source, timestamp: new Date().toISOString() };
+    void eventStore.append(event).catch(() => console.error("[collaboration-protocol] event persistence failed"));
+    eventEmitter?.emit(event);
+  }
+
+  function availableWorkers() {
+    const tasks = bb.getTasks();
+    return new CapabilityMatcher().match({ description: config.globalGoal }, agents.map(agent => {
+      const own = tasks.filter(task => task.assignedTo === agent.id);
+      const terminal = own.filter(task => task.status === "completed" || task.status === "failed");
+      return {
+        agentId: agent.id, capabilities: agent.skills ?? [], skills: agent.skills ?? [], domain: agent.businessDomain,
+        currentLoad: own.filter(task => ["assigned", "running", "reported", "blocked"].includes(task.status)).length,
+        successRate: terminal.length ? terminal.filter(task => task.status === "completed").length / terminal.length : undefined,
+      };
+    }));
+  }
+
   // 工具调用处理器（SUPA-02 核心胶水逻辑）
   async function handleSupervisorToolCall(
     toolCallId: string,
     toolName: string,
     args: Record<string, unknown>,
   ): Promise<void> {
+    if (protocol.isClosed) return;
     let resultJson: string = JSON.stringify({ status: "ok" });
 
     try {
@@ -1217,7 +1251,7 @@ export async function executeSupervisorDag(
           const acceptanceCriteria = String(args["acceptanceCriteria"] ?? "完成任务");
 
           if (!workerId) {
-            resultJson = JSON.stringify({ error: "workerId is required" });
+            resultJson = JSON.stringify({ error: "workerId is required", candidates: availableWorkers() });
             break;
           }
 
@@ -1229,9 +1263,27 @@ export async function executeSupervisorDag(
 
           // 已有运行中的 Worker，不重复 spawn
           if (workerResults.has(workerId) && workerResults.get(workerId)?.status === "running") {
-            resultJson = JSON.stringify({ dispatchId: workerId, status: "already_running", nextStep: `必须立即调用 wait_workers(workerIds=["${workerId}"]) 等待 Worker 完成。` });
+            resultJson = JSON.stringify({ dispatchId: workerId, status: "already_running", candidates: availableWorkers(), nextStep: `必须立即调用 wait_workers(workerIds=["${workerId}"]) 等待 Worker 完成。` });
             break;
           }
+
+          const checker = new DependencyChecker(bb);
+          const dependencies = checker.deriveDependenciesFromTopology(workerId, topology);
+          const readiness = checker.checkDependencies(dependencies);
+          if (!readiness.satisfied) {
+            protocol.worker(workerId).reportBlock("dependencies", readiness.missingDeps.map((dep) => dep.agentId), readiness.blockedReason);
+            protocol.persist();
+            resultJson = JSON.stringify({ status: "blocked", reason: readiness.blockedReason });
+            break;
+          }
+          const task = bb.createTask(specificAction);
+          recordTaskEvent("TASK_CREATED", { task: { ...task } });
+          bb.assignTask(task.id, workerId);
+          recordTaskEvent("TASK_ASSIGNED", { taskId: task.id, agentId: workerId });
+          bb.startTask(task.id);
+          recordTaskEvent("TASK_STARTED", { taskId: task.id }, workerId);
+          workerTaskIds.set(workerId, task.id);
+          protocol.worker(workerId).startTask(task.id, config.timeoutMs ?? 300_000, dependencies.map((dep) => dep.agentId));
 
           // P2: 写入 swarm$tasks$<workerId> 到 Blackboard（pending 状态）
           bb.setData(`swarm$tasks$${workerId}`, {
@@ -1244,7 +1296,7 @@ export async function executeSupervisorDag(
           }, "supervisor", {
             sourceUri: `supervisor:dispatch:${config.sessionId ?? "supervisor"}`,
           });
-          void bb.snapshot();
+          protocol.persist();
 
           // 派发 Worker 子进程 - Worker 不能直接 ask_user_question 或编辑本体 schema
           // 显式过滤掉不允许的工具
@@ -1271,6 +1323,7 @@ export async function executeSupervisorDag(
 
           const workerEvents: RuntimeEvent[] = [];
           const captureWorkerEvent = (ev: RuntimeEvent): void => {
+            if (protocol.isClosed || workerTaskIds.get(workerId) !== task.id) return;
             if (ev.type === "HOST_TOOL_CALL" && ev.source === workerId) {
               const toolCallId = typeof ev.payload?.["toolCallId"] === "string" ? ev.payload["toolCallId"] : "";
               const toolName = typeof ev.payload?.["toolName"] === "string" ? ev.payload["toolName"] : "";
@@ -1286,6 +1339,8 @@ export async function executeSupervisorDag(
               return;
             }
             if (ev.type === "HITL_ESCALATE" && ev.source === workerId) {
+              protocol.worker(workerId).reportBlock("human-input", []);
+              protocol.pause();
               // 直连路径：bridge 直接 emit HUMAN_REVIEW_REQUEST，不依赖 Supervisor LLM 中转
               workerEvents.push(ev);
               void eventStore.append(ev);
@@ -1324,7 +1379,7 @@ export async function executeSupervisorDag(
                 }
                 const sessionChannels = globalThis.__hitlChannelByWorker.get(config.sessionId) ?? new Map();
                 sessionChannels.set(workerId, {
-                  resume: (reply: string) => workerProc.resume(reply),
+                  resume: (reply: string) => { protocol.start(); protocol.worker(workerId).updateProgress({ currentStep: "resumed" }); return workerProc.resume(reply); },
                   question,
                   onBehalfOfName,
                 });
@@ -1332,6 +1387,8 @@ export async function executeSupervisorDag(
 
                 // 同时注册到 hitlResumerRegistry 作为 fallback
                 hitlResumerRegistry.set(config.sessionId, (reply: string) => {
+                  protocol.start();
+                  protocol.worker(workerId).updateProgress({ currentStep: "resumed" });
                   workerProc.resume(reply).catch((err: Error) => {
                     console.error(`[SupervisorDag] HITL fallback resume failed for ${workerId}:`, err);
                   });
@@ -1344,6 +1401,8 @@ export async function executeSupervisorDag(
             }
 
             if (ev.type === "HUMAN_REVIEW_REQUEST" && ev.source === workerId) {
+              protocol.worker(workerId).reportBlock("human-input", []);
+              protocol.pause();
               // 旧路径兜底（Worker 直接发 HUMAN_REVIEW_REQUEST，不经过 Supervisor）
               workerEvents.push(ev);
               void eventStore.append(ev);
@@ -1352,9 +1411,11 @@ export async function executeSupervisorDag(
               if (config.sessionId) {
                 const existingResumer = hitlResumerRegistry.get(config.sessionId);
                 hitlResumerRegistry.set(config.sessionId, (reply: string) => {
+                  protocol.start();
                   const workerProc = spawner.get(workerId);
                   if (workerProc) {
-                    workerProc.resume(reply).catch((err: Error) => {
+                    protocol.worker(workerId).updateProgress({ currentStep: "resumed" });
+                  workerProc.resume(reply).catch((err: Error) => {
                       console.error(`[SupervisorDag] worker ${workerId} resume failed:`, err);
                     });
                   } else if (existingResumer) {
@@ -1376,7 +1437,14 @@ export async function executeSupervisorDag(
                 return;
               }
 
-              // Worker 完成
+              const taskId = workerTaskIds.get(workerId);
+              if (taskId) {
+                bb.reportTask(taskId, { output: extractAgentOutputFromEvents(workerEvents) });
+                recordTaskEvent("TASK_REPORTED", { taskId, output: extractAgentOutputFromEvents(workerEvents) }, workerId);
+              }
+              protocol.worker(workerId).completeTask({ files: [] });
+              protocol.persist();
+              // Worker 返回只表示 reported；由 run_verifier 接纳完成。
               const output = extractAgentOutputFromEvents(workerEvents);
               if (workerResult) {
                 workerResult.status = "completed";
@@ -1388,25 +1456,26 @@ export async function executeSupervisorDag(
                 }
               }
               upstreamOutputs.set(workerId, { text: output, artifacts: [] });
-              completedAgents.push(workerId);
+
 
               // P0+P2: 写入 Blackboard upstream 产出（Event Sourcing）+ 更新 task status
               const agent = agents.find((a) => a.id === workerId);
               upstreamResults.writeUpstreamOutput(workerId, agent?.name ?? workerId, output);
               bb.setData(`swarm$tasks$${workerId}`, {
                 taskId: workerId,
-                status: "completed",
+                status: "reported",
                 assignedTo: workerId,
                 completedAt: new Date().toISOString(),
                 outputKey: `upstream$${workerId}$output`,
               }, workerId, {
                 sourceUri: `worker:complete:${config.sessionId ?? "supervisor"}`,
               });
-              void bb.snapshot();
+              protocol.persist();
 
               // 从 Blackboard 读取 artifacts，更新 workerResults 和 upstreamOutputs
               void (async () => {
                 const snap = await Blackboard.loadSnapshot(config.sessionId ?? "supervisor", blackboardDir);
+                if (protocol.isClosed || workerResults.get(workerId) !== workerResult) return;
                 if (snap) {
                   const wResult = workerResults.get(workerId);
                   if (wResult) {
@@ -1421,6 +1490,10 @@ export async function executeSupervisorDag(
                       upstream.artifacts = wResult.artifacts;
                     }
                   }
+                }
+                if (taskId && workerTaskIds.get(workerId) === taskId) {
+                  protocol.worker(workerId).updateReportedDeliverables(taskId, workerResults.get(workerId)?.artifacts.map(artifact => artifact.ref) ?? []);
+                  protocol.persist();
                 }
                 notifyWorkerCompletion(workerId);
 
@@ -1441,6 +1514,10 @@ export async function executeSupervisorDag(
               if (workerResult) {
                 workerResult.status = "failed";
               }
+              const failedTaskId = workerTaskIds.get(workerId);
+              if (failedTaskId) bb.failTask(failedTaskId);
+              protocol.worker(workerId).failTask("WORKER_FAILED");
+              protocol.persist();
               failedAgents.push(workerId);
 
               // P2: 更新 Blackboard task status = failed
@@ -1451,7 +1528,7 @@ export async function executeSupervisorDag(
               }, workerId, {
                 sourceUri: `worker:fail:${config.sessionId ?? "supervisor"}`,
               });
-              void bb.snapshot();
+              protocol.persist();
 
               notifyWorkerCompletion(workerId);
 
@@ -1479,6 +1556,7 @@ export async function executeSupervisorDag(
               workingDirectory,
               model: summarizeRuntimeConfig(workerModel),
             });
+            if (protocol.isClosed) break;
             proc = await spawner.spawn(
               {
                 projectId: config.projectId,
@@ -1498,6 +1576,7 @@ export async function executeSupervisorDag(
               elapsedMs: Date.now() - workerSpawnAt,
             });
 
+            if (protocol.isClosed) { await spawner.destroy(workerId); break; }
             workerResults.set(workerId, { status: "running", output: "", artifacts: [], proc });
 
             // 非阻塞地执行 Worker prompt（不等待完成）
@@ -1509,6 +1588,7 @@ export async function executeSupervisorDag(
               promptChars: prompt.length,
             });
             proc.prompt(prompt).catch((err) => {
+              if (protocol.isClosed) return;
               console.error(`[SupervisorDag] Worker ${workerId} prompt error:`, err);
               logRuntime("worker.prompt.error", {
                 projectId: config.projectId,
@@ -1519,13 +1599,21 @@ export async function executeSupervisorDag(
               const wResult = workerResults.get(workerId);
               if (wResult && wResult.status === "running") {
                 wResult.status = "failed";
+                const failedTaskId = workerTaskIds.get(workerId);
+                if (failedTaskId) bb.failTask(failedTaskId);
+                protocol.worker(workerId).failTask("WORKER_FAILED");
+                protocol.persist();
                 failedAgents.push(workerId);
                 notifyWorkerCompletion(workerId);
               }
             });
 
-            resultJson = JSON.stringify({ dispatchId: workerId, status: "dispatched", nextStep: `必须立即调用 wait_workers(workerIds=["${workerId}"]) 等待 Worker 完成，不允许在等待前结束任务。` });
+            resultJson = JSON.stringify({ dispatchId: workerId, status: "dispatched", candidates: availableWorkers(), nextStep: `必须立即调用 wait_workers(workerIds=["${workerId}"]) 等待 Worker 完成，不允许在等待前结束任务。` });
           } catch (spawnErr) {
+            protocol.worker(workerId).failTask("SPAWN_FAILED");
+            const taskId = workerTaskIds.get(workerId);
+            if (taskId) bb.failTask(taskId, "SPAWN_FAILED");
+            protocol.persist();
             console.error(`[SupervisorDag] Failed to spawn worker ${workerId}:`, spawnErr);
             logRuntime("worker.spawn.error", {
               projectId: config.projectId,
@@ -1622,6 +1710,7 @@ export async function executeSupervisorDag(
             ?? (supervisorEvents.filter((e) => e.source === workerId && e.type === "AGENT_END")
               .at(-1)?.payload?.["messages"] as Array<{ role: string; content?: unknown }> | undefined);
 
+          const verifyingTaskId = workerTaskIds.get(workerId);
           let verification: VerificationResult;
           if (messages && messages.length > 0) {
             verification = await verifyTaskCompletion(criteria || wResult.output, messages, config.modelFactory);
@@ -1629,6 +1718,18 @@ export async function executeSupervisorDag(
             verification = verifierFallbackResult([wResult.output], wResult.artifacts.map((a) => a.ref), 0);
           }
 
+          const verifiedTaskId = verifyingTaskId;
+          if (protocol.isClosed || workerTaskIds.get(workerId) !== verifyingTaskId || workerResults.get(workerId) !== wResult) {
+            resultJson = JSON.stringify({ passed: false, reason: "STALE_VERIFICATION" });
+            break;
+          }
+          if (verification.passed && verifiedTaskId && bb.getTask(verifiedTaskId)?.status === "reported") {
+            bb.acceptTask(verifiedTaskId);
+            recordTaskEvent("TASK_COMPLETED", { taskId: verifiedTaskId, output: wResult.output });
+            if (!completedAgents.includes(workerId)) completedAgents.push(workerId);
+            bb.setData(`swarm$tasks$${workerId}`, { taskId: verifiedTaskId, assignedTo: workerId, status: "completed", completedAt: new Date().toISOString() }, "supervisor");
+            protocol.persist();
+          }
           resultJson = JSON.stringify({ passed: verification.passed, reasoning: verification.reasoning });
           break;
         }
@@ -1655,7 +1756,7 @@ export async function executeSupervisorDag(
           const answer = String(args["answer"] ?? "");
 
           if (!targetWorkerId) {
-            resultJson = JSON.stringify({ error: "workerId is required" });
+            resultJson = JSON.stringify({ error: "workerId is required", candidates: availableWorkers() });
             break;
           }
 
@@ -1672,6 +1773,8 @@ export async function executeSupervisorDag(
           }
 
           try {
+            protocol.start();
+            protocol.worker(targetWorkerId).updateProgress({ currentStep: "resumed" });
             await workerProc.resume(answer);
             resultJson = JSON.stringify({
               status: "resumed",
@@ -1686,6 +1789,7 @@ export async function executeSupervisorDag(
         }
 
         case "escalate_to_human": {
+          protocol.pause();
           const question = String(args["question"] ?? "");
           const mergedContext = args["mergedContext"] as Record<string, unknown> | undefined;
 
@@ -1711,6 +1815,7 @@ export async function executeSupervisorDag(
           // hitlResumerRegistry entry will be called by resumeSupervisorHitl in sendMessageToSupervisor.
           await new Promise<void>((resolve) => {
             pendingHitlResolve = (reply: string) => {
+              protocol.start();
               resultJson = JSON.stringify({ userReply: reply });
               resolve();
             };
@@ -1724,6 +1829,7 @@ export async function executeSupervisorDag(
         }
 
         case "ask_user_question": {
+          protocol.pause();
           const question = String(args["question"] ?? "");
           const options = (args["options"] as Array<{ label: string; description: string }> | undefined) ?? [];
           const multiSelect = Boolean(args["multiSelect"] ?? false);
@@ -1749,6 +1855,7 @@ export async function executeSupervisorDag(
           // Suspend until user selects an option / sends a reply
           await new Promise<void>((resolve) => {
             pendingHitlResolve = (reply: string) => {
+              protocol.start();
               resultJson = JSON.stringify({ userReply: reply });
               resolve();
             };
@@ -1760,6 +1867,7 @@ export async function executeSupervisorDag(
         }
 
         case "wait_for_human": {
+          protocol.pause();
           resultJson = "HITL_PAUSE";
           break;
         }
@@ -1880,6 +1988,7 @@ ${topologySummary}
       agentId: supervisorAgentId,
       promptChars: supervisorPrompt.length,
     });
+    protocol.start();
     supervisorProc.prompt(supervisorPrompt).catch((err) => {
       console.error(`[SupervisorDag] Supervisor prompt error:`, err);
       logRuntime("supervisor.prompt.error", {
@@ -1902,9 +2011,11 @@ ${topologySummary}
 
   // 6. 等待 Supervisor 完成（进程不自动销毁，由 abortSession/window 关闭时清理）
   let finalResult: { completedAgents: string[]; failedAgents: string[] };
+  let executionFailed = false;
   try {
     finalResult = await supervisorDonePromise;
   } catch (err) {
+    executionFailed = true;
     console.error(`[SupervisorDag] Supervisor failed:`, err);
     logRuntime("dag.supervisor.failed", {
       projectId: config.projectId,
@@ -1915,6 +2026,7 @@ ${topologySummary}
     finalResult = { completedAgents, failedAgents };
   }
 
+  const fullyAccepted = !executionFailed && [...workerTaskIds.values()].every(id => bb.getTask(id)?.status === "completed");
   // Emit SUPERVISOR_AGGREGATE event
   const aggregateEvent: RuntimeEvent = {
     id: `sup-aggregate-${Date.now()}`,
@@ -1922,7 +2034,7 @@ ${topologySummary}
     seq: 0,
     type: "SUPERVISOR_AGGREGATE",
     payload: {
-      state: finalResult.failedAgents.length === 0 ? "completed" : "partial",
+      state: fullyAccepted ? "completed" : "partial",
       completedCount: finalResult.completedAgents.length,
       failedCount: finalResult.failedAgents.length,
     },
@@ -1934,18 +2046,22 @@ ${topologySummary}
   logRuntime("dag.done", {
     projectId: config.projectId,
     sessionId: config.sessionId ?? "default",
-    status: finalResult.failedAgents.length === 0 ? "completed" : "failed",
+    status: fullyAccepted ? "completed" : "failed",
     completedAgents: finalResult.completedAgents,
     failedAgents: finalResult.failedAgents,
     elapsedMs: Date.now() - dagStartedAt,
   });
 
   return {
-    status: finalResult.failedAgents.length === 0 ? "completed" : "failed",
+    status: fullyAccepted ? "completed" : "failed",
     completedAgents: finalResult.completedAgents,
     failedAgents: finalResult.failedAgents,
     events: supervisorEvents,
   };
+  } finally {
+    await stopProtocolObserver(bb.sessionId, false, protocol);
+  }
+
 }
 
 /** 为 Worker Agent 构建任务 prompt（Supervisor 下发的具体指令） */

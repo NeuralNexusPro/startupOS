@@ -409,8 +409,10 @@ export class CapabilityMatcher {
   /**
    * 负载评分（兼容旧版）
    */
-  private scoreLoad(_agent: AgentProfile): number {
-    return 0;
+  private scoreLoad(agent: AgentProfile): number {
+    const load = Number.isFinite(agent.currentLoad) ? Math.max(0, agent.currentLoad) : 0;
+    const reliability = agent.successRate === undefined ? 1 : Math.max(0, Math.min(1, agent.successRate));
+    return reliability / (1 + load);
   }
 
   /**

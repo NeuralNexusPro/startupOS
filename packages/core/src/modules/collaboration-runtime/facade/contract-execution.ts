@@ -1,3 +1,4 @@
+import { RunObserver } from "./run-observation";
 import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs, type Dirent } from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
@@ -629,6 +630,8 @@ export class CollaborationExecutionStore implements CollaborationExecutionPort {
     this.clock = dependencies.clock ?? (() => new Date());
   }
 
+  private readonly observers = new Map<string, { observer: RunObserver; users: number }>();
+
   async start(input: StartCollaborationRunInput): Promise<CollaborationRunSnapshot> {
     for (const [field, value] of Object.entries(input)) {
       if (typeof value === 'string') identifier(value, field);
@@ -901,7 +904,10 @@ export class CollaborationExecutionStore implements CollaborationExecutionPort {
   }
 
   async pause(runId: string): Promise<CollaborationRunSnapshot> {
-    return this.transition(runId, 'paused', ['running']);
+    const snapshot = await this.transition(runId, 'paused', ['running']);
+    await this.observers.get(runId)?.observer.stop();
+    this.observers.delete(runId);
+    return snapshot;
   }
 
   async resume(runId: string): Promise<CollaborationRunSnapshot> {
@@ -909,7 +915,10 @@ export class CollaborationExecutionStore implements CollaborationExecutionPort {
   }
 
   async cancel(runId: string): Promise<CollaborationRunSnapshot> {
-    return this.transition(runId, 'canceled', ['running', 'paused']);
+    const snapshot = await this.transition(runId, 'canceled', ['running', 'paused']);
+    await this.observers.get(runId)?.observer.stop();
+    this.observers.delete(runId);
+    return snapshot;
   }
 
   async executeWorkItem(
@@ -1292,7 +1301,26 @@ export class CollaborationExecutionStore implements CollaborationExecutionPort {
     return attemptId;
   }
 
-  private async advance(
+  private async advance(runId: string, workItemId: string, attemptId: string): Promise<CollaborationRunSnapshot> {
+    let active = this.observers.get(runId);
+    if (!active) {
+      active = { observer: new RunObserver(this.dataRoot, this.hostId, () => this.readRun(runId)), users: 0 };
+      this.observers.set(runId, active);
+      active.observer.start();
+    }
+    active.users += 1;
+    try {
+      return await this.advanceLedger(runId, workItemId, attemptId);
+    } finally {
+      active.users -= 1;
+      if (active.users === 0) {
+        await active.observer.stop();
+        if (this.observers.get(runId) === active) this.observers.delete(runId);
+      }
+    }
+  }
+
+  private async advanceLedger(
     runId: string,
     workItemId: string,
     attemptId: string,
@@ -2225,6 +2253,7 @@ export class CollaborationExecutionStore implements CollaborationExecutionPort {
     await fs.writeFile(temporary, JSON.stringify(snapshot, null, 2), 'utf8');
     try {
       await fs.rename(temporary, filePath);
+      this.observers.get(snapshot.runId)?.observer.checkpoint();
     } finally {
       await fs.unlink(temporary).catch((error: unknown) => {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
