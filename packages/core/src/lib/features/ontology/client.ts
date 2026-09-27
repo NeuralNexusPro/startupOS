@@ -22,6 +22,36 @@ import {
   listOntologyEntities,
   updateOntologyEntity,
 } from '../../integrations/electron/services/ontology';
+import { getIpcRenderer, isElectron } from '../../integrations/electron/env';
+import {
+  IPC_CHANNELS,
+  type IpcResponse,
+} from '../../integrations/electron/ipc-protocol';
+import type {
+  CanonicalOntologyAuthoringCommand,
+  CanonicalOntologyAuthoringResult,
+} from './authoring-types';
+
+export async function executeCanonicalOntologyAuthoring(
+  command: CanonicalOntologyAuthoringCommand
+): Promise<IpcResponse<CanonicalOntologyAuthoringResult>> {
+  if (isElectron()) {
+    return getIpcRenderer().invoke<IpcResponse<CanonicalOntologyAuthoringResult>>(
+      IPC_CHANNELS.ONTOLOGY_CANONICAL_AUTHORING_EXECUTE,
+      command
+    );
+  }
+
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(command.projectId)}/ontology`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(command),
+    }
+  );
+  return response.json() as Promise<IpcResponse<CanonicalOntologyAuthoringResult>>;
+}
 
 // ============================================================================
 // Configuration

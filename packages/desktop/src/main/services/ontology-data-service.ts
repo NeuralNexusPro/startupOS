@@ -11,13 +11,52 @@ import {
   queryInstances,
 } from '../../../../core/src/lib/features/ontology-data-store/query-engine';
 import { loadConceptSchema } from '../../../../core/src/lib/features/ontology-data-store/schema-validator';
+import {
+  CanonicalOntologyAuthoringService,
+  parseCanonicalOntologyAuthoringCommand,
+  type CanonicalOntologyAuthoringResult,
+} from '../../../../core/src/lib/features/ontology';
 
 export class OntologyDataService {
-  constructor() {
+  constructor(
+    private readonly authoringService: Pick<CanonicalOntologyAuthoringService, 'execute'> =
+      new CanonicalOntologyAuthoringService()
+  ) {
     this.registerHandlers();
   }
 
   private registerHandlers(): void {
+    ipcMain.handle(
+      IPC_CHANNELS.ONTOLOGY_CANONICAL_AUTHORING_EXECUTE,
+      async (_event, envelope: unknown): Promise<IpcResponse<CanonicalOntologyAuthoringResult>> => {
+        const parsed = parseCanonicalOntologyAuthoringCommand(envelope);
+        if (!parsed.ok) {
+          return {
+            success: false,
+            error: {
+              code: 'INVALID_AUTHORING_COMMAND',
+              message: 'Canonical ontology authoring command is invalid.',
+              details: parsed.issues,
+            },
+            timestamp: new Date().toISOString(),
+          };
+        }
+        try {
+          return {
+            success: true,
+            data: await this.authoringService.execute(parsed.command),
+            timestamp: new Date().toISOString(),
+          };
+        } catch (error) {
+          return this.toErrorResponse(
+            error,
+            '[OntologyDataService] Execute canonical authoring failed',
+            { projectId: parsed.command.projectId, operationId: parsed.command.operationId }
+          );
+        }
+      }
+    );
+
     ipcMain.handle(
       IPC_CHANNELS.ONTOLOGY_DATA_DOMAIN_CREATE,
       async (): Promise<IpcResponse<never>> => this.canonicalWriteUnavailable()

@@ -25,6 +25,9 @@ function sanitizeIpcArg(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map(sanitizeIpcArg);
   }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
   if (value && typeof value === 'object') {
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>)
@@ -117,6 +120,14 @@ const electronApi = {
         }
         if (projectTaskListeners.size === 0) releaseProjectTaskEvents?.();
       };
+    },
+  },
+  canonicalOntologyAuthoring: {
+    execute(request: unknown): Promise<IpcResponse> {
+      return ipcRenderer.invoke(
+        IPC_CHANNELS.ONTOLOGY_CANONICAL_AUTHORING_EXECUTE,
+        sanitizeIpcArg(request)
+      ) as Promise<IpcResponse>;
     },
   },
 };

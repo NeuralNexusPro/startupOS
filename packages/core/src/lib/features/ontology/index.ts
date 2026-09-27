@@ -15,3 +15,4 @@ export * from './ontology-osdk';
 export * from './contract-validator';
 export * from './authoring-types';
 export * from './authoring-service';
+export * from './authoring-transport';

@@ -132,6 +132,7 @@ export const IPC_CHANNELS = {
   ONTOLOGY_DATA_RELATION_CONCEPT_DELETE: 'ontology-data:relation:concept:delete',
   ONTOLOGY_DATA_RELATION_INSTANCE_CREATE: 'ontology-data:relation:instance:create',
   ONTOLOGY_DATA_RELATION_INSTANCE_DELETE: 'ontology-data:relation:instance:delete',
+  ONTOLOGY_CANONICAL_AUTHORING_EXECUTE: 'ontology:canonical-authoring:execute',
   COLLAB_TOPOLOGY_GET: 'collaboration:topology:get',
   COLLAB_SESSION_LIST: 'collaboration:session:list',
   COLLAB_SESSION_CREATE: 'collaboration:session:create',

@@ -41,6 +41,23 @@ describe('preload', () => {
     );
   });
 
+  it('exposes canonical authoring and serializes Date values for IPC', async () => {
+    const api = await loadPreloadApi();
+    const authoring = api['canonicalOntologyAuthoring'] as {
+      execute: (request: unknown) => Promise<unknown>;
+    };
+
+    await authoring.execute({
+      type: 'domain.create',
+      value: { createdAt: new Date('2026-09-27T00:00:00.000Z') },
+    });
+
+    expect(invoke).toHaveBeenCalledWith(
+      IPC_CHANNELS.ONTOLOGY_CANONICAL_AUTHORING_EXECUTE,
+      { type: 'domain.create', value: { createdAt: '2026-09-27T00:00:00.000Z' } }
+    );
+  });
+
   it('allowlists project task events to the precise channel and reuses duplicate subscriptions', async () => {
     const api = await loadPreloadApi();
     const ontologyCrossPackage = api['ontologyCrossPackage'] as {
