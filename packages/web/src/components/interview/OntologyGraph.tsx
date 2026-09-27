@@ -207,6 +207,14 @@ export function OntologyGraph({ ontology, className = '', onEntityClick, selecte
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+    const style = window.getComputedStyle(canvas);
+    const themeColor = (name: string, alpha?: number) => {
+      const value = style.getPropertyValue(name).trim();
+      return alpha === undefined ? `hsl(${value})` : `hsl(${value} / ${alpha})`;
+    };
+    const foregroundColor = style.color;
+    const mutedForegroundColor = themeColor('--muted-foreground');
+    const labelBackgroundColor = themeColor('--card', 0.9);
 
     const nodes = nodesRef.current || [];
     const links = linksRef.current || [];
@@ -321,13 +329,13 @@ export function OntologyGraph({ ontology, className = '', onEntityClick, selecte
           const textWidth = ctx.measureText(link.label).width;
           const padding = 4;
 
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+          ctx.fillStyle = labelBackgroundColor;
           ctx.beginPath();
           ctx.roundRect(midX - textWidth/2 - padding, midY - 8, textWidth + padding*2, 16, 4);
           ctx.fill();
 
           // Draw label text
-          ctx.fillStyle = '#6B7280';
+          ctx.fillStyle = mutedForegroundColor;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.fillText(link.label, midX, midY);
@@ -364,7 +372,7 @@ export function OntologyGraph({ ontology, className = '', onEntityClick, selecte
         }
 
         // 文字标签
-        ctx.fillStyle = '#1F2937';
+        ctx.fillStyle = foregroundColor;
         ctx.font = isHovered ? 'bold 12px system-ui' : '11px system-ui';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
@@ -384,7 +392,7 @@ export function OntologyGraph({ ontology, className = '', onEntityClick, selecte
         // 类型徽章
         if (node.type === 'entity' || node.type === 'class') {
           ctx.font = '10px system-ui';
-          ctx.fillStyle = '#6B7280';
+          ctx.fillStyle = mutedForegroundColor;
           ctx.fillText(node.type === 'entity' ? '实体' : '类', node.x, node.y);
         }
       }
@@ -399,7 +407,7 @@ export function OntologyGraph({ ontology, className = '', onEntityClick, selecte
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [nodeCount, linkCount]);
+  }, [nodeCount, linkCount, selectedEntity]);
 
   // 处理交互
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -457,7 +465,7 @@ export function OntologyGraph({ ontology, className = '', onEntityClick, selecte
   const canvasSize = { width: 600, height: 600 };
 
   return (
-    <div className={`relative ${className}`} style={{ width: canvasSize.width, height: canvasSize.height }}>
+    <div className={`relative text-foreground ${className}`} style={{ width: canvasSize.width, height: canvasSize.height }}>
       <canvas
         ref={canvasRef}
         width={canvasSize.width}
@@ -467,7 +475,7 @@ export function OntologyGraph({ ontology, className = '', onEntityClick, selecte
         className="w-full h-full"
       />
       {nodeCount === 0 && (
-        <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-sm">
+        <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-sm">
           暂无实体数据
         </div>
       )}

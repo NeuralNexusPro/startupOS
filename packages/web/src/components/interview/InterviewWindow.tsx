@@ -85,14 +85,14 @@ function InterviewHeader({ mode, onClose, projectName, projectId, ontologyId }: 
   };
 
   return (
-    <div className="native-drag-region flex items-center justify-between px-5 py-3 border-b border-white/20 shrink-0">
+    <div className="native-drag-region flex items-center justify-between px-5 py-3 border-b border-border bg-muted/40 shrink-0">
       <div className="flex items-center gap-3">
         <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
           <span className="text-sm font-bold text-primary">O</span>
         </div>
         <div>
-          <h1 className="text-sm font-semibold text-gray-900">{projectName ? `${projectName} · 访谈` : '项目访谈'}</h1>
-          <p className="text-xs text-gray-500">Oracle · 业务建模助手</p>
+          <h1 className="text-sm font-semibold text-foreground">{projectName ? `${projectName} · 访谈` : '项目访谈'}</h1>
+          <p className="text-xs text-muted-foreground">Oracle · 业务建模助手</p>
         </div>
       </div>
       <div className="native-no-drag flex items-center gap-2">
@@ -103,7 +103,7 @@ function InterviewHeader({ mode, onClose, projectName, projectId, ontologyId }: 
           <>
             <button
               onClick={handleOpenProjectWorkspace}
-              className="p-1.5 rounded-lg hover:bg-white/20 transition-colors text-gray-500 hover:text-gray-900"
+              className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
               aria-label="打开项目管理"
               title="打开项目管理"
             >
@@ -111,7 +111,7 @@ function InterviewHeader({ mode, onClose, projectName, projectId, ontologyId }: 
             </button>
             <button
               onClick={handleOpenFileWorkspace}
-              className="p-1.5 rounded-lg hover:bg-white/20 transition-colors text-gray-500 hover:text-gray-900"
+              className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
               aria-label="打开文件工作区"
               title="打开文件工作区"
             >
@@ -122,7 +122,7 @@ function InterviewHeader({ mode, onClose, projectName, projectId, ontologyId }: 
         {onClose && (
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-white/20 transition-colors text-gray-500 hover:text-gray-900"
+            className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
             aria-label="关闭"
           >
             <X className="w-4 h-4" />

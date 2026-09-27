@@ -41,8 +41,8 @@ function PhaseBadge({ mode }: { mode: string }) {
 
 function PanelHeader({ mode }: { mode: string }) {
   return (
-    <div className="flex items-center justify-between px-5 py-3 border-b border-white/20 shrink-0">
-      <span className="text-sm font-semibold text-gray-900">业务模型</span>
+    <div className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">
+      <span className="text-sm font-semibold text-foreground">业务模型</span>
       <PhaseBadge mode={mode} />
     </div>
   );
@@ -84,7 +84,7 @@ export function ArtifactDisplayPanel({
     activeTab,
   });
   return (
-    <div className="flex flex-col h-full bg-transparent">
+    <div className="flex flex-col h-full bg-background text-foreground">
       <PanelHeader mode={mode} />
       <div className="flex-1 overflow-y-auto">
         {mode === 'empty' && <EmptyState legacyMigrationRequired={legacyMigrationRequired} />}
@@ -108,11 +108,11 @@ export function ArtifactDisplayPanel({
 
 function EmptyState({ legacyMigrationRequired }: { legacyMigrationRequired: boolean }) {
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-4 p-8 text-gray-500">
+    <div className="flex flex-col items-center justify-center h-full gap-4 p-8 text-muted-foreground">
       <EmptyIllustration />
       <div className="text-center">
-        <p className="text-sm font-medium text-gray-900 mb-1">{legacyMigrationRequired ? '此项目需要迁移本体' : '本体将在这里生成'}</p>
-        <p className="text-xs text-gray-500 leading-relaxed">
+        <p className="text-sm font-medium text-foreground mb-1">{legacyMigrationRequired ? '此项目需要迁移本体' : '本体将在这里生成'}</p>
+        <p className="text-xs text-muted-foreground leading-relaxed">
           {legacyMigrationRequired ? '旧项目保持只读，请先通过显式迁移入口完成迁移。' : '通过左侧对话，Oracle 将实时构建项目本体。'}
         </p>
       </div>
@@ -130,32 +130,32 @@ function CollectingState({ ontology, onEntityClick, selectedEntity }: {
   return (
     <div className="p-5 h-full flex flex-col">
       <div className="flex items-center gap-2 mb-4 shrink-0">
-        <span className="text-xs text-gray-500">正在从对话中提取业务概念</span>
-        <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-primary/10 text-gray-700 border border-primary/20 animate-pulse">
+        <span className="text-xs text-muted-foreground">正在从对话中提取业务概念</span>
+        <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 animate-pulse">
           正在分析...
         </span>
       </div>
 
       {/* 图谱视图 */}
-      <div className="flex-1 min-h-[400px] bg-white/30 rounded-xl border border-white/40 overflow-hidden">
+      <div className="flex-1 min-h-[400px] bg-card/60 rounded-xl border border-border overflow-hidden">
         <OntologyGraph ontology={ontology} onEntityClick={onEntityClick} selectedEntity={selectedEntity} />
       </div>
 
       {/* 实体列表 */}
       {entities.length > 0 && (
         <div className="mt-4 space-y-2 shrink-0">
-          <p className="text-xs text-gray-500 font-medium">已识别的实体 ({entities.length})</p>
+          <p className="text-xs text-muted-foreground font-medium">已识别的实体 ({entities.length})</p>
           {entities.slice(0, 5).map((node) => (
             <EntityCard key={node.id} node={node} compact />
           ))}
           {entities.length > 5 && (
-            <p className="text-xs text-gray-400">... 还有 {entities.length - 5} 个实体</p>
+            <p className="text-xs text-muted-foreground/80">... 还有 {entities.length - 5} 个实体</p>
           )}
         </div>
       )}
 
       {entities.length === 0 && (
-        <div className="text-xs text-gray-500 text-center py-8">
+        <div className="text-xs text-muted-foreground text-center py-8">
           等待 Oracle 识别业务实体...
         </div>
       )}
@@ -172,25 +172,25 @@ function EntityCard({ node, compact = false, selectedEntity }: { node: OntologyN
     children: node.children
   });
   return (
-    <div className={`bg-white/60 border border-white/40 rounded-lg overflow-hidden border-l-2 border-l-primary transition-all ${
+    <div className={`bg-card/70 border border-border rounded-lg overflow-hidden border-l-2 border-l-primary transition-all ${
       selectedEntity === node.name ? 'ring-2 ring-primary ring-offset-2' : ''
     } ${compact ? 'px-3 py-2' : 'px-4 py-3'}`}>
-      <p className={`text-sm font-medium text-gray-900 ${compact ? 'text-xs' : ''}`}>{node.name}</p>
+      <p className={`text-sm font-medium text-foreground ${compact ? 'text-xs' : ''}`}>{node.name}</p>
       {!compact && node.description && (
-        <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{node.description}</p>
+        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{node.description}</p>
       )}
       {props.length > 0 && (
         <div className={`flex flex-wrap gap-1 ${compact ? 'mt-1' : 'mt-2'}`}>
           {props.slice(0, compact ? 2 : undefined).map((p) => (
             <span
               key={p.id}
-              className="text-xs px-2 py-0.5 rounded bg-white/40 text-gray-600 border border-white/40"
+              className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground border border-border"
             >
               {p.name}
             </span>
           ))}
           {compact && props.length > 2 && (
-            <span className="text-xs text-gray-400">+{props.length - 2}</span>
+            <span className="text-xs text-muted-foreground/80">+{props.length - 2}</span>
           )}
         </div>
       )}
@@ -206,7 +206,7 @@ function GeneratingState({ message }: { message: string }) {
         <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-primary animate-spin" />
         <div className="absolute inset-2 rounded-full border border-primary/10 animate-pulse" />
       </div>
-      <p className="text-sm text-gray-900 text-center">{message}</p>
+      <p className="text-sm text-foreground text-center">{message}</p>
     </div>
   );
 }
@@ -245,7 +245,7 @@ function PreviewState({ ontology, onCreateProject, isCreatingProject, onEntityCl
   return (
     <div className="flex flex-col h-full">
       {/* Tabs */}
-      <div className="flex border-b border-white/20 px-5 shrink-0">
+      <div className="flex border-b border-border px-5 shrink-0">
         {TABS.map((tab) => (
           <button
             key={tab}
@@ -253,7 +253,7 @@ function PreviewState({ ontology, onCreateProject, isCreatingProject, onEntityCl
             className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
               localActiveTab === tab
                 ? 'border-primary text-primary'
-                : 'border-transparent text-gray-500 hover:text-gray-900'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
             {tab}
@@ -283,7 +283,7 @@ function PreviewState({ ontology, onCreateProject, isCreatingProject, onEntityCl
               <EntityCard key={node.id} node={node} selectedEntity={selectedEntity} />
             ))}
             {entities.length === 0 && (
-              <p className="text-xs text-gray-500 text-center py-8">暂无实体</p>
+              <p className="text-xs text-muted-foreground text-center py-8">暂无实体</p>
             )}
           </div>
         )}
@@ -294,7 +294,7 @@ function PreviewState({ ontology, onCreateProject, isCreatingProject, onEntityCl
               <RelationshipCard key={node.id} node={node} />
             ))}
             {relationships.length === 0 && (
-              <p className="text-xs text-gray-500 text-center py-8">暂无关系</p>
+              <p className="text-xs text-muted-foreground text-center py-8">暂无关系</p>
             )}
           </div>
         )}
@@ -305,7 +305,7 @@ function PreviewState({ ontology, onCreateProject, isCreatingProject, onEntityCl
               <RuleCard key={node.id} node={node} />
             ))}
             {rules.length === 0 && (
-              <p className="text-xs text-gray-500 text-center py-8">暂无规则</p>
+              <p className="text-xs text-muted-foreground text-center py-8">暂无规则</p>
             )}
           </div>
         )}
@@ -313,7 +313,7 @@ function PreviewState({ ontology, onCreateProject, isCreatingProject, onEntityCl
 
       {/* Create Project Button */}
       {onCreateProject && (
-        <div className="border-t border-white/20 px-5 py-3 shrink-0">
+        <div className="border-t border-border px-5 py-3 shrink-0">
           <button
             onClick={onCreateProject}
             disabled={isCreatingProject}
@@ -341,19 +341,19 @@ function RelationshipCard({ node }: { node: OntologyNode }) {
   const cardinality = node.description?.match(/\(([^)]+)\)/)?.[1];
 
   return (
-    <div className="bg-white/60 border border-white/40 rounded-lg px-4 py-3 hover:border-white/60 transition-colors">
+    <div className="bg-card/70 border border-border rounded-lg px-4 py-3 hover:border-primary/40 transition-colors">
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-sm text-gray-900 font-medium">{from}</span>
-        <span className="text-gray-500 text-xs">→</span>
-        <span className="text-sm text-gray-900 font-medium">{to}</span>
+        <span className="text-sm text-foreground font-medium">{from}</span>
+        <span className="text-muted-foreground text-xs">→</span>
+        <span className="text-sm text-foreground font-medium">{to}</span>
         {cardinality && (
-          <span className="ml-auto text-xs px-2 py-0.5 rounded bg-white/40 text-gray-600 border border-white/40">
+          <span className="ml-auto text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground border border-border">
             {cardinality}
           </span>
         )}
       </div>
       {node.description && (
-        <p className="text-xs text-gray-500 mt-1">{node.description}</p>
+        <p className="text-xs text-muted-foreground mt-1">{node.description}</p>
       )}
     </div>
   );
@@ -361,10 +361,10 @@ function RelationshipCard({ node }: { node: OntologyNode }) {
 
 function RuleCard({ node }: { node: OntologyNode }) {
   return (
-    <div className="bg-white/60 border border-white/40 rounded-lg px-4 py-3 hover:border-white/60 transition-colors">
-      <p className="text-sm font-medium text-gray-900">{node.name}</p>
+    <div className="bg-card/70 border border-border rounded-lg px-4 py-3 hover:border-primary/40 transition-colors">
+      <p className="text-sm font-medium text-foreground">{node.name}</p>
       {node.description && (
-        <p className="text-xs text-gray-500 mt-0.5">{node.description}</p>
+        <p className="text-xs text-muted-foreground mt-0.5">{node.description}</p>
       )}
     </div>
   );

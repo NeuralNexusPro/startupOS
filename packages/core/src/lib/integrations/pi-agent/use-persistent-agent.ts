@@ -67,6 +67,10 @@ export function usePersistentAgent(projectId: string, llmConfig?: LlmConfig): Us
   const abortingRef = useRef(false); // 正在中止，等待服务端确认
   const startedRef = useRef(false); // Prevent double-start from StrictMode
   const initTimestamp = useRef(0);  // Unique ID per hook instance
+  // React state updates are asynchronous. Keep a synchronous queue as the source
+  // of truth so a second submit cannot race an in-flight prompt.
+  const pendingMessagesRef = useRef<string[]>([]);
+  const isSendingRef = useRef(false);
   const streamSchedulersRef = useRef(new Map<string, {
     content: string;
     scheduler: StreamRenderScheduler;
@@ -223,93 +227,104 @@ export function usePersistentAgent(projectId: string, llmConfig?: LlmConfig): Us
   }, [finalizeStream, getStreamState]);
 
   const sendMessage = useCallback(async (content: string) => {
-    if (!isReady || isThinking) return;
+    if (!isReady) return;
 
-    // 等待正在进行的 abort 完成（最多 3 秒）
-    if (abortingRef.current) {
-      const deadline = Date.now() + 3000;
-      while (abortingRef.current && Date.now() < deadline) {
-        await new Promise(r => setTimeout(r, 100));
-      }
-    }
-
-    // 添加用户消息
-    const userMsg: AgentMessage = {
-      role: 'user',
-      content,
-      timestamp: Date.now(),
-    };
-    setMessages(prev => [...prev, userMsg]);
-    setIsThinking(true);
-    setToolExecutions([]); // 清空上一轮工具执行记录
-
-    // 添加占位 assistant 消息（流式）
-    const assistantId = `assistant-${Date.now()}`;
-    setMessages(prev => [...prev, {
-      id: assistantId,
-      role: 'assistant',
-      content: '',
-      timestamp: Date.now(),
-      isStreaming: true,
-    }]);
-
-    abortRef.current = new AbortController();
+    pendingMessagesRef.current.push(content);
+    if (isSendingRef.current) return;
+    isSendingRef.current = true;
 
     try {
-      const res = await sendProjectAgentMessage({
-        projectId,
-        content,
-        sessionId: `session-${projectId}`,
-        llmConfig,
-      }, {
-        onEvent: (event) => processStreamEvent(event, assistantId),
-        onDone: () => {
-          void finalizeStream(assistantId).then(() => {
+      let nextContent = pendingMessagesRef.current.shift();
+      while (nextContent !== undefined) {
+        // 等待正在进行的 abort 完成（最多 3 秒）
+        if (abortingRef.current) {
+          const deadline = Date.now() + 3000;
+          while (abortingRef.current && Date.now() < deadline) {
+            await new Promise(r => setTimeout(r, 100));
+          }
+        }
+
+        const userMsg: AgentMessage = {
+          role: 'user',
+          content: nextContent,
+          timestamp: Date.now(),
+        };
+        setMessages(prev => [...prev, userMsg]);
+        setIsThinking(true);
+        setToolExecutions([]);
+
+        const assistantId = `assistant-${Date.now()}`;
+        setMessages(prev => [...prev, {
+          id: assistantId,
+          role: 'assistant',
+          content: '',
+          timestamp: Date.now(),
+          isStreaming: true,
+        }]);
+
+        abortRef.current = new AbortController();
+
+        try {
+          const res = await sendProjectAgentMessage({
+            projectId,
+            content: nextContent,
+            sessionId: `session-${projectId}`,
+            llmConfig,
+          }, {
+            onEvent: (event) => processStreamEvent(event, assistantId),
+            onDone: () => {
+              void finalizeStream(assistantId).then(() => {
+                setMessages(prev => prev.map(m =>
+                  m.id === assistantId && m.isStreaming
+                    ? { ...m, isStreaming: false }
+                    : m
+                ));
+                setIsThinking(false);
+                abortRef.current = null;
+              });
+            },
+            onError: (error) => {
+              cancelStream(assistantId);
+              setMessages(prev => prev.map(m =>
+                m.id === assistantId
+                  ? { ...m, content: m.content || `[错误: ${error.message}]`, isStreaming: false }
+                  : m
+              ));
+              setIsThinking(false);
+              abortRef.current = null;
+            },
+          });
+
+          if (!res.success) {
+            cancelStream(assistantId);
             setMessages(prev => prev.map(m =>
-              m.id === assistantId && m.isStreaming
-                ? { ...m, isStreaming: false }
+              m.id === assistantId
+                ? { ...m, content: `[错误: ${res.error?.message || 'Unknown error'}]`, isStreaming: false }
                 : m
             ));
             setIsThinking(false);
             abortRef.current = null;
-          });
-        },
-        onError: (error) => {
+          }
+        } catch (e: unknown) {
           cancelStream(assistantId);
-          setMessages(prev => prev.map(m =>
-            m.id === assistantId
-              ? { ...m, content: m.content || `[错误: ${error.message}]`, isStreaming: false }
-              : m
-          ));
+          if (e instanceof Error && e.name !== 'AbortError') {
+            console.error('[usePersistentAgent] Error sending message:', e);
+            setMessages(prev => prev.map(m =>
+              m.id === assistantId
+                ? { ...m, content: '[发送失败，请重试]', isStreaming: false }
+                : m
+            ));
+          }
           setIsThinking(false);
           abortRef.current = null;
-        },
-      });
+        }
 
-      if (!res.success) {
-        cancelStream(assistantId);
-        setMessages(prev => prev.map(m =>
-          m.id === assistantId
-            ? { ...m, content: `[错误: ${res.error?.message || 'Unknown error'}]`, isStreaming: false }
-            : m
-        ));
-        setIsThinking(false);
-        abortRef.current = null;
+        nextContent = pendingMessagesRef.current.shift();
       }
-    } catch (e: unknown) {
-      cancelStream(assistantId);
-      if (e instanceof Error && e.name !== 'AbortError') {
-        console.error('[usePersistentAgent] Error sending message:', e);
-        setMessages(prev => prev.map(m =>
-          m.id === assistantId
-            ? { ...m, content: '[发送失败，请重试]', isStreaming: false }
-            : m
-        ));
-      }
-      setIsThinking(false);
-      abortRef.current = null;
+    } finally {
+      isSendingRef.current = false;
     }
-  }, [projectId, isReady, isThinking, llmConfig, processStreamEvent, finalizeStream, cancelStream]);
+  }, [projectId, isReady, llmConfig, processStreamEvent, finalizeStream, cancelStream]);
 
   const triggerGreeting = useCallback(async () => {
     if (!isReady || isThinking) return;

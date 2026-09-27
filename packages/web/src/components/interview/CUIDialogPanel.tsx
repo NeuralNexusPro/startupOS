@@ -154,7 +154,7 @@ export function CUIDialogPanel({
   };
 
   return (
-    <div className="flex min-h-0 flex-col h-full">
+    <div className="flex min-h-0 flex-col h-full bg-background text-foreground">
       {/* Message list */}
       <ChatMessageList
         messages={messages}
@@ -166,7 +166,7 @@ export function CUIDialogPanel({
         showTimestamps
         emptyState={
           <div className="flex items-center justify-center h-full">
-            <p className="text-sm text-gray-500">等待 Oracle 开始访谈...</p>
+            <p className="text-sm text-muted-foreground">等待 Oracle 开始访谈...</p>
           </div>
         }
       />
