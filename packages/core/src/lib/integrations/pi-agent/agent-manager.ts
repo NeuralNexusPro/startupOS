@@ -18,6 +18,7 @@ import type { AgentSession } from '../../../types/agent';
 import type { MemoryOwnershipContext, ObservationContext } from '../../shared/cognitive/cognition-types';
 import {
   AgentTaskRuntimeCoordinator,
+  type ControlAgentTaskRequestV1,
   type AgentTaskRuntimeSnapshotV1,
   type AgentTaskRuntimePersistenceV1,
 } from './task-runtime';
@@ -348,6 +349,21 @@ export class AgentManager {
 
   getTaskRuntime(sessionId: string): AgentTaskRuntimeCoordinator | null {
     return this.taskRuntimes.get(sessionId) ?? null;
+  }
+
+  getTaskRuntimeSnapshot(sessionId: string): AgentTaskRuntimeSnapshotV1 | null {
+    return this.getTaskRuntime(sessionId)?.getSnapshot() ?? null;
+  }
+
+  async controlTaskRuntime(
+    sessionId: string,
+    request: ControlAgentTaskRequestV1,
+  ): Promise<AgentTaskRuntimeSnapshotV1> {
+    const runtime = this.getTaskRuntime(sessionId);
+    if (!runtime) {
+      throw new Error('AGENT_TASK_RUNTIME_UNAVAILABLE');
+    }
+    return runtime.controlTask(request);
   }
 
   /**

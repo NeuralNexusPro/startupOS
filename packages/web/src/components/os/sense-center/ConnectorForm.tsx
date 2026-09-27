@@ -56,6 +56,7 @@ export function ConnectorForm({
       manifests[0],
     [initial?.source, manifests, pluginId]
   );
+  const waitingForWeComAuthorization = saving && manifest?.id === 'originos.wecom' && values['officeCapabilitiesEnabled'] === true;
   useEffect(() => {
     if (!manifest) return;
     setPluginId(manifest.id);
@@ -100,8 +101,11 @@ export function ConnectorForm({
       });
       await onProvisioned?.();
       onCancel();
-    } catch {
-      setError('插件配置保存失败，请检查字段和凭据');
+    } catch (caught) {
+      const code = caught instanceof Error ? caught.message : '';
+      setError(code.includes('AUTHORIZATION')
+        ? '企业微信办公能力授权未完成，请重新保存并扫码授权'
+        : '插件配置保存失败，请检查字段和凭据');
     } finally {
       setSaving(false);
     }
@@ -159,7 +163,7 @@ export function ConnectorForm({
       )}
       <div className="flex gap-2">
         <Button type="submit" disabled={saving || !manifest}>
-          {saving ? '正在保存…' : '保存配置'}
+          {waitingForWeComAuthorization ? '等待企业微信扫码授权…' : saving ? '正在保存…' : '保存配置'}
         </Button>
         <Button type="button" variant="outline" onClick={onCancel}>
           取消

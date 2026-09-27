@@ -4,6 +4,7 @@ import { join } from "path";
 import os from "os";
 import { bashTools, __test__ } from "../bash-tools";
 import { getToolContextManager } from "../context";
+import { setChannelOfficeCapabilityFallback } from "../../channel-office-capabilities";
 
 interface ExecuteCommandDetails {
   success: boolean;
@@ -31,6 +32,7 @@ describe("execute_command shell resolution", () => {
   });
 
   afterEach(() => {
+    setChannelOfficeCapabilityFallback();
     if (originalShell === undefined) {
       delete process.env["SHELL"];
     } else {
@@ -74,6 +76,21 @@ describe("execute_command shell resolution", () => {
     expect(details.success).toBe(true);
     expect(details.stdout).toContain("__originos_shell_fallback__");
     expect(details.shell).not.toContain("originos-missing-shell");
+  });
+
+  it("blocks the global WeCom CLI while an IM connector capability is bound", async () => {
+    expect(executeCommand).toBeDefined();
+    setChannelOfficeCapabilityFallback({ discover: vi.fn(), invoke: vi.fn() });
+
+    const result = await executeCommand!.execute("scoped-wecom", {
+      command: "wecom-cli calendar schedules list --json '{}'",
+      workingDirectory: tmpRoot,
+      timeout: 10000,
+    });
+    const details = result.details as ExecuteCommandDetails;
+
+    expect(details.success).toBe(false);
+    expect(details.error).toContain("discover_im_capabilities / invoke_im_capability");
   });
 });
 

@@ -43,6 +43,7 @@ export * from "./session-store";
 // ============================================================================
 
 export type { AgentManagerConfig, AgentTaskRuntimeBindingOptions } from "./agent-manager";
+export { AgentManager } from "./agent-manager";
 
 // ============================================================================
 // Skill Evolution (服务端)

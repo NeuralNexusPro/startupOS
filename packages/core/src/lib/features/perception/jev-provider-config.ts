@@ -46,7 +46,6 @@ export class JevProviderConfigService {
     dataRoot: string,
     private readonly options: {
       credentials?: JevCredentialPort;
-      environmentApiKey?: string;
       environment?: 'development' | 'production';
       allowDevelopmentLoopback?: boolean;
     } = {},
@@ -73,7 +72,7 @@ export class JevProviderConfigService {
       if (!this.options.credentials) throw new JevProviderConfigError('SECURE_STORAGE_UNAVAILABLE');
       secretRef = await this.options.credentials.save(apiKey);
     }
-    if (input.enabled && !this.environmentApiKey && !secretRef) throw new JevProviderConfigError('JEV_NOT_CONFIGURED');
+    if (input.enabled && !secretRef) throw new JevProviderConfigError('JEV_NOT_CONFIGURED');
     return this.summary(this.store.write({ enabled: input.enabled, baseUrl, model, ...(secretRef ? { secretRef } : {}) }).data);
   }
 
@@ -95,14 +94,9 @@ export class JevProviderConfigService {
   }
 
   private async resolveApiKeyFor(config: StoredJevProviderConfig): Promise<string> {
-    if (this.environmentApiKey) return this.environmentApiKey;
     const ref = config.secretRef;
     if (!ref || !this.options.credentials) throw new JevProviderConfigError('JEV_NOT_CONFIGURED');
     return this.options.credentials.resolve(ref);
-  }
-
-  private get environmentApiKey(): string | undefined {
-    return this.options.environmentApiKey?.trim() || undefined;
   }
 
   private read(): StoredJevProviderConfig {
@@ -112,7 +106,7 @@ export class JevProviderConfigService {
   }
 
   private summary(config: StoredJevProviderConfig): JevProviderSummary {
-    const credentialSource = this.environmentApiKey ? 'environment' : config.secretRef ? 'secure-store' : undefined;
+    const credentialSource = config.secretRef ? 'secure-store' : undefined;
     return {
       enabled: config.enabled,
       baseUrl: config.baseUrl,

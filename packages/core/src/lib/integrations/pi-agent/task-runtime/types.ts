@@ -172,3 +172,33 @@ export function isAgentTaskRuntimePersistenceV1(
 		&& Array.isArray(candidate.branchEntries)
 		&& candidate.execution?.schemaVersion === AGENT_TASK_RUNTIME_SCHEMA_VERSION;
 }
+
+
+/**
+ * Public, controlled mutation boundary for evidence created outside the Agent's
+ * normal tool loop.  Implementations must retain the current Session scope.
+ */
+export interface AgentTaskEvidenceSubmissionV1 {
+	version: 1;
+	requestId: string;
+	taskId: string;
+	stepId?: string;
+	summary: string;
+	references: readonly string[];
+	artifactRefs: readonly string[];
+	verifier: string;
+	contentHash: string;
+}
+
+export interface AgentTaskEvidenceReceiptV1 {
+	version: 1;
+	requestId: string;
+	eventId: string;
+	revisionBefore: number;
+	revisionAfter: number;
+	stateHash: string;
+}
+
+export interface AgentTaskEvidencePort {
+	recordVerifiedEvidence(input: AgentTaskEvidenceSubmissionV1): Promise<AgentTaskEvidenceReceiptV1>;
+}

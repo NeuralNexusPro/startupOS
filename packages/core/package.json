@@ -21,6 +21,7 @@
     "./lib/utils": "./src/lib/utils.ts",
     "./types": "./src/types/index.ts",
     "./lib/features/*": "./src/lib/features/*/index.ts",
+    "./lib/features/project/client": "./src/lib/features/project/client.ts",
     "./lib/features/*/types": "./src/lib/features/*/types.ts",
     "./lib/features/*/config": "./src/lib/features/*/config.ts",
     "./lib/features/*/config.*": "./src/lib/features/*/config.*",

@@ -25,6 +25,24 @@ export { subscribeToEvents, subscribeToRuntimeEvents, unsubscribeFromEvents, cli
 // Re-export — dag-runner 公共 API
 // ============================================================================
 export { executeSession, abortSession } from "./dag-runner";
+export {
+  CollaborationExecutionStore,
+  type CollaborationExecutionPort,
+  type CollaborationRunSnapshot,
+  type CollaborationWorkItem,
+  type SolutionTaskBinding,
+  type StartCollaborationRunInput,
+  type WorkItemExecutionRequest,
+  type WorkItemAttempt,
+  type WorkerReceipt,
+  type VerifierResult,
+  type EvidenceReceipt,
+  type WorkItemWorkerPort,
+  type WorkItemVerifierPort,
+  type WorkItemEvidenceSink,
+  type CollaborationExecutionDependencies,
+} from "./contract-execution";
+export { createAgentTaskEvidenceSink } from "./task-runtime-evidence-sink";
 
 // ============================================================================
 // Re-export — hitl-dispatcher 公共 API

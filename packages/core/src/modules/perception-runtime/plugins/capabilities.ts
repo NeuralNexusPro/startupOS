@@ -57,8 +57,10 @@ export interface PluginCapabilityInvocation {
 export interface PluginCapabilityProvider {
   list(context: PerceptionPluginRuntimeContext, signal: AbortSignal): Promise<PluginCapabilityCatalog>;
   authorization(context: PerceptionPluginRuntimeContext, signal: AbortSignal): Promise<PluginCapabilityAuthorization>;
+  /** Starts an interactive, connector-scoped authorization flow when the provider requires one. */
+  requestAuthorization?(context: PerceptionPluginRuntimeContext, signal: AbortSignal): Promise<PluginCapabilityAuthorization>;
   /** Use the same pinned native schema that generated inputSchema; fail closed. */
-  validate(name: string, arguments_: Record<string, JsonValue>): boolean;
+  validate(name: string, arguments_: Record<string, JsonValue>, context?: PerceptionPluginRuntimeContext): boolean;
   invoke(context: PerceptionPluginRuntimeContext, input: PluginCapabilityInvocation, authorization: PluginCapabilityAuthorization, signal: AbortSignal): Promise<JsonValue>;
 }
 /** Host policy must check actor-to-principal binding, Agent scope, and side-effect approval. */
@@ -74,6 +76,7 @@ export interface PluginCapabilityListing {
   revision: string;
   provider: string;
   providerVersion: string;
+  authorizationStatus: PluginCapabilityAuthorization['status'];
   capabilities: (Omit<PluginCapabilityDescriptor, 'inputSchema'> & { inputSchema?: Record<string, JsonValue>; availability: PluginCapabilityAvailability })[];
 }
 export interface PluginCapabilityConnectionStatus {
@@ -83,10 +86,9 @@ export interface PluginCapabilityConnectionStatus {
   providerVersion?: string;
   capabilityCount?: number;
   identityMode?: 'application' | 'user';
-  delegatedActorCount?: number;
   writeEnabled?: boolean;
 }
-interface CallRecord { digest: string; status: 'pending' | 'completed' | 'uncertain' }
+interface CallRecord { digest: string; status: 'pending' | 'completed' | 'uncertain' | 'failed'; safeCode?: string }
 interface CapabilityCache {
   pluginId: string;
   connectorId: string;
@@ -146,6 +148,23 @@ function checkedAuthorization(value: PluginCapabilityAuthorization): PluginCapab
   return parsed.data as PluginCapabilityAuthorization;
 }
 
+const CAPABILITY_SEARCH_ALIASES = [
+  ['日历', '日程', 'calendar', 'schedule'],
+  ['待办', '任务', 'todo', 'task'],
+  ['文档', 'document', 'doc'],
+  ['微盘', '网盘', 'drive', 'disk'],
+  ['会议', 'meeting'],
+  ['邮件', '邮箱', 'mail', 'email'],
+] as const;
+
+function searchTerms(keyword: string): readonly string[] {
+  const expanded = new Set<string>([keyword]);
+  for (const aliases of CAPABILITY_SEARCH_ALIASES) {
+    if (aliases.some(alias => keyword.includes(alias))) aliases.forEach(alias => expanded.add(alias));
+  }
+  return [...expanded];
+}
+
 /** One connection lifecycle. Persistent state contains no credentials, input, or result bodies. */
 export class PluginCapabilitySession {
   private readonly controller = new AbortController();
@@ -161,7 +180,8 @@ export class PluginCapabilitySession {
     const c = data ?? { pluginId: context.pluginId, connectorId: context.connectorId, calls: {} };
     if (c.pluginId !== context.pluginId || c.connectorId !== context.connectorId || !c.calls || Object.getPrototypeOf(c.calls) !== Object.prototype) throw new Error('IM_CAPABILITY_INVALID_CACHE');
     for (const [key, call] of Object.entries(c.calls)) {
-      if (!/^[a-f0-9]{64}$/.test(key) || !call || !/^[a-f0-9]{64}$/.test(call.digest) || !['pending', 'completed', 'uncertain'].includes(call.status)) throw new Error('IM_CAPABILITY_INVALID_CACHE');
+      if (!/^[a-f0-9]{64}$/.test(key) || !call || !/^[a-f0-9]{64}$/.test(call.digest) || !['pending', 'completed', 'uncertain', 'failed'].includes(call.status) ||
+        (call.safeCode !== undefined && !['IM_CAPABILITY_AUTHORIZATION_EXPIRED', 'IM_CAPABILITY_SERVICE_AUTHORIZATION_REQUIRED', 'IM_CAPABILITY_PLATFORM_REJECTED'].includes(call.safeCode))) throw new Error('IM_CAPABILITY_INVALID_CACHE');
     }
     if (c.catalog) validateCapabilityCatalog(c.catalog);
     return c;
@@ -172,6 +192,8 @@ export class PluginCapabilitySession {
 
   private async snapshot(): Promise<{ catalog: PluginCapabilityCatalog; authorization: PluginCapabilityAuthorization }> {
     this.assertOpen();
+    const initialAuthorization = checkedAuthorization(await this.provider.authorization(this.context, this.controller.signal));
+    if (initialAuthorization.status === 'needs_authorization') throw new Error('IM_CAPABILITY_AUTHORIZATION_REQUIRED');
     // Cached descriptions are for display/recovery only, never an authorization source.
     const catalog = validateCapabilityCatalog(await this.provider.list(this.context, this.controller.signal));
     const authorization = checkedAuthorization(await this.provider.authorization(this.context, this.controller.signal));
@@ -200,18 +222,36 @@ export class PluginCapabilitySession {
   async discover(actor: PluginCapabilityActor, query = '', name?: string): Promise<PluginCapabilityListing> {
     if (query.length > 256 || (name?.length ?? 0) > 192) throw new Error('IM_CAPABILITY_INVALID_INPUT');
     const { catalog, authorization } = await this.snapshot();
-    const keywords = query.toLowerCase().trim().split(/\s+/).filter(Boolean);
+    const keywords = query.toLowerCase().trim().split(/\s+/).filter(Boolean).map(searchTerms);
     // ponytail: bounded substring search; add indexing only if 2000 descriptors becomes insufficient.
-    const selected = catalog.capabilities.filter(c => name ? c.name === name : keywords.every(k => `${c.name} ${c.description}`.toLowerCase().includes(k))).slice(0, 20);
+    const selected = name
+      ? catalog.capabilities.filter(c => c.name === name)
+      : catalog.capabilities
+        .map(capability => {
+          const searchable = `${capability.name} ${capability.description}`.toLowerCase();
+          return { capability, score: keywords.filter(terms => terms.some(term => searchable.includes(term))).length };
+        })
+        .filter(({ score }) => keywords.length === 0 || score > 0)
+        .sort((left, right) => right.score - left.score || left.capability.name.localeCompare(right.capability.name))
+        .slice(0, 20)
+        .map(({ capability }) => capability);
     const capabilities = await Promise.all(selected.map(async c => {
       const { inputSchema, ...summary } = c;
       return { ...summary, ...(name ? { inputSchema } : {}), availability: await this.availability(c, authorization, actor) };
     }));
     this.assertOpen();
-    return { revision: catalog.revision, provider: catalog.provider, providerVersion: catalog.providerVersion, capabilities };
+    return { revision: catalog.revision, provider: catalog.provider, providerVersion: catalog.providerVersion,
+      authorizationStatus: authorization.status, capabilities };
   }
 
   async inspect(): Promise<Omit<PluginCapabilityConnectionStatus, 'connectorId'>> {
+    // An uninitialized connector-scoped CLI cannot fetch a catalog yet. Surface
+    // its authorization state before trying authenticated schema discovery.
+    const initialAuthorization = checkedAuthorization(await this.provider.authorization(this.context, this.controller.signal));
+    if (initialAuthorization.status !== 'authorized') {
+      return { state: initialAuthorization.status === 'needs_authorization' ? 'needs_authorization' : 'sync_failed',
+        identityMode: initialAuthorization.identityMode };
+    }
     const { catalog, authorization } = await this.snapshot();
     return {
       state: authorization.status === 'authorized' ? 'available'
@@ -230,7 +270,7 @@ export class PluginCapabilitySession {
     const { catalog, authorization } = await this.snapshot();
     const capability = catalog.capabilities.find(c => c.name === request.name);
     if (!capability || request.catalogRevision !== catalog.revision) throw new Error('IM_CAPABILITY_STALE_CATALOG');
-    if (!this.provider.validate(request.name, request.arguments)) throw new Error('IM_CAPABILITY_INVALID_INPUT');
+    if (!this.provider.validate(request.name, request.arguments, this.context)) throw new Error('IM_CAPABILITY_INVALID_INPUT');
     if (await this.availability(capability, authorization, actor, request) !== 'available') throw new Error('IM_CAPABILITY_DENIED');
     this.assertOpen();
     // Human approval may take minutes. Recheck both authorization and schema after policy returns.
@@ -242,7 +282,13 @@ export class PluginCapabilitySession {
       this.assertOpen();
       const cache = this.readCache(data);
       const previous = cache.calls[key];
-      if (previous) throw new Error(previous?.digest !== digest ? 'IM_CAPABILITY_CALL_CONFLICT' : previous.status === 'completed' ? 'IM_CAPABILITY_ALREADY_COMPLETED' : 'IM_CAPABILITY_RESULT_UNCERTAIN');
+      if (previous) throw new Error(previous.digest !== digest ? 'IM_CAPABILITY_CALL_CONFLICT'
+        : previous.status === 'completed' ? 'IM_CAPABILITY_ALREADY_COMPLETED'
+          : previous.status === 'failed'
+            ? previous.safeCode === 'IM_CAPABILITY_AUTHORIZATION_EXPIRED'
+              ? 'IM_CAPABILITY_SERVICE_AUTHORIZATION_REQUIRED'
+              : previous.safeCode ?? 'IM_CAPABILITY_PLATFORM_REJECTED'
+            : 'IM_CAPABILITY_RESULT_UNCERTAIN');
       // ponytail: keep 10000 durable receipts without eviction; add archival before raising this ceiling.
       // Reserve durably before any platform write. Never replay a pending/uncertain call after restart.
       if (Object.keys(cache.calls).length >= 10000) throw new Error('IM_CAPABILITY_LEDGER_FULL');
@@ -255,10 +301,15 @@ export class PluginCapabilitySession {
       await this.store.updateAsync(data => { const cache = this.readCache(data); const call = cache.calls[key];
         if (!call) throw new Error('IM_CAPABILITY_INVALID_CACHE'); call.status = 'completed'; return cache; });
       return result;
-    } catch {
+    } catch (error) {
+      const safeCode = error instanceof Error && ['IM_CAPABILITY_AUTHORIZATION_EXPIRED', 'IM_CAPABILITY_SERVICE_AUTHORIZATION_REQUIRED', 'IM_CAPABILITY_PLATFORM_REJECTED'].includes(error.message)
+        ? error.message : undefined;
       await this.store.updateAsync(data => { const cache = this.readCache(data); const call = cache.calls[key];
-        if (!call) throw new Error('IM_CAPABILITY_INVALID_CACHE'); call.status = 'uncertain'; return cache; });
-      throw new Error('IM_CAPABILITY_RESULT_UNCERTAIN');
+        if (!call) throw new Error('IM_CAPABILITY_INVALID_CACHE');
+        call.status = safeCode ? 'failed' : 'uncertain';
+        if (safeCode) call.safeCode = safeCode;
+        return cache; });
+      throw new Error(safeCode ?? 'IM_CAPABILITY_RESULT_UNCERTAIN');
     }
   }
 }

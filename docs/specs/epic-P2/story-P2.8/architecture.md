@@ -29,17 +29,19 @@ Workflow/Team、拓扑和契约编译属于 solution feature。collaboration run
 
 ```typescript
 export interface SolutionExecutionContract {
-  schemaVersion: '1.0';
+  schemaVersion: '1.0.0';
   contractId: string;
+  projectId: string;
   solutionId: string;
   solutionVersion: string;
-  status: 'approved' | 'revoked';
+  status: 'approved';
   modelingDimension: 'workflow' | 'team';
   topology: CollaborationTopologyContract;
-  agents: SolutionAgentContract[];
-  skills: SolutionSkillContract[];
-  verification: VerificationPolicy[];
-  hitl: HitlPolicy[];
+  agents: CanonicalAgentContract[];
+  skills: CanonicalSkillContract[];
+  semanticContext: SemanticContextContract;
+  verification: readonly VerificationPolicy[];
+  hitl: readonly HitlPolicy[];
   permissions: PermissionPolicy;
   budget: RuntimeBudgetPolicy;
   createdAt: string;
@@ -51,6 +53,8 @@ export interface SolutionExecutionContract {
 - `topology` 是已编译、冻结的节点和依赖关系。
 - `verification` 定义执行结果如何产生可接受 evidence。
 - `contractHash` 基于规范化契约正文计算，不包含 hash 字段本身。
+- `status` 固定为 `approved`；撤销是独立的 `SolutionExecutionContractRevocation`，不修改冻结正文或 hash。
+- `topology.nodes[].contractRef` 精确引用 `agents[].agentId` 或 `skills[].skillId`；Agent/Skill 语义契约复用 ontology feature 公共类型，不复制第二套 schema。
 
 ## 编译管线
 
@@ -96,14 +100,15 @@ export interface SolutionExecutionContractPort {
   load(input: {
     solutionId: string;
     solutionVersion: string;
-  }): Promise<SolutionExecutionContract>;
+  }): Promise<PublishedSolutionExecutionContract | null>;
   verifyIntegrity(
-    contract: SolutionExecutionContract,
+    contract: SolutionExecutionContract
   ): Promise<ContractIntegrityResult>;
 }
 ```
 
 发布端口属于 solution feature；读取端口作为公共边界供 Story 9.42 注入使用。
+当前冻结的公共边界位于 `@originos/core/lib/features/solution`。读取结果同时返回冻结正文和可选撤销记录；runtime 必须先校验 hash，再检查撤销记录，且不得回退到 latest。
 
 ## 持久化
 
@@ -167,9 +172,10 @@ collaboration-runtime
 
 ## 变更历史
 
-| 日期 | 变更 |
-|------|------|
-| 2026-07-28 | 初始架构设计 |
+| 日期       | 变更                                                                |
+| ---------- | ------------------------------------------------------------------- |
+| 2026-07-28 | 初始架构设计                                                        |
+| 2026-09-20 | 冻结 1.0.0 公共 schema；统一使用 contractId，撤销状态移出不可变正文 |
 
 ## 2026-09-14：项目语义执行规划补充
 

@@ -1,5 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+import type { IpcResponse } from '@originos/core/lib/integrations/electron/ipc-protocol';
+
+import { IPC_CHANNELS } from './ipc-protocol';
+
 type IpcListener = (...args: unknown[]) => void;
 
 function sanitizeIpcArg(value: unknown): unknown {
@@ -41,6 +45,14 @@ const electronApi = {
       return () => {
         ipcRenderer.removeListener(channel, wrappedListener);
       };
+    },
+  },
+  ontologyCrossPackage: {
+    invoke(request: unknown): Promise<IpcResponse> {
+      return ipcRenderer.invoke(
+        IPC_CHANNELS.ONTOLOGY_CROSS_PACKAGE_INVOKE,
+        sanitizeIpcArg(request)
+      ) as Promise<IpcResponse>;
     },
   },
 };

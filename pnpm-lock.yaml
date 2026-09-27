@@ -298,6 +298,9 @@ importers:
       '@larksuiteoapi/node-sdk':
         specifier: 1.73.3
         version: 1.73.3
+      '@originos/core':
+        specifier: workspace:*
+        version: link:../core
       '@originos/perception-plugin-dingtalk':
         specifier: workspace:*
         version: link:../perception-plugins/dingtalk

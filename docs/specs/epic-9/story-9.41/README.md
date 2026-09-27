@@ -1,11 +1,11 @@
 # Story 9.41: Agent/RoleAgent 任务入口与 pi-tasks 直接执行
 
 **Epic:** 9 - Multi-Agent 协作运行时
-**状态:** Ready（A-02 公共边界已通过，产品实现待独立 Proposal）
+**状态:** Implemented（5.2 verification evidence captured）
 **优先级:** High
 **Owner:** Product / Agent Runtime
 **创建日期:** 2026-07-28
-**最后更新:** 2026-08-01
+**最后更新:** 2026-09-22
 
 ## User Story
 
@@ -55,21 +55,21 @@
 受控 Runtime patch、`@originos/pi-tasks` 与
 `@originos/pi-agent-adapter/task-runtime` 公共边界，见
 [ADR-010](../../../architecture/decisions/ADR-010-controlled-pi-task-runtime-boundary.md)。
-Story 已解除集成阻塞，但任务入口、Task 卡片、completion policy、lease、受控续跑和
-恢复仍未实现，必须通过后续独立 Proposal 推进。
+Story 9.41 的任务入口、Task 卡片、completion policy、lease、受控续跑和恢复均已实现，
+并通过 OpenSpec 5.2 的自动化验证矩阵；Windows x64 与 macOS 真包验证仍待平台证据。
 
 ## 简要验收标准
 
-- [ ] Agent 与 RoleAgent 复用同一任务入口和消息区域任务卡片。
-- [ ] 草稿不会创建 Task、发送模型消息或改变当前输入内容。
-- [ ] 提交先原子保留 task planning lease，再由当前 Session 幂等创建一个 `pi-tasks` Task。
-- [ ] 正式 Task 必须包含 ordered steps 和可验证 acceptance criteria。
-- [ ] Task planning/运行时绕过 Chat Completion Guard；普通聊天不加载 Task Runtime。
-- [ ] Task Step、Criterion、Evidence 和 Blocker 能以有界投影映射到任务卡片。
-- [ ] 未满足 evidence gate 时，assistant `stop`、工具 success 或自报完成不能结束任务。
-- [ ] 无 pending Step 但 evidence 不足时进入 verification，而不是停止或死循环。
-- [ ] blocker、用户停止、预算耗尽和不可恢复错误都能在前台显示原因。
-- [ ] reload/resume 后恢复同一 Pi branch 和 Task，不重复创建、续跑或登记 evidence。
+- [x] Agent 与 RoleAgent 复用同一任务入口和消息区域任务卡片。
+- [x] 草稿不会创建 Task、发送模型消息或改变当前输入内容。
+- [x] 提交先原子保留 task planning lease，再由当前 Session 幂等创建一个 `pi-tasks` Task。
+- [x] 正式 Task 必须包含 ordered steps 和可验证 acceptance criteria。
+- [x] Task planning/运行时绕过 Chat Completion Guard；普通聊天不加载 Task Runtime。
+- [x] Task Step、Criterion、Evidence 和 Blocker 能以有界投影映射到任务卡片。
+- [x] 未满足 evidence gate 时，assistant `stop`、工具 success 或自报完成不能结束任务。
+- [x] 无 pending Step 但 evidence 不足时进入 verification，而不是停止或死循环。
+- [x] blocker、用户停止、预算耗尽和不可恢复错误都能在前台显示原因。
+- [x] reload/resume 后恢复同一 Pi branch 和 Task，不重复创建、续跑或登记 evidence。
 
 ## 文档导航
 
@@ -99,6 +99,7 @@ Story 已解除集成阻塞，但任务入口、Task 卡片、completion policy�
 | 2026-07-29 | 根据审查修订 completion policy、创建协议、公开集成边界、持久化恢复和 evidence gate |
 | 2026-07-29 | A-01 判定 Rejected，Story 状态调整为 Blocked |
 | 2026-08-01 | A-02 公共边界通过，ADR-010 取代 ADR-009，Story 调整为 Ready |
+| 2026-09-22 | OpenSpec 5.2 补齐自动化验证证据；跨平台包验证仍待平台证据 |
 
 ## 9.41-T2 (2026-09-13)
 

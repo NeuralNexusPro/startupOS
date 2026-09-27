@@ -169,6 +169,13 @@ pnpm --filter @originos/desktop test
 
 Goal 输出必须包含测试命令、AC/TC evidence、人工验证步骤和剩余风险。
 
+## 2026-09-22 T1 核心验收证据
+
+- `pnpm exec vitest run --config vitest.config.ts src/modules/collaboration-runtime/facade/__tests__/contract-execution.test.ts`：3/3 通过，覆盖 approved 精确绑定、contractId/hash 门控、撤销拒绝、契约内 WorkItem DAG、frozen snapshot 恢复和 pause/resume/cancel。
+- `pnpm exec tsc -p tsconfig.json --noEmit`：通过。
+- `pnpm lint:boundaries`：907 个生产文件，0 条诊断。
+- Worker 执行、Verifier、Evidence Bridge、HITL、Attempt/lease fencing 和故障注入仍未实施，不满足完整 testing Goal。
+
 ## 退出标准
 
 - runtime 无 Workflow 执行、生成、编辑或自动选择入口。
@@ -177,6 +184,14 @@ Goal 输出必须包含测试命令、AC/TC evidence、人工验证步骤和剩�
 - 不存在第二套用户 Task 状态。
 - Evidence、版本隔离、HITL 和恢复测试通过。
 - lint、core 回归和 package smoke 通过。
+
+## 2026-09-24 Core 验证证据
+
+- `pnpm --filter @originos/core exec vitest run src/modules/collaboration-runtime/facade/__tests__/contract-execution.test.ts src/lib/integrations/pi-agent/task-runtime/__tests__/coordinator.test.ts`：2 个文件、27 项通过。
+- `pnpm --filter @originos/core exec tsc -p tsconfig.json --noEmit`：通过。
+- `pnpm lint:boundaries`：扫描 912 个生产文件，0 条诊断；`node scripts/check-architecture-boundaries.cjs --self-test`：43 个导入用例 × 2 个 CWD 通过。
+- 已覆盖 TC-U1–U6 的契约、精确版本、binding、状态隔离、Evidence 幂等和 Verifier fail-closed 核心路径；已覆盖 TC-I1、I2、I4、I6、I7、I9、I10 的 Core ledger 部分。
+- 已验证 `createAgentTaskEvidenceSink()` 经受控 `task_evidence` 命令提交 Evidence；TC-I5 的真实 Worker 产物和 Verifier、TC-I8 HITL、完整 Agent Worker 及 Windows/macOS package smoke 尚未执行，不能据此标记 Story 完成。
 
 ## 变更历史
 

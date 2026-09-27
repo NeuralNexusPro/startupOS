@@ -1,27 +1,20 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@originos/core/lib/paths', () => ({ getDataRoot: () => '/tmp/originos-jev-provider-route-test' }));
 
 import { GET, PUT } from './route';
 
-const originalApiKey = process.env['TYPESAFE_API_KEY'];
-afterEach(() => {
-  if (originalApiKey === undefined) delete process.env['TYPESAFE_API_KEY'];
-  else process.env['TYPESAFE_API_KEY'] = originalApiKey;
-});
-
 describe('Jev Provider API route', () => {
-  it('returns only the environment credential summary', async () => {
-    process.env['TYPESAFE_API_KEY'] = 'route-secret-marker';
+  it('returns only a safe credential summary', async () => {
     const response = await GET();
     const body = await response.json();
 
-    expect(body.data).toMatchObject({ credentialConfigured: true, credentialSource: 'environment' });
+    expect(body.data).toMatchObject({ credentialConfigured: false });
+    expect(body.data).not.toHaveProperty('credentialSource');
     expect(JSON.stringify(body)).not.toMatch(/route-secret-marker|secretRef|ciphertext/i);
   });
 
   it('rejects browser credential storage without echoing the key', async () => {
-    delete process.env['TYPESAFE_API_KEY'];
     const response = await PUT(new Request('http://localhost/api/jev-provider', {
       method: 'PUT',
       body: JSON.stringify({ enabled: true, baseUrl: 'https://api.typesafe.ai', model: 'jev-latest', apiKey: 'route-secret-marker' }),

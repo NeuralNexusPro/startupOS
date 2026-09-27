@@ -126,4 +126,22 @@ describe('PerceptionManagementFacade', () => {
       ruleTriggers: [expect.objectContaining({ ruleId: 'rule-1', matchedAt: now, result: expect.objectContaining({ status: 'completed', sessionId: 'session-1', summary: '已完成邮件分析' }) })],
     })]);
   });
+
+  it('exposes a feedback event as a continuation of its pending decision', async () => {
+    const dataRoot = root();
+    const facade = new PerceptionManagementFacade(dataRoot, new PerceptionRetryService(new PerceptionRetryStore(dataRoot), new PerceptionDeadLetterStore(dataRoot)), { exists: async () => true });
+    const now = '2026-09-24T08:00:00.000Z';
+    const event = { schemaVersion: '1.0' as const, id: 'feedback-1', source: 'wecom' as const, sourceEventId: 'message-2', connectorId: 'wecom-main', type: 'message.received' as const, occurredAt: now, receivedAt: now, actor: { externalId: 'user-1' }, content: { text: '让鹰眼处理' }, provenance: { rawPayloadRef: 'plugin-state://reply-2' } };
+    new PerceptionEventStore(dataRoot).save(event);
+    new PerceptionAuditStore(dataRoot).append({ id: 'audit-feedback', action: 'decision.feedback', occurredAt: now, connectorId: 'wecom-main', eventId: event.id, detail: { ruleId: 'rule-1', decisionId: 'decision-1', originalEventId: 'event-1', status: 'dispatched' } });
+
+    expect(facade.listEventTraces()).toEqual([expect.objectContaining({
+      event: expect.objectContaining({ id: 'feedback-1' }),
+      ruleTriggers: [expect.objectContaining({
+        ruleId: 'rule-1',
+        matchedAt: now,
+        decisionContinuation: { decisionId: 'decision-1', originalEventId: 'event-1', status: 'dispatched' },
+      })],
+    })]);
+  });
 });

@@ -18,6 +18,7 @@ import type {
   SessionStatistics,
   AgentMessage,
 } from '../../../types/agent';
+import type { AgentTaskRuntimePersistenceV1 } from '../../integrations/pi-agent/task-runtime';
 
 /**
  * Session directory for storage (global fallback)
@@ -27,6 +28,13 @@ const SESSION_TITLE_LENGTH = 32;
 const INTERNAL_ROLE_INTRO_PREFIX = '你好！请根据你的人设';
 const GENERIC_MESSAGE = /^(?:你好|您好|hi|hello|在吗|继续|开始|好的?|可以|收到|谢谢|ok|嗯+)[!！,.，。?？~～\s]*$/i;
 const GENERIC_ACTION = /^(?:打开|打开了么|开始授权|创建(?:一个|一条)?(?:文件夹|文件|文档|待办|任务)|更新.+情况|优先级\s*\d+)$/i;
+
+export interface AgentTaskRuntimeSessionRecord {
+  readonly sessionId: string;
+  readonly projectId: string;
+  readonly updatedAt: number;
+  readonly taskRuntime: AgentTaskRuntimePersistenceV1;
+}
 
 function userMessageText(message: AgentMessage): string {
   let content = message.content.trim();
@@ -291,6 +299,29 @@ export class AgentSessionService {
 
     // Sort by updatedAt descending (most recent first)
     return sessions.sort((a, b) => b.updatedAt - a.updatedAt);
+  }
+
+  async listTaskRuntimeSessions(
+    projectId: string,
+  ): Promise<readonly AgentTaskRuntimeSessionRecord[]> {
+    const files = await this.store.listFiles(`${getProjectSessionsDir(projectId)}/`);
+    const records: AgentTaskRuntimeSessionRecord[] = [];
+    for (const file of files) {
+      const sessionId = file.replace('.json', '');
+      if (!isValidSessionId(sessionId)) continue;
+      const session = await this.getSession(sessionId, projectId);
+      if (
+        session?.projectContext?.projectId !== projectId
+        || !session.taskRuntime
+      ) continue;
+      records.push({
+        sessionId,
+        projectId,
+        updatedAt: session.updatedAt,
+        taskRuntime: session.taskRuntime,
+      });
+    }
+    return records.sort((left, right) => right.updatedAt - left.updatedAt);
   }
 
   /**

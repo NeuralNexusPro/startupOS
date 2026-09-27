@@ -99,6 +99,13 @@ export class PerceptionManagementFacade {
         audit,
         ruleTriggers: [...ruleIds].map((ruleId) => {
           const lease = leases.find((item) => item.eventId === event.id && item.ruleId === ruleId);
+          const feedback = audit.find((item) => (item.action === 'decision.feedback' || item.action === 'decision.feedback.rejected') && detailMatchesRule(item, ruleId));
+          const feedbackDecisionId = detailString(feedback?.detail, 'decisionId');
+          const feedbackOriginalEventId = detailString(feedback?.detail, 'originalEventId');
+          const feedbackStatus = detailString(feedback?.detail, 'status');
+          const feedbackReason = detailString(feedback?.detail, 'reason');
+          const matchedAt = auditTime(audit, 'rule.matched', ruleId)
+            ?? (feedback?.action === 'decision.feedback' ? feedback.occurredAt : undefined);
           const resultRef = lease?.resultRef;
           const sessionId = resultRef?.startsWith('perception://session/') ? resultRef.slice('perception://session/'.length) : undefined;
           const rule = rules.get(ruleId);
@@ -106,10 +113,16 @@ export class PerceptionManagementFacade {
             ruleId,
             rule,
             lease,
-            matchedAt: auditTime(audit, 'rule.matched', ruleId),
+            matchedAt,
             dispatchedAt: auditTime(audit, 'trigger.dispatched', ruleId),
             finishedAt: audit.find((item) => (item.action === 'lease.completed' || item.action === 'lease.failed') && detailMatchesRule(item, ruleId))?.occurredAt,
             result: lease ? { status: lease.status, resultRef, sessionId, summary: sessionId && rule && rule.routingMode !== 'jev' ? this.readResultSummary(rule.target.kind, rule.target.id, sessionId) : undefined } : undefined,
+            ...(feedbackDecisionId && feedbackOriginalEventId && feedbackStatus ? { decisionContinuation: {
+              decisionId: feedbackDecisionId,
+              originalEventId: feedbackOriginalEventId,
+              status: feedbackStatus,
+              ...(feedbackReason ? { reason: feedbackReason } : {}),
+            } } : {}),
           };
         }),
       };

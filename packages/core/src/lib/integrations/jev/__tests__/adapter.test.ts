@@ -1,7 +1,8 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest';
+import { APIUserAbortError } from '@typesafe-ai/sdk';
 import type { JevDecisionRequest, PerceptionTriggerRule } from '../../../../types/perception';
-import { JevError, JevHttpAdapter, buildJevRequest, normalizeJevBaseUrl, parseJevResponse } from '..';
+import { JevError, JevHttpAdapter, buildJevChoiceFeedbackRequest, buildJevRequest, normalizeJevBaseUrl, parseJevResponse } from '..';
 
 const request: JevDecisionRequest = {
   state: { source: 'email' },
@@ -53,6 +54,29 @@ describe('JevHttpAdapter', () => {
     expect(buildJevRequest(request).questions.delivery_mode.criteria.invoke_target).toContain('messages containing a request or question');
   });
 
+  it('classifies a partial choice reply with only the feedback answer', async () => {
+    const fetcher = vi.fn<typeof fetch>(async () => response(200, { answers: { is_choice_feedback: { type: 'noul', noul: 0.92 } } }));
+    await expect(adapter(fetcher).classifyPendingChoiceFeedback({ ...request, pendingChoiceFeedback: true })).resolves.toBe(0.92);
+    const [, init] = fetcher.mock.calls[0] ?? [];
+    const posted = JSON.parse(String(init?.body)) as { questions: Record<string, unknown> };
+    expect(Object.keys(posted.questions)).toEqual(['is_choice_feedback']);
+    expect(buildJevChoiceFeedbackRequest({ ...request, pendingChoiceFeedback: true }).questions.is_choice_feedback.instructions).toContain('partial preference');
+  });
+
+  it('exposes asking the user to choose a target as a route decision option', () => {
+    const selectable = { ...request, candidateKeys: [...request.candidateKeys, 'ask_user_to_choose_target'] };
+    expect(buildJevRequest(selectable).questions.route_target.criteria).toHaveProperty('ask_user_to_choose_target');
+    expect(parseJevResponse({ answers: {
+      ...answers,
+      route_target: {
+        type: 'choice',
+        choice: 'ask_user_to_choose_target',
+        confidence: 0.9,
+        probabilities: { 'project:one': 0.1, ask_user_to_choose_target: 0.9 },
+      },
+    } }, selectable.candidateKeys)).toMatchObject({ routeTarget: { choice: 'ask_user_to_choose_target' } });
+  });
+
   it.each([[400, 'JEV_INVALID_REQUEST'], [401, 'JEV_UNAUTHORIZED'], [403, 'JEV_UNAUTHORIZED'], [422, 'JEV_INVALID_REQUEST']])('maps HTTP %s safely', async (status, code) => {
     await expectCode(adapter(vi.fn<typeof fetch>(async () => response(status))).decide(request), code);
   });
@@ -65,6 +89,7 @@ describe('JevHttpAdapter', () => {
 
   it('maps aborts and network failures without exposing provider errors', async () => {
     await expectCode(adapter(vi.fn<typeof fetch>(async () => { throw new DOMException('secret', 'AbortError'); })).decide(request), 'JEV_TIMEOUT');
+    await expectCode(adapter(vi.fn<typeof fetch>(async () => { throw new APIUserAbortError(); })).decide(request), 'JEV_TIMEOUT');
     await expectCode(adapter(vi.fn<typeof fetch>(async () => { throw new Error('secret'); })).decide(request), 'JEV_NETWORK_ERROR');
   });
 
@@ -95,6 +120,18 @@ describe('Jev response validation', () => {
       provider_trace: { ignored: true },
     };
     expect(parseJevResponse({ answers: rounded }, request.candidateKeys)).toMatchObject({ routeTarget: { probabilities: { 'project:one': 1 } } });
+  });
+
+  it('accepts omitted zero-probability candidates while retaining the full catalog', () => {
+    const sparse = { ...answers, route_target: { ...answers.route_target, probabilities: { 'project:one': 1 } } };
+    expect(parseJevResponse({ answers: sparse }, ['ignore', 'project:one', 'project:other'])).toMatchObject({
+      routeTarget: { probabilities: { 'project:one': 1, 'project:other': 0 } },
+    });
+  });
+
+  it('treats partial choice replies as feedback to the pending decision', () => {
+    const question = buildJevRequest({ ...request, pendingChoiceFeedback: true }).questions.is_choice_feedback;
+    expect(question?.instructions).toContain('partial preference');
   });
 
   it.each([

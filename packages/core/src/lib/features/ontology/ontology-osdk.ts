@@ -4,10 +4,16 @@ import { CanonicalOntologyStore } from './canonical-ontology-store';
 import type {
   CanonicalActionSubmission,
   CanonicalActionSubmissionResult,
+  CanonicalContextProjectionQuery,
+  CanonicalContextProjectionQueryResult,
+  CanonicalContextProjectionRecord,
+  CanonicalContextProjectionResolveInput,
+  CanonicalContextProjectionResolveResult,
   CanonicalFactQuery,
   CanonicalFactQueryResult,
   CanonicalFactRecord,
   CanonicalFactReference,
+  CanonicalOntology,
   CanonicalOperationRecord,
   CanonicalValidationIssue,
 } from './types';
@@ -110,10 +116,101 @@ export class CanonicalOntologyOSDK {
     };
   }
 
+  async queryProjections(query: CanonicalContextProjectionQuery): Promise<CanonicalContextProjectionQueryResult> {
+    const ontology = await this.readValidatedOntology(query.projectId, query.ontologyId, query.ontologyVersion);
+    if (ontology.ok === false) return { ok: false, issues: ontology.issues };
+
+    const projections = (await this.store.readProjections(query.projectId)).filter(({ context, kind, revision }) => (
+      context.projectId === query.projectId
+      && context.ontology.ontologyId === query.ontologyId
+      && context.ontology.ontologyVersion === query.ontologyVersion
+      && (query.contextInstanceId === undefined || context.contextInstanceId === query.contextInstanceId)
+      && (query.taskId === undefined || context.taskId === query.taskId)
+      && (query.sessionId === undefined || context.sessionId === query.sessionId)
+      && (query.branchId === undefined || context.branchId === query.branchId)
+      && (query.runId === undefined || context.runId === query.runId)
+      && (query.workItemId === undefined || context.workItemId === query.workItemId)
+      && (query.attemptId === undefined || context.attemptId === query.attemptId)
+      && (query.kind === undefined || kind === query.kind)
+      && (query.revision === undefined || revision === query.revision)
+    ));
+    if (!query.latestOnly) return { ok: true, projections };
+
+    const latest = new Map<string, { projection: CanonicalContextProjectionRecord; index: number }>();
+    projections.forEach((projection, index) => {
+      const current = latest.get(projection.id);
+      if (!current || projection.revision >= current.projection.revision) latest.set(projection.id, { projection, index });
+    });
+    return {
+      ok: true,
+      projections: [...latest.values()]
+        .sort((left, right) => left.index - right.index)
+        .map(({ projection }) => projection),
+    };
+  }
+
+  async resolveProjection(input: CanonicalContextProjectionResolveInput): Promise<CanonicalContextProjectionResolveResult> {
+    const ontology = await this.readValidatedOntology(input.projectId, input.ontologyId, input.ontologyVersion);
+    if (ontology.ok === false) return { ok: false, issues: ontology.issues };
+
+    const { context, factRefs = [] } = input.projection;
+    const issues: CanonicalValidationIssue[] = [];
+    if (context.projectId !== input.projectId) {
+      issues.push(issue('PROJECT_ID_MISMATCH', 'projection.context.projectId', `Expected project ${input.projectId}`));
+    }
+    if (context.ontology.ontologyId !== input.ontologyId) {
+      issues.push(issue('ONTOLOGY_ID_MISMATCH', 'projection.context.ontology.ontologyId', `Expected ontology ${input.ontologyId}`));
+    }
+    if (context.ontology.ontologyVersion !== input.ontologyVersion) {
+      issues.push(issue('ONTOLOGY_VERSION_MISMATCH', 'projection.context.ontology.ontologyVersion', `Expected ontology version ${input.ontologyVersion}`));
+    }
+    factRefs.forEach((ref, index) => {
+      const path = `projection.factRefs[${index}]`;
+      if (ref.ontologyId !== input.ontologyId || ref.ontologyVersion !== input.ontologyVersion) {
+        issues.push(issue('ONTOLOGY_REFERENCE_MISMATCH', path, `Fact ${ref.factId} does not match the requested ontology version`));
+      }
+      const factType = ontology.ontology.factTypes.find(({ id }) => id === ref.factTypeId);
+      if (!factType) {
+        issues.push(issue('MISSING_REFERENCE', `${path}.factTypeId`, `Unknown fact type: ${ref.factTypeId}`));
+      } else if (factType.conceptId !== ref.conceptId) {
+        issues.push(issue('INVALID_CONCEPT_BINDING', `${path}.conceptId`, `Fact type ${factType.id} belongs to concept ${factType.conceptId}`));
+      }
+    });
+    if (issues.length) return { ok: false, issues };
+
+    const facts = await this.store.readFacts(input.projectId);
+    const resolved = factRefs.map((ref, index) => {
+      const fact = facts.find(({ ref: stored }) => sameFactRef(stored, ref));
+      if (!fact) issues.push(issue('FACT_NOT_FOUND', `projection.factRefs[${index}]`, `Fact ${ref.factId} was not found`));
+      return fact;
+    });
+    if (issues.length) return { ok: false, issues };
+    return { ok: true, projection: input.projection, facts: resolved as CanonicalFactRecord[] };
+  }
+
   submitAction(request: CanonicalActionSubmission): Promise<CanonicalActionSubmissionResult> {
     const result = this.submissionTail.then(() => this.submitActionExclusive(request));
     this.submissionTail = result.then(() => undefined, () => undefined);
     return result;
+  }
+
+  private async readValidatedOntology(
+    projectId: string,
+    ontologyId: string,
+    ontologyVersion: string,
+  ): Promise<{ ok: true; ontology: CanonicalOntology } | { ok: false; issues: CanonicalValidationIssue[] }> {
+    const stored = await this.store.readOntology(projectId);
+    if (!stored) return { ok: false, issues: [issue('ONTOLOGY_NOT_FOUND', 'projectId', `No ontology for project ${projectId}`)] };
+
+    const ontology = stored.data;
+    const validation = validateCanonicalOntology(ontology);
+    if (!validation.valid) return { ok: false, issues: validation.issues };
+
+    const issues: CanonicalValidationIssue[] = [];
+    if (ontology.projectId !== projectId) issues.push(issue('PROJECT_ID_MISMATCH', 'projectId', `Expected project ${ontology.projectId}`));
+    if (ontology.id !== ontologyId) issues.push(issue('ONTOLOGY_ID_MISMATCH', 'ontologyId', `Expected ontology ${ontology.id}`));
+    if (ontology.version !== ontologyVersion) issues.push(issue('ONTOLOGY_VERSION_MISMATCH', 'ontologyVersion', `Expected ontology version ${ontology.version}`));
+    return issues.length ? { ok: false, issues } : { ok: true, ontology };
   }
 
   private async submitActionExclusive(request: CanonicalActionSubmission): Promise<CanonicalActionSubmissionResult> {

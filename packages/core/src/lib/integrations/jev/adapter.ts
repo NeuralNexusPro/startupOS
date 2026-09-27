@@ -9,6 +9,7 @@ import {
   APIConnectionError,
   APIError,
   APITimeoutError,
+  APIUserAbortError,
   choice,
   noul,
   score,
@@ -17,9 +18,11 @@ import {
 import type { EntryType } from '@typesafe-ai/sdk';
 
 export const JEV_CATALOG_VERSION = '1.0' as const;
-export const JEV_DECISION_TIMEOUT_MS = 3_000;
+export const JEV_DECISION_TIMEOUT_MS = 10_000;
 const SCORE_KEYS = ['low', 'medium', 'high'] as const;
 const ANSWER_KEYS = ['delivery_mode', 'needs_user_attention', 'needs_hitl', 'retain_as_evidence', 'risk', 'route_target', 'urgency'];
+const CHOICE_FEEDBACK_QUESTION = 'Is the latest user message related to the pending request to choose a target capability for the original event? Answer true for a complete selection, partial preference, uncertainty, or a question asking to clarify the choices, even when no option is named exactly. Answer false only for a clearly unrelated new request.';
+const CHOICE_FEEDBACK_CRITERIA = { true: 'Continue the pending target-choice conversation; the choice may still need clarification.', false: 'This is an unrelated new request and must be routed as a new event.' };
 
 export type JevErrorCode =
   | 'JEV_INVALID_BASE_URL'
@@ -32,7 +35,7 @@ export type JevErrorCode =
   | 'JEV_INVALID_RESPONSE';
 
 export class JevError extends Error {
-  constructor(readonly code: JevErrorCode) {
+  constructor(readonly code: JevErrorCode, readonly diagnosticCode?: string) {
     super(code);
     this.name = 'JevError';
   }
@@ -106,6 +109,26 @@ export class JevHttpAdapter implements PerceptionDecisionPort {
   }
 
   async decide(request: JevDecisionRequest): Promise<JevDecisionAnswer> {
+    return this.execute(
+      (remaining) => this.client.systemOne(buildJevRequest(request), { signal: AbortSignal.timeout(remaining), timeout: remaining }),
+      (response) => parseJevResponse(response, request.candidateKeys, request.pendingChoiceFeedback),
+      { pendingChoiceFeedback: request.pendingChoiceFeedback === true, candidateCount: request.candidateKeys.length },
+    );
+  }
+
+  async classifyPendingChoiceFeedback(request: JevDecisionRequest): Promise<number> {
+    return this.execute(
+      (remaining) => this.client.systemOne(buildJevChoiceFeedbackRequest(request), { signal: AbortSignal.timeout(remaining), timeout: remaining }),
+      parseJevChoiceFeedback,
+      { pendingChoiceFeedback: true, candidateCount: request.candidateKeys.length },
+    );
+  }
+
+  private async execute<T>(
+    call: (remaining: number) => Promise<unknown>,
+    parse: (response: unknown) => T,
+    diagnostic: { pendingChoiceFeedback: boolean; candidateCount: number },
+  ): Promise<T> {
     const startedAt = Date.now();
     if (!(this.options.environment === 'development' && this.options.allowDevelopmentLoopback && isLoopback(this.hostname))) {
       let addresses: readonly string[];
@@ -125,19 +148,26 @@ export class JevHttpAdapter implements PerceptionDecisionPort {
     if (remaining <= 0) throw new JevError('JEV_TIMEOUT');
     let response: unknown;
     try {
-      response = await this.client.systemOne(buildJevRequest(request), { signal: AbortSignal.timeout(remaining), timeout: remaining });
-      return parseJevResponse(response, request.candidateKeys, request.pendingChoiceFeedback);
+      response = await call(remaining);
+      return parse(response);
     } catch (error) {
       if (error instanceof JevError) {
-        if (error.code === 'JEV_INVALID_RESPONSE') console.info('[jev-decision] invalid response shape', responseShape(response));
+        if (error.code === 'JEV_INVALID_RESPONSE') console.info('[jev-decision] invalid response shape', { ...responseShape(response), diagnosticCode: error.diagnosticCode, ...diagnostic });
         throw error;
       }
-      if (error instanceof APITimeoutError || isAbortError(error) || error instanceof APIConnectionError && isAbortError(error.cause)) throw new JevError('JEV_TIMEOUT');
+      if (isJevTimeoutError(error)) throw new JevError('JEV_TIMEOUT');
       if (error instanceof APIConnectionError) throw new JevError('JEV_NETWORK_ERROR');
       if (error instanceof APIError) throw new JevError(httpErrorCode(error.status));
       throw new JevError('JEV_INVALID_RESPONSE');
     }
   }
+}
+
+export function buildJevChoiceFeedbackRequest(request: JevDecisionRequest) {
+  return {
+    state: toJevState(request.state),
+    questions: { is_choice_feedback: noul(CHOICE_FEEDBACK_QUESTION, CHOICE_FEEDBACK_CRITERIA) },
+  };
 }
 
 export function buildJevRequest(request: JevDecisionRequest) {
@@ -150,16 +180,21 @@ export function buildJevRequest(request: JevDecisionRequest) {
         notify_user: 'Only notify the user. No domain-specific response or target action is needed.',
         invoke_target: 'Delegate to one authorized target capability to answer or act; its response fulfills user awareness. Use for messages containing a request or question.',
       }),
-      route_target: choice('If delegation is appropriate, choose the single authorized target capability best suited to handle this event. Respect optional userCognitiveGuidance in state as the user-provided routing guidance.', Object.fromEntries(routeTargetKeys.map((key) => [key, toJevEntry(request.candidateCriteria?.[key] ?? null)]))),
+      route_target: choice('If delegation is appropriate, choose the single authorized target capability best suited to handle this event. Choose ask_user_to_choose_target when the user should decide the role or capability, including an explicit request to switch assistants without naming the replacement. Respect optional userCognitiveGuidance in state as the user-provided routing guidance.', Object.fromEntries(routeTargetKeys.map((key) => [key, toJevEntry(request.candidateCriteria?.[key] ?? null)]))),
       urgency: score('How urgent is this event?', [...SCORE_KEYS] as [string, string, string]),
       risk: score('How risky is it to act on this event automatically?', [...SCORE_KEYS] as [string, string, string]),
       needs_hitl: noul('Does this event require human review before any action?', { true: 'Human review is required before acting.', false: 'Human review is not required before acting.' }),
       retain_as_evidence: noul('Should this event be retained as evidence for later review?', { true: 'Retain this event as evidence.', false: 'No special evidence retention is needed.' }),
       ...(request.pendingChoiceFeedback ? {
-        is_choice_feedback: noul('Is the latest user message a response to the pending request to choose a target capability for the original event? True only when it selects or clarifies that pending choice; false when it is a new request.', { true: 'This is feedback for the pending target choice.', false: 'This is a new request and must be routed as a new event.' }),
+        is_choice_feedback: noul(CHOICE_FEEDBACK_QUESTION, CHOICE_FEEDBACK_CRITERIA),
       } : {}),
     },
   };
+}
+
+export function parseJevChoiceFeedback(value: unknown): number {
+  const answers = record(record(value)['answers']);
+  return parseAnswer('is_choice_feedback', () => noulAnswer(answers['is_choice_feedback']));
 }
 
 function toJevState(value: JevDecisionRequest['state']): EntryType {
@@ -174,21 +209,29 @@ function toJevEntry(value: JevDecisionRequest['state']): EntryType {
 export function parseJevResponse(value: unknown, candidateKeys: readonly string[], pendingChoiceFeedback = false): JevDecisionAnswer {
   const root = record(value);
   const answers = record(root['answers']);
-  if (!hasKeys(answers, pendingChoiceFeedback ? [...ANSWER_KEYS, 'is_choice_feedback'] : ANSWER_KEYS)) throw new JevError('JEV_INVALID_RESPONSE');
-  const routeTarget = choiceAnswer(answers['route_target'], candidateKeys.filter((key) => key !== 'ignore' && key !== 'notify_user'));
-  const urgency = scoreAnswer(answers['urgency']);
-  const risk = scoreAnswer(answers['risk']);
+  if (!hasKeys(answers, pendingChoiceFeedback ? [...ANSWER_KEYS, 'is_choice_feedback'] : ANSWER_KEYS)) throw new JevError('JEV_INVALID_RESPONSE', 'missing_answer');
+  const routeTarget = parseAnswer('route_target', () => choiceAnswer(answers['route_target'], candidateKeys.filter((key) => key !== 'ignore' && key !== 'notify_user')));
+  const urgency = parseAnswer('urgency', () => scoreAnswer(answers['urgency']));
+  const risk = parseAnswer('risk', () => scoreAnswer(answers['risk']));
   return {
     ...(typeof root['model'] === 'string' ? { providerModel: root['model'] } : {}),
     routeTarget,
-    needsUserAttention: noulAnswer(answers['needs_user_attention']),
-    deliveryMode: choiceAnswer(answers['delivery_mode'], ['notify_user', 'invoke_target']),
+    needsUserAttention: parseAnswer('needs_user_attention', () => noulAnswer(answers['needs_user_attention'])),
+    deliveryMode: parseAnswer('delivery_mode', () => choiceAnswer(answers['delivery_mode'], ['notify_user', 'invoke_target'])),
     urgency,
     risk,
-    needsHitl: noulAnswer(answers['needs_hitl']),
-    retainAsEvidence: noulAnswer(answers['retain_as_evidence']),
-    ...(pendingChoiceFeedback ? { isChoiceFeedback: noulAnswer(answers['is_choice_feedback']) } : {}),
+    needsHitl: parseAnswer('needs_hitl', () => noulAnswer(answers['needs_hitl'])),
+    retainAsEvidence: parseAnswer('retain_as_evidence', () => noulAnswer(answers['retain_as_evidence'])),
+    ...(pendingChoiceFeedback ? { isChoiceFeedback: parseAnswer('is_choice_feedback', () => noulAnswer(answers['is_choice_feedback'])) } : {}),
   };
+}
+
+function parseAnswer<T>(field: string, parse: () => T): T {
+  try { return parse(); }
+  catch (error) {
+    if (error instanceof JevError && error.code === 'JEV_INVALID_RESPONSE') throw new JevError('JEV_INVALID_RESPONSE', field);
+    throw error;
+  }
 }
 
 function choiceAnswer(value: unknown, keys: readonly string[]): JevChoiceAnswer {
@@ -218,11 +261,12 @@ function noulAnswer(value: unknown): number {
 
 function distribution(value: unknown, wireKeys: readonly string[], outputKeys = wireKeys): Record<string, number> {
   const probabilities = record(value);
-  if (wireKeys.length !== outputKeys.length || !hasKeys(probabilities, wireKeys)) throw new JevError('JEV_INVALID_RESPONSE');
+  if (wireKeys.length !== outputKeys.length || Object.keys(probabilities).some((key) => !wireKeys.includes(key))) throw new JevError('JEV_INVALID_RESPONSE');
   const result: Record<string, number> = {};
   let sum = 0;
   for (const [index, key] of wireKeys.entries()) {
-    const item = probability(probabilities[key]);
+    // The provider can omit zero-probability options in a sparse distribution.
+    const item = probability(probabilities[key] ?? 0);
     result[outputKeys[index]!] = item;
     sum += item;
   }
@@ -281,6 +325,11 @@ function httpErrorCode(status: number): JevErrorCode {
 
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException ? error.name === 'AbortError' || error.name === 'TimeoutError' : false;
+}
+
+function isJevTimeoutError(error: unknown): boolean {
+  if (error instanceof APITimeoutError || error instanceof APIUserAbortError || isAbortError(error)) return true;
+  return error instanceof APIConnectionError && (error.cause instanceof APIUserAbortError || isAbortError(error.cause));
 }
 
 function isLoopback(hostname: string): boolean {

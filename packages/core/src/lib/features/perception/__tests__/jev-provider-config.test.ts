@@ -30,14 +30,11 @@ describe('JevProviderConfigService', () => {
     expect(stored).not.toContain('marker-secret');
   });
 
-  it('prefers the environment credential and clears secure credentials explicitly', async () => {
+  it('clears secure credentials explicitly', async () => {
     const dataRoot = root(); const secret = credentials(); const service = new JevProviderConfigService(dataRoot, { credentials: secret });
     await service.update({ enabled: true, baseUrl: 'https://api.typesafe.ai', model: 'jev-latest', apiKey: 'stored' });
     expect((await service.clearCredential()).enabled).toBe(false);
     expect(service.getSummary().credentialConfigured).toBe(false);
-    const environment = new JevProviderConfigService(dataRoot, { environmentApiKey: 'from-env' });
-    expect(environment.getSummary()).toMatchObject({ credentialConfigured: true, credentialSource: 'environment' });
-    expect(await environment.resolveApiKey()).toBe('from-env');
   });
 
   it('fails closed when a page credential has no secure provider', async () => {

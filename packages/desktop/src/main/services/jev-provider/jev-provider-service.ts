@@ -19,7 +19,6 @@ export class JevProviderService {
   constructor(dataRoot = getDataRoot(), provider?: JevProviderConfigService, createAdapter?: (snapshot: JevProviderSnapshot) => PerceptionDecisionPort) {
     this.provider = provider ?? new JevProviderConfigService(dataRoot, {
       credentials: new SafeStorageJevCredentialAdapter(dataRoot),
-      environmentApiKey: process.env['TYPESAFE_API_KEY'],
       environment: process.env['NODE_ENV'] === 'development' ? 'development' : 'production',
       allowDevelopmentLoopback: process.env['ORIGINOS_ALLOW_JEV_LOOPBACK'] === '1',
     });
@@ -52,5 +51,12 @@ export class SnapshotJevDecisionPort implements PerceptionDecisionPort {
   async decide(request: JevDecisionRequest) {
     const snapshot = await this.provider.getSnapshot();
     return this.createAdapter(snapshot).decide(request);
+  }
+
+  async classifyPendingChoiceFeedback(request: JevDecisionRequest): Promise<number> {
+    const snapshot = await this.provider.getSnapshot();
+    const adapter = this.createAdapter(snapshot);
+    if (!adapter.classifyPendingChoiceFeedback) return (await adapter.decide(request)).isChoiceFeedback ?? 0;
+    return adapter.classifyPendingChoiceFeedback(request);
   }
 }

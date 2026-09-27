@@ -38,18 +38,33 @@ function validateDecisionRule(rule: Extract<PerceptionTriggerRule, { routingMode
   let dispatchCount = 0;
   let ignoreCount = 0;
   let notifyCount = 0;
+  let userSelectionCount = 0;
   for (const candidate of rule.decision.candidates) {
     if (keys.has(candidate.key)) throw new Error('Duplicate Jev decision candidate key');
     keys.add(candidate.key);
-    if (candidate.action === 'ignore') { ignoreCount += 1; continue; }
-    if (candidate.action === 'notify_user') { notifyCount += 1; continue; }
+    if (candidate.action === 'ignore') {
+      if (candidate.key !== 'ignore') throw new Error('Invalid Jev ignore candidate key');
+      ignoreCount += 1;
+      continue;
+    }
+    if (candidate.action === 'notify_user') {
+      if (candidate.key !== 'notify_user') throw new Error('Invalid Jev notify candidate key');
+      notifyCount += 1;
+      continue;
+    }
+    if (candidate.action === 'ask_user_to_choose_target') {
+      if (candidate.key !== 'ask_user_to_choose_target') throw new Error('Invalid Jev user target selection candidate key');
+      userSelectionCount += 1;
+      continue;
+    }
     dispatchCount += 1;
     validateTarget(candidate.target);
-    if (candidate.key !== `${candidate.target.kind}:${candidate.target.id}` || candidate.key === 'ignore' || candidate.key === 'notify_user') {
+    if (candidate.key !== `${candidate.target.kind}:${candidate.target.id}` || candidate.key === 'ignore' || candidate.key === 'notify_user' || candidate.key === 'ask_user_to_choose_target') {
       throw new Error('Invalid Jev dispatch candidate key');
     }
   }
   if (ignoreCount !== 1 || notifyCount !== 1) throw new Error('Jev decision requires one of each reserved candidate');
+  if (userSelectionCount > 1) throw new Error('Jev decision allows at most one user target selection candidate');
   if (dispatchCount === 0 || dispatchCount > 20) throw new Error('Jev decision requires between 1 and 20 dispatch candidates');
 }
 

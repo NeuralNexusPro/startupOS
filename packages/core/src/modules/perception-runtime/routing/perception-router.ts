@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type {
   JevDecisionReceipt,
+  PerceptionDecisionCandidate,
   PerceptionEventV1,
   PerceptionTriggerTarget,
   PerceptionTriggerExecutionContext,
@@ -15,8 +16,12 @@ import { matchesTriggerRule } from '../rules/rule-matcher';
 import { PerceptionAuditStore } from '../storage/audit-store';
 import { ExecutionLeaseStore } from '../storage/lease-store';
 import { PerceptionEventStore } from '../storage/event-store';
+import { StickyRouteStore } from '../storage/sticky-route-store';
 
 const MAX_MATCHED_RULES = 20;
+const USER_TARGET_SELECTION_KEY = 'ask_user_to_choose_target' as const;
+type DispatchCandidate = Extract<PerceptionDecisionCandidate, { action: 'dispatch' }>;
+type StickyResetInstruction = { mode: 'choose' } | { mode: 'target'; candidate: DispatchCandidate };
 
 export type PerceptionRouteStatus = 'denied' | 'duplicate' | 'dispatched' | 'failed' | 'pending' | 'ignored';
 export interface PerceptionRouteResult {
@@ -39,7 +44,7 @@ interface AuditPort { append(entry: Parameters<PerceptionAuditStore['append']>[0
 export interface DecisionPendingNotificationPort {
   notify(input: { receipt: JevDecisionReceipt; event: PerceptionEventV1; rule: Extract<PerceptionTriggerRule, { routingMode: 'jev' }> }): Promise<void>;
   logDecision?(input: {
-    phase: 'requested' | 'completed' | 'dispatched' | 'failed';
+    phase: 'requested' | 'completed' | 'dispatched' | 'failed' | 'sticky';
     event: PerceptionEventV1;
     rule: Extract<PerceptionTriggerRule, { routingMode: 'jev' }>;
     candidateKeys?: string[];
@@ -53,6 +58,7 @@ export class PerceptionRouter {
   private readonly audit: AuditPort;
   private readonly dispatches = new Map<string, Promise<PerceptionRouteResult>>();
   private readonly resolutions = new Map<string, Promise<PerceptionRouteResult>>();
+  private readonly stickyRoutes: StickyRouteStore;
 
   constructor(
     private readonly dataRoot: string,
@@ -66,6 +72,7 @@ export class PerceptionRouter {
   ) {
     this.leases = stores?.leases ?? new ExecutionLeaseStore(dataRoot);
     this.audit = stores?.audit ?? new PerceptionAuditStore(dataRoot);
+    this.stickyRoutes = new StickyRouteStore(dataRoot);
   }
 
   async route(event: PerceptionEventV1): Promise<PerceptionRouteResult[]> {
@@ -102,6 +109,11 @@ export class PerceptionRouter {
         await this.notifyPending(receipt, context.event, context.rule);
         return { ruleId: context.rule.id, status: 'pending', reason: 'NOTIFY_USER' };
       }
+      if (candidate.action === 'ask_user_to_choose_target') {
+        const receipt = await this.decisions!.defer(decisionId, 'USER_TARGET_SELECTION_REQUIRED');
+        await this.notifyPending(receipt, context.event, context.rule);
+        return { ruleId: context.rule.id, status: 'pending', reason: 'USER_TARGET_SELECTION_REQUIRED' };
+      }
       await this.decisions!.select(decisionId, selectedKey);
       return this.routeTarget(context.event, context.rule, candidate.target, decisionId, decisionId, 'user-executed');
     });
@@ -120,10 +132,22 @@ export class PerceptionRouter {
   async reconsiderDecision(decisionId: string, feedback: PerceptionEventV1, history: readonly PerceptionEventV1[]): Promise<PerceptionRouteResult> {
     return this.serializeResolution(decisionId, async () => {
       const context = this.decisionContext(decisionId);
+      this.appendAudit('rule.matched', feedback, context.rule.id, {
+        continuation: 'decision-feedback',
+        decisionId,
+        originalEventId: context.event.id,
+      });
       const candidates = await this.authorizedCandidates(context.event, context.rule);
       this.logDecision({ phase: 'requested', event: context.event, rule: context.rule, candidateKeys: candidates.map(({ candidate }) => candidate.key) });
       const outcome = await this.decisions!.reconsider(decisionId, context.event, context.rule, candidates, { feedback, history });
-      return this.handleDecisionOutcome(context.event, context.rule, outcome, feedback);
+      const result = await this.handleDecisionOutcome(context.event, context.rule, outcome, feedback);
+      this.appendAudit('decision.feedback', feedback, context.rule.id, {
+        decisionId,
+        originalEventId: context.event.id,
+        status: result.status,
+        ...(result.reason ? { reason: result.reason } : {}),
+      });
+      return result;
     });
   }
 
@@ -131,6 +155,16 @@ export class PerceptionRouter {
     const context = this.decisionContext(decisionId);
     const candidates = await this.authorizedCandidates(context.event, context.rule);
     return this.decisions?.isPendingChoiceFeedback(context.event, candidates, { feedback, history }) ?? false;
+  }
+
+  recordRejectedDecisionFeedback(decisionId: string, feedback: PerceptionEventV1): void {
+    const context = this.decisionContext(decisionId);
+    this.appendAudit('decision.feedback.rejected', feedback, context.rule.id, {
+      decisionId,
+      originalEventId: context.event.id,
+      status: 'unrelated',
+      reason: 'NOT_DECISION_FEEDBACK',
+    });
   }
 
   private async routeRule(event: PerceptionEventV1, rule: PerceptionTriggerRule, attemptKey?: string): Promise<PerceptionRouteResult> {
@@ -144,7 +178,43 @@ export class PerceptionRouter {
       this.appendAudit('decision.failed', event, rule.id, { reason: 'JEV_RUNTIME_UNAVAILABLE' });
       return { ruleId: rule.id, status: 'pending', reason: 'JEV_RUNTIME_UNAVAILABLE' };
     }
+    const sticky = this.stickyRoutes.get(event, rule.id);
+    let forceUserTargetSelection = false;
+    let userSelectedTargetKey: string | undefined;
+    if (sticky) {
+      const reset = await this.stickyResetInstruction(event, rule, sticky.candidateKey);
+      if (reset) {
+        forceUserTargetSelection = reset.mode === 'choose';
+        userSelectedTargetKey = reset.mode === 'target' ? reset.candidate.key : undefined;
+        this.stickyRoutes.clear(event, rule.id);
+        this.appendAudit('decision.resolved', event, rule.id, { action: 'sticky-reset', candidateKey: sticky.candidateKey, mode: reset.mode });
+      } else {
+        const candidate = rule.decision.candidates.find((item) => item.key === sticky.candidateKey);
+        if (candidate?.action === 'dispatch' && sameTarget(candidate.target, sticky.target)) {
+          const authorization = await this.authorization.authorize({ event, rule, target: candidate.target });
+          if (authorization.authorized) {
+            this.appendAudit('decision.resolved', event, rule.id, { action: 'sticky-dispatch', candidateKey: candidate.key });
+            this.logDecision({ phase: 'sticky', event, rule, candidateKeys: [candidate.key], outcome: candidate.key });
+            return this.routeTarget(event, rule, candidate.target, `sticky:${candidate.key}`);
+          }
+        }
+        this.stickyRoutes.clear(event, rule.id);
+      }
+    }
     const candidates = await this.authorizedCandidates(event, rule);
+    if (userSelectedTargetKey) {
+      const outcome = await this.decisions.selectTargetForEvent(event, rule, candidates, userSelectedTargetKey);
+      if (outcome.action === 'dispatch') {
+        this.logDecision({ phase: 'completed', event, rule, receipt: outcome.receipt, outcome: 'user-selection' });
+        this.appendAudit('decision.resolved', event, rule.id, { decisionId: outcome.receipt.id, action: 'user-selection', candidateKey: userSelectedTargetKey });
+        return this.routeTarget(event, rule, outcome.target, outcome.receipt.id, outcome.receipt.id, 'user-executed');
+      }
+      return this.handleDecisionOutcome(event, rule, outcome);
+    }
+    if (forceUserTargetSelection) {
+      const outcome = await this.decisions.requestUserTargetSelection(event, rule, candidates);
+      return this.handleDecisionOutcome(event, rule, outcome);
+    }
     this.logDecision({ phase: 'requested', event, rule, candidateKeys: candidates.map(({ candidate }) => candidate.key) });
     const outcome = await this.decisions.decide(event, rule, candidates);
     return this.handleDecisionOutcome(event, rule, outcome);
@@ -179,12 +249,40 @@ export class PerceptionRouter {
       if (authorization.authorized) candidates.push({ candidate, authorization, profile: await this.describeTarget(candidate.target) });
       else this.appendAudit('target.denied', event, rule.id, { candidateKey: candidate.key, reason: authorization.reason ?? 'not-authorized' });
     }
+    if (!candidates.some(({ candidate }) => candidate.action === 'ask_user_to_choose_target')) {
+      candidates.push({ candidate: { key: USER_TARGET_SELECTION_KEY, action: 'ask_user_to_choose_target' } });
+    }
     return candidates;
   }
 
   private async describeTarget(target: PerceptionTriggerTarget) {
     try { return await this.profiles?.describe(target); }
     catch { return undefined; }
+  }
+
+  private async stickyResetInstruction(
+    event: PerceptionEventV1,
+    rule: Extract<PerceptionTriggerRule, { routingMode: 'jev' }>,
+    stickyCandidateKey: string,
+  ): Promise<StickyResetInstruction | undefined> {
+    const text = event.content.text?.trim();
+    if (!text) return undefined;
+
+    for (const candidate of rule.decision.candidates) {
+      if (candidate.action !== 'dispatch') continue;
+      const profile = await this.describeTarget(candidate.target);
+      const labels = [profile?.name, candidate.target.id].filter((value): value is string => Boolean(value?.trim()));
+      for (const label of labels) {
+        const escaped = escapeRegExp(label);
+        if (candidate.key === stickyCandidateKey) {
+          if (new RegExp(`(?:不要|别)(?:再)?(?:让)?\\s*${escaped}(?:\\s*(?:处理|承接|回复|回答))?`, 'iu').test(text)) return { mode: 'choose' };
+          continue;
+        }
+        if (new RegExp(`(?:(?:改由|转给|交给|换成|切换到|请|让)\\s*${escaped}.{0,8}(?:处理|承接|接手|负责|回复|回答|看看|看一下)|${escaped}\\s*(?:来)?(?:处理|承接|接手|负责|回复|回答|看看|看一下))`, 'iu').test(text)) return { mode: 'target', candidate };
+      }
+    }
+    if (/(?:换|更换|切换|改换)(?:一个|个|其他|别的|新的)?(?:助手|助理|角色|技能|能力|agent)|(?:重新|再)(?:选择|分配|路由)(?:一下)?(?:助手|助理|角色|技能|能力)?|换(?:个)?人(?:来|处理|承接)/iu.test(text)) return { mode: 'choose' };
+    return undefined;
   }
 
   private async routeTarget(
@@ -234,6 +332,10 @@ export class PerceptionRouter {
       return { ruleId: rule.id, status: 'duplicate', leaseId: acquired.lease.id, resultRef: acquired.lease.resultRef };
     }
     this.appendAudit('lease.acquired', event, rule.id, { leaseId: acquired.lease.id });
+    if (rule.routingMode === 'jev') {
+      const candidate = rule.decision.candidates.find((item) => item.action === 'dispatch' && sameTarget(item.target, target));
+      if (candidate?.action === 'dispatch') this.stickyRoutes.bind(event, rule.id, candidate.key, target);
+    }
     const context: PerceptionTriggerExecutionContext = {
       connectorId: event.connectorId,
       eventId: event.id,
@@ -260,6 +362,7 @@ export class PerceptionRouter {
         ...(dispatched.responseTexts?.length ? { responseTexts: dispatched.responseTexts } : {}),
       };
     } catch (error) {
+      if (rule.routingMode === 'jev') this.stickyRoutes.clear(event, rule.id);
       this.leases.fail(acquired.lease.id);
       const receipt = decisionId ? await this.decisions?.fail(decisionId, acquired.lease.id) : undefined;
       if (receipt && rule.routingMode === 'jev') this.logDecision({ phase: 'failed', event, rule, receipt, outcome: 'dispatch' });
@@ -308,6 +411,16 @@ export class PerceptionRouter {
   private appendAudit(action: Parameters<PerceptionAuditStore['append']>[0]['action'], event: PerceptionEventV1, ruleId: string, detail?: Parameters<PerceptionAuditStore['append']>[0]['detail']): void {
     this.audit.append({ id: randomUUID(), action, occurredAt: new Date().toISOString(), connectorId: event.connectorId, eventId: event.id, detail: { ruleId, ...(detail && typeof detail === 'object' && !Array.isArray(detail) ? detail : {}) } });
   }
+}
+
+function sameTarget(left: PerceptionTriggerTarget, right: PerceptionTriggerTarget): boolean {
+  if (left.kind !== right.kind || left.id !== right.id) return false;
+  if (left.kind !== 'skill' || right.kind !== 'skill') return true;
+  return JSON.stringify(left.skillOwnership ?? null) === JSON.stringify(right.skillOwnership ?? null);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function cognitionOwner(target: PerceptionTriggerTarget): PerceptionTriggerExecutionContext['cognitionOwner'] {

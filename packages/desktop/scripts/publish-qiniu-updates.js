@@ -360,8 +360,8 @@ function cdnUrl(baseUrl, key, prefix) {
 async function verifyCdnUrl(url) {
   if (!url) return;
 
-  const retries = Number.parseInt(process.env.QINIU_CDN_VERIFY_RETRIES || '6', 10);
-  const retryDelayMs = Number.parseInt(process.env.QINIU_CDN_VERIFY_RETRY_DELAY_MS || '10000', 10);
+  const retries = Number.parseInt(process.env.QINIU_CDN_VERIFY_RETRIES || '8', 10);
+  const retryDelayMs = Number.parseInt(process.env.QINIU_CDN_VERIFY_RETRY_DELAY_MS || '15000', 10);
   let lastError = null;
 
   for (let attempt = 1; attempt <= Math.max(1, retries); attempt += 1) {
@@ -405,9 +405,15 @@ async function verifyCdnArtifact(url, artifact, options = {}) {
 
   const expectedSize = fs.statSync(artifact.filePath).size;
   const expectedSha512 = sha512Base64(artifact.filePath);
-  const retries = Number.parseInt(process.env.QINIU_CDN_VERIFY_RETRIES || '6', 10);
-  const retryDelayMs = Number.parseInt(process.env.QINIU_CDN_VERIFY_RETRY_DELAY_MS || '10000', 10);
+  const retries = Number.parseInt(process.env.QINIU_CDN_VERIFY_RETRIES || '8', 10);
+  const retryDelayMs = Number.parseInt(process.env.QINIU_CDN_VERIFY_RETRY_DELAY_MS || '15000', 10);
   const attempts = Math.max(1, options.retries ?? retries);
+  const initialDelayMs = Number.parseInt(process.env.QINIU_CDN_VERIFY_INITIAL_DELAY_MS || '20000', 10);
+
+  if (expectedSize >= MIN_RELEASE_PACKAGE_BYTES && initialDelayMs > 0) {
+    console.log(`[publish-qiniu-updates] waiting ${initialDelayMs}ms for CDN propagation of ${artifact.fileName}`);
+    await sleep(initialDelayMs);
+  }
 
   let lastError = null;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {

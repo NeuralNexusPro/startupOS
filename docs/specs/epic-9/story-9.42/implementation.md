@@ -18,10 +18,10 @@
 
 ### 1. 对接 P2.8 公共契约
 
-- [ ] 依赖 P2.8 导出的 `SolutionExecutionContract` 公共类型。
-- [ ] 通过 `SolutionExecutionContractPort` 按 solutionId/version 精确读取。
-- [ ] 校验 approved 状态和 contractHash。
-- [ ] 不访问 P2.8 编译器、发布器、设计 UI 或 legacy migration。
+- [x] 依赖 P2.8 导出的 `SolutionExecutionContract` 公共类型。
+- [x] 通过 `SolutionExecutionContractPort` 按 solutionId/version 精确读取。
+- [x] 校验 approved 状态和 contractHash。
+- [x] 不访问 P2.8 编译器、发布器、设计 UI 或 legacy migration。
 
 ### 2. Contract Port
 
@@ -32,16 +32,16 @@
 
 ### 3. Task/Step 绑定
 
-- [ ] 多 Agent Task 启动要求 solutionId/version/contractId/hash。
-- [ ] 创建 `SolutionTaskBinding`。
+- [x] 多 Agent Task 启动要求 solutionId/version/contractId/hash。
+- [x] 创建 `SolutionTaskBinding`。
 - [ ] 将 binding 传播到 Run、WorkItem、event、snapshot 和 evidence。
-- [ ] active run 使用 frozen contract snapshot。
+- [x] active run 使用 frozen contract snapshot。
 
 ### 4. WorkItem 实例化
 
-- [ ] 根据 contract topology 创建 WorkItems。
-- [ ] 每个 WorkItem 必须关联 designNodeId、Agent、Skill、依赖和 I/O refs。
-- [ ] runtime 不创建契约外协作节点。
+- [x] 根据 contract topology 创建 WorkItems。
+- [x] 每个 WorkItem 必须关联 designNodeId、Agent、Skill、依赖和 I/O refs。
+- [x] runtime 不创建契约外协作节点。
 - [ ] 保留并行、依赖、有限重试和 HITL。
 
 ### 5. 修复 Verifier

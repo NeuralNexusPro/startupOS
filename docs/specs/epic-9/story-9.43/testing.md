@@ -1,6 +1,6 @@
 # 测试：项目任务看板
 
-**状态：** 用例已规划，全部待执行；2026-09-14。
+**状态：** 943-T1 定向验收完成；UI/E2E 用例待执行；2026-09-24。
 
 | ID | 层级 | Given / When | Then |
 |---|---|---|---|
@@ -18,5 +18,20 @@
 | B12 | Performance | 1000任务、多Agent状态更新 | 50条分页、只渲染当前页；按AGENTS交互指标实测 |
 | B13 | Component | 同时后台刷新与编辑筛选/表单 | 保持输入；卸载不残留订阅 |
 | B14 | E2E | 手动目标无已发布模板或语义输入缺失 | 明确设计/输入缺口，不生成临时执行拓扑 |
+
+## 2026-09-22 T1 核心验收证据
+
+- `pnpm exec vitest run --config vitest.config.ts src/lib/features/project/__tests__/task-board.test.ts`：4/4 通过，覆盖 B01/B06 的 Task/Run/WorkItem 同 revision 聚合、expectedRevision 冲突、requestId 幂等/冲突和项目越界拒绝。
+- `pnpm exec tsc -p tsconfig.json --noEmit`：通过。
+- `pnpm lint:boundaries`：907 个生产文件，0 条诊断。
+- B03/B04/B07/B08/B11/B12/B14 与 Web UI/E2E 仍未执行，不标记 Story 完成。
+
+## 2026-09-24 真实任务源验收证据
+
+- `pnpm --filter @originos/core exec vitest run ...project-task-source.test.ts ...task-board.test.ts ...session-title.test.ts ...agent-manager.test.ts ...contract-execution.test.ts`：26/26 通过，覆盖项目隔离、50 条分页、持久投影重建、不可用降级、Task/Run 关联和公开 Runtime 控制适配。
+- `pnpm --filter @originos/core exec tsc -p tsconfig.json --noEmit` 与 `pnpm --filter @originos/desktop exec tsc -p tsconfig.json --noEmit`：通过。
+- `pnpm lint:boundaries`：914 个生产文件，0 条诊断；`node scripts/check-architecture-boundaries.cjs --self-test`：43 个导入用例通过。
+- `openspec validate implement-project-task-board-source --strict` 与 `git diff --check`：通过。
+- B08、B12 及所有 Web UI/E2E 用例仍待执行。
 
 先执行单测/接口测试，再组件测试，最后联通真实Task/Run及Windows/macOS恢复矩阵。故障注入复用主线E08–E11；API成功返回不能代替持久提交证据。测试数据使用临时项目，不操作真实外部IM。

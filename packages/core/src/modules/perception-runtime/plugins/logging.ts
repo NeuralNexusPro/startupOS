@@ -1,6 +1,6 @@
 /** Deliberately excludes free-form SDK messages, request bodies and arbitrary metadata. */
 export interface PluginDecisionLog {
-  phase: 'requested' | 'completed' | 'dispatched' | 'failed';
+  phase: 'requested' | 'completed' | 'dispatched' | 'failed' | 'sticky';
   decisionId?: string;
   ruleId?: string;
   outcome?: string;

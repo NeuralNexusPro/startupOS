@@ -239,6 +239,9 @@ export interface OriginOSAgentConfig {
 
 	/** Skill-only recovery for a terminal assistant response with no text or tools. */
 	emptyStopRecoveryEnabled?: boolean;
+
+	/** Whether ordinary chat uses the semantic completion guard. Defaults to enabled. */
+	completionGuardEnabled?: boolean;
 }
 
 /**
