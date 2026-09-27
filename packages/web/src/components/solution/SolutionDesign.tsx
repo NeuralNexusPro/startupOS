@@ -5,6 +5,7 @@ import { Loader2, Sparkles, Network, MessageSquare, FolderOpen } from 'lucide-re
 import { initializeSolution, listSolutions, getSolution } from '@originos/core/lib/integrations/electron/services/project';
 import { CUIDialogPanel } from '@/components/interview/CUIDialogPanel';
 import { SolutionGraphView } from './TopologyGraph';
+import type { TopologyAgent, TopologySkill } from './solution-topology';
 import { SolutionList } from './SolutionList';
 import { WorkspaceWindow } from '@/components/os/workspace';
 import { usePiAgent } from '@originos/core/lib/integrations/pi-agent/client-hooks';
@@ -28,36 +29,9 @@ interface SolutionManifest {
   status: SolutionDesignStatus;
   modelingDimension: 'task' | 'role';
   businessGoal: string;
-  agents: Array<{
-    id: string;
-    name: string;
-    type: 'agent' | 'role-agent';
-    responsibility: string;
-    domain: string;
-    derivedFrom?: string[];
-    ontologyOperations?: Array<{
-      objectType: string;
-      operations: string[];
-    }>;
-    skills?: Array<string | { name?: string; id?: string; capability?: string; code?: string; description?: string; inputContract?: unknown; outputContract?: unknown }>;
-    collaborations: Array<{
-      targetAgentId: string;
-      targetAgentName: string;
-      type: 'trigger' | 'notify' | 'depend';
-      description: string;
-    }>;
-  }>;
-  skills?: Array<{
-    id: string;
-    name: string;
-    code: string;
-    description: string;
-    capability: string;
-    inputContract?: unknown;
-    outputContract?: unknown;
-    derivedFrom?: string[];
-    dependsOn?: string[];
-  }>;
+  agents: TopologyAgent[];
+  skills?: TopologySkill[];
+  topologyViews?: unknown;
 }
 
 interface SolutionDesignProps {
@@ -246,6 +220,7 @@ export function SolutionDesign({
         solutionId:
           typeof m['solutionId'] === 'string' ? m['solutionId'] : projectId,
         solutionVersion: solutionVersion,
+        topologyViews: m['topologyViews'],
         status:
           m['status'] === 'reviewing' || m['status'] === 'confirmed'
             ? m['status']
@@ -267,8 +242,8 @@ export function SolutionDesign({
       agents: manifest.agents.map(agent => ({
         ...agent,
         collaborations: (agent.collaborations || []).map(c => ({
-          targetAgentId: (c as any).targetAgentId || (c as any).target,
-          targetAgentName: (c as any).targetAgentName || (c as any).target || '',
+          targetAgentId: c.targetAgentId || c.target,
+          targetAgentName: c.targetAgentName || c.target || '',
           type: c.type,
           description: c.description,
         })),
@@ -496,7 +471,12 @@ export function SolutionDesign({
               </div>
 
               <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-                <SolutionGraphView agents={manifest.agents as any} skillDefs={manifest.skills} />
+                <SolutionGraphView
+                  agents={manifest.agents}
+                  skillDefs={manifest.skills}
+                  topologyViews={manifest.topologyViews}
+                  solutionVersion={manifest.solutionVersion}
+                />
               </div>
 
               <div className="mt-4">
@@ -513,25 +493,6 @@ export function SolutionDesign({
                     );
                   }}
                 />
-              </div>
-
-              <div className="mt-4 flex flex-wrap gap-4 text-xs text-gray-600">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-3 rounded-full border border-blue-500 bg-blue-500/20" />
-                  Agent
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-3 rounded-full border border-violet-500 bg-violet-500/20" />
-                  RoleAgent
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-8 h-0.5 bg-orange-500" />
-                  触发
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-8 h-0.5 bg-green-500" />
-                  通知
-                </div>
               </div>
             </div>
           )}
@@ -557,6 +518,7 @@ export const ExtendedSolutionDesign = ({ projectId, projectName }: SolutionDesig
             solutionId:
               typeof m['solutionId'] === 'string' ? m['solutionId'] : projectId,
             solutionVersion: solutionVersion,
+            topologyViews: m['topologyViews'],
             status:
               m['status'] === 'reviewing' || m['status'] === 'confirmed'
                 ? m['status']
@@ -582,7 +544,12 @@ export const ExtendedSolutionDesign = ({ projectId, projectName }: SolutionDesig
   return (
     <div className="space-y-4">
       <h2 className="text-lg font-semibold">AI 解决方案协作图谱 — {projectName}</h2>
-      <SolutionGraphView agents={manifest.agents as any} skillDefs={manifest.skills} />
+      <SolutionGraphView
+        agents={manifest.agents}
+        skillDefs={manifest.skills}
+        topologyViews={manifest.topologyViews}
+        solutionVersion={manifest.solutionVersion}
+      />
     </div>
   );
 };
