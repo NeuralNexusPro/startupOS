@@ -240,7 +240,7 @@ export class SupervisorHeartbeat {
   private extractActiveWorkers(tasks: TaskItem[]): string[] {
     return Array.from(
       new Set(tasks.filter((t) => t.status === "running").map((t) => t.assignedTo))
-    ).filter(Boolean);
+    ).filter((agentId): agentId is string => typeof agentId === "string" && agentId.length > 0);
   }
 
   /**
