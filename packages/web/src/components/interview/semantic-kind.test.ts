@@ -9,8 +9,9 @@ describe('semantic concept presentation', () => {
   });
 
   it('offers only a preview suggestion for an unclassified name', () => {
-    expect(suggestSemanticKind('客户')).toBe('role');
-    expect(suggestSemanticKind('订单')).toBe('document');
+    expect(suggestSemanticKind('客户')).toBe('organization');
+    expect(suggestSemanticKind('订单')).toBe('object');
     expect(suggestSemanticKind('库存')).toBe('object');
+    expect(suggestSemanticKind('8D 报告')).toBe('document');
   });
 });
