@@ -100,6 +100,7 @@ describe('progressive cognitive catalog', () => {
       projectId: 'project-1',
       agentId: 'agent-1',
       originosProjectId: null,
+      ontologyContext: { kind: 'not_found' },
     };
     expectCatalogOnly(buildProjectPromptLayers(ctx).stateMemory);
   });

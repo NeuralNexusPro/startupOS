@@ -2,6 +2,8 @@
  * 项目数据类型定义
  */
 
+import type { ProjectOntologyRef } from './project-ontology-entry';
+
 export interface Project {
 	/**
 	 * 项目唯一 ID
@@ -84,6 +86,11 @@ export type ProjectStatus = "active" | "archived" | "deleted";
  */
 export interface ProjectMetadata {
 	/**
+	 * 项目绑定的 canonical ontology 精确引用。缺失时项目必须通过显式迁移
+	 * 获得该引用，读取方不得猜测或选择最新版本。
+	 */
+	ontologyRef?: ProjectOntologyRef;
+	/**
 	 * 目标用户
 	 */
 	targetUsers?: string;
@@ -106,7 +113,7 @@ export interface ProjectMetadata {
 	/**
 	 * 其他自定义字段
 	 */
-	[key: string]: string | string[] | number | boolean | undefined;
+	[key: string]: string | string[] | number | boolean | ProjectOntologyRef | undefined;
 }
 
 /**

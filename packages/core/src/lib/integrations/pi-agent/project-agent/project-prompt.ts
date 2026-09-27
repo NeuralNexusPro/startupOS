@@ -15,8 +15,6 @@
 
 import type { ProjectContext } from './project-context';
 import { getEnabledToolsByCategory } from '../../../../lib/integrations/pi-agent/tools/registry';
-import { existsSync } from 'fs';
-import path from 'path';
 import { buildPromptMemorySections } from '../memory-consumption';
 import { appendGlobalUserPreferencesPrompt } from '../user-preferences';
 import { createAgentPromptBoundary, type AgentPromptBoundary } from '../prompt-boundary';
@@ -91,12 +89,11 @@ function buildLayer1_Identity(ctx: ProjectContext): string {
 }
 
 function buildLayer2_StateMemory(ctx: ProjectContext): string {
-  const businessModelPath = path.join(ctx.workingDirectory, 'output', 'business-model.json');
-  const hasBusinessModel = existsSync(businessModelPath);
-
-  const statusSection = hasBusinessModel
-    ? `\n**项目状态：** 已有业务模型，进入模型审阅模式。`
-    : `\n**项目状态：** 尚未建立业务模型，进入访谈模式。`;
+  const statusSection = ctx.ontologyContext.kind === 'canonical'
+    ? `\n**项目本体：** 已绑定 \`${ctx.ontologyContext.ontology.ontologyId}\` / \`${ctx.ontologyContext.ontology.ontologyVersion}\`，包含 ${ctx.ontologyContext.ontology.domainCount} 个领域和 ${ctx.ontologyContext.ontology.conceptCount} 个概念。`
+    : ctx.ontologyContext.kind === 'legacy_migration_required'
+      ? '\n**项目本体：** 此项目尚未迁移。提示用户执行显式迁移，且不要读取或写入 business-model.json。'
+      : '\n**项目本体：** 尚未找到 canonical ontology。提示用户先初始化项目本体，且不要读取或写入 business-model.json。';
 
   const memorySections = buildPromptMemorySections({
     memoryBlocks: ctx.memoryBlocks,
@@ -118,10 +115,7 @@ function buildLayer3_ThinkingLoop(): string {
 每次回复用户之前，**必须先执行以下三步，不可跳过**：
 
 **Step 1 — 阶段判断**
-先调用 \`list_files\` 查看 \`output\` 目录；仅当列表中存在 \`business-model.json\` 时再调用 \`read_file\` 读取。根据文件状态以及 entities 是否为空确认当前阶段：
-- 文件不存在或 entities 为空 → Phase 1 领域发现
-- entities 存在但模型未完整 → Phase 2 业务精炼
-- 用户主动要求审阅或模型完整 → Phase 3 模型审阅
+根据只读项目本体上下文判断阶段。已绑定 canonical ontology 时使用 \`query_ontology\` 按绑定的精确 ID/version 查询；尚未迁移或缺失时，先提示用户完成显式迁移或初始化。不得读取、同步或创建 \`business-model.json\`。
 
 **Step 2 — [MANDATORY] 加载技能文件**
 根据 Step 1 确认的阶段，调用 \`read_file\` 读取对应的 SKILL.md 文件：

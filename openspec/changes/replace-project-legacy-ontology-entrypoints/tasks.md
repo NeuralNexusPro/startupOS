@@ -2,9 +2,11 @@
 
 ## 1. Core 项目本体入口（串行）
 
-- [ ] 1.1 `ONT-ENTRY-T1-A`（依赖：Proposal 已批准；角色：Core 本体入口 subagent；写入：`packages/core/src/lib/features/project/` 的公共 DTO、entry service、exports 和测试）实现新项目 canonical ontology 初始化、精确 ontologyRef 读取与 legacy migration-required 状态；复用 ontology public API，不直接读写 legacy 源文件。验证：新项目成功、校验失败不产生部分事实、legacy 未迁移零写入、已迁移精确版本读取的 Core 测试及 `tsc`。
+- [x] 1.1 `ONT-ENTRY-T1-A`（依赖：Proposal 已批准；角色：Core 本体入口 subagent；写入：`packages/core/src/lib/features/project/` 的公共 DTO、entry service、exports 和测试）实现新项目 canonical ontology 初始化、精确 ontologyRef 读取与 legacy migration-required 状态；复用 ontology public API，不直接读写 legacy 源文件。验证：新项目成功、校验失败不产生部分事实、legacy 未迁移零写入、已迁移精确版本读取的 Core 测试及 `tsc`。
 
-- [ ] 1.2 `ONT-ENTRY-T1-B`（串行；依赖：1.1；角色：Core 项目生命周期 subagent；写入：`packages/core/src/lib/features/services/`、project Agent context 公共适配与测试）让项目初始化和 Agent 启动通过 1.1 的公共入口获取 canonical context，移除启动时 `business-model.json` 主读取逻辑；旧项目只返回明确迁移状态。验证：新项目 Agent context、legacy 状态、迁移后项目和无自动写入回归测试。
+- [x] 1.2 `ONT-ENTRY-T1-B`（串行；依赖：1.1；角色：Core 项目生命周期 subagent；写入：`packages/core/src/lib/features/services/`、project Agent context 公共适配与测试）让项目初始化和 Agent 启动通过 1.1 的公共入口获取 canonical context，移除启动时 `business-model.json` 主读取逻辑；旧项目只返回明确迁移状态。验证：新项目 Agent context、legacy 状态、迁移后项目和无自动写入回归测试。
+
+完成证据（2026-09-27）：`project-ontology-entry-service.test.ts` 覆盖确认访谈创建、校验失败零快照、未迁移 legacy 零写入、显式迁移绑定与精确版本读取；Project Agent prompt 回归覆盖 canonical 状态注入与不读取 legacy。定向 Vitest 3 files / 19 tests、Core `tsc`、`pnpm lint`（0 error / 3200 既有 warning）、boundary scan 与 self-test、strict OpenSpec validation 均通过。
 
 ## 2. 交互入口替换（可并行）
 

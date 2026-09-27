@@ -36,7 +36,7 @@ export async function loadFrozenSessionContext(
     return buildProjectLauncherSessionContext({
       memory: readFile(workingDirectory, 'Memory.md'),
       baseDir: workingDirectory,
-      businessModel: readFile(path.join(workingDirectory, 'ontology'), 'business-model.json'),
+      ontologyContext: { kind: 'not_found' },
     });
   }
 

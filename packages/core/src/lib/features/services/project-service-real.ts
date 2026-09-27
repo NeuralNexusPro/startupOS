@@ -18,6 +18,7 @@ import type {
   UpdateProjectRequest,
   ProjectQuery,
 } from '../../../types/project';
+import { CanonicalOntologyStore } from '../ontology';
 
 // ============================================================================
 // Configuration
@@ -25,6 +26,7 @@ import type {
 
 const DATA_DIR = path.join(getDataRoot(), 'projects');
 const FILES_DIR = 'files';
+const canonicalOntologyStore = new CanonicalOntologyStore(getDataRoot());
 
 // ============================================================================
 // Helpers
@@ -59,6 +61,21 @@ function generateRandomColor(): string {
     'from-red-500', 'from-orange-500',
   ];
   return colors[Math.floor(Math.random() * colors.length)] as string;
+}
+
+function ontologyRefFromProject(project: Project): { ontologyId: string; ontologyVersion: string } | null {
+  const ref = project.metadata?.ontologyRef;
+  if (!ref || typeof ref !== 'object') return null;
+  if (typeof ref.ontologyId !== 'string' || typeof ref.ontologyVersion !== 'string') return null;
+  return ref;
+}
+
+async function canonicalOntologySize(project: Project): Promise<number> {
+  const ref = ontologyRefFromProject(project);
+  if (!ref) return 0;
+  const stored = await canonicalOntologyStore.readOntology(project.id);
+  if (!stored || stored.data.id !== ref.ontologyId || stored.data.version !== ref.ontologyVersion) return 0;
+  return stored.data.concepts.length;
 }
 
 // ============================================================================
@@ -259,18 +276,7 @@ export const projectService = {
           continue;
         }
 
-        // Calculate ontology size from business-model.json
-        let ontologySize = 0;
-        const businessModelPath = path.join(DATA_DIR, project.id, 'output', 'business-model.json');
-        if (existsSync(businessModelPath)) {
-          try {
-            const content = await readFile(businessModelPath, 'utf-8');
-            const businessModel = JSON.parse(content);
-            ontologySize = businessModel.entities?.length || 0;
-          } catch {
-            // Ignore errors, keep ontologySize as 0
-          }
-        }
+        const ontologySize = await canonicalOntologySize(project);
 
         // Check if solution manifest exists
         let hasSolution = false;
@@ -389,18 +395,7 @@ export const projectService = {
       }
     }
 
-    // Calculate ontology size from business-model.json
-    let ontologySize = 0;
-    const businessModelPath = path.join(DATA_DIR, project.id, 'output', 'business-model.json');
-    if (existsSync(businessModelPath)) {
-      try {
-        const content = await readFile(businessModelPath, 'utf-8');
-        const businessModel = JSON.parse(content);
-        ontologySize = businessModel.entities?.length || 0;
-      } catch {
-        // Ignore
-      }
-    }
+    const ontologySize = await canonicalOntologySize(project);
 
     return {
       fileCount,

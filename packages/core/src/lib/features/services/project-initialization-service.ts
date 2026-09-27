@@ -14,6 +14,8 @@ import { existsSync } from 'fs';
 import path from 'path';
 import { agentSessionService } from '../../../lib/features/agent';
 import type { Project } from '../../../types/project';
+import { type CanonicalOntology, type CanonicalSourceReference } from '../ontology';
+import { ProjectOntologyEntryService } from '../project';
 
 // ============================================================================
 // Types
@@ -30,7 +32,7 @@ export interface BusinessModel {
   entities: Array<{
     name: string;
     definition: string;
-    properties?: Record<string, any>;
+    properties?: Record<string, unknown>;
     lifecycle?: {
       states: string[];
       transitions: Record<string, string>;
@@ -156,14 +158,14 @@ function generateAgentMd(businessModel: BusinessModel, projectId: string): strin
    - 示例: \`doc-user-journey-20260408.md\`
 
 3. **引用规则** - 引用项目文件时使用相对路径
-   - 业务模型: \`../reference/business-model.json\`
+   - canonical ontology：使用 \`query_ontology\` 按项目绑定的 ID/version 查询
    - 技能文档: \`../skills/{skill-name}/SKILL.md\`
 
 ### 知识库使用
 
-1. **业务模型** (\`reference/business-model.json\`)
+1. **canonical ontology**
    - 包含完整的业务实体、关系、规则
-   - 生成内容时必须遵循业务模型定义
+   - 生成内容时必须通过本体工具按项目绑定的精确 ID/version 查询
 
 2. **领域知识** (\`reference/domain-knowledge.md\`)
    - 行业特定的术语、概念、最佳实践
@@ -255,6 +257,77 @@ function generateTasteMd(businessModel: BusinessModel): string {
 `;
 }
 
+function canonicalOntologyFromBusinessModel(projectId: string, businessModel: BusinessModel): CanonicalOntology {
+  const now = new Date();
+  const sourceRef: CanonicalSourceReference = {
+    sourceType: 'interview',
+    sourceId: `project-initialization:${projectId}`,
+    sourceVersion: '1.0.0',
+  };
+  const domainId = 'domain_primary';
+  const concepts = businessModel.entities.map((entity, index) => ({
+    id: `concept_${index + 1}`,
+    domainId,
+    name: entity.name,
+    type: 'entity',
+    attributes: entity.properties ?? {},
+    description: entity.definition,
+    sourceRefs: [sourceRef],
+    createdAt: now,
+    updatedAt: now,
+  }));
+  const conceptIdByName = new Map(businessModel.entities.map((entity, index) => [entity.name, `concept_${index + 1}`]));
+  const relations: CanonicalOntology['relations'] = [];
+  for (const [index, relation] of businessModel.relationships.entries()) {
+    const sourceConceptId = conceptIdByName.get(relation.from);
+    const targetConceptId = conceptIdByName.get(relation.to);
+    if (!sourceConceptId || !targetConceptId) continue;
+    relations.push({
+      id: `relation_${index + 1}`,
+      name: relation.type,
+      sourceConceptId,
+      targetConceptId,
+      cardinality: relation.cardinality === 'one-to-one'
+        || relation.cardinality === 'one-to-many'
+        || relation.cardinality === 'many-to-one'
+        || relation.cardinality === 'many-to-many'
+        ? relation.cardinality
+        : 'many-to-many',
+      description: relation.required ? 'required' : undefined,
+    });
+  }
+
+  return {
+    id: `ontology_${projectId}`,
+    projectId,
+    name: generateProjectTitle(businessModel),
+    schemaVersion: '1.0.0',
+    version: '1.0.0',
+    domains: [{
+      id: domainId,
+      name: businessModel.industry || 'general',
+      description: businessModel.background,
+      createdAt: now,
+      updatedAt: now,
+    }],
+    concepts,
+    instances: [],
+    properties: [],
+    relations,
+    businessStates: [],
+    transitions: [],
+    factTypes: [],
+    rules: [],
+    actions: [],
+    events: [],
+    projections: [],
+    sourceRefs: [sourceRef],
+    metadata: { source: 'project-initialization' },
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 /**
  * 生成 Tool.md（工具配置）
  */
@@ -328,6 +401,11 @@ export const projectInitializationService = {
       await this.createProjectStructure(projectId);
       console.log('[ProjectInit] Directory structure created');
 
+      const ontologyEntry = new ProjectOntologyEntryService(getDataRoot());
+      const canonicalOntology = canonicalOntologyFromBusinessModel(projectId, businessModel);
+      const ontologyRef = await ontologyEntry.initializeCanonicalOntology(projectId, canonicalOntology);
+      console.log('[ProjectInit] Canonical ontology initialized');
+
       // 3. 生成并保存 Agent.md
       const agentMdContent = generateAgentMd(businessModel, projectId);
       await writeFile(
@@ -355,11 +433,7 @@ export const projectInitializationService = {
       );
       console.log('[ProjectInit] Tool.md generated');
 
-      // 4. 保存业务模型
-      await this.saveBusinessModel(projectId, businessModel);
-      console.log('[ProjectInit] Business model saved');
-
-      // 5. 生成领域知识文档
+      // 4. 生成领域知识文档
       const domainKnowledge = generateDomainKnowledge(businessModel);
       await writeFile(
         path.join(projectPath, 'reference', 'domain-knowledge.md'),
@@ -368,11 +442,11 @@ export const projectInitializationService = {
       );
       console.log('[ProjectInit] Domain knowledge generated');
 
-      // 6. 复制技能文件
+      // 5. 复制技能文件
       await this.copySkillsToProject(projectId, skillsToInclude);
       console.log('[ProjectInit] Skills copied');
 
-      // 7. 初始化 Agent 会话（在保存项目元数据之前）
+      // 6. 初始化 Agent 会话（在保存项目元数据之前）
       const agentSessionId = await this.initializeAgentSession(
         projectId,
         projectName,
@@ -381,15 +455,15 @@ export const projectInitializationService = {
       );
       console.log('[ProjectInit] Agent session initialized:', agentSessionId);
 
-      // 8. 创建项目元数据（包含 agentSessionId）
+      // 7. 创建项目元数据（包含 agentSessionId）
       const now = Date.now();
       const project: Project = {
         id: projectId,
         name: projectName,
         description: businessModel.background,
         domain: businessModel.industry,
-        type: 'business-model',
-        ontologyId: '',
+        type: 'canonical-ontology',
+        ontologyId: ontologyRef.ontologyId,
         createdAt: now,
         updatedAt: now,
         lastModified: now,
@@ -397,6 +471,10 @@ export const projectInitializationService = {
         status: 'active',
         color: generateRandomColor(),
         metadata: {
+          ontologyRef: {
+            ontologyId: ontologyRef.ontologyId,
+            ontologyVersion: ontologyRef.ontologyVersion,
+          },
           businessModelSummary: JSON.stringify({
             entityCount: businessModel.entities.length,
             relationshipCount: businessModel.relationships.length,
@@ -450,20 +528,6 @@ export const projectInitializationService = {
     for (const subdir of subdirs) {
       await mkdir(path.join(projectPath, subdir), { recursive: true });
     }
-  },
-
-  /**
-   * 保存业务模型
-   */
-  async saveBusinessModel(projectId: string, businessModel: BusinessModel): Promise<void> {
-    const projectPath = getProjectPath(projectId);
-    const modelPath = path.join(projectPath, 'reference', 'business-model.json');
-
-    await writeFile(
-      modelPath,
-      JSON.stringify(businessModel, null, 2),
-      'utf-8'
-    );
   },
 
   /**

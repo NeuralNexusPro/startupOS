@@ -3,7 +3,7 @@
  *
  * 启动流程（data/projects/{id}/）：
  * 1. 读取项目 Agent.md / 本体文件
- * 2. 读取 ontology/business-model.json → 注入本体上下文
+ * 2. 经 ProjectOntologyEntryService 读取 canonical ontology 状态 → 注入本体上下文
  * 3. 读取 Tool.md → 注册本体工具集
  * 4. 读取 Memory.md / Taste.md
  * 5. 创建会话（projectId = entryId, agentType = 'project'）
@@ -15,6 +15,7 @@ import { Launcher, type LaunchContext, type LaunchResult, buildAgentPromptBounda
 import { buildProjectLauncherSessionContext, createAgentPromptBoundary } from '../../../../lib/integrations/pi-agent/prompt-boundary';
 import { getDataRoot } from '../../../paths';
 import { ObservationPolicyResolver } from '../../../../modules/memory-core';
+import { ProjectOntologyEntryService } from '../../project';
 
 const PROJECTS_DIR = path.join(getDataRoot(), 'projects');
 
@@ -28,6 +29,7 @@ export class ProjectLauncher extends Launcher {
       // 1. 读取入口内容
       const content = await this.loadEntryContent(ctx.entryId);
       const agentMd = content['Agent.md'] || '';
+      const ontologyContext = await new ProjectOntologyEntryService(getDataRoot()).resolveProject(ctx.entryId);
 
       // 2. 构建稳定 prompt 与会话快照
       const stableBoundary = buildAgentPromptBoundary(agentMd, {
@@ -38,7 +40,7 @@ export class ProjectLauncher extends Launcher {
         buildProjectLauncherSessionContext({
           memory: content['Memory.md'],
           baseDir: projectBaseDir,
-          businessModel: content['business-model.json'],
+          ontologyContext,
         }),
       );
 
@@ -104,15 +106,6 @@ export class ProjectLauncher extends Launcher {
       if (content !== null) {
         result[file] = content;
       }
-    }
-
-    // 读取本体文件
-    const ontologyContent = this.readMdFile(
-      path.join(projectBaseDir, 'ontology'),
-      'business-model.json',
-    );
-    if (ontologyContent !== null) {
-      result['business-model.json'] = ontologyContent;
     }
 
     return result;

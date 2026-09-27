@@ -32,6 +32,7 @@ export type { RelationType, Domain, Concept as OntologyConcept, Instance, Relati
 export * from './os';
 export * from './perception';
 export * from './project';
+export * from './project-ontology-entry';
 export * from './project-creation';
 export * from './sandbox';
 export * from './skill';
