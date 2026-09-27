@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import os from 'os';
 import path from 'path';
 import { buildAgentPromptBoundary } from '@/lib/features/services/launcher/base';
@@ -23,7 +23,7 @@ const projectContext = (overrides: Partial<ProjectContext> = {}): ProjectContext
   agentMd: '# Project', toolMd: null, tasteMd: 'brief', memoryMd: '## Memory\nfirst',
   knowledgeMd: '## Knowledge', patternsMd: '## Pattern', memoryBlocks: null,
   installedSkills: [], allowedTools: [], workingDirectory: '/tmp/project', projectId: 'p1',
-  agentId: 'a1', originosProjectId: null, ...overrides,
+  agentId: 'a1', originosProjectId: null, ontologyContext: { kind: 'not_found' }, ...overrides,
 });
 
 const collaborationContext = (
@@ -63,6 +63,24 @@ describe('stable prompt boundary', () => {
       .toBe(first.stablePromptHash);
   });
 
+  it('Project Agent 只注入绑定的 canonical ontology 状态，不注入 legacy 文件内容', () => {
+    const boundary = buildProjectPromptBoundary(projectContext({
+      ontologyContext: {
+        kind: 'canonical',
+        ontology: {
+          ontologyId: 'ontology-project-1',
+          ontologyVersion: '2.0.0',
+          name: '项目本体',
+          domainCount: 2,
+          conceptCount: 4,
+        },
+      },
+    }));
+    expect(boundary.sessionContext).toContain('ontology-project-1');
+    expect(boundary.sessionContext).toContain('2.0.0');
+    expect(boundary.systemPrompt).toContain('不得读取、同步或创建');
+  });
+
   it('协作 Agent 将 Memory、目录和额外指令留在 session context', () => {
     const first = buildCollaborationPromptBoundary(collaborationContext(), 'turn one');
     const dynamic = buildCollaborationPromptBoundary(
@@ -95,11 +113,9 @@ describe('stable prompt boundary', () => {
           memory: '## Memory\nrestored', knowledge: '## Knowledge', patterns: '## Pattern', baseDir: directory,
         }));
 
-      mkdirSync(path.join(directory, 'ontology'));
-      writeFileSync(path.join(directory, 'ontology', 'business-model.json'), '{"name":"demo"}');
       expect(await loadFrozenSessionContext({ agentType: 'project', workingDirectory: directory }))
         .toBe(buildProjectLauncherSessionContext({
-          memory: '## Memory\nrestored', baseDir: directory, businessModel: '{"name":"demo"}',
+          memory: '## Memory\nrestored', baseDir: directory, ontologyContext: { kind: 'not_found' },
         }));
     } finally {
       rmSync(directory, { recursive: true, force: true });

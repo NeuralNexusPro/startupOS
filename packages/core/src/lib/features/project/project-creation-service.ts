@@ -22,13 +22,18 @@ import {
 } from '../../../types/project-creation';
 import { TASTEProfile, createTASTEProfile } from '../../../types/taste';
 import { getDataRoot } from '../../paths';
+import {
+  type CanonicalOntology,
+  type CanonicalSourceReference,
+  validateCanonicalOntology,
+} from '../ontology';
+import {
+  ProjectOntologyEntryService,
+  ProjectOntologyInitializationError,
+} from './project-ontology-entry-service';
 
 // Data storage paths
 const DATA_DIR = getDataRoot();
-const SESSIONS_DIR = path.join(DATA_DIR, 'sessions', 'project-creation');
-const PROJECTS_DIR = path.join(DATA_DIR, 'projects');
-const TASTE_PROJECTS_DIR = path.join(DATA_DIR, 'taste', 'projects');
-const ONTOLOGIES_DIR = path.join(DATA_DIR, 'ontologies');
 
 /**
  * Ensure directory exists
@@ -57,9 +62,15 @@ function generateProjectId(): string {
  */
 export class ProjectCreationService {
   private sessionsDir: string;
+  private readonly dataRoot: string;
+  private readonly projectsDir: string;
+  private readonly tasteProjectsDir: string;
 
-  constructor(sessionsDir?: string) {
-    this.sessionsDir = sessionsDir ?? SESSIONS_DIR;
+  constructor(sessionsDir?: string, dataRoot = DATA_DIR) {
+    this.dataRoot = dataRoot;
+    this.sessionsDir = sessionsDir ?? path.join(dataRoot, 'sessions', 'project-creation');
+    this.projectsDir = path.join(dataRoot, 'projects');
+    this.tasteProjectsDir = path.join(dataRoot, 'taste', 'projects');
   }
 
   /**
@@ -263,10 +274,19 @@ export class ProjectCreationService {
     const projectId = session.projectId;
     const now = new Date().toISOString();
 
+    const canonicalOntology = this.buildCanonicalOntology(session);
+    const validation = validateCanonicalOntology(canonicalOntology);
+    if (!validation.valid) {
+      throw new ProjectOntologyInitializationError(validation.issues);
+    }
+
     // 1. Create project file
-    await ensureDir(PROJECTS_DIR);
-    const projectDir = path.join(PROJECTS_DIR, projectId);
+    await ensureDir(this.projectsDir);
+    const projectDir = path.join(this.projectsDir, projectId);
     await ensureDir(projectDir);
+
+    const ontologyEntry = new ProjectOntologyEntryService(this.dataRoot);
+    const canonicalSummary = await ontologyEntry.initializeCanonicalOntology(projectId, canonicalOntology);
 
     const project = {
       id: projectId,
@@ -274,7 +294,7 @@ export class ProjectCreationService {
       description: session.data.background ?? '',
       domain: session.extractedData.context_features?.domain ?? 'general',
       type: 'web-application',
-      ontologyId: `ontology_${projectId}`,
+      ontologyId: canonicalSummary.ontologyId,
       createdAt: now,
       updatedAt: now,
       lastModified: now,
@@ -282,6 +302,10 @@ export class ProjectCreationService {
       status: 'active',
       color: '#3B82F6', // Default blue
       metadata: {
+        ontologyRef: {
+          ontologyId: canonicalSummary.ontologyId,
+          ontologyVersion: canonicalSummary.ontologyVersion,
+        },
         workMode: session.data.workMode ?? undefined,
         priorities: session.data.priorities,
         techStack: session.extractedData.context_features?.tech_stack,
@@ -295,25 +319,15 @@ export class ProjectCreationService {
 
     // 2. Generate Project TASTE
     const taste = this.generateProjectTASTE(session);
-    await ensureDir(TASTE_PROJECTS_DIR);
-    const tasteDir = path.join(TASTE_PROJECTS_DIR, projectId);
+    await ensureDir(this.tasteProjectsDir);
+    const tasteDir = path.join(this.tasteProjectsDir, projectId);
     await ensureDir(tasteDir);
     await fs.writeFile(
       path.join(tasteDir, 'profile.json'),
       JSON.stringify(taste, null, 2)
     );
 
-    // 3. Build initial Ontology
-    const ontology = this.buildOntology(session);
-    await ensureDir(ONTOLOGIES_DIR);
-    const ontologyDir = path.join(ONTOLOGIES_DIR, projectId);
-    await ensureDir(ontologyDir);
-    await fs.writeFile(
-      path.join(ontologyDir, 'ontology.json'),
-      JSON.stringify(ontology, null, 2)
-    );
-
-    // 4. Update session status
+    // 3. Update session status
     session.status = 'completed';
     session.completedAt = now;
     await this.saveSession(session);
@@ -326,7 +340,7 @@ export class ProjectCreationService {
         path: `/projects/${projectId}`,
       },
       taste,
-      ontology: { domains: ontology.domains.length },
+      ontology: { domains: canonicalOntology.domains.length },
     };
   }
 
@@ -589,19 +603,14 @@ export class ProjectCreationService {
   /**
    * Build initial Ontology from session data
    */
-  private buildOntology(session: ProjectCreationSession): {
-    version: string;
-    projectId: string;
-    domains: Array<{ id: string; name: string; description: string; confidence: number }>;
-    concepts: Array<{ id: string; domainId: string; name: string; type: string; confidence: number }>;
-    instances: unknown[];
-    relations: Array<{ id: string; sourceId: string; targetId: string; type: string; confidence: number }>;
-    metadata: { derived_from_session: string; generated_at: string; confidence: number };
-    createdAt: string;
-    updatedAt: string;
-  } {
-    const now = new Date().toISOString();
-    const domains: Array<{ id: string; name: string; description: string; confidence: number }> = [];
+  private buildCanonicalOntology(session: ProjectCreationSession): CanonicalOntology {
+    const now = new Date();
+    const sourceRef: CanonicalSourceReference = {
+      sourceType: 'interview',
+      sourceId: session.sessionId,
+      sourceVersion: '1.0.0',
+    };
+    const domains: CanonicalOntology['domains'] = [];
 
     // Extract domains from experience topology
     const topology = session.extractedData.experience_topology;
@@ -610,7 +619,8 @@ export class ProjectCreationService {
         id: `domain_${i}`,
         name: topology[i] ?? '',
         description: `${topology[i]} domain`,
-        confidence: 0.7,
+        createdAt: now,
+        updatedAt: now,
       });
     }
 
@@ -620,7 +630,8 @@ export class ProjectCreationService {
         id: `domain_${domains.length}`,
         name: session.extractedData.context_features.domain,
         description: `Primary project domain: ${session.extractedData.context_features.domain}`,
-        confidence: 0.8,
+        createdAt: now,
+        updatedAt: now,
       });
     }
 
@@ -630,44 +641,60 @@ export class ProjectCreationService {
         id: 'domain_0',
         name: 'general',
         description: 'General project domain',
-        confidence: 0.5,
+        createdAt: now,
+        updatedAt: now,
       });
     }
 
     // Generate concepts from domain
-    const concepts: Array<{ id: string; domainId: string; name: string; type: string; confidence: number }> = [];
+    const concepts: CanonicalOntology['concepts'] = [];
     domains.forEach((domain, idx) => {
       concepts.push({
         id: `concept_${idx}_main`,
         domainId: domain.id,
         name: `${domain.name} concept`,
         type: 'entity',
-        confidence: 0.6,
+        attributes: {},
+        sourceRefs: [sourceRef],
+        createdAt: now,
+        updatedAt: now,
       });
     });
 
     // Generate simple relations
-    const relations: Array<{ id: string; sourceId: string; targetId: string; type: string; confidence: number }> = [];
+    const relations: CanonicalOntology['relations'] = [];
     for (let i = 0; i < concepts.length - 1; i++) {
       relations.push({
         id: `rel_${i}`,
-        sourceId: concepts[i]!.id,
-        targetId: concepts[i + 1]!.id,
-        type: 'related_to',
-        confidence: 0.5,
+        name: 'related_to',
+        sourceConceptId: concepts[i]!.id,
+        targetConceptId: concepts[i + 1]!.id,
+        cardinality: 'many-to-many',
       });
     }
 
     return {
+      id: `ontology_${session.projectId}`,
+      name: session.data.name || '项目本体',
+      schemaVersion: '1.0.0',
       version: '1.0.0',
       projectId: session.projectId,
       domains,
       concepts,
       instances: [],
+      properties: [],
       relations,
+      businessStates: [],
+      transitions: [],
+      factTypes: [],
+      rules: [],
+      actions: [],
+      events: [],
+      projections: [],
+      sourceRefs: [sourceRef],
       metadata: {
         derived_from_session: session.sessionId,
-        generated_at: now,
+        generated_at: now.toISOString(),
         confidence: domains.length > 0 ? 0.7 : 0.5,
       },
       createdAt: now,

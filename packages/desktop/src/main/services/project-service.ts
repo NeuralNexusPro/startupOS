@@ -1,5 +1,5 @@
 import fs from 'fs/promises';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import path from 'path';
 
 import { ipcMain, BrowserWindow } from 'electron';
@@ -24,6 +24,14 @@ import type {
 import { calculateProgress } from '../../../../core/src/types/project-creation';
 import { projectService } from '../../../../core/src/lib/features/services/project-service-real';
 import { projectCreationService } from '../../../../core/src/lib/features/project/project-creation-service';
+import {
+  ProjectOntologyEntryService,
+  type ProjectOntologyEntryResult,
+} from '../../../../core/src/lib/features/project';
+import {
+  previewLegacyOntologyFile,
+  type LegacyOntologySourceKind,
+} from '../../../../core/src/lib/features/ontology';
 import { getDataRoot, getTemplatesDir } from '../../../../core/src/lib/paths';
 import {
   PROJECT_DEFAULT_SKILLS,
@@ -32,44 +40,18 @@ import {
 } from '../../../../core/src/lib/integrations/pi-agent/project-agent/project-skill-provisioning';
 import { launch } from '../../../../core/src/lib/features/services/launcher/registry';
 
-interface BusinessModelEntity {
-  name?: string;
-  label?: string;
-  definition?: string;
-  description?: string;
-  properties?: Record<string, unknown>;
+interface LegacyOntologyMigrationRequest {
+  projectId: string;
+  sourceKind: LegacyOntologySourceKind;
+  /** A preview never writes. Migration requires an explicit confirmation. */
+  confirmed: boolean;
 }
 
-interface BusinessModelRelationship {
-  from?: string;
-  to?: string;
-  type?: string;
-  cardinality?: string;
-}
-
-interface BusinessModel {
-  projectName?: string;
-  background?: string;
-  description?: string;
-  entities?: Array<string | BusinessModelEntity>;
-  relationships?: Array<string | BusinessModelRelationship>;
-}
-
-interface SyncedOntologyResult {
-  ontologyId: string;
-  ontologyPath: string;
-  conceptsCount: number;
-  relationsCount: number;
-}
-
-function inferFieldType(value: unknown): string {
-  if (typeof value === 'string') return 'string';
-  if (typeof value === 'number') return 'number';
-  if (typeof value === 'boolean') return 'boolean';
-  if (Array.isArray(value)) return 'array';
-  if (typeof value === 'object' && value !== null) return 'object';
-  return 'string';
-}
+const legacySourcePaths: Record<LegacyOntologySourceKind, (projectId: string) => string> = {
+  'business-model': (projectId) => path.join('projects', projectId, 'output', 'business-model.json'),
+  'ontology-model': (projectId) => path.join('projects', projectId, 'ontology', 'ontology-model.json'),
+  'ontology': (projectId) => path.join('projects', projectId, 'ontology', 'ontology.json'),
+};
 
 export class ProjectService {
   constructor() {
@@ -133,148 +115,6 @@ export class ProjectService {
     }
 
     return createdFiles;
-  }
-
-  private async syncBusinessModelToOntology(projectId: string): Promise<SyncedOntologyResult> {
-    const projectDir = path.join(getDataRoot(), 'projects', projectId);
-    const businessModelPath = path.join(projectDir, 'output', 'business-model.json');
-    if (!existsSync(businessModelPath)) {
-      throw new Error(`business-model.json not found for project ${projectId}`);
-    }
-
-    const content = await fs.readFile(businessModelPath, 'utf-8');
-    const businessModel = JSON.parse(content) as BusinessModel;
-    const ontologyId = `ontology-${projectId}`;
-    const domainId = 'domain_main';
-    const now = new Date().toISOString();
-
-    const concepts: Array<{
-      id: string;
-      domainId: string;
-      name: string;
-      type: string;
-      description?: string;
-      attributes?: Record<string, { type: string; required?: boolean; description?: string }>;
-    }> = [];
-    const nameToConceptId = new Map<string, string>();
-
-    if (Array.isArray(businessModel.entities)) {
-      for (let i = 0; i < businessModel.entities.length; i++) {
-        const entity = businessModel.entities[i];
-        const conceptId = `concept_${i}`;
-        if (typeof entity === 'string') {
-          concepts.push({ id: conceptId, domainId, name: entity, type: 'entity', description: '' });
-          nameToConceptId.set(entity, conceptId);
-          continue;
-        }
-
-        const name = entity?.name || entity?.label || `实体${i}`;
-        const attributes: Record<string, { type: string; required?: boolean; description?: string }> = {};
-        if (entity?.properties && typeof entity.properties === 'object') {
-          for (const [key, value] of Object.entries(entity.properties)) {
-            attributes[key] = {
-              type: inferFieldType(value),
-              description: typeof value === 'string' ? value : undefined,
-            };
-          }
-        }
-
-        concepts.push({
-          id: conceptId,
-          domainId,
-          name,
-          type: 'entity',
-          description: entity?.definition || entity?.description || '',
-          attributes: Object.keys(attributes).length > 0 ? attributes : undefined,
-        });
-        nameToConceptId.set(name, conceptId);
-        if (entity?.name) nameToConceptId.set(entity.name, conceptId);
-        if (entity?.label) nameToConceptId.set(entity.label, conceptId);
-      }
-    }
-
-    const relations: Array<{ id: string; sourceId: string; targetId: string; type: string; cardinality: string }> = [];
-    if (Array.isArray(businessModel.relationships)) {
-      for (let i = 0; i < businessModel.relationships.length; i++) {
-        const relationship = businessModel.relationships[i];
-        let from: string | undefined;
-        let to: string | undefined;
-        let relationType = 'related_to';
-        let cardinality = 'N:M';
-
-        if (typeof relationship === 'string') {
-          const parts = relationship.split('→').map((part) => part.trim()).filter(Boolean);
-          from = parts[0];
-          to = parts[1];
-        } else {
-          from = relationship?.from;
-          to = relationship?.to;
-          relationType = relationship?.type || relationType;
-          cardinality = relationship?.cardinality || cardinality;
-        }
-
-        const sourceId = from ? nameToConceptId.get(from) : undefined;
-        const targetId = to ? nameToConceptId.get(to) : undefined;
-        if (sourceId && targetId) {
-          relations.push({
-            id: `rel_${i}`,
-            sourceId,
-            targetId,
-            type: relationType,
-            cardinality,
-          });
-        }
-      }
-    }
-
-    const ontologyDir = path.join(projectDir, 'ontology');
-    await fs.mkdir(ontologyDir, { recursive: true });
-
-    const ontologyPath = path.join(ontologyDir, 'ontology.json');
-    const ontologyData = {
-      version: '1.0.0',
-      projectId,
-      ontologyId,
-      domains: [{
-        id: domainId,
-        name: businessModel.projectName || '主域',
-        description: businessModel.background || businessModel.description || '',
-        confidence: 0.8,
-      }],
-      concepts,
-      instances: [],
-      relations,
-      metadata: {
-        synced_from: 'business-model.json',
-        synced_at: now,
-        runtime: 'electron-ipc',
-      },
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    await fs.writeFile(ontologyPath, JSON.stringify(ontologyData, null, 2), 'utf-8');
-
-    for (const concept of concepts) {
-      const conceptDataDir = path.join(ontologyDir, 'data', domainId, concept.id);
-      await fs.mkdir(conceptDataDir, { recursive: true });
-      const indexPath = path.join(conceptDataDir, '_index.json');
-      if (!existsSync(indexPath)) {
-        await fs.writeFile(indexPath, JSON.stringify({ instanceIds: [] }, null, 2), 'utf-8');
-      }
-    }
-
-    const instanceRelationsPath = path.join(ontologyDir, 'instance-relations.json');
-    if (!existsSync(instanceRelationsPath)) {
-      await fs.writeFile(instanceRelationsPath, JSON.stringify({ relations: [] }, null, 2), 'utf-8');
-    }
-
-    return {
-      ontologyId,
-      ontologyPath,
-      conceptsCount: concepts.length,
-      relationsCount: relations.length,
-    };
   }
 
   private registerHandlers(): void {
@@ -399,15 +239,13 @@ export class ProjectService {
       IPC_CHANNELS.PROJECT_ARTIFACT_GET,
       async (_event, request: { projectId: string; artifactType: string }): Promise<IpcResponse<unknown>> => {
         try {
-          const { readFileSync, existsSync } = require('fs');
-          const { join } = require('path');
-          const baseDir = join(getDataRoot(), 'projects', request.projectId, 'output');
+          const baseDir = path.join(getDataRoot(), 'projects', request.projectId, 'output');
           const fileMap: Record<string, string> = {
             'business-model': 'business-model.json',
             'interview-markdown': 'interview-progress.md',
           };
           const filename = fileMap[request.artifactType] || `${request.artifactType}.json`;
-          const filePath = join(baseDir, filename);
+          const filePath = path.join(baseDir, filename);
           console.log('[ProjectService] artifact:get request', {
             projectId: request.projectId,
             artifactType: request.artifactType,
@@ -464,27 +302,85 @@ export class ProjectService {
     );
 
     ipcMain.handle(
-      IPC_CHANNELS.PROJECT_SYNC_ONTOLOGY,
-      async (_event, request: { projectId: string }): Promise<IpcResponse<SyncedOntologyResult>> => {
+      IPC_CHANNELS.PROJECT_ONTOLOGY_ENTRY_GET,
+      async (_event, request: { projectId: string }): Promise<IpcResponse<ProjectOntologyEntryResult>> => {
         try {
-          const result = await this.syncBusinessModelToOntology(request.projectId);
-          const project = await projectService.updateProject(request.projectId, {
-            ontologyId: result.ontologyId,
-          });
-          if (project) {
-            this.broadcastProjectUpdated(request.projectId, project);
+          if (!request.projectId) {
+            return {
+              success: false,
+              error: { code: 'INVALID_REQUEST', message: 'projectId is required' },
+              timestamp: new Date().toISOString(),
+            };
           }
-          console.log('[ProjectService] sync ontology completed', {
-            projectId: request.projectId,
-            ...result,
-          });
+          const entry = await new ProjectOntologyEntryService(getDataRoot()).resolveProject(request.projectId);
           return {
             success: true,
-            data: result,
+            data: entry,
             timestamp: new Date().toISOString(),
           };
         } catch (error) {
-          return this.toErrorResponse(error, '[ProjectService] Sync ontology failed');
+          return this.toErrorResponse(error, '[ProjectService] Get ontology entry failed');
+        }
+      }
+    );
+
+    ipcMain.handle(
+      IPC_CHANNELS.PROJECT_LEGACY_ONTOLOGY_MIGRATE,
+      async (_event, request: LegacyOntologyMigrationRequest): Promise<IpcResponse<unknown>> => {
+        try {
+          if (!request.projectId || !legacySourcePaths[request.sourceKind] || typeof request.confirmed !== 'boolean') {
+            return {
+              success: false,
+              error: { code: 'INVALID_REQUEST', message: 'projectId, sourceKind, and confirmed are required' },
+              timestamp: new Date().toISOString(),
+            };
+          }
+
+          const sourcePath = legacySourcePaths[request.sourceKind](request.projectId);
+          if (!request.confirmed) {
+            const preview = await previewLegacyOntologyFile({
+              projectId: request.projectId,
+              sourceKind: request.sourceKind,
+              sourcePath,
+            }, getDataRoot());
+            return {
+              success: true,
+              data: { mode: 'dry-run', ...preview },
+              timestamp: new Date().toISOString(),
+            };
+          }
+
+          const ontology = await new ProjectOntologyEntryService(getDataRoot()).migrateAndBindLegacyOntology({
+            projectId: request.projectId,
+            sourceKind: request.sourceKind,
+            sourcePath,
+          });
+          const project = await projectService.getProject(request.projectId);
+          if (project) this.broadcastProjectUpdated(request.projectId, project);
+          return {
+            success: true,
+            data: { mode: 'migrated', ontology },
+            timestamp: new Date().toISOString(),
+          };
+        } catch (error) {
+          return this.toErrorResponse(error, '[ProjectService] Explicit legacy ontology migration failed');
+        }
+      }
+    );
+
+    // Compatibility only: the historical command used to rewrite a legacy
+    // business-model into a second ontology store. That automatic write is no
+    // longer supported; callers must first use the explicit dry-run migration.
+    ipcMain.handle(
+      IPC_CHANNELS.PROJECT_SYNC_ONTOLOGY,
+      async (): Promise<IpcResponse<never>> => {
+        return {
+          success: false,
+          error: {
+            code: 'LEGACY_MIGRATION_REQUIRED',
+            message: 'Automatic business-model synchronization is unavailable. Use explicit legacy ontology migration.',
+          },
+          timestamp: new Date().toISOString(),
         }
       }
     );

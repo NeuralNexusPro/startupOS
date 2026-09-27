@@ -30,6 +30,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { getDataRoot } from '../../paths';
 import type { RuntimeLLMConfig } from '../../integrations/pi-agent/llm-config';
+import { ProjectOntologyEntryService } from '../project';
 
 // ============================================================================
 // Persistent Agent Manager
@@ -108,7 +109,8 @@ export class PersistentAgentManager {
 		logStep('Step 4b workspace files loaded');
 
 		// 4c. 加载 7 层项目上下文并构建 prompt
-		const projectCtx = await loadProjectContext(projectDir, projectId, agentDef.agentId);
+		const ontologyContext = await new ProjectOntologyEntryService(getDataRoot()).resolveProject(projectId);
+		const projectCtx = await loadProjectContext(projectDir, projectId, agentDef.agentId, ontologyContext);
 		let systemPrompt: string | undefined;
 		let sessionContext: string | undefined;
 		if (projectCtx) {
@@ -149,11 +151,10 @@ export class PersistentAgentManager {
 		console.log(`[Manager] Step 4d: Created CognitiveManager with 4 providers (practice, knowledge, memory, pattern)`);
 		logStep('Step 4d cognitive providers created');
 
-		// 4e. 初始化 KnowledgeIngest（解析 business-model.json）
+		// 4e. 初始化 KnowledgeIngest。项目本体通过 canonical entry 提供，
+		// 不再从 business-model.json 自动摄取。
 		const knowledgeIngest = new KnowledgeIngest(path.join(projectDir, 'knowledge'), projectDir);
-		knowledgeIngest.ingestBusinessModel().catch(err => {
-			console.warn('[Manager] Failed to ingest business model:', err);
-		});
+		void knowledgeIngest;
 
 		// 5. 创建 Agent 实例
 		console.log(`[Manager] Step 5: Creating agent instance...`);
@@ -249,7 +250,8 @@ export class PersistentAgentManager {
 		console.log(`[PersistentAgentManager] Reloaded ${workspaceFiles.length} workspace files`);
 
 		// 重新加载项目上下文并构建 7 层 prompt
-		const projectCtx = await loadProjectContext(projectDir, projectId, agentDef.agentId);
+		const ontologyContext = await new ProjectOntologyEntryService(getDataRoot()).resolveProject(projectId);
+		const projectCtx = await loadProjectContext(projectDir, projectId, agentDef.agentId, ontologyContext);
 		if (projectCtx) {
 			const promptBoundary = buildProjectPromptBoundary(projectCtx);
 			await agent.reload(agentDef, toolDef, skillDef, workspaceFiles, promptBoundary.systemPrompt, promptBoundary.sessionContext);

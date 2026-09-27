@@ -9,6 +9,7 @@ import path from 'path';
 import { scanInstalledSkills, type SkillInfo } from '../role-agent/skill-resolver';
 import type { MemoryBlock } from '../../../../lib/integrations/pi-agent/cognitive/types';
 import { parseBlocksFromMarkdown } from '../../../shared/cognitive/memory-markdown';
+import type { ProjectOntologyEntryResult } from '../../../../types/project-ontology-entry';
 
 export { type SkillInfo };
 
@@ -40,6 +41,8 @@ export interface ProjectContext {
   agentId: string;
   /** OriginOS 业务项目 ID（ proj-{id} ），用于区分业务项目和本体中的"项目"概念 */
   originosProjectId: string | null;
+  /** canonical ontology 的只读入口状态，由项目生命周期层提供。 */
+  ontologyContext: ProjectOntologyEntryResult;
 }
 
 /** 安全读取 .md 文件 */
@@ -90,7 +93,12 @@ function parseMemoryBlocks(memoryMd: string | null): MemoryBlock[] | null {
  * @param agentId Agent ID（可选）
  * @returns ProjectContext，若 Agent.md 不存在则返回 null
  */
-export async function loadProjectContext(projectDir: string, projectId?: string, agentId?: string): Promise<ProjectContext | null> {
+export async function loadProjectContext(
+  projectDir: string,
+  projectId?: string,
+  agentId?: string,
+  ontologyContext: ProjectOntologyEntryResult = { kind: 'not_found' },
+): Promise<ProjectContext | null> {
   const agentMd = readMdFile(projectDir, 'Agent.md');
   if (!agentMd) return null;
 
@@ -141,5 +149,6 @@ export async function loadProjectContext(projectDir: string, projectId?: string,
     projectId: contextProjectId ?? '',
     agentId: contextAgentId ?? '',
     originosProjectId,
+    ontologyContext,
   };
 }

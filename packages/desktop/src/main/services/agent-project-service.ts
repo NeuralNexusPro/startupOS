@@ -20,7 +20,7 @@ import { applyAssistantMessageEnd } from './assistant-stream-state';
 import { persistRuntimeLLMConfig } from '../../../../core/src/lib/features/user-config';
 
 const SYSTEM_TRIGGER_GREETING = '__SYSTEM_TRIGGER_GREETING__';
-const SYSTEM_GREETING_PROMPT = `系统启动触发: 请按照你的工作模式中的"启动时状态判断"流程，先列出 output 目录；仅当 business-model.json 存在时才读取它。文件不存在是正常的全新项目状态，请直接开始 Phase 1 访谈；文件存在时按内容判断后续阶段并生成相应问候语。`;
+const SYSTEM_GREETING_PROMPT = `系统启动触发: 请按照工作模式中的“启动时状态判断”流程，使用已注入的 canonical 项目本体上下文判断阶段。已绑定 canonical ontology 时按其精确 ID/version 工作；若上下文标记为 legacy_migration_required 或 not_found，说明需要显式迁移或初始化，且不得读取、同步或写入 business-model.json。随后生成相应问候语。`;
 
 function extractTextContent(content: unknown): string {
   return extractDisplayContent(content, { allowThinkingFallback: true });
@@ -194,12 +194,13 @@ export class AgentProjectService {
                   result: event['result'],
                   isError: event['isError'],
                 });
-                // 检测 write_file 写入业务模型文件，主动通知前端刷新
+                // 仅通知访谈产物变化。canonical ontology 由 Core 入口维护，
+                // Desktop 不再把 business-model.json 当作本体同步源。
                 if (event['toolName'] === 'write_file' && !event['isError']) {
                   const result = event['result'] as Record<string, unknown> | undefined;
                   const details = result?.['details'] as Record<string, unknown> | undefined;
                   const filePath = (details?.['filePath'] as string) ?? '';
-                  if (filePath.includes('business-model.json') || filePath.includes('interview-progress.md')) {
+                  if (filePath.includes('interview-progress.md')) {
                     sendToAllWindows(request.projectId, 'artifact_changed', {
                       filename: filePath.split('/').pop() || filePath,
                       filePath,
