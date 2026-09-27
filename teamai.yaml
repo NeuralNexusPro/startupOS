@@ -9,3 +9,5 @@ sharing:
     localDir: ./.teamai/docs
   env:
     injectShellProfile: true
+reviewers:
+  - archersado
