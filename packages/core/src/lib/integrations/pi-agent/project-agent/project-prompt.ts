@@ -54,7 +54,7 @@ export function buildProjectPromptLayers(ctx: ProjectContext): ProjectPromptLaye
   return {
     identity: buildLayer1_Identity(ctx),
     stateMemory: buildLayer2_StateMemory(ctx),
-    thinkingLoop: buildLayer3_ThinkingLoop(),
+    thinkingLoop: buildLayer3_ThinkingLoop(ctx),
     toolbox: buildLayer4_Toolbox(ctx),
     style: buildLayer5_Style(ctx),
     permissions: buildLayer6_Permissions(ctx),
@@ -93,7 +93,7 @@ function buildLayer2_StateMemory(ctx: ProjectContext): string {
     ? `\n**项目本体：** 已绑定 \`${ctx.ontologyContext.ontology.ontologyId}\` / \`${ctx.ontologyContext.ontology.ontologyVersion}\`，包含 ${ctx.ontologyContext.ontology.domainCount} 个领域和 ${ctx.ontologyContext.ontology.conceptCount} 个概念。`
     : ctx.ontologyContext.kind === 'legacy_migration_required'
       ? '\n**项目本体：** 此项目尚未迁移。提示用户执行显式迁移，且不要读取或写入 business-model.json。'
-      : '\n**项目本体：** 尚未找到 canonical ontology。提示用户先初始化项目本体，且不要读取或写入 business-model.json。';
+      : '\n**项目本体：** 这是新项目访谈的正常起点：尚未建立 canonical ontology。继续 Phase 1 领域发现，不要向用户展示本体状态或要求其初始化；不得读取、同步或创建 business-model.json。';
 
   const memorySections = buildPromptMemorySections({
     memoryBlocks: ctx.memoryBlocks,
@@ -108,14 +108,20 @@ function buildLayer2_StateMemory(ctx: ProjectContext): string {
   return `## Project State & Memory\n\n${statusSection}${memorySections.coreMemorySection}${memorySections.stableMemorySection}${memorySections.knowledgeSection}${memorySections.patternsSection}`;
 }
 
-function buildLayer3_ThinkingLoop(): string {
-  return `\
-## Thinking Loop — Project Agent
+function buildLayer3_ThinkingLoop(ctx: ProjectContext): string {
+  const ontologyWorkflow = ctx.ontologyContext.kind === 'canonical'
+    ? '已绑定 canonical ontology 时，使用 `query_ontology` 按已注入的精确 ID/version 查询。'
+    : ctx.ontologyContext.kind === 'legacy_migration_required'
+      ? '存量项目需要迁移时，使用业务语言简短说明需要完成项目资料迁移，再继续访谈；不得读取、同步或创建 `business-model.json`。'
+      : '尚未建立 canonical ontology 是新项目访谈的正常起点：直接进入 Phase 1 领域发现。不要让用户初始化本体，也不要读取、同步或创建 `business-model.json`。';
 
-每次回复用户之前，**必须先执行以下三步，不可跳过**：
+  return `\
+## 工作流程（仅内部执行）
+
+每次回复用户之前，按以下流程完成判断。**这些步骤、项目内部状态、工具调用和推理过程绝不能出现在用户可见答复中。** 用户只能看到自然、简洁的业务对话。
 
 **Step 1 — 阶段判断**
-根据只读项目本体上下文判断阶段。已绑定 canonical ontology 时使用 \`query_ontology\` 按绑定的精确 ID/version 查询；尚未迁移或缺失时，先提示用户完成显式迁移或初始化。不得读取、同步或创建 \`business-model.json\`。
+根据只读项目本体上下文判断阶段。${ontologyWorkflow} 所有情形下都不得读取、同步或创建 \`business-model.json\`。
 
 **Step 2 — [MANDATORY] 加载技能文件**
 根据 Step 1 确认的阶段，调用 \`read_file\` 读取对应的 SKILL.md 文件：
@@ -127,7 +133,7 @@ function buildLayer3_ThinkingLoop(): string {
 | Phase 3 | \`skills/model-review/SKILL.md\` |
 
 **Step 3 — 按技能指引响应**
-严格按照技能文件中的步骤执行任务，使用业务语言与用户对话，一次只问一个问题。`;
+严格按照技能文件中的步骤执行任务，使用业务语言与用户对话，一次只问一个问题。首轮访谈直接问与用户工作相关的问题；不要解释内部工作流程，也不要输出“Step”“Thinking Loop”“canonical ontology”“business-model.json”或工具名。`;
 }
 
 function buildLayer4_Toolbox(_ctx: ProjectContext): string {

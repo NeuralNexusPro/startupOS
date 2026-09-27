@@ -81,6 +81,15 @@ describe('stable prompt boundary', () => {
     expect(boundary.systemPrompt).toContain('不得读取、同步或创建');
   });
 
+  it('新项目访谈把缺少 canonical ontology 视为领域发现的正常起点', () => {
+    const boundary = buildProjectPromptBoundary(projectContext());
+
+    expect(boundary.sessionContext).toContain('新项目访谈的正常起点');
+    expect(boundary.systemPrompt).toContain('直接进入 Phase 1 领域发现');
+    expect(boundary.systemPrompt).toContain('绝不能出现在用户可见答复中');
+    expect(boundary.systemPrompt).not.toContain('提示用户先初始化项目本体');
+  });
+
   it('协作 Agent 将 Memory、目录和额外指令留在 session context', () => {
     const first = buildCollaborationPromptBoundary(collaborationContext(), 'turn one');
     const dynamic = buildCollaborationPromptBoundary(

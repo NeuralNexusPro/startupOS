@@ -58,7 +58,7 @@ export function buildProjectLauncherSessionContext(options: {
     ? `## 本体上下文\n\n项目已绑定 canonical ontology：\`${options.ontologyContext.ontology.ontologyId}\` / \`${options.ontologyContext.ontology.ontologyVersion}\`。它包含 ${options.ontologyContext.ontology.domainCount} 个领域和 ${options.ontologyContext.ontology.conceptCount} 个概念。通过本体工具按该精确引用查询；不要读取或创建 business-model.json。`
     : options.ontologyContext.kind === 'legacy_migration_required'
       ? '## 本体上下文\n\n此项目尚未完成显式 canonical ontology 迁移。请提示用户执行迁移；不要读取、同步或创建 business-model.json。'
-      : '## 本体上下文\n\n此项目尚未绑定 canonical ontology。请提示用户先完成项目本体初始化；不要读取、同步或创建 business-model.json。';
+      : '## 本体上下文\n\n这是新项目访谈的正常起点，尚未建立 canonical ontology。直接进入 Phase 1 领域发现；不要向用户展示该状态或要求其初始化。不要读取、同步或创建 business-model.json。';
   return buildAgentSessionContext({
     memory: options.memory,
     baseDir: options.baseDir,

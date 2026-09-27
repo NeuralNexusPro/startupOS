@@ -20,10 +20,11 @@ import { applyAssistantMessageEnd } from './assistant-stream-state';
 import { persistRuntimeLLMConfig } from '../../../../core/src/lib/features/user-config';
 
 const SYSTEM_TRIGGER_GREETING = '__SYSTEM_TRIGGER_GREETING__';
-const SYSTEM_GREETING_PROMPT = `系统启动触发: 请按照工作模式中的“启动时状态判断”流程，使用已注入的 canonical 项目本体上下文判断阶段。已绑定 canonical ontology 时按其精确 ID/version 工作；若上下文标记为 legacy_migration_required 或 not_found，说明需要显式迁移或初始化，且不得读取、同步或写入 business-model.json。随后生成相应问候语。`;
+const SYSTEM_GREETING_PROMPT = `开始一次项目访谈。直接用自然、简短的业务语言欢迎用户，并只问一个有助于了解其日常工作的问题。不要解释或输出内部阶段判断、项目本体状态、canonical ontology、business-model.json、技能文件、工具调用或任何推理过程。`;
 
 function extractTextContent(content: unknown): string {
-  return extractDisplayContent(content, { allowThinkingFallback: true });
+  // Thinking blocks are internal reasoning. They must never become chat content.
+  return extractDisplayContent(content);
 }
 
 function isToolCallOnlyContent(content: string): boolean {

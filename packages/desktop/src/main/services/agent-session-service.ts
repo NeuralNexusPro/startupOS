@@ -35,7 +35,8 @@ import {
 } from '../../../../core/src/lib/integrations/pi-agent/session-restore';
 
 function extractTextContent(content: unknown): string {
-  return extractDisplayContent(content, { allowThinkingFallback: true });
+  // Thinking blocks are internal reasoning. They must never become chat content.
+  return extractDisplayContent(content);
 }
 
 function formatVisibleAgentError(error: unknown): string {
