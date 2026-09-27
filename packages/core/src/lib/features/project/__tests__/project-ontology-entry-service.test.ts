@@ -73,6 +73,25 @@ describe('ProjectOntologyEntryService', () => {
     await expect(fs.access(path.join(dataRoot, 'projects', projectId, 'output', 'business-model.json'))).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
+  it('rejects an invalid constructed ontology before creating project metadata, directory, or snapshot', async () => {
+    const dataRoot = await root();
+    const service = new ProjectCreationService(undefined, dataRoot);
+    const { session } = await service.startSession({ userId: 'user-1', projectName: '无效项目' });
+    const invalid = ontology(session.projectId);
+    invalid.concepts[0]!.domainId = 'missing-domain';
+    Reflect.set(service, 'buildCanonicalOntology', () => invalid);
+
+    await expect(service.completeCreation(session.sessionId, {
+      sessionId: session.sessionId,
+      projectName: '无效项目',
+      confirmData: {},
+    })).rejects.toBeInstanceOf(ProjectOntologyInitializationError);
+
+    await expect(fs.access(path.join(dataRoot, 'projects', session.projectId))).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(fs.access(path.join(dataRoot, 'projects', session.projectId, 'project.json'))).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(new CanonicalOntologyStore(dataRoot).readOntology(session.projectId)).resolves.toBeNull();
+  });
+
   it('creates only a validated canonical snapshot and resolves an exact project reference', async () => {
     const dataRoot = await root();
     const projectId = 'project-1';

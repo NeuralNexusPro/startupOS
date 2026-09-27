@@ -22,8 +22,15 @@ import {
 } from '../../../types/project-creation';
 import { TASTEProfile, createTASTEProfile } from '../../../types/taste';
 import { getDataRoot } from '../../paths';
-import { type CanonicalOntology, type CanonicalSourceReference } from '../ontology';
-import { ProjectOntologyEntryService } from './project-ontology-entry-service';
+import {
+  type CanonicalOntology,
+  type CanonicalSourceReference,
+  validateCanonicalOntology,
+} from '../ontology';
+import {
+  ProjectOntologyEntryService,
+  ProjectOntologyInitializationError,
+} from './project-ontology-entry-service';
 
 // Data storage paths
 const DATA_DIR = getDataRoot();
@@ -267,12 +274,17 @@ export class ProjectCreationService {
     const projectId = session.projectId;
     const now = new Date().toISOString();
 
+    const canonicalOntology = this.buildCanonicalOntology(session);
+    const validation = validateCanonicalOntology(canonicalOntology);
+    if (!validation.valid) {
+      throw new ProjectOntologyInitializationError(validation.issues);
+    }
+
     // 1. Create project file
     await ensureDir(this.projectsDir);
     const projectDir = path.join(this.projectsDir, projectId);
     await ensureDir(projectDir);
 
-    const canonicalOntology = this.buildCanonicalOntology(session);
     const ontologyEntry = new ProjectOntologyEntryService(this.dataRoot);
     const canonicalSummary = await ontologyEntry.initializeCanonicalOntology(projectId, canonicalOntology);
 
