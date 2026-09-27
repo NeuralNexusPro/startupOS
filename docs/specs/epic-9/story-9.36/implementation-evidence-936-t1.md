@@ -39,3 +39,9 @@
 - Core `tsc --noEmit --incremental false --composite false` 退出 0。
 - `pnpm lint` 退出 0；存量 warning 保留，新增 route warning 已消除。
 - `pnpm lint:boundaries`：946 生产文件、0 诊断；架构 self-test：43 用例 × 2 CWD 通过。
+
+## 主仓串行集成验收
+
+2026-09-27：按 P2.6 → P2.7 → 9.36 合入本地 `0.4.x`。主仓运行 Core 7 文件 68 测试及 Web API 2 测试，全部通过；Core/Web 全量严格类型检查、lint、架构扫描、自测和 OpenSpec strict 验证通过。本轮批准实施范围已完成；Story 保留真实并发性能待验收项。
+
+扩大回归的改动前基线：24 文件共 333 测试中有 18 失败（旧 matcher 12、旧静态 DAG HITL 3、临时目录缺少 tsx 的进程测试 3）。本次不把定向通过解释为全仓全部测试通过。10 Agent 性能验证为快照夹具，并非 10 个真实模型进程压测。未验证正式安装包或人工桌面体验。

@@ -1,6 +1,6 @@
 # Story 9.36: 借鉴 Ruflo/Multica 的 Supervisor/Worker 模式重构
 
-**状态:** 🚧 In Progress（936-T1 已实施，待 0.4.x 集成验收）
+**状态:** 🟡 实施完成（936-T1 本地集成通过；真实并发性能验收待完成）
 **优先级:** High
 **依赖:** 9.13, 9.28, 9.30
 **估计工时:** 5-7 天
@@ -1174,19 +1174,19 @@ src/app/api/collaboration/sessions/
 
 ## ✅ 验收标准
 
-- [ ] **M1 - 结构化键值**：`buildSupervisorKey()` / `buildWorkerKey()` 生成正确键值格式
-- [ ] **M1 - 内存索引**：`Blackboard.memoryIndex` 正确映射 Agent 状态，可按角色/类别查询
-- [ ] **M2 - Supervisor 心跳**：每分钟自动写入 `supervisor$status`，包含活跃任务统计
-- [ ] **M2 - Royal Report**：每 2 分钟写入 `supervisor$report`，包含目标进度和推荐
-- [ ] **M3 - Worker 进度汇报**：Worker 每 45 秒自动更新 `worker-[ID]$progress`
-- [ ] **M3 - Worker 阻塞报告**：依赖缺失时立即写入 `worker-[ID]$blocked`
-- [ ] **M3 - Worker 完成报告**：任务完成时写入 `worker-[ID]$complete`，包含结构化 `deliverables`
-- [ ] **M4 - Agent Task 快照**：`getSnapshot()` 返回所有活跃任务 + 每个 Agent 的最近终端任务
-- [ ] **M4 - 快照 API**：`/api/collaboration/sessions/[id]/snapshot` 返回 `WorkspaceTaskSnapshot` 及权威 Run/WorkItem 只读投影
-- [ ] **M5 - 依赖检查**：`TASK_STARTED` 前检查上游依赖，不满足则写入 `blocked`
-- [ ] **M6 - CapabilityMatcher 增强**：使用真实活跃任务负载和已验收历史成功率；CPU/内存仅可选遥测，未知不得伪造
-- [ ] **集成测试**：完整执行 3-agent 直线拓扑 + 3-agent 并行拓扑，验证所有机制正常工作
-- [ ] **性能测试**：10 个 Agent 并发执行，快照查询延迟 < 100ms
+- [x] **M1 - 结构化键值**：`buildSupervisorKey()` / `buildWorkerKey()` 生成正确键值格式
+- [x] **M1 - 内存索引**：`Blackboard.memoryIndex` 正确映射 Agent 状态，可按角色/类别查询
+- [x] **M2 - Supervisor 心跳**：每分钟自动写入 `supervisor$status`，包含活跃任务统计
+- [x] **M2 - Royal Report**：每 2 分钟写入 `supervisor$report`，包含目标进度和推荐
+- [x] **M3 - Worker 进度汇报**：Worker 每 45 秒自动更新 `worker-[ID]$progress`
+- [x] **M3 - Worker 阻塞报告**：依赖缺失时立即写入 `worker-[ID]$blocked`
+- [x] **M3 - Worker 完成报告**：任务完成时写入 `worker-[ID]$complete`，包含结构化 `deliverables`
+- [x] **M4 - Agent Task 快照**：`getSnapshot()` 返回所有活跃任务 + 每个 Agent 的最近终端任务
+- [x] **M4 - 快照 API**：`/api/collaboration/sessions/[id]/snapshot` 返回 `WorkspaceTaskSnapshot` 及权威 Run/WorkItem 只读投影
+- [x] **M5 - 依赖检查**：`TASK_STARTED` 前检查上游依赖，不满足则写入 `blocked`
+- [x] **M6 - CapabilityMatcher 增强**：使用真实活跃任务负载和已验收历史成功率；CPU/内存仅可选遥测，未知不得伪造
+- [x] **集成测试**：完整执行 3-agent 直线拓扑 + 3-agent 并行拓扑，验证所有机制正常工作
+- [ ] **性能测试**：10 个 Agent 并发执行，快照查询延迟 < 100ms。当前仅通过 10 Agent 快照夹具，真实模型并发压测待验收。
 
 ---
 
@@ -1210,7 +1210,7 @@ src/app/api/collaboration/sessions/
 
 ## 0.4.x 补齐任务（2026-09-27）
 
-936-T1：见 openspec/changes/integrate-supervisor-worker-protocol。用户已确认按审计缺口推进；未完成验收前保持 In Progress，不因存在组件类而标 Done。
+936-T1：见 openspec/changes/integrate-supervisor-worker-protocol。用户已确认按审计缺口推进；生产接线、边界回归与本地主仓集成已验证，详细证据及旧模式限制见 implementation-evidence-936-t1.md。
 
 本轮修订：Run/WorkItem ledger 为业务事实源；Blackboard 的索引、心跳、进度和快照均为观测投影。Worker 成功返回只能 reported，不能替代业务验收。CPU/内存是可选遥测；必需能力与实际任务负载为分配依据，不伪造未知指标。
 

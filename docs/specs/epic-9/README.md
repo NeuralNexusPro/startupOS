@@ -112,7 +112,7 @@
 | **9.33** | Supervisor HITL 决策器（四路径 + 强制 mergedContext） | Critical | Phase 3 | 📋 Planning |
 | **9.34** | 用户回复路由收敛到 Supervisor | Critical | Phase 3 | 📋 Planning |
 | **9.35** | Workflow 模式 Lightweight Supervisor 兜底 | High | Phase 3 | 📋 Planning |
-| **9.36** | Supervisor/Worker 模式架构改进 | High | Phase 3 | 📋 Planning |
+| **9.36** | Supervisor/Worker 模式架构改进 | High | Phase 3 | 🟡 实施完成（本地 0.4.x；真实并发性能待验收） |
 | **9.37** | HITL 直连与协作链路扁平化 | High | Phase 3 | 🔄 In Progress |
 | **9.38** | 协作运行时目录收敛 | High | Phase 3 | 📋 Planning |
 | **9.39** | collaboration-runtime-bridge 残留清理 | High | Phase 3 | 📋 Planning |
