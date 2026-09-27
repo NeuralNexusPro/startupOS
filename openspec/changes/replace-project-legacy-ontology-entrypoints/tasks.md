@@ -10,7 +10,9 @@
 
 ## 2. 交互入口替换（可并行）
 
-- [ ] 2.1 `ONT-ENTRY-T1-C`（可与 2.2 并行；依赖：1.2；角色：Web 本体 UI subagent；写入：`packages/web/src/app/api/` 薄 routes、`packages/web/src/components/interview/` 与 `packages/web/src/components/os/workspace/` 及测试）将访谈完成、本体/数据编辑器加载改为 Core canonical 入口，删除 mount 自动 `business-model.json` 同步；legacy 项目展示迁移状态。验证：Web route/组件测试覆盖 canonical、legacy、迁移后、无自动写入与错误脱敏。
+- [x] 2.1 `ONT-ENTRY-T1-C`（可与 2.2 并行；依赖：1.2；角色：Web 本体 UI subagent；写入：`packages/web/src/app/api/` 薄 routes、`packages/web/src/components/interview/` 与 `packages/web/src/components/os/workspace/` 及测试）将访谈完成、本体/数据编辑器加载改为 Core canonical 入口，删除 mount 自动 `business-model.json` 同步；legacy 项目展示迁移状态。验证：Web route/组件测试覆盖 canonical、legacy、迁移后、无自动写入与错误脱敏。
+
+完成证据（2026-09-27）：新增 `GET /api/projects/[id]/ontology` 薄 route，经 `ProjectOntologyEntryService` 和 `CanonicalOntologyStore` 返回项目精确绑定的 canonical snapshot 或迁移状态；无 legacy 内容读取、转换或写入。访谈窗口、本体页和数据页只消费此入口，旧项目显示显式迁移提示；未绑定 canonical Action Gate 的编辑操作明确只读。定向 Vitest 2 files / 4 tests 通过，受影响 ESLint 0 error；Task worktree 的 Web typecheck 因 workspace 包符号链接指向主工作区而产生既有双路径 private-class diagnostics，集成时需在 Proposal worktree 重跑。
 
 - [x] 2.2 `ONT-ENTRY-T1-D`（可与 2.1 并行；依赖：1.2；角色：Desktop 项目本体 adapter subagent；写入：`packages/desktop/src/main/services/`、IPC/preload 必要适配与测试）将 Desktop 项目服务和 Agent project service 改为 Core canonical 入口，保留显式 legacy migration command；删除自动 sync 写入。验证：IPC/service 测试覆盖 canonical、legacy migration-required、迁移后和 Web/Desktop 业务状态对等。
 

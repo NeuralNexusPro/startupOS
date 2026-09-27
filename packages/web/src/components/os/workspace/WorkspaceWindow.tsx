@@ -301,7 +301,7 @@ export function WorkspaceWindow({ projectId, projectName, entryType, entryId, on
             </>
           ) : (
             resolvedOntologyId ? (
-              <DataTabView ontologyId={resolvedOntologyId} />
+              <DataTabView projectId={normalizeProjectEntryId(projectId)} />
             ) : (
               <div className="flex items-center justify-center h-full text-gray-400 text-sm">
                 未关联本体
