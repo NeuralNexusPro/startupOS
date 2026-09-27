@@ -39,3 +39,8 @@
 ---
 
 **实现状态：** 规划阶段，待实现图谱扩展和视图切换。
+
+
+## 0.4.x 补齐任务（2026-09-27）
+
+P27-T1：见 openspec/changes/complete-solution-topology-views。用户已确认按审计缺口推进；未完成验收前保持 In Progress，不因存在组件类而标 Done。
