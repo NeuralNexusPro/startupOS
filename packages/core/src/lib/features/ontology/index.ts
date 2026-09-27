@@ -13,3 +13,5 @@ export * from './legacy-migration';
 export * from './validator';
 export * from './ontology-osdk';
 export * from './contract-validator';
+export * from './authoring-types';
+export * from './authoring-service';
