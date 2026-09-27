@@ -50,3 +50,9 @@
 
 - Epic P2: AI 解决方案设计
 - PRD: Phase 2 AI 解决方案设计 §2.3, §2.4, §3.8
+
+## 0.4.x 验收口径（2026-09-27）
+
+执行契约统一采用 ONT.7/P2.8 的 canonical contract。旧 inputContract/outputContract/sopIO 仅为可读兼容，不能单独发布或执行。SOP 以精确 contractRef 的节点、FactType 边和显式 externalInputs 表达；字段覆盖通过完整 FactType schema 与版本精确匹配保证。循环校验由 Solution 公共 Validator 执行，本体引用与连通校验复用 ONT 公共 API。
+
+新增闭环验收：生成的版本化设计 bundle 可直接进入发布校验；技能创建交接和元数据读取保留 canonical 契约；缺引用、错版本、断链与环明确拒绝，不静默转换旧方案。
