@@ -31,7 +31,7 @@ describe('InterviewOntologySyncService', () => {
       expect(updated.ontology.relations).toHaveLength(1);
       expect((await entry.resolveProject(projectId)).kind).toBe('canonical');
       const memory = await readFile(path.join(root, 'projects', projectId, 'Memory.md'), 'utf8');
-      expect(memory).toContain('## 已识别实体');
+      expect(memory).toContain('## 已识别业务概念');
       expect(memory).toContain('客户');
       expect(memory).toContain('产品');
       expect(memory).toContain('## 已识别关系');
