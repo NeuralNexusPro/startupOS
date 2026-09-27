@@ -176,6 +176,21 @@ export function canonicalToOntologyModel(
       property,
     ]);
   }
+  const conceptsById = new Map(ontology.concepts.map((concept) => [concept.id, concept]));
+  const relationNodes = ontology.relations.flatMap((relation) => {
+    const source = conceptsById.get(relation.sourceConceptId);
+    const target = conceptsById.get(relation.targetConceptId);
+    if (!source || !target) return [];
+    return [{
+      id: relation.id,
+      name: `${source.name} → ${target.name}`,
+      type: 'relationship' as const,
+      description: relation.description
+        ? `${relation.name}（${relation.description}）`
+        : relation.name,
+    }];
+  });
+
   return {
     id: ontology.id,
     name: ontology.name,
@@ -183,18 +198,21 @@ export function canonicalToOntologyModel(
       .map((domain) => domain.description)
       .filter(Boolean)
       .join('\n'),
-    nodes: ontology.concepts.map((concept) => ({
-      id: concept.id,
-      name: concept.name,
-      type: concept.type === 'class' ? 'class' : 'entity',
-      description: concept.description,
-      children: (properties.get(concept.id) ?? []).map((property) => ({
-        id: property.id,
-        name: property.name,
-        type: 'property' as const,
-        description: property.description,
+    nodes: [
+      ...ontology.concepts.map((concept) => ({
+        id: concept.id,
+        name: concept.name,
+        type: concept.type === 'class' ? 'class' as const : 'entity' as const,
+        description: concept.description,
+        children: (properties.get(concept.id) ?? []).map((property) => ({
+          id: property.id,
+          name: property.name,
+          type: 'property' as const,
+          description: property.description,
+        })),
       })),
-    })),
+      ...relationNodes,
+    ],
     createdAt: new Date(ontology.createdAt).getTime(),
   };
 }
