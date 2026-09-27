@@ -191,10 +191,10 @@ export function parseFrontmatter<T = SkillFrontmatter>(content: string): {
 			const decoded: unknown = document.toJS({ maxAliasCount: 20 });
 			if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) throw new Error("Expected frontmatter mapping");
 			metadata = decoded as Record<string, unknown>;
-			if (metadata.contract !== undefined) {
-				const checked = skillContractSchema.safeParse(metadata.contract);
+			if (metadata["contract"] !== undefined) {
+				const checked = skillContractSchema.safeParse(metadata["contract"]);
 				if (!checked.success) throw new Error("Invalid canonical skill contract shape");
-				metadata.contract = checked.data;
+				metadata["contract"] = checked.data;
 			}
 		}
 		// Preserve historical scalar parsing for non-contract skills and fields.

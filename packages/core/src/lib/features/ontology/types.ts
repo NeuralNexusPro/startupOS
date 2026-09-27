@@ -1,4 +1,4 @@
-import type { CanonicalOntologyReference, CanonicalConceptReference, CanonicalInputFact, CanonicalOutputFact, CanonicalActionBinding, CanonicalAgentContract, CanonicalSkillContract, CanonicalContract } from "../../../types/ontology-contract";
+import type { CanonicalOntologyReference, CanonicalConceptReference, CanonicalAgentContract, CanonicalSkillContract } from "../../../types/ontology-contract";
 export type { CanonicalOntologyReference, CanonicalConceptReference, CanonicalInputFact, CanonicalOutputFact, CanonicalActionBinding, CanonicalAgentContract, CanonicalSkillContract, CanonicalContract } from "../../../types/ontology-contract";
 /**
  * Ontology feature public types
