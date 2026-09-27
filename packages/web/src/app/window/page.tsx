@@ -58,7 +58,7 @@ function WindowContent() {
     >
       <div
         className={isNativeWindow
-          ? 'native-window-surface w-full h-full overflow-hidden text-slate-950'
+          ? 'native-window-surface w-full h-full overflow-hidden text-foreground'
           : 'w-full h-full bg-background'
         }
       >

@@ -26,10 +26,10 @@ export function ProjectWorkspace({ projectId, projectName, ontologyId }: Project
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full flex-col bg-background text-foreground">
       {/* Tab bar */}
-      <div className="native-drag-region flex items-center gap-1 px-4 py-2 border-b border-gray-200 bg-gray-50">
-        <span className="text-sm font-semibold text-gray-700 mr-4">{projectName}</span>
+      <div className="native-drag-region flex items-center gap-1 border-b border-border bg-muted px-4 py-2">
+        <span className="mr-4 text-sm font-semibold text-foreground">{projectName}</span>
         <TabButton label="数据" active={activeTab === '数据'} onClick={() => handleTabChange('数据')} />
         <TabButton label="本体" active={activeTab === '本体'} onClick={() => handleTabChange('本体')} />
         <TabButton label="任务" active={activeTab === '任务'} onClick={() => handleTabChange('任务')} />
@@ -42,7 +42,7 @@ export function ProjectWorkspace({ projectId, projectName, ontologyId }: Project
         {activeTab === '本体' && <OntologyTabView projectId={projectId} />}
         {activeTab === '任务' && <ProjectTaskBoard projectId={projectId} onOpenSolutionDesign={() => setActiveTab('方案')} />}
         {activeTab === '方案' && (
-          <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
             解决方案设计 — 即将推出
           </div>
         )}
@@ -56,7 +56,9 @@ function TabButton({ label, active, onClick }: { label: string; active: boolean;
     <button
       onClick={onClick}
       className={`native-no-drag px-3 py-1 text-sm rounded transition-colors ${
-        active ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'
+        active
+          ? 'bg-primary/15 text-primary'
+          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
       }`}
     >
       {label}

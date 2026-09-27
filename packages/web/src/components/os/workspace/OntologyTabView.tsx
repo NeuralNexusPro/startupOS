@@ -65,21 +65,21 @@ export const OntologyTabView = ({ projectId }: OntologyTabViewProps) => {
 
   if (error && !result) {
     return (
-      <div className="flex h-full items-center justify-center p-6 text-sm text-red-600">
+      <div className="flex h-full items-center justify-center p-6 text-sm text-destructive">
         {error}
       </div>
     );
   }
   if (!result) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-gray-400">
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
         加载本体中...
       </div>
     );
   }
   if (result.entry.kind !== 'canonical' || !result.ontology) {
     return (
-      <div className="flex h-full items-center justify-center p-6 text-center text-sm text-gray-500">
+      <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
         <AlertCircle className="mr-2 h-4 w-4 shrink-0" />
         <MigrationState entry={result.entry} />
       </div>
@@ -125,23 +125,23 @@ export const OntologyTabView = ({ projectId }: OntologyTabViewProps) => {
 
   return (
     <div className="h-full overflow-auto p-5">
-      <div className="mb-5 flex items-start justify-between gap-4 border-b border-gray-200 pb-4">
+      <div className="mb-5 flex items-start justify-between gap-4 border-b border-border pb-4">
         <div>
-          <h3 className="text-base font-semibold text-gray-800">
+          <h3 className="text-base font-semibold text-foreground">
             {ontology.name}
           </h3>
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="mt-1 text-xs text-muted-foreground">
             版本 {ontology.version} · {ontology.id}
           </p>
         </div>
-        <span className="rounded bg-blue-50 px-2 py-1 text-xs text-blue-700">
+        <span className="rounded bg-primary/15 px-2 py-1 text-xs text-primary">
           编辑 revision {canonicalAuthoringRevision(ontology)}
         </span>
       </div>
       {notice && (
         <div
           role="status"
-          className="mb-4 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700"
+          className="mb-4 rounded border border-primary/30 bg-primary/10 px-3 py-2 text-sm text-primary"
         >
           {notice}
         </div>
@@ -149,7 +149,7 @@ export const OntologyTabView = ({ projectId }: OntologyTabViewProps) => {
       {error && (
         <div
           role="alert"
-          className="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+          className="mb-4 rounded border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
         >
           {error}
         </div>

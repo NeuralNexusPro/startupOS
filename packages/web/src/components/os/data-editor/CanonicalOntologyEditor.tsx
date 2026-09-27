@@ -32,7 +32,7 @@ const CARDINALITIES = [
   'many-to-many',
 ] as const;
 const inputClass =
-  'w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-800 focus:border-blue-500 focus:outline-none';
+  'w-full rounded border border-input bg-background px-2 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none';
 
 function createId(prefix: string): string {
   const suffix =
@@ -52,10 +52,10 @@ const Section = ({
   children: ReactNode;
 }) => {
   return (
-    <section className="rounded-lg border border-gray-200 bg-white">
-      <header className="border-b border-gray-100 px-4 py-3">
-        <h4 className="text-sm font-semibold text-gray-800">
-          {title} <span className="font-normal text-gray-400">{count}</span>
+    <section className="rounded-lg border border-border bg-card text-card-foreground">
+      <header className="border-b border-border px-4 py-3">
+        <h4 className="text-sm font-semibold">
+          {title} <span className="font-normal text-muted-foreground">{count}</span>
         </h4>
       </header>
       <div className="space-y-3 p-4">{children}</div>
@@ -84,7 +84,7 @@ const Actions = ({
         aria-label="编辑"
         disabled={disabled}
         onClick={onEdit}
-        className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-blue-600 disabled:opacity-40"
+        className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-primary disabled:opacity-40"
       >
         <Pencil className="h-3.5 w-3.5" />
       </button>
@@ -93,7 +93,7 @@ const Actions = ({
         aria-label="删除"
         disabled={disabled}
         onClick={onDelete}
-        className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
+        className="rounded p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-40"
       >
         <Trash2 className="h-3.5 w-3.5" />
       </button>
@@ -116,7 +116,7 @@ const FormActions = ({
         <button
           type="button"
           onClick={onCancel}
-          className="rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100"
+          className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
         >
           <X className="mr-1 inline h-3 w-3" />
           取消
@@ -286,12 +286,12 @@ export const CanonicalOntologyEditor = ({
       </Section>
 
       {(ontology.businessStates.length > 0 || ontology.actions.length > 0) && (
-        <section className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm xl:col-span-2">
-          <h4 className="font-semibold text-gray-800">运行语义</h4>
+        <section className="rounded-lg border border-border bg-muted/60 p-4 text-sm xl:col-span-2">
+          <h4 className="font-semibold text-foreground">运行语义</h4>
           <div className="mt-2 grid gap-3 md:grid-cols-2">
             <div>
-              <p className="text-xs font-medium text-gray-500">业务状态</p>
-              <p className="mt-1 text-gray-700">
+              <p className="text-xs font-medium text-muted-foreground">业务状态</p>
+              <p className="mt-1 text-foreground">
                 {ontology.businessStates
                   .map(
                     (item) =>
@@ -301,8 +301,8 @@ export const CanonicalOntologyEditor = ({
               </p>
             </div>
             <div>
-              <p className="text-xs font-medium text-gray-500">Actions</p>
-              <p className="mt-1 text-gray-700">
+              <p className="text-xs font-medium text-muted-foreground">Actions</p>
+              <p className="mt-1 text-foreground">
                 {ontology.actions
                   .map(
                     (item) =>
@@ -332,7 +332,7 @@ const AddButton = ({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className="flex w-full items-center justify-center gap-1 rounded border border-dashed border-gray-300 py-2 text-sm text-gray-500 hover:border-blue-400 hover:text-blue-600 disabled:opacity-40"
+      className="flex w-full items-center justify-center gap-1 rounded border border-dashed border-border py-2 text-sm text-muted-foreground hover:border-primary hover:text-primary disabled:opacity-40"
     >
       <Plus className="h-3.5 w-3.5" />
       {label}
@@ -359,7 +359,7 @@ const NameDescriptionForm = ({
   const [description, setDescription] = useState(initialDescription);
   return (
     <form
-      className="space-y-2 rounded bg-gray-50 p-3"
+      className="space-y-2 rounded bg-muted/60 p-3"
       onSubmit={(event) => {
         event.preventDefault();
         void onSubmit(name.trim(), description.trim()).catch(() => undefined);
@@ -415,11 +415,11 @@ const DomainRow = ({
     );
   }
   return (
-    <div className="flex items-start justify-between gap-3 border-b border-gray-100 pb-2">
+    <div className="flex items-start justify-between gap-3 border-b border-border pb-2">
       <div>
-        <p className="text-sm font-medium text-gray-800">{domain.name}</p>
+        <p className="text-sm font-medium text-foreground">{domain.name}</p>
         {domain.description && (
-          <p className="text-xs text-gray-500">{domain.description}</p>
+          <p className="text-xs text-muted-foreground">{domain.description}</p>
         )}
       </div>
       <Actions
@@ -469,7 +469,7 @@ const ConceptForm = ({
   const [description, setDescription] = useState(initial?.description ?? '');
   return (
     <form
-      className="space-y-2 rounded bg-gray-50 p-3"
+      className="space-y-2 rounded bg-muted/60 p-3"
       onSubmit={(event) => {
         event.preventDefault();
         void onSubmit({
@@ -556,10 +556,10 @@ const ConceptRow = ({
     );
   }
   return (
-    <div className="flex items-start justify-between gap-3 border-b border-gray-100 pb-2">
+    <div className="flex items-start justify-between gap-3 border-b border-border pb-2">
       <div>
-        <p className="text-sm font-medium text-gray-800">{concept.name}</p>
-        <p className="text-xs text-gray-500">
+        <p className="text-sm font-medium text-foreground">{concept.name}</p>
+        <p className="text-xs text-muted-foreground">
           {domain?.name ?? concept.domainId} · {concept.type}
         </p>
       </div>
@@ -628,7 +628,7 @@ const PropertyForm = ({
     }).catch(() => undefined);
   };
   return (
-    <form className="space-y-2 rounded bg-gray-50 p-3" onSubmit={submit}>
+    <form className="space-y-2 rounded bg-muted/60 p-3" onSubmit={submit}>
       <div className="grid grid-cols-2 gap-2">
         <select
           aria-label="属性所属概念"
@@ -681,7 +681,7 @@ const PropertyForm = ({
             ))}
           </select>
         ) : (
-          <label className="flex items-center gap-2 px-2 text-sm text-gray-600">
+          <label className="flex items-center gap-2 px-2 text-sm text-muted-foreground">
             <input
               type="checkbox"
               checked={required}
@@ -736,16 +736,16 @@ const PropertyRow = ({
     );
   }
   return (
-    <div className="flex items-start justify-between gap-3 border-b border-gray-100 pb-2">
+    <div className="flex items-start justify-between gap-3 border-b border-border pb-2">
       <div>
-        <p className="text-sm font-medium text-gray-800">
+        <p className="text-sm font-medium text-foreground">
           {property.name}{' '}
-          <span className="text-xs font-normal text-gray-400">
+          <span className="text-xs font-normal text-muted-foreground">
             {property.valueType}
             {property.required ? ' · 必填' : ''}
           </span>
         </p>
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-muted-foreground">
           {concept?.name ?? property.conceptId}
         </p>
       </div>
@@ -802,7 +802,7 @@ const RelationForm = ({
   const [description, setDescription] = useState(initial?.description ?? '');
   return (
     <form
-      className="space-y-2 rounded bg-gray-50 p-3"
+      className="space-y-2 rounded bg-muted/60 p-3"
       onSubmit={(event) => {
         event.preventDefault();
         void onSubmit({
@@ -907,10 +907,10 @@ const RelationRow = ({
     );
   }
   return (
-    <div className="flex items-start justify-between gap-3 border-b border-gray-100 pb-2">
+    <div className="flex items-start justify-between gap-3 border-b border-border pb-2">
       <div>
-        <p className="text-sm font-medium text-gray-800">{relation.name}</p>
-        <p className="text-xs text-gray-500">
+        <p className="text-sm font-medium text-foreground">{relation.name}</p>
+        <p className="text-xs text-muted-foreground">
           {names.get(relation.sourceConceptId)} →{' '}
           {names.get(relation.targetConceptId)} · {relation.cardinality}
         </p>
