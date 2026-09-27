@@ -7,8 +7,10 @@ import { Pencil, Plus, Save, Trash2, X } from 'lucide-react';
 import type { ProjectCanonicalOntologyMutation } from '../workspace/project-canonical-ontology';
 import type {
   CanonicalOntology,
+  CanonicalSemanticKind,
   CanonicalValueType,
 } from '@originos/core/lib/features/ontology/types';
+import { SEMANTIC_KIND_OPTIONS, semanticKindLabel, suggestSemanticKind } from '../../interview/semantic-kind';
 
 interface CanonicalOntologyEditorProps {
   ontology: CanonicalOntology;
@@ -180,6 +182,11 @@ export const CanonicalOntologyEditor = ({
       </Section>
 
       <Section title="概念" count={ontology.concepts.length}>
+        <ClassificationReview
+          concepts={ontology.concepts}
+          busy={busy}
+          onMutate={onMutate}
+        />
         {ontology.concepts.map((concept) => (
           <ConceptRow
             key={`${concept.id}-${concept.updatedAt}`}
@@ -442,9 +449,63 @@ const DomainRow = ({
   );
 };
 
+/** Preview-only recommendations become writes only after the user selects and confirms one item. */
+const ClassificationReview = ({
+  concepts,
+  busy,
+  onMutate,
+}: {
+  concepts: CanonicalOntology['concepts'];
+  busy: boolean;
+  onMutate: CanonicalOntologyEditorProps['onMutate'];
+}) => {
+  const pending = concepts.filter((concept) => (concept.semanticKind ?? 'unclassified') === 'unclassified');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = pending.find((concept) => concept.id === selectedId);
+  if (pending.length === 0) return null;
+  return (
+    <div className="rounded border border-border bg-muted/40 p-3 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="font-medium text-foreground">整理概念分类</p>
+          <p className="text-xs text-muted-foreground">以下建议仅供预览；勾选并确认后才会保存到本体。</p>
+        </div>
+        <span className="rounded bg-muted px-2 py-1 text-xs text-muted-foreground">待分类 {pending.length}</span>
+      </div>
+      <div className="mt-2 space-y-1">
+        {pending.map((concept) => {
+          const suggestion = suggestSemanticKind(concept.name);
+          return <label key={concept.id} className="flex cursor-pointer items-center justify-between gap-3 rounded px-2 py-1.5 hover:bg-background">
+            <span className="flex items-center gap-2 text-foreground"><input type="checkbox" checked={selectedId === concept.id} onChange={(event) => setSelectedId(event.target.checked ? concept.id : null)} />{concept.name}</span>
+            <span className="text-xs text-muted-foreground">建议：{semanticKindLabel(suggestion)}</span>
+          </label>;
+        })}
+      </div>
+      <button
+        type="button"
+        disabled={busy || !selected}
+        onClick={() => {
+          if (!selected) return;
+          void onMutate({
+            type: 'concept.update',
+            conceptId: selected.id,
+            patch: {
+              semanticKind: suggestSemanticKind(selected.name),
+              classificationSource: { classifiedBy: 'user', userConfirmed: true },
+            },
+          }).then(() => setSelectedId(null)).catch(() => undefined);
+        }}
+        className="mt-3 rounded bg-primary px-2.5 py-1.5 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+      >
+        确认所选分类
+      </button>
+    </div>
+  );
+};
+
 type ConceptValue = Pick<
   CanonicalOntology['concepts'][number],
-  'domainId' | 'name' | 'type' | 'description'
+  'domainId' | 'name' | 'type' | 'description' | 'semanticKind' | 'classificationSource'
 >;
 const ConceptForm = ({
   ontology,
@@ -466,6 +527,9 @@ const ConceptForm = ({
     initial?.domainId ?? ontology.domains[0]?.id ?? ''
   );
   const [type, setType] = useState(initial?.type ?? 'entity');
+  const [semanticKind, setSemanticKind] = useState<CanonicalSemanticKind>(
+    initial?.semanticKind ?? 'unclassified'
+  );
   const [description, setDescription] = useState(initial?.description ?? '');
   return (
     <form
@@ -476,6 +540,11 @@ const ConceptForm = ({
           name: name.trim(),
           domainId,
           type: type.trim(),
+          semanticKind,
+          classificationSource: semanticKind === 'unclassified' ? undefined : {
+            classifiedBy: 'user',
+            userConfirmed: true,
+          },
           description: description.trim() || undefined,
         }).catch(() => undefined);
       }}
@@ -511,6 +580,16 @@ const ConceptForm = ({
           placeholder="entity / class"
         />
       </div>
+      <select
+        aria-label="业务分类"
+        value={semanticKind}
+        onChange={(event) => setSemanticKind(event.target.value as CanonicalSemanticKind)}
+        className={inputClass}
+      >
+        {SEMANTIC_KIND_OPTIONS.map((item) => (
+          <option key={item} value={item}>{semanticKindLabel(item)}</option>
+        ))}
+      </select>
       <input
         aria-label="概念描述"
         value={description}
@@ -560,7 +639,7 @@ const ConceptRow = ({
       <div>
         <p className="text-sm font-medium text-foreground">{concept.name}</p>
         <p className="text-xs text-muted-foreground">
-          {domain?.name ?? concept.domainId} · {concept.type}
+          {domain?.name ?? concept.domainId} · {semanticKindLabel(concept.semanticKind)}
         </p>
       </div>
       <Actions

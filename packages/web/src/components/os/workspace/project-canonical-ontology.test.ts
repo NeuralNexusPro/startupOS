@@ -8,7 +8,7 @@ describe('canonical project ontology display adapter', () => {
       id: 'ontology-project-1', projectId: 'project-1', name: '项目本体', schemaVersion: '1.0.0', version: '1.0.0',
       domains: [{ id: 'domain-1', name: '领域', description: '', createdAt: new Date(0), updatedAt: new Date(0) }],
       concepts: [
-        { id: 'concept-1', domainId: 'domain-1', name: '订单', type: 'entity', attributes: {}, createdAt: new Date(0), updatedAt: new Date(0) },
+        { id: 'concept-1', domainId: 'domain-1', name: '订单', type: 'entity', semanticKind: 'document', attributes: {}, createdAt: new Date(0), updatedAt: new Date(0) },
         { id: 'concept-2', domainId: 'domain-1', name: '客户', type: 'entity', attributes: {}, createdAt: new Date(0), updatedAt: new Date(0) },
       ],
       instances: [],
@@ -20,9 +20,9 @@ describe('canonical project ontology display adapter', () => {
     expect(model).toMatchObject({
       id: 'ontology-project-1',
       nodes: [
-        { id: 'concept-1', name: '订单', children: [{ id: 'property-1', name: '编号' }] },
+        { id: 'concept-1', name: '订单', semanticKind: 'document', children: [{ id: 'property-1', name: '编号' }] },
         { id: 'concept-2', name: '客户' },
-        { id: 'relation-1', name: '订单 → 客户', type: 'relationship', description: '创建' },
+        { id: 'relation-1', name: '订单 → 客户', type: 'relationship', description: '创建', sourceConceptId: 'concept-1', targetConceptId: 'concept-2', relationName: '创建' },
       ],
     });
   });

@@ -13,6 +13,17 @@ import type {
 import type { ProjectOntologyEntryResult } from '@originos/core/lib/features/project';
 import type { OntologyModel } from '@originos/core/types';
 
+export type CanonicalDisplayNode = OntologyModel['nodes'][number] & {
+  semanticKind?: CanonicalOntology['concepts'][number]['semanticKind'];
+  sourceConceptId?: string;
+  targetConceptId?: string;
+  relationName?: string;
+};
+
+export type CanonicalDisplayOntologyModel = Omit<OntologyModel, 'nodes'> & {
+  nodes: CanonicalDisplayNode[];
+};
+
 export interface ProjectCanonicalOntologyResponse {
   entry: ProjectOntologyEntryResult;
   ontology?: CanonicalOntology;
@@ -168,7 +179,7 @@ export function canonicalConceptFields(
 
 export function canonicalToOntologyModel(
   ontology: CanonicalOntology
-): OntologyModel {
+): CanonicalDisplayOntologyModel {
   const properties = new Map<string, typeof ontology.properties>();
   for (const property of ontology.properties) {
     properties.set(property.conceptId, [
@@ -185,6 +196,9 @@ export function canonicalToOntologyModel(
       id: relation.id,
       name: `${source.name} → ${target.name}`,
       type: 'relationship' as const,
+      sourceConceptId: relation.sourceConceptId,
+      targetConceptId: relation.targetConceptId,
+      relationName: relation.name,
       description: relation.description
         ? `${relation.name}（${relation.description}）`
         : relation.name,
@@ -203,6 +217,7 @@ export function canonicalToOntologyModel(
         id: concept.id,
         name: concept.name,
         type: concept.type === 'class' ? 'class' as const : 'entity' as const,
+        semanticKind: concept.semanticKind ?? 'unclassified',
         description: concept.description,
         children: (properties.get(concept.id) ?? []).map((property) => ({
           id: property.id,
