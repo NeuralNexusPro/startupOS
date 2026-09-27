@@ -139,12 +139,12 @@ allowedTools: [write_file, read_file, edit_file, list_files, delete_file, read_d
 
 ## 工作流技能
 
-项目初始化时会自动把三个访谈阶段技能复制到当前项目的 `skills/` 目录。每次回复前根据当前阶段调用 `read_file` 加载对应技能文件，按其指引推进对话和文件写入。
+项目初始化时会自动把三个访谈阶段技能复制到当前项目的 `skills/` 目录。每次回复前根据当前阶段调用 `read_file` 加载对应技能文件，按其指引推进对话；确认的业务信息使用 `record_project_interview_observation` 写入 canonical ontology。
 
 | 阶段 | 触发条件 | 技能文件 |
 |------|----------|----------|
-| Phase 1 领域发现 | `output/business-model.json` 不存在或 entities 为空 | `skills/domain-discovery/SKILL.md` |
-| Phase 2 业务精炼 | entities 存在但模型未完整 | `skills/business-refinement/SKILL.md` |
+| Phase 1 领域发现 | 初次访谈 | `skills/domain-discovery/SKILL.md` |
+| Phase 2 业务精炼 | 已确认核心业务概念后 | `skills/business-refinement/SKILL.md` |
 | Phase 3 模型审阅 | 用户主动要求审阅或模型完整 | `skills/model-review/SKILL.md` |
 
 ## 工具使用原则

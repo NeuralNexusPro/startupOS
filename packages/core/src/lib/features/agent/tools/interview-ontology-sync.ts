@@ -8,11 +8,21 @@ const ConceptSchema = Type.Object({
   name: Type.String({ minLength: 1 }),
   description: Type.Optional(Type.String()),
   type: Type.Optional(Type.Union([Type.Literal('entity'), Type.Literal('class')])),
+  semanticKind: Type.Optional(Type.Union([
+    Type.Literal('role'), Type.Literal('organization'), Type.Literal('object'), Type.Literal('activity'),
+    Type.Literal('document'), Type.Literal('standard'), Type.Literal('unclassified'),
+  ])),
+});
+const ClassificationCorrectionSchema = Type.Object({
+  conceptId: Type.String({ minLength: 1 }),
+  semanticKind: Type.Union([Type.Literal('role'), Type.Literal('organization'), Type.Literal('object'), Type.Literal('activity'), Type.Literal('document'), Type.Literal('standard'), Type.Literal('unclassified')]),
 });
 const RelationSchema = Type.Object({
   name: Type.String({ minLength: 1 }),
-  sourceConceptName: Type.String({ minLength: 1 }),
-  targetConceptName: Type.String({ minLength: 1 }),
+  sourceConceptId: Type.Optional(Type.String({ minLength: 1 })),
+  targetConceptId: Type.Optional(Type.String({ minLength: 1 })),
+  sourceConceptName: Type.Optional(Type.String({ minLength: 1 })),
+  targetConceptName: Type.Optional(Type.String({ minLength: 1 })),
   cardinality: Type.Optional(Type.Union([
     Type.Literal('one-to-one'), Type.Literal('one-to-many'),
     Type.Literal('many-to-one'), Type.Literal('many-to-many'),
@@ -22,9 +32,11 @@ const RelationSchema = Type.Object({
 const Params = Type.Object({
   projectId: Type.String({ minLength: 1, description: '从项目上下文取得的项目 ID。' }),
   sourceId: Type.String({ minLength: 1, description: '当前访谈会话 ID。' }),
+  operationId: Type.String({ minLength: 1, description: '本次确认操作的稳定 ID；重试必须复用。' }),
   projectName: Type.Optional(Type.String()),
   domain: Type.Object({ name: Type.String({ minLength: 1 }), description: Type.Optional(Type.String()) }),
-  concepts: Type.Array(ConceptSchema, { minItems: 1 }),
+  concepts: Type.Array(ConceptSchema),
+  classificationCorrections: Type.Optional(Type.Array(ClassificationCorrectionSchema)),
   relations: Type.Optional(Type.Array(RelationSchema)),
 });
 
@@ -33,18 +45,18 @@ const service = new InterviewOntologySyncService();
 export const interviewOntologySyncTool: ToolRegistration = {
   name: 'record_project_interview_observation',
   label: '记录访谈业务概念',
-  description: '将本轮已确认的业务领域、关键对象和联系直接合并到当前项目的 canonical ontology。首次调用会自动建立并绑定项目本体；后续调用只增量合并，不读取或写入 business-model.json。每确认新的业务事实后立即调用。',
+  description: '记录已确认的业务概念、中文业务分类或联系。关系优先传稳定 concept ID；旧名称只能精确唯一匹配。分类来源由可信服务根据访谈会话构造，用户纠正使用 classificationCorrections。返回每项结果；不读取或写入 business-model.json。',
   parameters: Params,
   category: 'ontology',
   enabled: true,
   scopes: ['project', 'persistent'],
   async execute(_toolCallId, params: Static<typeof Params>): Promise<AgentToolResult<unknown>> {
     try {
-      const ontology = await service.record(params);
+      const result = await service.record(params);
       return {
         content: [{ type: 'text', text: JSON.stringify({
-          success: true, ontologyId: ontology.id, ontologyVersion: ontology.version,
-          domains: ontology.domains.length, concepts: ontology.concepts.length, relations: ontology.relations.length,
+          success: result.results.every((item) => item.status !== 'rejected'), ontologyId: result.ontology.id, ontologyVersion: result.ontology.version,
+          revision: result.revision, results: result.results, memoryUpdated: result.memoryUpdated,
         }) }],
         details: undefined,
       };

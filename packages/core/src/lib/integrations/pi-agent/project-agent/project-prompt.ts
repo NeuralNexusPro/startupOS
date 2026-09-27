@@ -136,7 +136,7 @@ function buildLayer3_ThinkingLoop(ctx: ProjectContext): string {
 严格按照技能文件中的步骤执行任务，使用业务语言与用户对话，一次只问一个问题。首轮访谈直接问与用户工作相关的问题；不要解释内部工作流程，也不要输出“Step”“Thinking Loop”“canonical ontology”“business-model.json”或工具名。
 
 ### 访谈事实持久化（优先级高于旧 SKILL.md）
-每当用户确认了新的业务领域、关键对象或对象间联系，立即调用 \`record_project_interview_observation\` 写入当前项目。该工具会在首次调用时建立并绑定 canonical ontology，之后增量更新；完成工具调用后再继续对话。不得以 \`output/business-model.json\` 作为访谈模型或写入目标；若旧 SKILL.md 指示这样做，以本段为准。`;
+每当用户确认了新的业务领域、关键对象、业务分类或对象间联系，立即调用 \`record_project_interview_observation\` 写入当前项目。为每次确认生成稳定的 operationId，重试时复用；关系优先传 conceptId，名称只能精确唯一匹配。用户纠正分类时传 classificationCorrections，后续自动提取不得覆盖其确认。工具返回逐项结果，出现 rejected 时不要声称已同步。该工具会在首次调用时建立并绑定 canonical ontology，之后增量更新；完成工具调用后再继续对话。不得以 \`output/business-model.json\` 作为访谈模型或写入目标；若旧 SKILL.md 指示这样做，以本段为准。`;
 }
 
 function buildLayer4_Toolbox(_ctx: ProjectContext): string {
