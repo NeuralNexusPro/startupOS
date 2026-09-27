@@ -1,10 +1,13 @@
 import { randomUUID } from 'node:crypto';
+import path from 'node:path';
 
 import {
   CANONICAL_ONTOLOGY_SCHEMA_VERSION,
   CanonicalOntologyStore,
   type CanonicalOntology,
 } from '../ontology';
+import { Memory } from '../../../modules/memory-core';
+import { getDataRoot } from '../../paths';
 import { ProjectOntologyEntryService } from './project-ontology-entry-service';
 
 export interface InterviewOntologyConceptInput {
@@ -42,6 +45,7 @@ export class InterviewOntologySyncService {
   constructor(
     private readonly store = new CanonicalOntologyStore(),
     private readonly entry = new ProjectOntologyEntryService(),
+    private readonly dataRoot = getDataRoot(),
   ) {}
 
   async record(observation: InterviewOntologyObservation): Promise<CanonicalOntology> {
@@ -96,7 +100,32 @@ export class InterviewOntologySyncService {
     // Binding on every successful sync is idempotent and makes the UI's project
     // entry resolve the same snapshot immediately.
     await this.entry.bindCanonicalOntology(observation.projectId, ontology);
+    this.syncInterviewMemory(observation.projectId, ontology);
     return ontology;
+  }
+
+  /** Keep interview facts readable as durable project memory alongside canonical data. */
+  private syncInterviewMemory(projectId: string, ontology: CanonicalOntology): void {
+    const memory = new Memory(path.join(this.dataRoot, 'projects', projectId));
+    const concepts = ontology.concepts
+      .map((concept) => `- ${concept.name}${concept.description ? `：${concept.description}` : ''}`)
+      .join('\n') || '（尚未识别实体）';
+    const conceptNames = new Map(ontology.concepts.map((concept) => [concept.id, concept.name]));
+    const relations = ontology.relations
+      .map((relation) => `- ${conceptNames.get(relation.sourceConceptId) ?? '未知'} ${relation.name} ${conceptNames.get(relation.targetConceptId) ?? '未知'}${relation.description ? `：${relation.description}` : ''}`)
+      .join('\n') || '（尚未识别关系）';
+
+    this.setMemoryBlock(memory, '已识别实体', '访谈过程中确认的业务实体', concepts);
+    this.setMemoryBlock(memory, '已识别关系', '访谈过程中确认的实体关系', relations);
+  }
+
+  private setMemoryBlock(memory: Memory, label: string, description: string, value: string): void {
+    const existing = memory.getBlock(label);
+    if (existing) {
+      memory.setBlock(label, value.slice(0, existing.limit));
+      return;
+    }
+    memory.createBlock({ label, description, limit: 2_000, namespace: 'interview' }, value.slice(0, 2_000));
   }
 
   private createInitial(observation: InterviewOntologyObservation, now: Date): CanonicalOntology {

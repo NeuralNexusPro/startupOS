@@ -15,7 +15,7 @@ describe('InterviewOntologySyncService', () => {
     await writeFile(path.join(root, 'projects', projectId, 'project.json'), JSON.stringify({ id: projectId, name: '访谈项目', metadata: {} }));
     const store = new CanonicalOntologyStore(root);
     const entry = new ProjectOntologyEntryService(root, store);
-    const service = new InterviewOntologySyncService(store, entry);
+    const service = new InterviewOntologySyncService(store, entry, root);
     try {
       await service.record({
         projectId, sourceId: 'session-1', projectName: '访谈项目',
@@ -29,6 +29,12 @@ describe('InterviewOntologySyncService', () => {
       expect(updated.concepts.map((item) => item.name)).toEqual(['客户', '订单', '产品']);
       expect(updated.relations).toHaveLength(1);
       expect((await entry.resolveProject(projectId)).kind).toBe('canonical');
+      const memory = await readFile(path.join(root, 'projects', projectId, 'Memory.md'), 'utf8');
+      expect(memory).toContain('## 已识别实体');
+      expect(memory).toContain('客户');
+      expect(memory).toContain('产品');
+      expect(memory).toContain('## 已识别关系');
+      expect(memory).toContain('客户 下单 订单');
       const metadata = JSON.parse(await readFile(path.join(root, 'projects', projectId, 'project.json'), 'utf8'));
       expect(metadata.metadata.ontologyRef.ontologyId).toBe(`ontology-${projectId}`);
     } finally {

@@ -31,6 +31,24 @@ import path from 'path';
 import { getDataRoot } from '../../paths';
 import type { RuntimeLLMConfig } from '../../integrations/pi-agent/llm-config';
 import { ProjectOntologyEntryService } from '../project';
+import { extractDisplayContent } from '../../integrations/pi-agent/display-content';
+import type { AgentMessage } from '../../../types/agent';
+
+function persistInterviewHistory(memoryCore: MemoryCore, messages: AgentMessage[]): void {
+	const block = memoryCore.memory.getBlock('访谈笔记');
+	const limit = block?.limit ?? 2_000;
+	const transcript = messages
+		.filter((message) => message.role === 'user' || message.role === 'assistant')
+		.slice(-16)
+		.map((message) => `**${message.role === 'user' ? '用户' : 'Oracle'}：** ${extractDisplayContent(message.content)}`)
+		.join('\n\n');
+	const value = `访谈历史（最近 ${Math.min(messages.length, 16)} 条；完整逐条记录保存在本会话历史中）\n\n${transcript}`.slice(0, limit);
+	if (block) {
+		memoryCore.memory.setBlock('访谈笔记', value);
+	} else {
+		memoryCore.memory.createBlock({ label: '访谈笔记', description: '最近访谈上下文和确认信息', limit, namespace: 'interview' }, value);
+	}
+}
 
 // ============================================================================
 // Persistent Agent Manager
@@ -171,6 +189,9 @@ export class PersistentAgentManager {
 		const agent = new PersistentAgent({
             initializeTools: initializeBuiltInTools,
             sessionPersistence: agentSessionService,
+			onPersistedMessages: agentDef.agentType === 'interview'
+				? (messages) => persistInterviewHistory(memoryCore, messages)
+				: undefined,
 			projectId,
 			workingDirectory: projectDir,
 			agentDefinition: agentDef,

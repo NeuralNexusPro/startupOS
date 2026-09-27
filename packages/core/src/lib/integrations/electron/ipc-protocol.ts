@@ -258,6 +258,7 @@ export interface AgentProjectStartRequest {
 
 export interface AgentProjectStartResponse {
   status: unknown;
+  messages: import('../../../types/agent').AgentMessage[];
 }
 
 export interface AgentProjectMessageRequest {

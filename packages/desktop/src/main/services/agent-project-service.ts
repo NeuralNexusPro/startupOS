@@ -99,7 +99,7 @@ export class AgentProjectService {
           const agent = await persistentAgentManager.startAgent(request.projectId, request.llmConfig);
           return {
             success: true,
-            data: { status: agent.getStatus() },
+            data: { status: agent.getStatus(), messages: agent.getRestoredMessages() },
             timestamp: new Date().toISOString(),
           };
         } catch (error) {

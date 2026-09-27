@@ -144,8 +144,21 @@ export function usePersistentAgent(projectId: string, llmConfig?: LlmConfig): Us
           llmConfig,
         });
         if (res.success) {
+          const restoredMessages = res.data?.messages
+            ?.filter((message): message is typeof message & { role: 'user' | 'assistant' } => message.role === 'user' || message.role === 'assistant')
+            .map((message) => ({
+              id: message.id,
+              role: message.role,
+              content: message.content,
+              timestamp: message.timestamp,
+              usage: message.usage,
+              contextTokenEstimate: message.contextTokenEstimate,
+            })) ?? [];
+          if (restoredMessages.length > 0) {
+            setMessages(restoredMessages);
+          }
           setIsReady(true);
-          console.log('[usePersistentAgent] Agent started for project:', projectId);
+          console.log('[usePersistentAgent] Agent started for project:', projectId, { restoredMessages: restoredMessages.length });
         } else {
           console.error('[usePersistentAgent] Failed to start agent:', res.error);
         }

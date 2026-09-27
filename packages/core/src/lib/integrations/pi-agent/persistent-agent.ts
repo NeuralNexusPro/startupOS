@@ -18,6 +18,7 @@ import { SleepComputeScheduler } from './cognitive/sleep-compute';
 import { createRuntimeModel } from './server-config';
 import type { RuntimeLLMConfig } from './llm-config';
 import { normalizeAgentTokenUsage } from './token-usage';
+import { extractDisplayContent } from './display-content';
 import type { AgentTool } from '@originos/pi-agent-adapter';
 import fs from 'fs/promises';
 import path from 'path';
@@ -198,8 +199,10 @@ export interface PersistentAgentConfig {
   initializeTools: () => void;
   sessionPersistence: {
     createSession(request: CreateSessionRequest): Promise<AgentSession>;
+    getSession?(sessionId: string, projectId?: string): Promise<AgentSession | null>;
     updateSession(sessionId: string, updates: UpdateSessionRequest, projectId?: string): Promise<AgentSession | null>;
   };
+  onPersistedMessages?(messages: AgentSession['messages']): void | Promise<void>;
 
 	projectId: string;
 	workingDirectory: string;
@@ -254,6 +257,7 @@ export class PersistentAgent {
 	private turnCounter = 0;
 	private turnArgs = new Map<string, unknown>();
 	private processingPromise: Promise<void> | null = null;
+	private restoredMessages: AgentSession['messages'] = [];
 
 	constructor(private readonly config: PersistentAgentConfig) {
         if (!config.initializeTools || !config.sessionPersistence) throw new Error('PersistentAgent business dependencies are required');
@@ -318,17 +322,29 @@ export class PersistentAgent {
 		setToolContext(persistentSessionId, context);
 		getToolContextManager().setDefaultContext(context);
 
-		// 5. 创建持久化 session 记录
+		// 5. 恢复已有的持久化会话。重新打开项目不能用空会话覆盖历史。
 		try {
-			await this.config.sessionPersistence.createSession({
-				sessionId: persistentSessionId,
-				projectId: this.projectId,
-				projectName: this.agentDefinition.name,
-				systemPrompt,
-				agentType: this.agentDefinition.agentType,
-			});
+			const existingSession = await this.config.sessionPersistence.getSession?.(
+				persistentSessionId,
+				this.projectId,
+			);
+			if (existingSession) {
+				this.restoredMessages = existingSession.messages;
+				if (existingSession.messages.length > 0) {
+					const restoredCount = this.agent.replacePersistedMessages(existingSession.messages);
+					console.log(`[PersistentAgent] Restored ${restoredCount} persisted message(s)`);
+				}
+			} else {
+				await this.config.sessionPersistence.createSession({
+					sessionId: persistentSessionId,
+					projectId: this.projectId,
+					projectName: this.agentDefinition.name,
+					systemPrompt,
+					agentType: this.agentDefinition.agentType,
+				});
+			}
 		} catch (err) {
-			console.warn('[PersistentAgent] Failed to create session record:', err);
+			console.warn('[PersistentAgent] Failed to restore session record:', err);
 		}
 
 		// 6. 订阅 agent 事件（agent_end 保存对话 + cognitive hooks）
@@ -342,11 +358,12 @@ export class PersistentAgent {
 				try {
 					const lastAssistantIndex = event.messages.map((message: { role?: string }) => message.role).lastIndexOf('assistant');
 					const contextTokenEstimate = this.agent?.getContextTokenEstimate();
-					const messages = event.messages.map((message: { role?: string; usage?: unknown }, index: number) => {
-						const { usage: rawUsage, ...rest } = message;
+					const messages = event.messages.map((message: { role?: string; usage?: unknown; content?: unknown }, index: number) => {
+						const { usage: rawUsage, content: rawContent, ...rest } = message;
 						const usage = message.role === 'assistant' ? normalizeAgentTokenUsage(rawUsage) : undefined;
 						return {
 							...rest,
+							content: typeof rawContent === 'string' ? rawContent : extractDisplayContent(rawContent),
 							...(usage ? { usage } : {}),
 							...(index === lastAssistantIndex && contextTokenEstimate ? { contextTokenEstimate } : {}),
 						};
@@ -355,6 +372,8 @@ export class PersistentAgent {
 						messages,
 						status: 'completed',
 					}, this.projectId);
+					this.restoredMessages = messages as AgentSession['messages'];
+					await this.config.onPersistedMessages?.(messages as AgentSession['messages']);
 				} catch (err) {
 					console.warn('[PersistentAgent] Failed to save session messages:', err);
 				}
@@ -573,6 +592,12 @@ export class PersistentAgent {
 			startedAt: this.startedAt,
 		};
 	}
+
+	/** The renderer needs persisted display messages when a project is reopened. */
+	getRestoredMessages(): AgentSession['messages'] {
+		return this.restoredMessages;
+	}
+
 
 	// ========================================================================
 	// 私有方法

@@ -116,8 +116,8 @@ export function ChatInputBar({
   );
 
   const inputBgClass = lightBg
-    ? 'bg-white border border-gray-300 text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary/50'
-    : 'bg-white/10 border border-white/20 text-gray-900 placeholder:text-gray-400 focus:ring-1 focus:ring-primary';
+    ? 'bg-background border border-border text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/50'
+    : 'bg-input-dark border border-border text-foreground placeholder:text-muted-foreground focus:ring-1 focus:ring-primary';
 
   const uploadBtnClass = lightBg
     ? 'bg-gray-200 border border-gray-300 text-gray-700 hover:bg-gray-300'

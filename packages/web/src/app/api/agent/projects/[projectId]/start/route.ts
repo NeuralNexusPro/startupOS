@@ -11,6 +11,7 @@ import { persistentAgentManager } from '@originos/core/lib/features/agent/server
 import { getGlobalSpawner } from '@originos/core/modules/collaboration-runtime/sandbox/agent-spawner';
 import { setRuntimeAgent } from '@/app/api/agent/_runtime-agent-registry';
 import type { ApiResponse } from '@originos/core/types';
+import type { AgentMessage } from '@originos/core/types';
 import type { RuntimeEvent } from '@originos/core/modules/collaboration-runtime/session/types';
 import type { RuntimeLLMConfig } from '@originos/core/lib/integrations/pi-agent/server';
 import path from 'path';
@@ -36,7 +37,8 @@ export async function POST(
 			runtimeMode: USE_RUNTIME_MODE,
 		});
 
-		let status: any;
+		let status: unknown;
+		let messages: AgentMessage[] = [];
 
 		if (USE_RUNTIME_MODE) {
 			status = await startAgentViaRuntime(projectId, sessionId);
@@ -44,13 +46,15 @@ export async function POST(
 			// In-process 模式（原有逻辑）
 			const agent = await persistentAgentManager.startAgent(projectId, llmConfig);
 			status = agent.getStatus();
+			messages = agent.getRestoredMessages();
 		}
 
-		return NextResponse.json<ApiResponse<{ status: any }>>(
+		return NextResponse.json<ApiResponse<{ status: unknown; messages: AgentMessage[] }>>(
 			{
 				success: true,
 				data: {
 					status,
+					messages,
 				},
 				timestamp: new Date().toISOString(),
 			},
