@@ -1,3 +1,4 @@
+import type { CanonicalSkillContract } from "./ontology-contract";
 /**
  * Skill System Types for pi-agent-core
  *
@@ -22,6 +23,8 @@ import type { SkillInputContract, SkillOutputContract } from './solution';
  * Skill metadata interface
  */
 export interface SkillMetadata {
+  /** Exact semantic declaration; validated only at the publishing boundary. */
+  contract?: CanonicalSkillContract;
   /** Unique skill identifier */
   name: string;
   /** Display name */

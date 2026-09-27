@@ -1,0 +1,53 @@
+{
+  "version": "1.0.0",
+  "status": "confirmed",
+  "solutionVersion": "v1.0",
+  "agents": [
+    {
+      "id": "preparer",
+      "name": "preparer",
+      "contract": {
+        "agentId": "preparer",
+        "ontology": {
+          "ontologyId": "orders",
+          "ontologyVersion": "3"
+        },
+        "inputs": [
+          {
+            "factType": {
+              "ontologyId": "orders",
+              "ontologyVersion": "3",
+              "conceptId": "order",
+              "factTypeId": "order-raw"
+            },
+            "required": true
+          }
+        ],
+        "outputs": [
+          {
+            "factType": {
+              "ontologyId": "orders",
+              "ontologyVersion": "3",
+              "conceptId": "order",
+              "factTypeId": "order-ready"
+            },
+            "required": true
+          }
+        ],
+        "actions": [
+          {
+            "actionId": "prepare-order",
+            "concept": {
+              "ontologyId": "orders",
+              "ontologyVersion": "3",
+              "conceptId": "order"
+            }
+          }
+        ],
+        "permissions": [
+          "order.prepare"
+        ]
+      }
+    }
+  ]
+}

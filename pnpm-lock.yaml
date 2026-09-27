@@ -139,6 +139,10 @@ importers:
       zustand:
         specifier: ^4.0.0
         version: 4.5.7(@types/react@18.3.31)(react@18.0.0)
+      yaml:
+        specifier: 2.9.0
+        version: 2.9.0
+
     devDependencies:
       '@tailwindcss/typography':
         specifier: ^0.5.19
@@ -282,6 +286,9 @@ importers:
       uuid:
         specifier: ^14.0.0
         version: 14.0.1
+      yaml:
+        specifier: 2.9.0
+        version: 2.9.0
       zod:
         specifier: ^3.25.76
         version: 3.25.76
@@ -361,6 +368,10 @@ importers:
       zustand:
         specifier: ^4.5.7
         version: 4.5.7(@types/react@18.3.31)(react@18.0.0)
+      yaml:
+        specifier: 2.9.0
+        version: 2.9.0
+
     devDependencies:
       '@electron/asar':
         specifier: ^3.4.1

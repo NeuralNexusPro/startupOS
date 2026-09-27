@@ -8,7 +8,8 @@
     "@originos/pi-agent-adapter": "workspace:*",
     "@typesafe-ai/sdk": "^0.6.0",
     "uuid": "^14.0.0",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "yaml": "2.9.0"
   },
   "devDependencies": {
     "tsx": "^4.22.0"

@@ -1,3 +1,5 @@
+import type { CanonicalOntologyReference, CanonicalConceptReference, CanonicalInputFact, CanonicalOutputFact, CanonicalActionBinding, CanonicalAgentContract, CanonicalSkillContract, CanonicalContract } from "../../../types/ontology-contract";
+export type { CanonicalOntologyReference, CanonicalConceptReference, CanonicalInputFact, CanonicalOutputFact, CanonicalActionBinding, CanonicalAgentContract, CanonicalSkillContract, CanonicalContract } from "../../../types/ontology-contract";
 /**
  * Ontology feature public types
  * Includes the canonical ontology contract and interview session types.
@@ -26,15 +28,6 @@ export interface CanonicalSourceReference {
   sourceId: string;
   sourceVersion?: string;
   locator?: string;
-}
-
-export interface CanonicalOntologyReference {
-  ontologyId: string;
-  ontologyVersion: string;
-}
-
-export interface CanonicalConceptReference extends CanonicalOntologyReference {
-  conceptId: string;
 }
 
 export interface CanonicalFactReference extends CanonicalConceptReference {
@@ -278,41 +271,6 @@ export interface CanonicalOntology {
   createdAt: Date;
   updatedAt: Date;
 }
-
-export interface CanonicalInputFact {
-  factType: CanonicalConceptReference & { factTypeId: string };
-  required: boolean;
-}
-
-export interface CanonicalOutputFact {
-  factType: CanonicalConceptReference & { factTypeId: string };
-  required: boolean;
-}
-
-export interface CanonicalActionBinding {
-  actionId: string;
-  concept: CanonicalConceptReference;
-}
-
-export interface CanonicalAgentContract {
-  agentId: string;
-  ontology: CanonicalOntologyReference;
-  inputs: CanonicalInputFact[];
-  outputs: CanonicalOutputFact[];
-  actions: CanonicalActionBinding[];
-  permissions: string[];
-}
-
-export interface CanonicalSkillContract {
-  skillId: string;
-  ontology: CanonicalOntologyReference;
-  inputs: CanonicalInputFact[];
-  outputs: CanonicalOutputFact[];
-  actions: CanonicalActionBinding[];
-  permissions: string[];
-}
-
-export type CanonicalContract = CanonicalAgentContract | CanonicalSkillContract;
 
 export type CanonicalContractNode =
   | { id: string; kind: 'agent'; contract: CanonicalAgentContract }

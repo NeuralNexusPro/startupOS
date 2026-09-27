@@ -1,3 +1,4 @@
+import type { CanonicalAgentContract, CanonicalSkillContract } from "./ontology-contract";
 /**
  * AI 解决方案数据类型定义
  * 第二阶段：AI 解决方案设计
@@ -101,6 +102,8 @@ export interface SOPStepIO {
  * Agent 技能规划
  */
 export interface AgentSkill {
+  /** Canonical execution declaration; legacy I/O fields are display-only. */
+  contract?: CanonicalSkillContract;
 	/**
 	 * Skill 标识符（kebab-case，如: "order-validator"）
 	 */
@@ -236,6 +239,8 @@ export interface AgentCollaboration {
  * 方案中的 Agent 规划
  */
 export interface SolutionAgent {
+  /** Exact canonical declaration used by versioned publication. */
+  contract?: CanonicalAgentContract;
 	/**
 	 * Agent ID
 	 */

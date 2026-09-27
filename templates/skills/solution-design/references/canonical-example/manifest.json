@@ -1,0 +1,157 @@
+{
+  "version": "1.0.0",
+  "status": "confirmed",
+  "solutionVersion": "v1.0",
+  "modeling": {
+    "dimension": "task"
+  },
+  "topologyViews": {
+    "workflow": {
+      "nodes": [
+        {
+          "id": "prepare",
+          "contractRef": "preparer",
+          "requiresVerification": true,
+          "type": "agent"
+        },
+        {
+          "id": "publish",
+          "contractRef": "publisher",
+          "requiresVerification": true,
+          "hitlPolicyId": "approve-publication",
+          "type": "skill"
+        }
+      ],
+      "edges": [
+        {
+          "source": "prepare",
+          "target": "publish",
+          "factType": {
+            "ontologyId": "orders",
+            "ontologyVersion": "3",
+            "conceptId": "order",
+            "factTypeId": "order-ready"
+          }
+        }
+      ]
+    }
+  },
+  "executionContract": {
+    "semanticContext": {
+      "ontology": {
+        "ontologyId": "orders",
+        "ontologyVersion": "3"
+      },
+      "sourceRefs": [
+        {
+          "sourceType": "interview",
+          "sourceId": "interview-1",
+          "sourceVersion": "1"
+        }
+      ],
+      "objectSlots": [
+        {
+          "id": "order",
+          "concept": {
+            "ontologyId": "orders",
+            "ontologyVersion": "3",
+            "conceptId": "order"
+          },
+          "required": true,
+          "resolution": {
+            "status": "confirmed",
+            "evidenceSourceRefIds": [
+              "interview-1"
+            ]
+          }
+        }
+      ],
+      "factPolicies": [
+        {
+          "factType": {
+            "ontologyId": "orders",
+            "ontologyVersion": "3",
+            "conceptId": "order",
+            "factTypeId": "order-raw"
+          },
+          "state": {
+            "mode": "any"
+          },
+          "freshness": {
+            "mode": "max_age",
+            "maxAgeMs": 300000
+          }
+        },
+        {
+          "factType": {
+            "ontologyId": "orders",
+            "ontologyVersion": "3",
+            "conceptId": "order",
+            "factTypeId": "order-ready"
+          },
+          "state": {
+            "mode": "any"
+          },
+          "freshness": {
+            "mode": "any"
+          }
+        }
+      ],
+      "allowedActionIds": [
+        "prepare-order"
+      ],
+      "taskTemplates": [
+        {
+          "id": "prepare-template",
+          "designNodeId": "prepare",
+          "objective": "Prepare the order",
+          "candidateAgentIds": [
+            "preparer"
+          ],
+          "candidateSkillIds": []
+        }
+      ]
+    },
+    "externalInputs": [
+      {
+        "ontologyId": "orders",
+        "ontologyVersion": "3",
+        "conceptId": "order",
+        "factTypeId": "order-raw"
+      }
+    ],
+    "verification": [
+      {
+        "id": "verify-prepare",
+        "nodeId": "prepare",
+        "verifierRef": "order-verifier",
+        "evidenceSchemaRef": "order-evidence-v1"
+      },
+      {
+        "id": "verify-publish",
+        "nodeId": "publish",
+        "verifierRef": "publication-verifier",
+        "evidenceSchemaRef": "publication-evidence-v1"
+      }
+    ],
+    "hitl": [
+      {
+        "id": "approve-publication",
+        "nodeId": "publish",
+        "trigger": "after_verification",
+        "approverRole": "owner"
+      }
+    ],
+    "permissions": {
+      "allowed": [
+        "order.prepare"
+      ]
+    },
+    "budget": {
+      "maxAttempts": 2,
+      "maxDurationMs": 60000,
+      "maxTokens": 10000
+    }
+  },
+  "createdAt": "2026-09-20T08:00:00.000Z"
+}

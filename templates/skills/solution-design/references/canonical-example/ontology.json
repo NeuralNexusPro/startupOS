@@ -1,0 +1,67 @@
+{
+  "id": "orders",
+  "projectId": "project-1",
+  "name": "Orders",
+  "schemaVersion": "1.0.0",
+  "version": "3",
+  "domains": [
+    {
+      "id": "sales",
+      "name": "Sales",
+      "description": "",
+      "createdAt": "2026-09-20T08:00:00.000Z",
+      "updatedAt": "2026-09-20T08:00:00.000Z"
+    }
+  ],
+  "concepts": [
+    {
+      "id": "order",
+      "domainId": "sales",
+      "name": "Order",
+      "type": "aggregate",
+      "attributes": {},
+      "createdAt": "2026-09-20T08:00:00.000Z",
+      "updatedAt": "2026-09-20T08:00:00.000Z"
+    }
+  ],
+  "instances": [],
+  "properties": [],
+  "relations": [],
+  "businessStates": [],
+  "transitions": [],
+  "factTypes": [
+    {
+      "id": "order-raw",
+      "conceptId": "order",
+      "name": "Raw order",
+      "propertyIds": []
+    },
+    {
+      "id": "order-ready",
+      "conceptId": "order",
+      "name": "Ready order",
+      "propertyIds": []
+    }
+  ],
+  "rules": [],
+  "actions": [
+    {
+      "id": "prepare-order",
+      "name": "Prepare order",
+      "conceptId": "order",
+      "inputFactTypeIds": [
+        "order-raw"
+      ],
+      "outputFactTypeIds": [
+        "order-ready"
+      ],
+      "permissions": [
+        "order.prepare"
+      ]
+    }
+  ],
+  "events": [],
+  "projections": [],
+  "createdAt": "2026-09-20T08:00:00.000Z",
+  "updatedAt": "2026-09-20T08:00:00.000Z"
+}

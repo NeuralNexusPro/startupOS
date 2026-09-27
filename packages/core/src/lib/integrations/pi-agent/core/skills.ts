@@ -1,3 +1,5 @@
+import { parseDocument } from 'yaml';
+import { skillContractSchema } from '../../../shared/canonical-contract-schema';
 /**
  * Skill Framework for OriginOS pi-agent Integration
  *
@@ -180,27 +182,41 @@ export function parseFrontmatter<T = SkillFrontmatter>(content: string): {
 	const body = match[2] || "";
 
 	try {
-		const frontmatter: T = frontmatterText.split(/\r?\n/).reduce((acc: Record<string, unknown>, line) => {
-			const colonIndex = line.indexOf(":");
-			if (colonIndex === -1) {
-				return acc;
+		const metadataKeys = ["contract", "inputContract", "outputContract", "sopIO"];
+		const hasMetadata = /^(contract|inputContract|outputContract|sopIO):/m.test(frontmatterText);
+		let metadata: Record<string, unknown> = {};
+		if (hasMetadata) {
+			const document = parseDocument(frontmatterText, { uniqueKeys: true });
+			if (document.errors.length) throw new Error("Invalid skill contract frontmatter YAML");
+			const decoded: unknown = document.toJS({ maxAliasCount: 20 });
+			if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) throw new Error("Expected frontmatter mapping");
+			metadata = decoded as Record<string, unknown>;
+			if (metadata.contract !== undefined) {
+				const checked = skillContractSchema.safeParse(metadata.contract);
+				if (!checked.success) throw new Error("Invalid canonical skill contract shape");
+				metadata.contract = checked.data;
 			}
+		}
+		// Preserve historical scalar parsing for non-contract skills and fields.
+		const frontmatter = frontmatterText.split(/\r?\n/).reduce((acc: Record<string, unknown>, line) => {
+			if (/^\s/.test(line)) return acc;
+			const colonIndex = line.indexOf(":");
+			if (colonIndex === -1) return acc;
 			const key = line.slice(0, colonIndex).trim();
 			const value = line.slice(colonIndex + 1).trim();
-			// Handle simple quoted values
-			if ((value.startsWith('"') && value.endsWith('"')) ||
-			    (value.startsWith("'") && value.endsWith("'"))) {
+			if (metadataKeys.includes(key)) {
+				acc[key] = metadata[key];
+			} else if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
 				acc[key] = value.slice(1, -1);
 			} else {
 				acc[key] = value;
 			}
 			return acc;
-		}, {} as Record<string, unknown>) as T;
-
-		return { frontmatter, body };
-	} catch (error) {
-		console.error("Failed to parse frontmatter:", error);
-		return { frontmatter: {} as T, body: content };
+		}, {});
+		return { frontmatter: frontmatter as T, body };
+	} catch {
+		// Do not include raw YAML or credentials in diagnostics. Loading fails closed.
+		throw new Error("Invalid skill contract metadata; check YAML structure and canonical contract fields");
 	}
 }
 
@@ -247,6 +263,10 @@ function loadSkillFromFile(
 			skill: {
 				name,
 				code,
+				...(frontmatter.contract !== undefined ? { contract: frontmatter.contract } : {}),
+                ...(frontmatter.inputContract !== undefined ? { inputContract: frontmatter.inputContract } : {}),
+                ...(frontmatter.outputContract !== undefined ? { outputContract: frontmatter.outputContract } : {}),
+                ...(frontmatter.sopIO !== undefined ? { sopIO: frontmatter.sopIO } : {}),
 				description: frontmatter.description,
 				filePath,
 				baseDir: skillDir,
