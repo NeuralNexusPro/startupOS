@@ -38,8 +38,8 @@ export function ProjectWorkspace({ projectId, projectName, ontologyId }: Project
 
       {/* Tab content */}
       <div className="flex-1 min-h-0">
-        {activeTab === '数据' && <DataTabView ontologyId={ontologyId} />}
-        {activeTab === '本体' && <OntologyTabView ontologyId={ontologyId} />}
+        {activeTab === '数据' && <DataTabView projectId={projectId} />}
+        {activeTab === '本体' && <OntologyTabView projectId={projectId} />}
         {activeTab === '任务' && <ProjectTaskBoard projectId={projectId} onOpenSolutionDesign={() => setActiveTab('方案')} />}
         {activeTab === '方案' && (
           <div className="flex items-center justify-center h-full text-gray-400 text-sm">

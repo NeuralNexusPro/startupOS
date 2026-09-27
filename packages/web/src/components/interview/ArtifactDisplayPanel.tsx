@@ -20,6 +20,7 @@ interface ArtifactDisplayPanelProps {
   selectedEntity?: string;
   activeTab?: '图谱' | '实体' | '关系' | '规则';
   onTabChange?: (tab: '图谱' | '实体' | '关系' | '规则') => void;
+  legacyMigrationRequired?: boolean;
 }
 
 const PHASE_BADGE: Record<string, { label: string; className: string }> = {
@@ -74,6 +75,7 @@ export function ArtifactDisplayPanel({
   selectedEntity,
   activeTab = '图谱',
   onTabChange,
+  legacyMigrationRequired = false,
 }: ArtifactDisplayPanelProps) {
   console.log('[ArtifactDisplayPanel] render', {
     mode,
@@ -85,7 +87,7 @@ export function ArtifactDisplayPanel({
     <div className="flex flex-col h-full bg-transparent">
       <PanelHeader mode={mode} />
       <div className="flex-1 overflow-y-auto">
-        {mode === 'empty' && <EmptyState />}
+        {mode === 'empty' && <EmptyState legacyMigrationRequired={legacyMigrationRequired} />}
         {mode === 'collecting' && <CollectingState ontology={ontology} onEntityClick={onEntityClick} selectedEntity={selectedEntity} />}
         {mode === 'generating' && <GeneratingState message={generationMessage} />}
         {mode === 'preview' && ontology && (
@@ -104,14 +106,14 @@ export function ArtifactDisplayPanel({
   );
 }
 
-function EmptyState() {
+function EmptyState({ legacyMigrationRequired }: { legacyMigrationRequired: boolean }) {
   return (
     <div className="flex flex-col items-center justify-center h-full gap-4 p-8 text-gray-500">
       <EmptyIllustration />
       <div className="text-center">
-        <p className="text-sm font-medium text-gray-900 mb-1">业务模型将在这里生成</p>
+        <p className="text-sm font-medium text-gray-900 mb-1">{legacyMigrationRequired ? '此项目需要迁移本体' : '本体将在这里生成'}</p>
         <p className="text-xs text-gray-500 leading-relaxed">
-          通过左侧对话，Oracle 将实时构建你的业务领域模型
+          {legacyMigrationRequired ? '旧项目保持只读，请先通过显式迁移入口完成迁移。' : '通过左侧对话，Oracle 将实时构建项目本体。'}
         </p>
       </div>
     </div>

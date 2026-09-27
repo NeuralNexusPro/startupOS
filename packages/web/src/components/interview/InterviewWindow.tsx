@@ -13,8 +13,8 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { AppWindowManager } from '@/services/AppWindowManager';
 import { ProjectWorkspace, WorkspaceWindow } from '@/components/os/workspace';
 import { normalizeOntologyId, normalizeProjectEntryId } from '@/components/os/workspace/project-identity';
+import { canonicalToOntologyModel, loadProjectCanonicalOntology } from '@/components/os/workspace/project-canonical-ontology';
 import type { OntologyModel } from '@originos/core/types';
-import { getProjectArtifact, initializeProject, updateProject, syncProjectOntology } from '@originos/core/lib/integrations/electron/services/project';
 
 interface InterviewWindowProps {
   projectId?: string;
@@ -133,113 +133,12 @@ function InterviewHeader({ mode, onClose, projectName, projectId, ontologyId }: 
   );
 }
 
-/**
- * 从项目 output 目录读取 interview-progress.md
- * 用于过程解析——Agent 在访谈过程中持续更新该文件，包含增量实体/关系数据
- */
-async function loadInterviewProgressModel(projectId: string): Promise<any | null> {
-  try {
-    console.log('[InterviewWindow] loadInterviewProgressModel start', { projectId });
-    const result = await getProjectArtifact(projectId, 'interview-markdown');
-    console.log('[InterviewWindow] loadInterviewProgressModel artifact result', {
-      projectId,
-      success: result.success,
-      error: result.error,
-      hasData: Boolean(result.data),
-    });
-    if (!result.success) return null;
-
-    // 从 interview-progress.md 中提取 ```json 代码块
-    const content = (result.data as any)?.content;
-    const jsonMatch = content.match(/```json\s*([\s\S]*?)```/);
-    if (!jsonMatch || !jsonMatch[1]) {
-      console.log('[InterviewWindow] loadInterviewProgressModel no json block', { projectId, contentLength: content?.length ?? 0 });
-      return null;
-    }
-
-    const parsed = JSON.parse(jsonMatch[1]);
-    console.log('[InterviewWindow] loadInterviewProgressModel parsed', { projectId, keys: Object.keys(parsed ?? {}) });
-    return parsed;
-  } catch (error) {
-    console.error('[InterviewWindow] loadInterviewProgressModel failed', { projectId, error });
-    return null;
-  }
-}
-
-/**
- * 从项目 output 目录读取 business-model.json
- * 用于结果展示——Agent 完成访谈后写入的最终业务模型
- */
-async function loadBusinessModelFromOutput(projectId: string): Promise<any | null> {
-  try {
-    console.log('[InterviewWindow] loadBusinessModelFromOutput start', { projectId });
-    const result = await getProjectArtifact(projectId, 'business-model');
-    console.log('[InterviewWindow] loadBusinessModelFromOutput artifact result', {
-      projectId,
-      success: result.success,
-      error: result.error,
-      hasData: Boolean(result.data),
-      keys: result.data && typeof result.data === 'object' ? Object.keys(result.data as Record<string, unknown>) : [],
-    });
-    return (result.success && result.data) ? result.data : null;
-  } catch (error) {
-    console.error('[InterviewWindow] loadBusinessModelFromOutput failed', { projectId, error });
-    return null;
-  }
-}
-
-/**
- * 统一加载模型——优先读取 business-model.json（完整数据），
- * 降级使用 interview-progress.md（渐进式/简化数据，仅在完整数据不存在时）
- */
-async function loadLatestModel(projectId: string): Promise<any | null> {
-  console.log('[InterviewWindow] loadLatestModel start', { projectId });
-  // 1. 优先从 business-model.json 读取（结果驱动，包含完整的 properties/relationships/rules）
-  const businessModel = await loadBusinessModelFromOutput(projectId);
-  if (businessModel) {
-    console.log('[InterviewWindow] loadLatestModel using business-model', { projectId });
-    return businessModel;
-  }
-  // 2. 降级从 interview-progress.md 解析（过程驱动，可能只有简化格式）
-  const progressModel = await loadInterviewProgressModel(projectId);
-  console.log('[InterviewWindow] loadLatestModel progress fallback result', { projectId, hasModel: Boolean(progressModel) });
-  return progressModel;
-}
-
-/**
- * 从项目 output 目录读取产出物，理解访谈阶段
- */
-async function loadProjectArtifacts(projectId: string): Promise<{
-  hasBusinessModel: boolean;
-  businessModel?: any;
-  phase: 'empty' | 'collecting' | 'generating' | 'preview';
-}> {
-  try {
-    console.log('[InterviewWindow] loadProjectArtifacts start', { projectId });
-    // 尝试读取项目的业务模型文件
-    const result = await getProjectArtifact(projectId, 'business-model');
-    console.log('[InterviewWindow] loadProjectArtifacts business-model result', {
-      projectId,
-      success: result.success,
-      error: result.error,
-      hasData: Boolean(result.data),
-      keys: result.data && typeof result.data === 'object' ? Object.keys(result.data as Record<string, unknown>) : [],
-    });
-    if (result.success && result.data) {
-      return {
-        hasBusinessModel: true,
-        businessModel: result.data,
-        phase: 'preview',
-      };
-    }
-  } catch (e) {
-    console.error('[InterviewWindow] Failed to load artifacts:', e);
-  }
-
-  return {
-    hasBusinessModel: false,
-    phase: 'empty',
-  };
+/** 通过项目绑定的 canonical ontology 读取访谈结果。 */
+async function loadLatestModel(projectId: string): Promise<OntologyModel | null> {
+  const result = await loadProjectCanonicalOntology(projectId);
+  return result.entry.kind === 'canonical' && result.ontology
+    ? canonicalToOntologyModel(result.ontology)
+    : null;
 }
 
 /**
@@ -254,10 +153,11 @@ function hasSessionHistory(messages: any[]): boolean {
  * 将业务模型 JSON 转换为 OntologyModel 用于右侧预览
  */
 
-function businessModelToOntology(model: any): OntologyModel {
+/** Legacy display-only projection; it is never used as a project data source. */
+export function legacyModelToPreview(model: any): OntologyModel {
   const now = Date.now();
   const nodes = [];
-  console.log('[businessModelToOntology] start', {
+  console.log('[legacyModelToPreview] start', {
     hasModel: Boolean(model),
     keys: model && typeof model === 'object' ? Object.keys(model) : [],
     entitiesCount: Array.isArray(model?.entities) ? model.entities.length : 0,
@@ -294,7 +194,7 @@ function businessModelToOntology(model: any): OntologyModel {
         description: String(value),
       }));
 
-      console.log(`[businessModelToOntology] Entity "${entityName}" has ${children.length} properties:`, children.map(c => c.name));
+      console.log(`[legacyModelToPreview] Entity "${entityName}" has ${children.length} properties:`, children.map(c => c.name));
 
       nodes.push({
         id: nodeId,
@@ -328,7 +228,7 @@ function businessModelToOntology(model: any): OntologyModel {
 
         // 跳过无效关系（from 或 to 为空）
         if (!fromName || !toName) {
-          console.warn('[businessModelToOntology] Skipping invalid relationship:', rel);
+          console.warn('[legacyModelToPreview] Skipping invalid relationship:', rel);
           continue;
         }
 
@@ -414,7 +314,7 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
   const [ontology, setOntology] = useState<OntologyModel | null>(null);
   const [selectedEntity, setSelectedEntity] = useState<string | undefined>();
   const [activeTab, setActiveTab] = useState<'图谱' | '实体' | '关系' | '规则'>('图谱');
-  const [projectUpdated, setProjectUpdated] = useState(false);
+  const [legacyMigrationRequired, setLegacyMigrationRequired] = useState(false);
   const hasCheckedHistory = useRef(false); // 防止重复触发
   const displayModeRef = useRef<'empty' | 'collecting' | 'generating' | 'preview'>('empty');
 
@@ -454,23 +354,13 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
         resolvedProjectId,
         resolvedOntologyId,
       });
-      // 确保项目输出目录结构已创建
-      try {
-        await initializeProject(resolvedProjectId);
-        console.log('[InterviewWindow] Project output directories initialized', { resolvedProjectId });
-      } catch (e) {
-        console.warn('[InterviewWindow] Failed to initialize output directories:', { resolvedProjectId, error: e });
-      }
-
-      // 加载产出物
-      const artifacts = await loadProjectArtifacts(resolvedProjectId);
-      console.log('[InterviewWindow] loadArtifacts result', {
-        resolvedProjectId,
-        hasBusinessModel: artifacts.hasBusinessModel,
-        phase: artifacts.phase,
-      });
-      if (artifacts.hasBusinessModel && artifacts.businessModel) {
-        const converted = businessModelToOntology(artifacts.businessModel);
+      const canonical = await loadProjectCanonicalOntology(resolvedProjectId);
+      setLegacyMigrationRequired(canonical.entry.kind === 'legacy_migration_required');
+      const model = canonical.entry.kind === 'canonical' && canonical.ontology
+        ? canonicalToOntologyModel(canonical.ontology)
+        : null;
+      if (model) {
+        const converted = model;
         console.log('[InterviewWindow] Converted ontology:', {
           totalNodes: converted.nodes.length,
           entities: converted.nodes.filter(n => n.type === 'entity').map(n => ({
@@ -480,8 +370,8 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
           }))
         });
         setOntology(converted);
-        setDisplayMode(artifacts.phase);
-        console.log('[InterviewWindow] Loaded artifacts, phase:', artifacts.phase);
+        setDisplayMode('preview');
+        console.log('[InterviewWindow] Loaded canonical ontology');
       }
     };
 
@@ -504,19 +394,21 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
         return;
       }
 
-      // 检查是否已有业务模型，决定初始行为
-      const existingModel = await loadBusinessModelFromOutput(resolvedProjectId);
+      const canonical = await loadProjectCanonicalOntology(resolvedProjectId);
+      setLegacyMigrationRequired(canonical.entry.kind === 'legacy_migration_required');
+      const existingModel = canonical.entry.kind === 'canonical' && canonical.ontology
+        ? canonicalToOntologyModel(canonical.ontology)
+        : null;
       if (existingModel) {
-        console.log('[InterviewWindow] Existing business model found, triggering review mode', { resolvedProjectId });
+        console.log('[InterviewWindow] Existing canonical ontology found, triggering review mode', { resolvedProjectId });
         // 已有模型：显示已有数据，触发 Agent 生成审阅问候语
-        const converted = businessModelToOntology(existingModel);
-        if (converted.nodes.length > 0) {
-          setOntology(converted);
+        if (existingModel.nodes.length > 0) {
+          setOntology(existingModel);
           setDisplayModeSync('preview');
         }
         // 触发 Agent 自动生成问候语（不显示用户消息）
         triggerGreeting().catch(console.error);
-      } else {
+      } else if (canonical.entry.kind !== 'legacy_migration_required') {
       console.log('[InterviewWindow] No history found, starting interview', { resolvedProjectId });
       sendMessageStream('开始项目访谈').catch(console.error);
       }
@@ -526,48 +418,12 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isInitialized]);
 
-  const handleProjectComplete = useCallback((model: any) => {
-    if (!projectUpdated && model.projectName && projectId) {
-      setProjectUpdated(true);
-      console.log('[InterviewWindow] handleProjectComplete start', {
-        rawProjectId: projectId,
-        resolvedProjectId,
-      });
-      updateProject(resolvedProjectId, {
-        name: model.projectName,
-        description: model.background || '',
-        domain: model.industry || '未知',
-        status: 'active',
-        metadata: {
-          interviewStatus: 'completed',
-          completedAt: Date.now(),
-        },
-      })
-      .then((updatedProject) => {
-        console.log('[InterviewWindow] Project updated to active status', { resolvedProjectId });
-        window.dispatchEvent(new CustomEvent('project:updated', {
-          detail: {
-            projectId: resolvedProjectId,
-            project: updatedProject,
-          },
-        }));
-        onComplete?.({ projectId: resolvedProjectId, businessModel: model });
-        // Sync business-model.json to ontology-data-store
-        return syncProjectOntology(resolvedProjectId);
-      })
-      .then((syncResult) => {
-        if (syncResult?.success) {
-          console.log('[InterviewWindow] Ontology synced:', syncResult.data);
-        }
-      })
-      .catch((error) => {
-        console.error('[InterviewWindow] handleProjectComplete failed', {
-          resolvedProjectId,
-          error,
-        });
-      });
-    }
-  }, [projectId, resolvedProjectId, onComplete, projectUpdated]);
+  const handleProjectComplete = useCallback(() => {
+    window.dispatchEvent(new CustomEvent('project:updated', {
+      detail: { projectId: resolvedProjectId },
+    }));
+    onComplete?.({ projectId: resolvedProjectId, canonicalOntology: true });
+  }, [resolvedProjectId, onComplete]);
 
   // 监听工具执行完成后，主动刷新右侧面板模型数据
   // 只在工具执行完成时加载一次，避免轮询
@@ -577,29 +433,12 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
     const lastTool = toolExecutions[toolExecutions.length - 1];
     if (!lastTool || lastTool.status !== 'completed') return;
 
-    // 检测是否编辑了 business-model.json 或 interview-progress.md
-    // tool_end 的 result 结构为 AgentToolResult: { content: [...], details: { filePath, ... } }
-    const result = (lastTool as any).result as Record<string, unknown> | undefined;
-    const details = result?.['details'] as Record<string, unknown> | undefined;
-    const filePath = ((details?.['filePath'] as string) ?? (result?.['filePath'] as string) ?? '');
-    const isModelFile = filePath.includes('business-model.json') || filePath.includes('interview-progress.md');
-
-    // 不在预览模式时跳过，除非是模型文件本身被编辑
-    if (displayModeRef.current === 'preview' && !isModelFile) return;
-
-    console.log('[InterviewWindow] tool completed, refreshing model', {
-      rawProjectId: projectId,
-      resolvedProjectId,
-      filePath,
-      isModelFile,
-      displayMode: displayModeRef.current,
-    });
+    if (displayModeRef.current === 'preview') return;
 
     loadLatestModel(resolvedProjectId).then(model => {
       if (!model) return;
-      const converted = businessModelToOntology(model);
-      if (converted.nodes.length === 0) return;
-      setOntology(converted);
+      if (model.nodes.length === 0) return;
+      setOntology(model);
 
       // 首次识别到业务概念时切换到 collecting
       if (displayModeRef.current === 'empty') {
@@ -607,9 +446,9 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
       }
 
       // 业务概念足够时切换到 preview
-      if (converted.nodes.length >= 2) {
+      if (model.nodes.length >= 2) {
         setDisplayModeSync('preview');
-        handleProjectComplete(model);
+        handleProjectComplete();
       }
     }).catch(console.error);
   }, [toolExecutions, projectId, resolvedProjectId, handleProjectComplete]);
@@ -622,16 +461,15 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
     console.log('[InterviewWindow] artifact_changed detected, refreshing model', { artifactVersion, resolvedProjectId });
     loadLatestModel(resolvedProjectId).then(model => {
       if (!model) return;
-      const converted = businessModelToOntology(model);
-      if (converted.nodes.length === 0) return;
-      setOntology(converted);
+      if (model.nodes.length === 0) return;
+      setOntology(model);
 
       if (displayModeRef.current === 'empty') {
         setDisplayModeSync('collecting');
       }
-      if (converted.nodes.length >= 2) {
+      if (model.nodes.length >= 2) {
         setDisplayModeSync('preview');
-        handleProjectComplete(model);
+        handleProjectComplete();
       }
     }).catch(console.error);
   }, [artifactVersion, projectId, resolvedProjectId, handleProjectComplete]);
@@ -693,6 +531,7 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
               selectedEntity={selectedEntity}
               activeTab={activeTab}
               onTabChange={setActiveTab}
+              legacyMigrationRequired={legacyMigrationRequired}
             />
           }
           defaultLeftWidth={400}
