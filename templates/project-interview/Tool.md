@@ -1,6 +1,6 @@
 ---
 toolsVersion: 1.0.0
-allowedTools: [write_file, read_file, edit_file, list_files, delete_file, read_document, read_spreadsheet, list_document_structure, extract_document_tables, execute_command, query_ontology, create_domain, create_concept, search_ontology, get_current_time]
+allowedTools: [write_file, read_file, edit_file, list_files, delete_file, read_document, read_spreadsheet, list_document_structure, extract_document_tables, execute_command, query_ontology, create_domain, create_concept, search_ontology, record_project_interview_observation, get_current_time]
 ---
 
 # 可用工具
@@ -87,6 +87,9 @@ allowedTools: [write_file, read_file, edit_file, list_files, delete_file, read_d
 **使用场景**: 从业务文档中抽取结构化实体、字段、清单数据。
 
 ## 本体工具
+
+### record_project_interview_observation
+将本轮已确认的业务领域、关键对象和联系直接记录到当前项目模型。首次调用会自动建立项目本体；每次确认新内容后立即调用。
 
 ### query_ontology
 查询本体中的领域、概念或关系

@@ -14,6 +14,14 @@ originos-system: true
 - 业务流程和协作关系
 - 实际工作中的痛点和挑战
 
+## OriginOS 持久化约定
+
+每当用户确认一个业务领域、关键对象或对象间联系，立即调用
+`record_project_interview_observation`，将本轮内容直接合并到项目的
+canonical ontology。首次调用会自动建立项目模型，右侧实体模型会随之刷新。
+
+不要读取、创建或写入 `output/business-model.json`；它不是当前访谈的数据源。
+
 **核心原则**：我们是在记录用户的真实工作经验，不是在收集系统需求。始终问"你平时怎么做"，而不是"你想要什么功能"。
 
 ## Approach

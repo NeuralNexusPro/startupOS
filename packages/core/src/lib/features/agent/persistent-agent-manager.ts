@@ -98,6 +98,16 @@ export class PersistentAgentManager {
 		const agentDef = await this.loadAgentDefinition(projectDir);
 		console.log(`[Manager]   Agent: ${agentDef.name} (type=${agentDef.agentType}, version=${agentDef.version})`);
 		const toolDef = await this.loadToolDefinition(projectDir);
+		// System-managed project interviews always need the canonical write bridge.
+		// Keep legacy Tool.md customizations intact while making the current runtime
+		// capable of persisting confirmed interview observations.
+		if (
+			agentDef.agentType === 'interview' &&
+			toolDef.allowedTools.length > 0 &&
+			!toolDef.allowedTools.includes('record_project_interview_observation')
+		) {
+			toolDef.allowedTools.push('record_project_interview_observation');
+		}
 		console.log(`[Manager]   Tools: ${toolDef.allowedTools.length > 0 ? toolDef.allowedTools.join(', ') : 'ALL'}`);
 		const skillDef = await parseSkillDefinition(projectDir);
 		console.log(`[Manager]   Skills: ${skillDef.content ? 'Skill.md' : skillDef.skills.length + ' skill(s)'}`);
