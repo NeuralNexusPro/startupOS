@@ -609,32 +609,58 @@ dependencies: []
 
 ```json
 {
-  "id": "order-validator",
-  "name": "订单验证",
-  "code": "order-validator",
-  "description": "验证订单完整性",
-  "capability": "验证订单数据是否符合 schema 定义",
-  "triggerType": "event",
-  "ontologyObjects": { "Order": ["read", "validate"] },
-  "inputContract": {
-    "requires": [
-      { "objectType": "Order", "minCount": 1, "fields": ["customerName", "items", "total"] }
-    ]
+  "id": "publisher",
+  "name": "publisher",
+  "code": "publisher",
+  "description": "Publish a verified order",
+  "contract": {
+    "skillId": "publisher",
+    "ontology": {
+      "ontologyId": "orders",
+      "ontologyVersion": "3"
+    },
+    "inputs": [
+      {
+        "factType": {
+          "ontologyId": "orders",
+          "ontologyVersion": "3",
+          "conceptId": "order",
+          "factTypeId": "order-ready"
+        },
+        "required": true
+      }
+    ],
+    "outputs": [],
+    "actions": [],
+    "permissions": []
   },
-  "outputContract": {
-    "produces": [
-      { "objectType": "Order", "fields": ["validationStatus", "validationErrors"] }
+  "capability": "消费已验证的订单事实并生成发布说明",
+  "triggerType": "event",
+  "ontologyObjects": {
+    "Order": [
+      "read"
     ]
   },
   "dependsOn": [],
   "skillFileOutline": {
-    "triggerScenario": "订单创建或更新后自动触发",
-    "steps": ["获取订单数据", "加载概念 schema", "逐项校验字段", "返回校验结果"],
-    "inputFormat": "Order 实例 ID 或完整数据对象",
-    "outputFormat": "{ success: boolean, errors: string[] }"
+    "triggerScenario": "收到上游 order-ready 事实",
+    "steps": [
+      "通过当前执行上下文读取契约声明的事实",
+      "返回订单发布说明"
+    ],
+    "inputFormat": "精确绑定的 order-ready FactType",
+    "outputFormat": "发布说明（不新增事实）"
   }
 }
 ```
+
+### Canonical 契约交接（新方案必需）
+
+新方案必须同时传入 `contract`，与 `skills.json` 对应项完全一致。其字段为 skillId、ontology、inputs、outputs、actions、permissions；skillId 等于 id。完整样本见 `../solution-design/references/canonical-example/SKILL.example.txt`。
+
+创建器必须将 contract 序列化为**单行 JSON 对象**，写在 SKILL.md frontmatter 的 `contract: {...}` 行；也支持结构化 YAML（禁止重复键）；不要使用带引号的 JSON 字符串或仅正文说明。该格式由现有技能加载器保留，执行授权只由 canonical 发布门控决定。禁止修改 ID/version、填造权限或从旧 inputContract/outputContract 猜测 contract；缺失时报告缺口，保留旧技能可读但不得宣称可执行。
+
+创建完成后读取 SKILL.md，确认 contract 与原输入一致，再走方案发布检查。不得用“文件已生成”代替契约通过。
 
 ### 生成要求
 
@@ -667,7 +693,7 @@ dependencies: []
 
 5. **如果 Skill 操作多个本体对象**，对每个对象分别说明使用的工具和调用方式
 6. **如果存在 `dependsOn`**，在步骤中明确说明"等待 {depSkill} 完成后执行"
-7. **I/O 契约** — 如果传入 `inputContract` 和 `outputContract`，在 SKILL.md 中新增"数据契约"章节，明确说明：
+7. **旧 I/O 展示兼容（非执行授权）** — 如果传入 `inputContract` 和 `outputContract`，在 SKILL.md 中新增"数据契约"章节，明确说明：
    - **输入需求**：需要从本体读取哪些对象、最少实例数、需要哪些字段
    - **输出承诺**：会向本体写入哪些对象、填充哪些字段
    - 示例格式：

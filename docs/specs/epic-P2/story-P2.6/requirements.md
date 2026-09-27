@@ -56,3 +56,20 @@
 执行契约统一采用 ONT.7/P2.8 的 canonical contract。旧 inputContract/outputContract/sopIO 仅为可读兼容，不能单独发布或执行。SOP 以精确 contractRef 的节点、FactType 边和显式 externalInputs 表达；字段覆盖通过完整 FactType schema 与版本精确匹配保证。循环校验由 Solution 公共 Validator 执行，本体引用与连通校验复用 ONT 公共 API。
 
 新增闭环验收：生成的版本化设计 bundle 可直接进入发布校验；技能创建交接和元数据读取保留 canonical 契约；缺引用、错版本、断链与环明确拒绝，不静默转换旧方案。
+
+## 0.4.x canonical 验收映射（2026-09-27）
+
+本节替代早期仅按 `objectType/fields` 推断连通性的执行设计：新方案的唯一执行语义为 ONT canonical contract；旧 inputContract/outputContract/sopIO 只保留展示兼容，不触发猜测迁移。
+
+| 原需求 | 当前落点 | 验证 |
+|---|---|---|
+| Skill/Agent I/O | 公共 canonical Agent/Skill contract，精确 ontology/version/concept/factType | 黄金三文件读取并发布成功 |
+| 元数据保留 | SkillFrontmatter、SkillMetadata、Skill、AgentSkill、SolutionAgent；真实 loader 解析 JSON/嵌套 YAML | 读取创建样本及 legacy I/O；无效形状/重复键拒绝 |
+| SOP 输入来源 | topologyViews nodes/edges + executionContract.externalInputs | REQUIRED_INPUT_UNBOUND 拒绝 |
+| 字段覆盖 | 统一 FactType schema / propertyIds 表达；不按名称猜测字段 | ONT contract-validator 与版本不匹配回归 |
+| 类型/版本一致 | 引用完整 tuple，复用 ONT validator | ONTOLOGY_VERSION_MISMATCH 拒绝 |
+| 环路 | Solution DAG 门控；不支持隐式反馈环例外 | CYCLIC_TOPOLOGY 拒绝 |
+| Stage 2.5/创建交接 | 三文件 contract 原样交接 project-skill-creator，frontmatter 保留 | golden fixture 加载到发布闭环 |
+| 旧格式兼容 | 原文件可读、禁止自动授权或转换 | MISSING_NODE_CONTRACT；磁盘原文不变 |
+
+生成样例不代表任意模型输出都正确；真正执行前仍必须通过发布检查，缺引用或缺策略即拒绝。

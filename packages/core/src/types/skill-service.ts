@@ -1,9 +1,17 @@
+import type { SkillInputContract, SkillOutputContract, SOPStepIO } from "./solution";
+import type { CanonicalSkillContract } from "./ontology-contract";
 import type { AgentMessage, SessionListItem } from './agent';
 
 /**
  * Frontmatter structure for SKILL.md files
  */
 export interface SkillFrontmatter {
+  /** Untrusted declaration preserved for canonical publication validation. */
+  contract?: CanonicalSkillContract;
+  /** Legacy declarations retained for display only. */
+  inputContract?: SkillInputContract;
+  outputContract?: SkillOutputContract;
+  sopIO?: SOPStepIO;
 	name?: string;
 	code?: string;
 	description?: string;
@@ -16,6 +24,12 @@ export interface SkillFrontmatter {
  * Skill object representing a loaded skill
  */
 export interface Skill {
+  /** Declaration only: loading never grants execution permissions. */
+  contract?: CanonicalSkillContract;
+  /** Legacy declarations retained for display only. */
+  inputContract?: SkillInputContract;
+  outputContract?: SkillOutputContract;
+  sopIO?: SOPStepIO;
 	name: string;
 	code?: string;
 	description: string;

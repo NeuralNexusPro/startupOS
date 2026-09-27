@@ -18,7 +18,7 @@
 无；复用既有 ontology-contract-validation 和 solution-execution-contract-publishing 门控。
 
 ## Impact
-涉及 templates/skills、core types、skills/project/solution 公共服务和测试。无新数据库、IPC、外部依赖和打包改动。
+涉及 templates/skills、core types、skills/project/solution 公共服务和测试。无新数据库、IPC 和打包改动；复用已锁定 yaml 2.9.0，声明为 core 直接依赖解析契约元数据。
 依赖 ONT.7、P2.8 已有公共校验/发布服务。
 非目标：推断缺失权限、本体迁移、自动执行、P2.7 UI、9.36 调度。
 上线为随 0.4.x 源码集成；回滚为撤回本任务提交，不改已发布契约和用户运行数据。

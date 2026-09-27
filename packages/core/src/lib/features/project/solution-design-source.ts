@@ -1,3 +1,4 @@
+import { ontologyReferenceSchema, conceptReferenceSchema, factTypeReferenceSchema, agentContractSchema, skillContractSchema } from '../../shared/canonical-contract-schema';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
@@ -21,47 +22,6 @@ import {
 
 const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._@-]*$/;
 const SOURCE_TYPES = ['interview', 'manual', 'import', 'runtime'] as const;
-
-const ontologyReferenceSchema = z.object({
-  ontologyId: z.string().min(1),
-  ontologyVersion: z.string().min(1),
-});
-
-const conceptReferenceSchema = ontologyReferenceSchema.extend({
-  conceptId: z.string().min(1),
-});
-
-const factTypeReferenceSchema = conceptReferenceSchema.extend({
-  factTypeId: z.string().min(1),
-});
-
-const inputFactSchema = z.object({
-  factType: factTypeReferenceSchema,
-  required: z.boolean(),
-});
-
-const actionBindingSchema = z.object({
-  actionId: z.string().min(1),
-  concept: conceptReferenceSchema,
-});
-
-const agentContractSchema = z.object({
-  agentId: z.string().min(1),
-  ontology: ontologyReferenceSchema,
-  inputs: z.array(inputFactSchema),
-  outputs: z.array(inputFactSchema),
-  actions: z.array(actionBindingSchema),
-  permissions: z.array(z.string().min(1)),
-});
-
-const skillContractSchema = z.object({
-  skillId: z.string().min(1),
-  ontology: ontologyReferenceSchema,
-  inputs: z.array(inputFactSchema),
-  outputs: z.array(inputFactSchema),
-  actions: z.array(actionBindingSchema),
-  permissions: z.array(z.string().min(1)),
-});
 
 const agentsFileSchema = z.object({
   version: z.literal('1.0.0'),

@@ -1,0 +1,10 @@
+---
+name: publisher
+code: publisher
+description: Publish a verified order
+contract: {"skillId":"publisher","ontology":{"ontologyId":"orders","ontologyVersion":"3"},"inputs":[{"factType":{"ontologyId":"orders","ontologyVersion":"3","conceptId":"order","factTypeId":"order-ready"},"required":true}],"outputs":[],"actions":[],"permissions":[]}
+---
+
+# 发布订单
+
+仅读取已确认的订单事实；发布前由 canonical gate 校验精确引用。

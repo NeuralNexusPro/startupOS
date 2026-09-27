@@ -226,101 +226,27 @@ Ask: "Are the divisions reasonable? Any missing scenarios?"
 
 ### Stage 2.5: Skill Capability Planning
 
-**Outcome:** For each Agent, identify Skills with full I/O contracts. Present a concise summary in the conversation; generate full detailed specs for the internal plan (to be saved in the manifest).
+每个 Agent / Skill 必须直接生成 canonical `contract`。先读取当前项目已确认的 canonical ontology，精确选择 ontology ID/version、Concept、FactType、Action 与权限；禁止从业务名称猜测引用。
 
-**Derivation rule:** Each Skill corresponds to one or more ontology operations of its Agent.
+- Agent 使用 `agentId`，Skill 使用 `skillId`，与定义的 `id` 完全一致。
+- `ontology: {ontologyId, ontologyVersion}` 冻结精确版本。
+- `inputs` / `outputs` 的每项是 `{factType: {ontologyId, ontologyVersion, conceptId, factTypeId}, required: boolean}`。
+- `actions` 的每项是 `{actionId, concept: {ontologyId, ontologyVersion, conceptId}}`，`permissions` 是经确认的精确权限集合。不需要时显式写 `[]`，不能省略或猜测。
+- 保留 id/name/code/description/capability/triggerType/dependsOn/skillFileOutline 等展示信息。`ontologyObjects` 使用 `Record<string,string[]>`；旧 string[] 和 inputContract/outputContract/sopIO 仅作兼容展示，不是执行依据。
+- 字段覆盖由同版本 FactType 的 property schema 表达；若缺少合适 FactType，报告缺口并回到本体设计，不拼造字段或自动迁移。
 
-**For each Skill (internal — generates full specs for manifest):**
-
-1. `id`, `name`, `code` (kebab-case)
-2. `description` — when to trigger this Skill
-3. `capability` — paragraph describing what the Skill does, which business elements it serves, and how it fulfills a specific business rule or process step
-4. `derivedFrom` — business model rules/constraints/processes this Skill implements
-5. `triggerType` — conversation / event / scheduled
-6. `ontologyObjects` — which objects, each with field-level detail (format: `Record<string, string[]>` mapping object name to operations like `["read"]`, `["create"]`)
-7. **`inputContract`** — declare what ontology data this Skill expects to **read**:
-   ```
-   inputContract: {
-     requires: [
-       { objectType: "对象名", minCount: N, fields: ["字段1", "字段2"] }
-     ]
-   }
-   ```
-   - `objectType`: which ontology object type is needed
-   - `minCount`: minimum instances required (1+ means at least one must exist)
-   - `fields`: which fields of the object the Skill needs to read
-8. **`outputContract`** — declare what ontology data this Skill promises to **write**:
-   ```
-   outputContract: {
-     produces: [
-       { objectType: "对象名", fields: ["字段A", "字段B"], replaces: false }
-     ]
-   }
-   ```
-   - `objectType`: which ontology object type will be created/updated
-   - `fields`: which fields the Skill will populate
-   - `replaces`: true if this replaces existing data, false if adding to existing
-9. **`sopIO`** (optional, for SOP-level planning) — step-level input source and output:
-   ```
-   sopIO: {
-     input: { source: 'ontology'|'previous-step'|'user', objects: [...] },
-     output: { objects: [...] }
-   }
-   ```
-10. `dependsOn` — other Skills
-11. **SKILL.md outline** — trigger scenario, steps, input format, output format, caveats
-
-**I/O contract generation guidance:**
-
-For each Skill, analyze:
-- **What does it need to know?** → `inputContract.requires` (e.g., a validator needs the object to validate + rules to validate against)
-- **What does it produce?** → `outputContract.produces` (e.g., a validator produces a validation result record)
-- **Field-level precision:** Only list fields the Skill actually reads/writes, not all fields on the object
-
-**Present to user (summary only):**
-
-Show a compact list per Agent — one line per Skill:
-
-```
-订单处理 Agent Skills:
-  ├── order-validator    — 验证订单完整性      [event]     操作: Order
-  │   └─ I/O: 需要 Order(订单号, 商品列表) → 产出 订单验证结果(是否通过, 错误列表)
-  ├── invoice-generator  — 生成发票记录         [event]     操作: Order → Invoice  (依赖: order-validator)
-  │   └─ I/O: 需要 Order(客户信息, 金额) + 发票规则(税率) → 产出 Invoice(发票号, 金额, 税额)
-  └── status-notifier    — 状态变更通知         [event]     操作: Order → Notification
-      └─ I/O: 需要 Order(状态, 客户联系方式) → 产出 Notification(消息内容, 发送状态)
-```
-
-After all Agents and Skills are summarized, tell the user that the full detailed specifications (Agent engineering file contents + Skill SKILL.md outlines + I/O contracts) have been prepared internally and will be included in the final execution manifest.
-
----
+可执行格式样本：[canonical-example](references/canonical-example/README.md)。其中 IDs、权限、预算与 verifier 仅是订单示例，不得复制为其他项目的默认值。
 
 ### Stage 2.6: SOP Data Flow Validation
 
-**Outcome:** Validate that the I/O contracts form a connected data flow graph with no breaks or cycles.
+步骤统一表示为 manifest.topologyViews.workflow（任务维度）或 team（角色维度）的 nodes / edges。每个 node 的 type 为 agent 或 skill，contractRef 精确指向对应定义 ID；每条 edge 含 source、target、完整 factType。初始本体数据和用户输入都必须显式列入 executionContract.externalInputs，不能假定初始数据天然存在。
 
-**Process:**
-
-1. Build a directed graph where:
-   - Each node is a Skill
-   - Each edge represents a data dependency: Skill A's `outputContract.produces[X]` → Skill B's `inputContract.requires[X]`
-
-2. **Check connectivity:**
-   - For each Skill's `inputContract.requires`, verify the `objectType` + required `fields` are produced by at least one upstream Skill or come directly from the ontology (initial data)
-   - Flag any Skill where `requires` has no source as **"断流" (data flow broken)**
-
-3. **Check field coverage:**
-   - If upstream Skill A produces `{objectType: "Order", fields: ["id", "status"]}` and downstream Skill B requires `{objectType: "Order", fields: ["id", "status", "customerName"]}`, flag as **"字段不足" (insufficient fields)**
-
-4. **Check circular dependencies:**
-   - Detect cycles in the data flow graph: A → B → C → A
-   - A cycle is valid ONLY if it represents a legitimate feedback loop with a clear convergence condition; otherwise flag as **"循环依赖" (circular dependency)**
-
-5. **Present validation report:**
-   - If all checks pass → "数据流连通性验证通过"
-   - If issues found → list each issue with the affected Skills and suggest fixes
-
-**This step is automatic — do not ask the user to trigger it. Run it after Stage 2.5 completes and present the report before entering Stage 3.**
+通过产品的执行契约发布检查复用 ONT 静态连通性与 Solution DAG 校验：
+1. 每个 required input 必须由兼容入边或显式 external input 提供。
+2. 上游 outputs、边与下游 inputs 必须引用相同 ontology/version/concept/factType，不按显示名匹配。
+3. 所有依赖环都拒绝；需要反馈循环时重新设计独立运行，不能以“有收敛条件”为由绕过 DAG 门控。
+4. 明确 sourceRefs、objectSlots、factPolicies、allowedActionIds、taskTemplates、verification、HITL、permissions、budget；缺项返回可定位缺口，不补默认值。
+5. 未通过确定性检查只能展示“待修复”，不得声称可执行或已发布。所有三文件状态均 confirmed 后仍需独立发布检查。
 
 ---
 
@@ -370,55 +296,11 @@ After all Agents and Skills are summarized, tell the user that the full detailed
 
 2. Generate the full execution manifest JSON with complete specifications, then split into three files under `solutions/{version}/`:
 
-   **a. `solutions/{version}/manifest.json`** — lightweight metadata:
-   ```json
-   {
-     "version": "1.0.0",
-     "status": "confirmed",
-     "solutionVersion": "v1.0",
-     "modeling": { "dimension": "task|role", "dimensionName": "事的维度|人的维度", "rationale": "...", "businessModelSummary": {...} },
-     "executionMode": "Workflow|System",
-     "changesFromPrevious": [],
-     "createdAt": "ISO-8601",
-     "updatedAt": "ISO-8601"
-   }
-   ```
-
-   **b. `solutions/{version}/agents.json`** — agent specifications:
-   ```json
-   {
-     "version": "1.0.0",
-     "solutionVersion": "v1.0",
-     "agents": [
-       {
-         "id": "...", "name": "...", "type": "agent|role-agent",
-         "responsibility": "...", "businessDomain": "...",
-         "derivedFrom": [...], "ontologyOperations": [...],
-         "skills": ["skill-code-1", "skill-code-2"],
-         "collaborations": [{"targetAgentId": "...", "targetAgentName": "...", "type": "trigger|notify|depend", "description": "..."}]
-       }
-     ]
-   }
-   ```
-
-   **c. `solutions/{version}/skills.json`** — full skill definitions:
-   ```json
-   {
-     "version": "1.0.0",
-     "solutionVersion": "v1.0",
-     "skills": [
-       {
-         "id": "...", "name": "...", "code": "...",
-         "description": "...", "capability": "...",
-         "triggerType": "conversation|event|scheduled",
-         "ontologyObjects": {...},
-         "inputContract": { "requires": [...] },
-         "outputContract": { "produces": [...] },
-         "sopIO": {...}, "dependsOn": [], "skillFileOutline": {...}
-       }
-     ]
-   }
-   ```
+   **使用 [canonical-example](references/canonical-example/README.md) 的三文件完整格式。**
+   - `manifest.json`：version 固定 `1.0.0`，status、solutionVersion、modeling、topologyViews、executionContract、createdAt。executionContract 包含 semanticContext、externalInputs、verification、hitl、permissions、budget。
+   - `agents.json`：version、status、solutionVersion、agents，每项含 id 和完整 canonical contract（agentId 必须等于 id）。
+   - `skills.json`：version、status、solutionVersion、skills，每项含 id、code、展示信息和完整 canonical contract（skillId 必须等于 id）。
+   三文件 status 和 solutionVersion 必须一致。先保留 draft，确认全部语义与策略后才写 confirmed。示例 JSON 可直接由发布端读取；不能删减为只有旧 I/O 的清单。
 
    **Do NOT generate `solutions/solution-{version}.json` or `solutions/solution-{version}-manifest.json`.** All three files must be written under `solutions/{version}/`.
 
@@ -434,7 +316,9 @@ After all Agents and Skills are summarized, tell the user that the full detailed
    Pass the manifest's `agentFiles` content as the pre-collected information so the creator skills can skip interactive questioning and proceed directly to file generation.
 
 4. **Create Skills by invoking the skill creator:**
-   For each Skill in every Agent's plan, first ensure the Agent directory already exists, then invoke `skills/project-skill-creator` with the Skill's specification (id, name, code, description, capability, triggerType, ontologyObjects, dependsOn, skillFileOutline) **in that Agent's working directory**. The skill-creator must generate the SKILL.md file under `agents/{agent-id}/skills/{skill-code}/`.
+   For each Skill in every Agent's plan, first ensure the Agent directory already exists, then invoke `skills/project-skill-creator` with the Skill's specification (id, name, code, description, capability, triggerType, ontologyObjects, contract, dependsOn, skillFileOutline) **in that Agent's working directory**. The skill-creator must generate the SKILL.md file under `agents/{agent-id}/skills/{skill-code}/`.
+
+   必须逐字交接 `skills.json` 中的完整 `contract`，由创建器以单行 JSON 写入 SKILL.md frontmatter，读取后与清单语义一致。不能只在正文描述 I/O。
 
    Pass the manifest's `skillFileOutline` content as the pre-collected information so the skill-creator can skip the interview phase and proceed directly to SKILL.md generation.
 

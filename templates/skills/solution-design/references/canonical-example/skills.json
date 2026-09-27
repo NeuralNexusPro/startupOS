@@ -1,0 +1,34 @@
+{
+  "version": "1.0.0",
+  "status": "confirmed",
+  "solutionVersion": "v1.0",
+  "skills": [
+    {
+      "id": "publisher",
+      "name": "publisher",
+      "code": "publisher",
+      "description": "Publish a verified order",
+      "contract": {
+        "skillId": "publisher",
+        "ontology": {
+          "ontologyId": "orders",
+          "ontologyVersion": "3"
+        },
+        "inputs": [
+          {
+            "factType": {
+              "ontologyId": "orders",
+              "ontologyVersion": "3",
+              "conceptId": "order",
+              "factTypeId": "order-ready"
+            },
+            "required": true
+          }
+        ],
+        "outputs": [],
+        "actions": [],
+        "permissions": []
+      }
+    }
+  ]
+}
