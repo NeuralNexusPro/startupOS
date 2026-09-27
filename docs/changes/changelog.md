@@ -2132,3 +2132,9 @@ SENSE12-T3：首次启用后台本可启动，但UI快照不自动刷新；增�
 **类型**：release
 **影响模块**：感知中心规则配置
 **摘要**：将 OriginOS CE 桌面端升级至 `0.3.1`，修复同渠道多连接下规则编辑覆盖错误，并改善感知中心编辑表单定位体验。
+
+## 2026-09-27 — feat：项目入口切换至 canonical ontology
+
+**类型**：feat
+**影响模块**：Core project、Project Agent、Web 项目本体界面、Desktop 项目/本体 IPC
+**摘要**：新项目访谈与初始化直接创建并绑定 canonical ontology 的精确 ID/version；项目 Agent、方案和 Web 项目本体入口不再自动读取或同步 `business-model.json`。未迁移旧项目只显示显式迁移状态；旧 ontology-data 写入入口明确拒绝，防止产生第二事实源。canonical 编辑 Action adapter 仍待后续实现。

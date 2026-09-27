@@ -18,3 +18,6 @@
 
 - Core、Web、Desktop 的 ONT 跨包、任务看板、协作账本和恢复专项测试通过。
 - TypeScript 编译、架构边界检查与安装包 ONT 运行时校验纳入发布流程；三平台产物由 Desktop Release 工作流构建并发布。
+## 2026-09-27 — feat：项目入口切换至 canonical ontology
+
+新项目访谈与项目初始化直接创建 canonical ontology，并绑定精确版本。项目 Agent、Web 与 Desktop 入口不再自动同步 `business-model.json`；未迁移项目使用显式迁移状态，旧 ontology-data 写入接口返回明确不可用。
