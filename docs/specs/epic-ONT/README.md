@@ -216,7 +216,7 @@ Skill/Agent contract 是 ONT 暴露给 P2 和 collaboration-runtime 的协议。
 |-------|------|------|--------|--------------|
 | ONT.1 | Canonical Ontology Schema 与公共类型 | Done | Critical | 定义 canonical model、contract DTO、schema version、public exports |
 | ONT.2 | Ontology Store 与 DataFile/JSONL 存储 | Done | Critical | core storage adapter、data-root 解析、atomic write、append-only facts |
-| ONT.3 | 旧模型迁移与兼容投影 | Done | Critical | 已提供 `Domain/Concept/Instance`、`business-model.json`、`OntologyModel` 的安全迁移与只读投影 |
+| ONT.3 | 旧模型迁移与兼容投影 | Done | Critical | 已提供 `Domain/Concept/Instance`、`business-model.json`、`OntologyModel` 的安全迁移与只读投影；新项目入口已改读 canonical ontology |
 | ONT.4 | Validator、Rule、Action Gate | Done | Critical | 已提供引用/状态归属校验与 ontology version、Action、权限结构化门控 |
 | ONT.5 | OSDK Facts / Actions API | Done | Critical | 已提供类型化 facts 查询、Action submit、版本/修订检查、幂等恢复与审计 metadata |
 | ONT.6 | Skill / Agent Contract Validation API | Done | High | 已提供 contract 引用、Action 权限与 SOP required facts 连通性校验 |
@@ -307,7 +307,7 @@ ONT.1、ONT.2、ONT.4 是架构门。下游 P2、Epic 9、Epic C/M/T 不得复�
 | 运行门控 | 匹配评分为主 | collaboration-runtime 消费 OSDK / Action gate |
 | Context Graph | 未形成统一协议 | ONT 定义 projection protocol，下游 runtime 写入 |
 
-ONT.1、ONT.2、ONT.3、ONT.4、ONT.5、ONT.6、ONT.7 已完成；ONT.8 仍处于规划阶段。
+ONT.1、ONT.2、ONT.3、ONT.4、ONT.5、ONT.6、ONT.7 已完成；项目创建、项目 Agent 与 Web/Desktop 项目入口已改为 canonical ontology，旧项目仍须显式迁移。ONT.8 的跨包端到端平台矩阵仍处于规划/验收阶段。
 ONT.8 已补齐六份 Story 规格与独立 OpenSpec Proposal，但 P2.8、9.42、9.43 前置公共能力和联合验收仍待实施。
 
 ---

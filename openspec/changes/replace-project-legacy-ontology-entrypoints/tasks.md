@@ -20,6 +20,6 @@
 
 ## 3. 集成验收（串行）
 
-- [ ] 3.1 `ONT-ENTRY-T1-E`（串行；依赖：2.1、2.2；角色：Proposal integration owner；写入：Proposal evidence、任务记录和 Story 文档）逐个审查并合并 Task 分支，运行 Core/Web/Desktop 定向回归、`pnpm lint`、`pnpm lint:boundaries`、架构 self-test、Core/Web typecheck、`git diff --check` 与 OpenSpec strict validation；记录旧测试基线和未验证项。
+- [x] 3.1 `ONT-ENTRY-T1-E`（串行；依赖：2.1、2.2；角色：Proposal integration owner；写入：Proposal evidence、任务记录和 Story 文档）逐个审查并合并 Task 分支，运行 Core/Web/Desktop 定向回归、`pnpm lint`、`pnpm lint:boundaries`、架构 self-test、Core/Web typecheck、`git diff --check` 与 OpenSpec strict validation；记录旧测试基线和未验证项。证据（2026-09-27）：主仓 Core 3 files/20 tests、Desktop 2 files/10 tests、Web 2 files/4 tests 均通过；Core/Web strict typecheck 和 Desktop build 通过；lint 0 error/3096 warnings、boundary 955 files/0 diagnostic、self-test 43×2、strict validation 通过。Proposal worktree 的 Web typecheck 仅因其依赖链接同时加载主仓旧 core 而失败，主仓复验通过。
 
-- [ ] 3.2 `ONT-ENTRY-T1-F`（串行；依赖：3.1；角色：Proposal integration owner；写入：Story/Epic/Proposal 状态与本地 Git refs）更新验收证据和实际完成状态，合并 Proposal 至本地 `0.4.x`，保留 worktree 现场；远端推送、发布、打包和清理等待用户后续指示。
+- [x] 3.2 `ONT-ENTRY-T1-F`（串行；依赖：3.1；角色：Proposal integration owner；写入：Story/Epic/Proposal 状态与本地 Git refs）更新验收证据和实际完成状态，合并 Proposal 至本地 `0.4.x`，保留 worktree 现场；远端推送、发布、打包和清理等待用户后续指示。证据（2026-09-27）：应用改动已合并本地 `0.4.x`；未推送、未打包、未清理 worktree。canonical 编辑 Action adapter 不在本 Task 范围，编辑命令维持明确只读/不可用，未回退 legacy 写入。
