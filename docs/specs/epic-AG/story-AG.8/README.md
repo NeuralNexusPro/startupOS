@@ -7,6 +7,7 @@
 **依赖:** 无硬依赖（可与 AG.9 并行；建议在 AG.9 exports 收缩前完成，避免迁移目标漂移）
 **创建日期:** 2026-09-28
 **规约依据:** AGENTS.md v2.6.3「跨包导入必须使用包名说明符」+ 禁止事项 #9/#10
+**Task → Proposal 映射:** AG.8-T1 → `add-cross-package-specifier-imports`；AG.8-T2 → 待 T1 spike 结论后创建
 
 ---
 
@@ -27,7 +28,11 @@
 |------|------|
 | [requirements.md](./requirements.md) | 用户故事、验收标准、风险与回滚 |
 | [architecture.md](./architecture.md) | 迁移策略、zones 规则设计、产物影响分析 |
+| [implementation.md](./implementation.md) | Task 划分、基线口径、回滚策略 |
 | [testing.md](./testing.md) | 测试策略、验收测试用例 |
+| [interaction.md](./interaction.md) | 不适用（纯架构治理，无 UI/UX 变更） |
+
+**OpenSpec Proposal：** AG.8-T1 → `openspec/changes/add-cross-package-specifier-imports/`（已通过 strict validation，待审查批准）
 
 ## 状态
 
