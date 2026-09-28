@@ -343,7 +343,7 @@ function PreviewState({ ontology, onCreateProject, isCreatingProject, onEntityCl
       {behaviorModelingRequired && (
         <div className="mx-5 mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-foreground">
           <span className="font-medium">下一步：业务行为确认。</span>
-          请确认各业务对象的处理动作、输入输出、状态变化、规则与权限；确认后才会写入项目本体。
+          先在左侧访谈中补充各业务对象的处理动作、输入输出、状态变化、规则与权限。助手形成行动草稿后，本页“行动”标签会出现“确认并写入项目本体”按钮。
         </div>
       )}
       {/* Tabs */}
