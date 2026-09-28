@@ -1,8 +1,10 @@
 # OriginOS 架构规约 (AGENTS.md)
 
-**版本：** 2.5.8
-**日期：** 2026-09-18
+**版本：** 2.6.3
+**日期：** 2026-09-28
 **状态：** 强制执行
+
+> **单一事实源声明：** 本文件是 OriginOS 唯一的架构规约。根目录 `CLAUDE.md` 仅为工具兼容指针（内容为 `@AGENTS.md` 导入），不承载任何规约内容。历史版本（≤ 2.6.2）中与本文冲突的描述一律以本文为准。
 
 ---
 
@@ -47,7 +49,9 @@ OriginOS 是一个面向个人用户的 AI Native 操作系统，基于 Next.js 
 
 | 层级 | 技术选型 | 版本要求 | 说明 |
 |------|---------|---------|------|
+| **Monorepo** | pnpm workspace | 9.x+ | Monorepo 包管理（`nodeLinker: hoisted`） |
 | **框架** | Next.js (App Router) | 14.x+ | 必须使用 App Router，禁止 Pages Router |
+| **桌面应用** | Electron | 32.x+ | CE 桌面版（主进程 + preload + IPC，渲染层复用 Web 应用） |
 | **UI 库** | React | 18.x+ | 函数式组件 + Hooks |
 | **语言** | TypeScript | 5.x+ | 严格模式，禁止 any 类型 |
 | **样式** | Tailwind CSS | 3.x+ | 禁止内联样式和 CSS Modules |
@@ -136,10 +140,8 @@ originos/
 │   │   ├── src/
 │   │   │   ├── main/             # Electron main / preload / IPC / 服务
 │   │   │   │   └── services/     # agent-session / project / ontology / skill 等桌面服务
-│   │   │   ├── lib/              # Electron 集成适配
-│   │   │   └── renderer/         # 桌面渲染侧补充组件
+│   │   │   └── lib/              # Electron 集成适配（渲染层 UI 复用 packages/web，无独立 renderer 目录）
 │   │   ├── scripts/              # 打包、发布、校验脚本
-│   │   ├── data/                 # 桌面开发态运行数据
 │   │   └── dist-electron/        # 编译产物（禁止作为源码修改入口）
 │   │
 │   ├── agent/                    # @originos/pi-agent-adapter 运行时适配边界
@@ -295,6 +297,24 @@ import { JsonStore } from '@/lib/storage/json-store';
 import { usePiAgent } from '@originos/core/lib/integrations/pi-agent/hooks';
 ```
 
+#### 跨包导入必须使用包名说明符（强制，v2.6.3）
+
+`packages/web`、`packages/desktop` 等下游包访问 core 的**唯一合法方式**是包名说明符（`@originos/core/...`），它由 `packages/core/package.json` 的 `exports` 字段显式声明，是跨包公共 API 的第一道门。
+
+```typescript
+// ✅ 正确：包名说明符（路径必须在 core 的 exports 白名单内）
+// packages/desktop/src/main/setup-data-root.ts
+import { setElectronDataRoot } from '@originos/core/lib/paths';
+
+// ❌ 错误：跨包相对路径穿透（任何形式都禁止，包括 tsc 路径巧合可达）
+// packages/desktop/src/main/setup-data-root.ts
+import { setElectronDataRoot } from '../../../core/src/lib/paths';
+```
+
+- 禁止在 `packages/web/`、`packages/desktop/`、感知插件中出现解析到其他包 `src/` 的相对导入（`../../core/src/...` 等模式）。
+- 存量违规清单与迁移方案见 Story AG.8（`docs/specs/epic-AG/story-AG.8/`）。
+- `import type` 的跨包相对导入同样禁止（编译产物中虽被擦除，但源码边界已破坏，且会诱使后续改为值导入）。
+
 ### 依赖验证
 
 **在每次提交前必须运行：**
@@ -308,6 +328,8 @@ node scripts/check-architecture-boundaries.cjs --self-test  # 检查器正反例
 架构检查规则以仓库根目录定位，根目录或包目录运行必须得到一致结果。`lint:boundaries` 对违规、配置失败或空扫描集合非零退出；产物、测试与运行数据不属于生产扫描范围。动态计算 import、跨 feature 私有导入和循环依赖仍需其他检查或审查，不能将本命令通过等同于全部架构规约满足。
 
 AG5-T1 首轮以建立真实存量基线为验收目标，既有违规仍属待治理项；本次不将有存量失败的独立扫描接为全量 CI 合并门禁，不通过 allowlist 隐藏违规。该阶段说明不放宽依赖规约。
+
+**跨包相对路径检查（v2.6.3 起）：** `lint:boundaries` 必须覆盖「下游包中解析到其他包 `src/` 的相对导入」这一规则（`.eslintrc.cjs` 的 `import/no-restricted-paths` zones）。该规则纳入后，存量违规按 Story AG.8 的迁移计划消化；规则以 warning 起步，迁移完成后升级为 error 并接入 CI。
 
 ### 违规处理
 
@@ -637,6 +659,44 @@ CognitiveManager
   → 流式会话（POST /api/agent/sessions/{id}/messages）
 ```
 
+### 5. 多 Agent 协作运行时架构
+
+**已实施，位于 `packages/core/src/modules/collaboration-runtime/`（Epic 9 Phase 1+2 Complete），包含：**
+
+- **Session 层**：事件存储（JSONL）、共享黑板（Blackboard + Provenance + Append-Only）
+- **协作引擎**：拓扑解析器、DAG 执行器（Workflow 模式）、Supervisor 模式
+- **协议层**：ACL 消息协议、Contract Net 招标-投标、Subscribe-Notify 订阅-通知
+- **冲突检测**：ConflictDetector（resource/data/goal/deadlock）+ Circuit Breaker
+- **能力匹配**：CapabilityMatcher（基于 Agent Card 发现）
+- **沙箱层**：Node.js 沙箱（`@anthropic-ai/sandbox-runtime`）、Agent Spawner
+- **桥接层**：Agent Registry（从 Solution Manifest 加载）、PI Agent Bridge
+- **可观测性**：Logging、Metrics、Tracing、Cost Controller
+- **UI 查看器**：事件时间线、SSE 实时更新、Zustand 状态管理
+
+**协作运行时架构要点：**
+
+| 维度 | 实现 |
+|------|------|
+| **进程隔离** | Web (Next.js) → Runtime (collaboration-runtime) → Agent (sandbox 子进程) |
+| **通信** | HTTP + SSE（Web↔Runtime），stdio（Runtime↔Agent 子进程） |
+| **依赖注入** | `CollaborationRuntimeDeps` 接口；engine/session/protocol 等核心子层通过 DI 获得外部能力。facade/ 与 ui/ 作为组装边界，允许 import 上层 `lib/integrations`、`lib/features` 与 `lib/paths`（组装豁免，见下） |
+| **执行模式** | Workflow（DAG 单向触发）vs System（黑板协作、notify/depend） |
+| **沙箱** | `@anthropic-ai/sandbox-runtime` v0.0.51 |
+
+**模块内分层边界（v2.6.3 修订）：**
+
+- `engine/`、`session/`、`protocol/`、`sandbox/`、`observability/`：核心子层，禁止 import 模块外部（`lib/features`、`lib/integrations`、`lib/paths` 等），外部能力一律通过 `CollaborationRuntimeDeps` 注入。
+- `facade/`、`ui/`：组装与展示边界，位于**组合根一侧**，允许直接 import core 内的集成层与业务功能（如 `readUserConfigWithProductDefaults`、`normalizeRuntimeLLMConfig`）；但禁止 import `packages/web/` 或 `packages/desktop/` 的任何实现。
+- Electron 主进程（desktop）作为运行时组合根，负责把 core 能力装配进 `CollaborationRuntimeDeps`。
+
+**待实施（Phase 3，Epic 9 Stories 9.19-9.24）：**
+- 9.19: Queen-Led 层级协调（动态治理模式）
+- 9.20: 黑板 HNSW 语义索引
+- 9.21: Agent Pool 预热机制
+- 9.22: 三层模型路由（Agent Booster → Haiku → Sonnet/Opus）
+- 9.23: 共识投票机制（BFT/Raft/Quorum）
+- 9.24: PID 孤儿会话回收
+
 ---
 
 
@@ -684,6 +744,9 @@ CognitiveManager
 | 窗体渲染 | < 1s | 性能测试 |
 | 首次页面加载 | < 3s | Lighthouse |
 | 并发用户支持 | ≥ 10 (MVP) | 负载测试 |
+| 协作运行时 DAG 执行 | DAG 拓扑排序 < 100ms | 自动化测试 |
+| 黑板读写延迟 | < 10ms（单操作） | 性能测试 |
+| Agent 子进程启动 | < 2s（冷启动） | 性能测试 |
 
 ### 性能优化策略
 
@@ -769,8 +832,26 @@ CognitiveManager
     │
     ├── ontology/                 # 本体数据
     ├── chats/                    # 聊天历史
+    ├── channels/                 # 渠道绑定与投递（感知渠道运行时）
+    ├── perception/               # 感知事件、审计、连接器与 Jev 决策回执
+    ├── model-providers/          # Provider 配置（如 jev.json；不含明文密钥）
+    ├── notifications/            # 系统通知
+    ├── schedules/                # 调度运行时数据
+    ├── users/                    # 用户档案（见上方 users 章节）
+    ├── user-config.json          # 用户配置
     └── tmp/                      # 临时文件
 ```
+
+### 数据根目录解析（强制）
+
+数据根目录由 `@originos/core/lib/paths` 的 `getDataRoot()` 统一解析，优先级从高到低：
+
+1. `DATA_ROOT` 环境变量（显式覆盖）
+2. Electron 主进程启动时通过 `setElectronDataRoot()` 注入的 `userData/data`（打包模式）
+3. Electron 主进程检测（`process.versions.electron` 存在且非 renderer）：动态 require `electron.app.getPath('userData')` 并拼接 `data`
+4. 兜底：`getMonorepoRoot()/data`（开发模式，monorepo 根目录下的 `data/`）
+
+monorepo 根由 `getMonorepoRoot()` 解析（优先 `MONOREPO_ROOT` 环境变量，否则向上查找 `pnpm-workspace.yaml`）；Electron 打包模式下由主进程通过 `setMonorepoRoot(process.resourcesPath)` 注入。**禁止在任何业务代码中自行拼接数据根路径或重复实现该解析逻辑。**
 
 ### 技能与 Agent 产物目录规则（强制）
 
@@ -1047,12 +1128,14 @@ git worktree add ../startupos-add-agent-task-runtime-task-2 \
 6. 使用数据库（MVP 阶段）
 7. 向 `.claude/skills/` 目录写入任何产物（只读定义目录）
 8. 系统内置技能在首页入口场景下将产物写入技能源目录
-9. 使用 Story 分支代替 OpenSpec Proposal 分支实施代码
-10. 在同一分支或 worktree 中混合实施多个 Proposal
-11. 未经批准 Proposal 就修改 Story 对应的应用源码
-12. 多个 subagent 共用分支或 worktree
-13. 将 subagent Task 分支直接合并到 `dev` 或 `main`
-14. 在 Proposal 主 worktree 直接实施应用源码
+9. 跨包相对路径穿透：在 `packages/web/`、`packages/desktop/`、感知插件中通过相对路径 import 其他包的 `src/`（必须使用 `@originos/core/...` 包名说明符，v2.6.3）
+10. 绕过 `packages/core/package.json` 的 `exports` 白名单，从下游包导入 core 内部路径
+11. 使用 Story 分支代替 OpenSpec Proposal 分支实施代码
+12. 在同一分支或 worktree 中混合实施多个 Proposal
+13. 未经批准 Proposal 就修改 Story 对应的应用源码
+14. 多个 subagent 共用分支或 worktree
+15. 将 subagent Task 分支直接合并到 `dev` 或 `main`
+16. 在 Proposal 主 worktree 直接实施应用源码
 
 ### 代码层面
 
@@ -1194,5 +1277,5 @@ git worktree add ../startupos-add-agent-task-runtime-task-2 \
 
 ---
 
-**最后更新：** 2026-09-14（v2.5.7：IM原始消息、发送者与会话元数据透传边界）
-**下次审查：** 实施完成后
+**最后更新：** 2026-09-28（v2.6.3：确立 AGENTS.md 为单一事实源并替换 CLAUDE.md 为指针；技术栈表补入 Monorepo/Electron；新增多 Agent 协作运行时章节及模块内分层边界（facade/ui 组装豁免）；依赖规约新增「跨包导入必须使用包名说明符」条款；性能约束补入协作运行时指标；数据存储补入 channels/perception 等实际目录与 getDataRoot 解析规则；禁止事项新增跨包相对路径穿透与 exports 白名单绕过）
+**下次审查：** Story AG.8 / AG.9 完成后

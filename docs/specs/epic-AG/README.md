@@ -98,6 +98,10 @@
 | **AG.3** | `src/lib/` 业务目录回归 `features/` + 循环依赖拆解 | 🟠 High | 3–5 天 | 📋 Planning |
 | **AG.4** | 组件分层条款修订（CLAUDE.md + 现状对齐） | 🟠 High | 1 天 | 📋 Planning |
 | **AG.5** | 自动化围栏（ESLint 边界 + dead-code 工具 + any 预算 + CI 接入） | 🟡 Medium | 2 天 | 🚧 In Progress（AG5-T1 完成） |
+| **AG.8** | 包边界治理 — 消灭跨包相对路径穿透（desktop/web → core src 共 125 处 + lint zones） | 🔴 Critical | 2–3 天 | 📋 Planning（2026-09-28 追加，规约 v2.6.3） |
+| **AG.9** | core 包治理 — 公共 API 收缩与定位如实化（exports 收缩 + jsx 副本清理 + web 壳清理） | 🔴 Critical | 3–5 天 | 📋 Planning（2026-09-28 追加，依赖 AG.8） |
+| **AG.10** | 巨型文件拆分 — 单一职责重构（7 个 1100–2600 行文件，按文件增量交付） | 🟠 High | 5–8 天 | 📋 Planning（2026-09-28 追加） |
+| **AG.11** | 重复与死代码嗅探治理（knip 基线 + .teamai 双文档树 + 空壳包处置） | 🟡 Medium | 2–3 天 | 📋 Planning（2026-09-28 追加，依赖 AG.9） |
 
 ### 可选追加（用户后续决策）
 
@@ -107,6 +111,8 @@
 | **AG.7**（可选） | Module 内部 `facade ↔ session/engine` 子层边界规整 | 依赖 AG.5 lint 规则可表达内部边界 |
 
 > AG.6 / AG.7 暂不在本 Epic 必做范围；如需启用，单独追加 Story 即可。
+
+> **AG.8–AG.11 背景注（2026-09-28）**：本 Epic 初始扫描基于旧单包 `src/` 时代。monorepo 迁移后的新盘点（2026-09-28，规约 v2.6.3）发现四类新治理对象：跨包相对路径穿透（AG.8）、公共 API 名存实亡与 core 定位失真（AG.9）、巨型文件（AG.10）、重复结构与死产物（AG.11）。AG.2 中「单包 src/ 路径与 11 处旧扫描不再作为验收标准」的说明同样适用于 AG.1/AG.3 的历史范围描述——新 Story 以 AGENTS.md v2.6.3 为准。
 
 ---
 
@@ -134,8 +140,12 @@ AG.1 (死代码清理)
        └─► AG.3 (lib/* → features/ 迁移 + 循环依赖)
             └─► AG.5 (自动化围栏接入 — 等迁移落地后再接 ESLint，避免阻塞迁移本身)
 
+AG.8 (跨包相对路径迁移) ──► AG.9 (core 公共 API 收缩) ──► AG.11 (重复与死代码)
+AG.10 (巨型文件拆分) — 可与 AG.8/AG.9 并行起草，每个文件独立 task/PR
 AG.4 (CLAUDE.md 修订) — 独立分支，可与 AG.1/AG.2/AG.3 并行起草，但合入需在 AG.3 落地后
 ```
+
+> AG.8→AG.9 顺序理由：先把全部跨包导入统一到 `@originos/core/...` 说明符形态，AG.9 收缩 exports 时只需面对单一形态，避免两条迁移战线交叉。AG.11 依赖 AG.9 的 jsx/壳清理结果，避免重复处置同一批文件。
 
 ### 按 Story 拆分原则
 
