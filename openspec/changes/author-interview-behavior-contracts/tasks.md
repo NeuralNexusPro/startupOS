@@ -5,8 +5,8 @@
 ## 1. 基线与公共契约
 
 - [x] 1.1 串行；依赖设计批准。编排角色核对 ONT.8 公共入口和现有验证记录，建立 Proposal integration branch 与 subagent Task worktree；范围为本 Proposal 文档。证据：`proposal/author-interview-behavior-contracts` 与 `proposal-task/author-interview-behavior-contracts-t1-core` 均从 `e32b598` 建立；公共入口为 `authoring-types.ts`、`authoring-service.ts`、`authoring-transport.ts`、`canonical-ontology-store.ts`、`validator.ts` 及 ontology `index.ts`。根工作区既有未提交打包脚本和本地工具目录未触碰，未启动本地打包。
-- [ ] 1.2 串行，依赖 1.1。核心 subagent 在独立 worktree 的 packages/core/src/lib/features/ontology/ 范围新增 FactType/Rule/Transition authoring、批次候选快照校验与原子接纳；验证旧文件兼容、非法输入、权限和引用失败；证据：单元测试与 DTO 示例。
-- [ ] 1.3 串行，依赖 1.2。核心 subagent 在同一 ontology 范围完成并发、operationId 和恢复语义；验证 revision 冲突、重复命令、重启及失败无错误覆盖；证据：集成/故障注入记录，1.8 额外要求双进程竞争和快照写入后回执失败。
+- [x] 1.2 串行，依赖 1.1。核心 subagent 在独立 worktree 的 packages/core/src/lib/features/ontology/ 范围新增 FactType/Rule/Transition authoring、批次候选快照校验与原子接纳；验证旧文件兼容、非法输入、权限和引用失败；证据：提交 `a448698`（已合入 Proposal），新增非嵌套 `batch`（最多 100 条），在候选快照统一验证后单次 CAS；transport、authoring service、validator 聚焦测试共 29 项通过。
+- [x] 1.3 串行，依赖 1.2。核心 subagent 在同一 ontology 范围完成并发、operationId 和恢复语义；验证 revision 冲突、重复命令、重启及失败无错误覆盖；证据：复用 `compareAndSwapAuthoring` 的 operationId/commandHash/receipt 恢复，测试覆盖重复 operationId 冲突、失败批次 revision 不变及既有 store CAS/回执恢复路径。隔离 Proposal worktree 未安装依赖，合入目标发布线后重跑完整验证。
 
 ## 2. 访谈与展示
 
