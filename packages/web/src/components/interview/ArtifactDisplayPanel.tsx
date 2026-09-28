@@ -3,6 +3,30 @@
 import { useState, useEffect } from 'react';
 import { OntologyGraph } from './OntologyGraph';
 import type { OntologyModel, OntologyNode } from '@originos/core/types';
+import type { CanonicalSemanticKind } from '@originos/core/lib/features/ontology/types';
+
+import { SEMANTIC_KIND_OPTIONS, semanticKindLabel } from './semantic-kind';
+
+type SemanticNode = OntologyNode & {
+  semanticKind?: CanonicalSemanticKind;
+  sourceConceptId?: string;
+  targetConceptId?: string;
+  relationName?: string;
+};
+
+const asSemanticNode = (node: OntologyNode): SemanticNode => node as SemanticNode;
+const isConcept = (node: OntologyNode): boolean => node.type === 'entity' || node.type === 'class';
+const semanticKindOf = (node: OntologyNode): CanonicalSemanticKind => asSemanticNode(node).semanticKind ?? 'unclassified';
+
+const SEMANTIC_BADGE: Record<CanonicalSemanticKind, string> = {
+  role: 'bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/20',
+  organization: 'bg-violet-500/10 text-violet-700 dark:text-violet-300 border-violet-500/20',
+  object: 'bg-primary/10 text-primary border-primary/20',
+  activity: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20',
+  document: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20',
+  standard: 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/20',
+  unclassified: 'bg-muted text-muted-foreground border-border',
+};
 
 interface ArtifactDisplayPanelProps {
   mode: 'empty' | 'collecting' | 'generating' | 'preview';
@@ -39,10 +63,15 @@ function PhaseBadge({ mode }: { mode: string }) {
   );
 }
 
-function PanelHeader({ mode }: { mode: string }) {
+function PanelHeader({ mode, ontology }: { mode: string; ontology?: OntologyModel | null }) {
+  const concepts = ontology?.nodes.filter(isConcept).length ?? 0;
+  const relations = ontology?.nodes.filter((node) => node.type === 'relationship').length ?? 0;
   return (
-    <div className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">
-      <span className="text-sm font-semibold text-foreground">业务模型</span>
+    <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-border shrink-0">
+      <div className="min-w-0">
+        <span className="text-sm font-semibold text-foreground">业务模型</span>
+        {concepts > 0 && <p className="mt-0.5 text-xs text-muted-foreground">{concepts} 个业务概念 · {relations} 条联系</p>}
+      </div>
       <PhaseBadge mode={mode} />
     </div>
   );
@@ -85,7 +114,7 @@ export function ArtifactDisplayPanel({
   });
   return (
     <div className="flex flex-col h-full bg-background text-foreground">
-      <PanelHeader mode={mode} />
+      <PanelHeader mode={mode} ontology={ontology} />
       <div className="flex-1 overflow-y-auto">
         {mode === 'empty' && <EmptyState legacyMigrationRequired={legacyMigrationRequired} />}
         {mode === 'collecting' && <CollectingState ontology={ontology} onEntityClick={onEntityClick} selectedEntity={selectedEntity} />}
@@ -125,7 +154,7 @@ function CollectingState({ ontology, onEntityClick, selectedEntity }: {
   onEntityClick?: (entityName: string) => void;
   selectedEntity?: string;
 }) {
-  const entities = ontology?.nodes.filter((n) => n.type === 'entity' || n.type === 'class') ?? [];
+  const entities = ontology?.nodes.filter(isConcept) ?? [];
 
   return (
     <div className="p-5 h-full flex flex-col">
@@ -141,10 +170,10 @@ function CollectingState({ ontology, onEntityClick, selectedEntity }: {
         <OntologyGraph ontology={ontology} onEntityClick={onEntityClick} selectedEntity={selectedEntity} />
       </div>
 
-      {/* 实体列表 */}
+      {/* 业务概念摘要 */}
       {entities.length > 0 && (
         <div className="mt-4 space-y-2 shrink-0">
-          <p className="text-xs text-muted-foreground font-medium">已识别的实体 ({entities.length})</p>
+          <p className="text-xs text-muted-foreground font-medium">已识别的业务概念 ({entities.length})</p>
           {entities.slice(0, 5).map((node) => (
             <EntityCard key={node.id} node={node} compact />
           ))}
@@ -156,7 +185,7 @@ function CollectingState({ ontology, onEntityClick, selectedEntity }: {
 
       {entities.length === 0 && (
         <div className="text-xs text-muted-foreground text-center py-8">
-          等待 Oracle 识别业务实体...
+          等待 Oracle 识别业务概念...
         </div>
       )}
     </div>
@@ -165,17 +194,15 @@ function CollectingState({ ontology, onEntityClick, selectedEntity }: {
 
 function EntityCard({ node, compact = false, selectedEntity }: { node: OntologyNode; compact?: boolean; selectedEntity?: string }) {
   const props = node.children?.filter((c) => c.type === 'property') ?? [];
-  console.log(`[EntityCard] Rendering "${node.name}":`, {
-    hasChildren: !!node.children,
-    childrenLength: node.children?.length || 0,
-    propsLength: props.length,
-    children: node.children
-  });
+  const kind = semanticKindOf(node);
   return (
-    <div className={`bg-card/70 border border-border rounded-lg overflow-hidden border-l-2 border-l-primary transition-all ${
-      selectedEntity === node.name ? 'ring-2 ring-primary ring-offset-2' : ''
+    <div className={`bg-card border border-border rounded-xl overflow-hidden transition-all ${
+      selectedEntity === node.name ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : 'hover:border-primary/40 hover:shadow-sm'
     } ${compact ? 'px-3 py-2' : 'px-4 py-3'}`}>
-      <p className={`text-sm font-medium text-foreground ${compact ? 'text-xs' : ''}`}>{node.name}</p>
+      <div className="flex items-start justify-between gap-2">
+        <p className={`text-sm font-medium text-foreground ${compact ? 'text-xs' : ''}`}>{node.name}</p>
+        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] ${SEMANTIC_BADGE[kind]}`}>{semanticKindLabel(kind)}</span>
+      </div>
       {!compact && node.description && (
         <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{node.description}</p>
       )}
@@ -238,9 +265,13 @@ function PreviewState({ ontology, onCreateProject, isCreatingProject, onEntityCl
     onTabChange?.(tab);
   };
 
-  const entities = ontology.nodes.filter((n) => n.type === 'entity' || n.type === 'class');
+  const entities = ontology.nodes.filter(isConcept);
   const relationships = ontology.nodes.filter((n) => n.type === 'relationship');
   const rules = ontology.nodes.filter((n) => n.type === 'rule');
+  const categorized = SEMANTIC_KIND_OPTIONS.map((kind) => ({
+    kind,
+    count: entities.filter((node) => semanticKindOf(node) === kind).length,
+  })).filter(({ count }) => count > 0);
 
   return (
     <div className="flex flex-col h-full">
@@ -256,7 +287,7 @@ function PreviewState({ ontology, onCreateProject, isCreatingProject, onEntityCl
                 : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
-            {tab}
+            {tab === '实体' ? '概念' : tab}
             <span className="ml-1.5 text-xs opacity-60">
               {tab === '图谱' ? ontology.nodes.length :
                tab === '实体' ? entities.length :
@@ -270,8 +301,25 @@ function PreviewState({ ontology, onCreateProject, isCreatingProject, onEntityCl
       {/* Tab content */}
       <div className="flex-1 overflow-y-auto p-5">
         {localActiveTab === '图谱' && (
-          <div className="flex items-center justify-center min-h-[400px]">
-            <div className="scale-75 origin-top">
+          <div className="space-y-4">
+            <section className="grid grid-cols-3 gap-2" aria-label="业务模型摘要">
+              <SummaryMetric label="业务概念" value={entities.length} />
+              <SummaryMetric label="业务联系" value={relationships.length} />
+              <SummaryMetric label="待确认" value={categorized.find(({ kind }) => kind === 'unclassified')?.count ?? 0} emphasized />
+            </section>
+            {categorized.length > 0 && (
+              <section className="rounded-xl border border-border bg-muted/30 p-3">
+                <p className="text-xs font-medium text-foreground">业务概念构成</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {categorized.map(({ kind, count }) => (
+                    <span key={kind} className={`rounded-full border px-2 py-1 text-xs ${SEMANTIC_BADGE[kind]}`}>
+                      {semanticKindLabel(kind)} · {count}
+                    </span>
+                  ))}
+                </div>
+              </section>
+            )}
+            <div className="min-h-[360px] rounded-xl border border-border bg-card p-2">
               <OntologyGraph ontology={ontology} onEntityClick={onEntityClick} selectedEntity={selectedEntity} />
             </div>
           </div>
@@ -279,11 +327,15 @@ function PreviewState({ ontology, onCreateProject, isCreatingProject, onEntityCl
 
         {localActiveTab === '实体' && (
           <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">每个概念都保留所属分类和描述，可在本体编辑器中修正。</p>
+              <span className="text-xs text-muted-foreground">{entities.length} 项</span>
+            </div>
             {entities.map((node) => (
               <EntityCard key={node.id} node={node} selectedEntity={selectedEntity} />
             ))}
             {entities.length === 0 && (
-              <p className="text-xs text-muted-foreground text-center py-8">暂无实体</p>
+              <p className="text-xs text-muted-foreground text-center py-8">暂无业务概念</p>
             )}
           </div>
         )}
@@ -291,7 +343,7 @@ function PreviewState({ ontology, onCreateProject, isCreatingProject, onEntityCl
         {localActiveTab === '关系' && (
           <div className="space-y-3">
             {relationships.map((node) => (
-              <RelationshipCard key={node.id} node={node} />
+              <RelationshipCard key={node.id} node={node} concepts={entities} />
             ))}
             {relationships.length === 0 && (
               <p className="text-xs text-muted-foreground text-center py-8">暂无关系</p>
@@ -334,10 +386,20 @@ function PreviewState({ ontology, onCreateProject, isCreatingProject, onEntityCl
   );
 }
 
-function RelationshipCard({ node }: { node: OntologyNode }) {
-  const parts = node.name.split('→').map((s) => s.trim());
-  const from = parts[0] ?? node.name;
-  const to = parts[1] ?? '';
+function SummaryMetric({ label, value, emphasized = false }: { label: string; value: number; emphasized?: boolean }) {
+  return (
+    <div className={`rounded-xl border p-3 ${emphasized && value > 0 ? 'border-amber-500/30 bg-amber-500/10' : 'border-border bg-card'}`}>
+      <p className="text-[11px] text-muted-foreground">{label}</p>
+      <p className="mt-1 text-xl font-semibold text-foreground tabular-nums">{value}</p>
+    </div>
+  );
+}
+
+function RelationshipCard({ node, concepts }: { node: OntologyNode; concepts: readonly OntologyNode[] }) {
+  const semantic = asSemanticNode(node);
+  const parts = node.name.split('→').map((item) => item.trim());
+  const from = concepts.find((item) => item.id === semantic.sourceConceptId)?.name ?? parts[0] ?? node.name;
+  const to = concepts.find((item) => item.id === semantic.targetConceptId)?.name ?? parts[1] ?? '';
   const cardinality = node.description?.match(/\(([^)]+)\)/)?.[1];
 
   return (
@@ -352,7 +414,8 @@ function RelationshipCard({ node }: { node: OntologyNode }) {
           </span>
         )}
       </div>
-      {node.description && (
+      <p className="mt-1 text-xs font-medium text-primary">{semantic.relationName ?? node.description ?? '业务联系'}</p>
+      {node.description && semantic.relationName && (
         <p className="text-xs text-muted-foreground mt-1">{node.description}</p>
       )}
     </div>
