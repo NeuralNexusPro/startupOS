@@ -313,7 +313,7 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
   const [displayMode, setDisplayMode] = useState<'empty' | 'collecting' | 'generating' | 'preview'>('empty');
   const [ontology, setOntology] = useState<OntologyModel | null>(null);
   const [selectedEntity, setSelectedEntity] = useState<string | undefined>();
-  const [activeTab, setActiveTab] = useState<'图谱' | '实体' | '关系' | '规则'>('图谱');
+  const [activeTab, setActiveTab] = useState<'图谱' | '实体' | '关系' | '行动' | '规则'>('图谱');
   const [legacyMigrationRequired, setLegacyMigrationRequired] = useState(false);
   const hasCheckedHistory = useRef(false); // 防止重复触发
   const displayModeRef = useRef<'empty' | 'collecting' | 'generating' | 'preview'>('empty');

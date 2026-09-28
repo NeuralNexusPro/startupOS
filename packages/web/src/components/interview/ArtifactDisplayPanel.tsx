@@ -12,7 +12,54 @@ type SemanticNode = OntologyNode & {
   sourceConceptId?: string;
   targetConceptId?: string;
   relationName?: string;
+  ruleIds?: string[];
 };
+
+interface BehaviorRule {
+  id: string;
+  name: string;
+  kind: 'invariant' | 'precondition' | 'postcondition' | 'derivation' | 'permission';
+  severity: 'error' | 'warning' | 'info';
+  description?: string;
+  expression: unknown;
+}
+
+interface BehaviorContracts {
+  rules: BehaviorRule[];
+  actions: Array<{
+    id: string;
+    name: string;
+    objectName: string;
+    inputFactTypes: string[];
+    outputFactTypes: string[];
+    beforeStates: string[];
+    afterState?: string;
+    ruleIds: string[];
+    permissions: string[];
+  }>;
+  transitions: Array<{
+    id: string;
+    name: string;
+    objectName: string;
+    fromState: string;
+    toState: string;
+    actionName?: string;
+    ruleIds: string[];
+  }>;
+  relationRuleIds: Record<string, string[]>;
+}
+
+type BusinessModel = OntologyModel & { behaviorContracts?: BehaviorContracts };
+
+/** A presentation-only contract for persisted interview behaviour drafts. */
+export interface BehaviorDraftReviewDto {
+  id: string;
+  status: 'collecting' | 'ready' | 'needs_review' | 'published' | 'discarded';
+  summary: string;
+  candidateCount: number;
+  confirmation?: { status: 'required' | 'confirmed' | 'not_required'; confirmedAt?: string };
+  error?: string;
+}
 
 const asSemanticNode = (node: OntologyNode): SemanticNode => node as SemanticNode;
 const isConcept = (node: OntologyNode): boolean => node.type === 'entity' || node.type === 'class';
@@ -35,16 +82,17 @@ interface ArtifactDisplayPanelProps {
     work_mode?: string;
     main_tasks?: string;
   };
-  ontology?: OntologyModel | null;
+  ontology?: BusinessModel | null;
   generationProgress?: number;
   generationMessage?: string;
   onCreateProject?: () => void;
   isCreatingProject?: boolean;
   onEntityClick?: (entityName: string) => void;
   selectedEntity?: string;
-  activeTab?: '图谱' | '实体' | '关系' | '规则';
-  onTabChange?: (tab: '图谱' | '实体' | '关系' | '规则') => void;
+  activeTab?: '图谱' | '实体' | '关系' | '行动' | '规则';
+  onTabChange?: (tab: '图谱' | '实体' | '关系' | '行动' | '规则') => void;
   legacyMigrationRequired?: boolean;
+  behaviorDraftReview?: BehaviorDraftReviewDto;
 }
 
 const PHASE_BADGE: Record<string, { label: string; className: string }> = {
@@ -63,7 +111,7 @@ function PhaseBadge({ mode }: { mode: string }) {
   );
 }
 
-function PanelHeader({ mode, ontology }: { mode: string; ontology?: OntologyModel | null }) {
+function PanelHeader({ mode, ontology }: { mode: string; ontology?: BusinessModel | null }) {
   const concepts = ontology?.nodes.filter(isConcept).length ?? 0;
   const relations = ontology?.nodes.filter((node) => node.type === 'relationship').length ?? 0;
   return (
@@ -105,6 +153,7 @@ export function ArtifactDisplayPanel({
   activeTab = '图谱',
   onTabChange,
   legacyMigrationRequired = false,
+  behaviorDraftReview,
 }: ArtifactDisplayPanelProps) {
   console.log('[ArtifactDisplayPanel] render', {
     mode,
@@ -128,6 +177,7 @@ export function ArtifactDisplayPanel({
             selectedEntity={selectedEntity}
             activeTab={activeTab}
             onTabChange={onTabChange}
+            behaviorDraftReview={behaviorDraftReview}
           />
         )}
       </div>
@@ -150,7 +200,7 @@ function EmptyState({ legacyMigrationRequired }: { legacyMigrationRequired: bool
 }
 
 function CollectingState({ ontology, onEntityClick, selectedEntity }: {
-  ontology?: OntologyModel | null;
+  ontology?: BusinessModel | null;
   onEntityClick?: (entityName: string) => void;
   selectedEntity?: string;
 }) {
@@ -238,19 +288,20 @@ function GeneratingState({ message }: { message: string }) {
   );
 }
 
-type PreviewTab = '图谱' | '实体' | '关系' | '规则';
-const TABS: PreviewTab[] = ['图谱', '实体', '关系', '规则'];
+type PreviewTab = '图谱' | '实体' | '关系' | '行动' | '规则';
+const TABS: PreviewTab[] = ['图谱', '实体', '关系', '行动', '规则'];
 
-function PreviewState({ ontology, onCreateProject, isCreatingProject, onEntityClick, selectedEntity, activeTab, onTabChange }: {
-  ontology: OntologyModel;
+function PreviewState({ ontology, onCreateProject, isCreatingProject, onEntityClick, selectedEntity, activeTab, onTabChange, behaviorDraftReview }: {
+  ontology: BusinessModel;
   onCreateProject?: () => void;
   isCreatingProject?: boolean;
   onEntityClick?: (entityName: string) => void;
   selectedEntity?: string;
-  activeTab?: '图谱' | '实体' | '关系' | '规则';
-  onTabChange?: (tab: '图谱' | '实体' | '关系' | '规则') => void;
+  activeTab?: PreviewTab;
+  onTabChange?: (tab: PreviewTab) => void;
+  behaviorDraftReview?: BehaviorDraftReviewDto;
 }) {
-  const [localActiveTab, setLocalActiveTab] = useState<'图谱' | '实体' | '关系' | '规则'>(activeTab || '图谱');
+  const [localActiveTab, setLocalActiveTab] = useState<PreviewTab>(activeTab || '图谱');
 
   // Sync with parent tab when it changes
   useEffect(() => {
@@ -260,14 +311,17 @@ function PreviewState({ ontology, onCreateProject, isCreatingProject, onEntityCl
   }, [activeTab, localActiveTab]);
 
   // Notify parent of tab changes
-  const handleTabChange = (tab: '图谱' | '实体' | '关系' | '规则') => {
+  const handleTabChange = (tab: PreviewTab) => {
     setLocalActiveTab(tab);
     onTabChange?.(tab);
   };
 
   const entities = ontology.nodes.filter(isConcept);
   const relationships = ontology.nodes.filter((n) => n.type === 'relationship');
-  const rules = ontology.nodes.filter((n) => n.type === 'rule');
+  const contracts = ontology.behaviorContracts;
+  const rules = contracts?.rules ?? ontology.nodes.filter((n) => n.type === 'rule').map((node) => ({
+    id: node.id, name: node.name, kind: 'invariant' as const, severity: 'info' as const, description: node.description, expression: null,
+  }));
   const categorized = SEMANTIC_KIND_OPTIONS.map((kind) => ({
     kind,
     count: entities.filter((node) => semanticKindOf(node) === kind).length,
@@ -292,6 +346,7 @@ function PreviewState({ ontology, onCreateProject, isCreatingProject, onEntityCl
               {tab === '图谱' ? ontology.nodes.length :
                tab === '实体' ? entities.length :
                tab === '关系' ? relationships.length :
+               tab === '行动' ? contracts?.actions.length ?? 0 :
                tab === '规则' ? rules.length : 0}
             </span>
           </button>
@@ -343,7 +398,7 @@ function PreviewState({ ontology, onCreateProject, isCreatingProject, onEntityCl
         {localActiveTab === '关系' && (
           <div className="space-y-3">
             {relationships.map((node) => (
-              <RelationshipCard key={node.id} node={node} concepts={entities} />
+              <RelationshipCard key={node.id} node={node} concepts={entities} rules={rules} />
             ))}
             {relationships.length === 0 && (
               <p className="text-xs text-muted-foreground text-center py-8">暂无关系</p>
@@ -351,10 +406,25 @@ function PreviewState({ ontology, onCreateProject, isCreatingProject, onEntityCl
           </div>
         )}
 
+        {localActiveTab === '行动' && (
+          <div className="space-y-3">
+            <BehaviorDraftReview draft={behaviorDraftReview} />
+            {(contracts?.actions ?? []).map((action) => (
+              <ActionCard key={action.id} action={action} rules={rules} />
+            ))}
+            {(contracts?.transitions ?? []).map((transition) => (
+              <TransitionCard key={transition.id} transition={transition} rules={rules} />
+            ))}
+            {!contracts?.actions.length && !contracts?.transitions.length && (
+              <p className="text-xs text-muted-foreground text-center py-8">暂未识别行动或状态流转</p>
+            )}
+          </div>
+        )}
+
         {localActiveTab === '规则' && (
           <div className="space-y-3">
             {rules.map((node) => (
-              <RuleCard key={node.id} node={node} />
+              <RuleCard key={node.id} rule={node} />
             ))}
             {rules.length === 0 && (
               <p className="text-xs text-muted-foreground text-center py-8">暂无规则</p>
@@ -395,7 +465,7 @@ function SummaryMetric({ label, value, emphasized = false }: { label: string; va
   );
 }
 
-function RelationshipCard({ node, concepts }: { node: OntologyNode; concepts: readonly OntologyNode[] }) {
+function RelationshipCard({ node, concepts, rules }: { node: OntologyNode; concepts: readonly OntologyNode[]; rules: readonly BehaviorRule[] }) {
   const semantic = asSemanticNode(node);
   const parts = node.name.split('→').map((item) => item.trim());
   const from = concepts.find((item) => item.id === semantic.sourceConceptId)?.name ?? parts[0] ?? node.name;
@@ -418,17 +488,65 @@ function RelationshipCard({ node, concepts }: { node: OntologyNode; concepts: re
       {node.description && semantic.relationName && (
         <p className="text-xs text-muted-foreground mt-1">{node.description}</p>
       )}
+      <ConstraintList ruleIds={semantic.ruleIds ?? []} rules={rules} />
     </div>
   );
 }
 
-function RuleCard({ node }: { node: OntologyNode }) {
+function ConstraintList({ ruleIds, rules }: { ruleIds: readonly string[]; rules: readonly BehaviorRule[] }) {
+  const attached = ruleIds.map((id) => rules.find((rule) => rule.id === id)).filter((rule): rule is BehaviorRule => Boolean(rule));
+  if (attached.length === 0) return null;
+  return <div className="mt-3 border-l-2 border-amber-500/50 pl-3" aria-label="业务约束">
+    <p className="text-[11px] font-medium text-amber-700 dark:text-amber-300">业务约束</p>
+    <ul className="mt-1 space-y-1">{attached.map((rule) => <li key={rule.id} className="text-xs text-muted-foreground">{rule.name}{rule.description ? `：${rule.description}` : ''}</li>)}</ul>
+  </div>;
+}
+
+function RuleCard({ rule }: { rule: BehaviorRule }) {
   return (
     <div className="bg-card/70 border border-border rounded-lg px-4 py-3 hover:border-primary/40 transition-colors">
-      <p className="text-sm font-medium text-foreground">{node.name}</p>
-      {node.description && (
-        <p className="text-xs text-muted-foreground mt-0.5">{node.description}</p>
+      <div className="flex items-center justify-between gap-2"><p className="text-sm font-medium text-foreground">{rule.name}</p><span className="rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">{rule.kind}</span></div>
+      {rule.description && (
+        <p className="text-xs text-muted-foreground mt-0.5">{rule.description}</p>
       )}
+      <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-300">定义已保存；当前没有规则求值器，不能据此执行行动。</p>
     </div>
   );
+}
+
+function DetailChips({ label, values }: { label: string; values: readonly string[] }) {
+  if (values.length === 0) return null;
+  return <div className="mt-2"><p className="text-[11px] text-muted-foreground">{label}</p><div className="mt-1 flex flex-wrap gap-1">{values.map((value) => <span key={value} className="rounded border border-border bg-muted px-2 py-0.5 text-xs text-foreground">{value}</span>)}</div></div>;
+}
+
+function ActionCard({ action, rules }: { action: NonNullable<BehaviorContracts['actions']>[number]; rules: readonly BehaviorRule[] }) {
+  return <article className="rounded-xl border border-border bg-card/70 p-4" aria-label={`行动：${action.name}`}>
+    <div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-sm font-semibold text-foreground">{action.name}</p><p className="mt-0.5 text-xs text-muted-foreground">处理对象：{action.objectName}</p></div><span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-700 dark:text-amber-300">执行受限</span></div>
+    <DetailChips label="输入事实" values={action.inputFactTypes} />
+    <DetailChips label="输出事实" values={action.outputFactTypes} />
+    <DetailChips label="执行前状态" values={action.beforeStates} />
+    {action.afterState && <DetailChips label="执行后状态" values={[action.afterState]} />}
+    <DetailChips label="所需权限" values={action.permissions} />
+    <ConstraintList ruleIds={action.ruleIds} rules={rules} />
+    <p className="mt-3 text-[11px] text-amber-700 dark:text-amber-300">定义已保存。规则尚无可用求值器，因此此行动不会在此处执行。</p>
+  </article>;
+}
+
+function TransitionCard({ transition, rules }: { transition: NonNullable<BehaviorContracts['transitions']>[number]; rules: readonly BehaviorRule[] }) {
+  return <article className="rounded-xl border border-border bg-card/50 p-4" aria-label={`状态流转：${transition.name}`}>
+    <p className="text-sm font-medium text-foreground">{transition.name}</p>
+    <p className="mt-1 text-xs text-muted-foreground">{transition.objectName}：{transition.fromState} → {transition.toState}{transition.actionName ? ` · 由「${transition.actionName}」触发` : ''}</p>
+    <ConstraintList ruleIds={transition.ruleIds} rules={rules} />
+  </article>;
+}
+
+function BehaviorDraftReview({ draft }: { draft?: BehaviorDraftReviewDto }) {
+  if (!draft) return null;
+  const confirmation = draft.confirmation?.status === 'confirmed' ? '已确认' : draft.confirmation?.status === 'required' ? '等待确认' : '无需确认';
+  return <section className="rounded-xl border border-border bg-muted/30 p-3" aria-live="polite" aria-label="行动草稿审阅状态">
+    <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-medium text-foreground">行动草稿审阅</p><span className="rounded-full border border-border bg-background px-2 py-0.5 text-[11px] text-muted-foreground">{confirmation}</span></div>
+    <p className="mt-1 text-xs text-muted-foreground">{draft.summary}</p>
+    <p className="mt-2 text-[11px] text-muted-foreground">{draft.candidateCount} 项待写入定义 · 当前状态：{draft.status}</p>
+    {draft.error && <p role="alert" className="mt-2 text-xs text-destructive">{draft.error}</p>}
+  </section>;
 }

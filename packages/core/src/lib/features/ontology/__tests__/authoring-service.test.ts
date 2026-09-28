@@ -496,4 +496,118 @@ describe('CanonicalOntologyAuthoringService', () => {
       'Sales'
     );
   });
+
+  it('authors fact types, rules, transitions and relation constraints in one atomic batch', async () => {
+    const result = await service.execute(command({
+      type: 'batch',
+      // Definitions may refer to another definition that appears later in this batch.
+      commands: [
+        {
+          type: 'relation.create',
+          value: {
+            id: 'order-approval', name: 'has approval', sourceConceptId: 'order',
+            targetConceptId: 'order', cardinality: 'one-to-one', ruleIds: ['approved-before-submit'],
+          },
+        },
+        {
+          type: 'transition.create',
+          value: {
+            id: 'submit-transition', conceptId: 'order', name: 'Submit', fromStateId: 'draft',
+            toStateId: 'draft', actionId: 'submit-order', ruleIds: ['approved-before-submit'],
+          },
+        },
+        {
+          type: 'action.update', actionId: 'submit-order',
+          patch: { inputFactTypeIds: ['approval-fact'], ruleIds: ['approved-before-submit'] },
+        },
+        {
+          type: 'rule.create',
+          value: {
+            id: 'approved-before-submit', name: 'Approval required', kind: 'precondition',
+            expression: { factType: 'approval-fact' }, severity: 'error',
+          },
+        },
+        {
+          type: 'factType.create',
+          value: { id: 'approval-fact', conceptId: 'order', name: 'Approval', propertyIds: ['order-number'] },
+        },
+      ],
+    }, 'behavior-batch'));
+
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.receipt).toMatchObject({ beforeRevision: 0, afterRevision: 1, commandType: 'batch' });
+    expect(result.ontology.factTypes.map(({ id }) => id)).toContain('approval-fact');
+    expect(result.ontology.rules.map(({ id }) => id)).toContain('approved-before-submit');
+    expect(result.ontology.transitions.map(({ id }) => id)).toContain('submit-transition');
+    expect(result.ontology.relations.find(({ id }) => id === 'order-approval')?.ruleIds).toEqual(['approved-before-submit']);
+    expect(await store.readAuthoringReceipts('project-1')).toHaveLength(1);
+
+    const retry = await new CanonicalOntologyAuthoringService(
+      new CanonicalOntologyStore(root)
+    ).execute(command({
+      type: 'batch',
+      commands: [
+        { type: 'rule.create', value: { id: 'approved-before-submit', name: 'Approval required', kind: 'precondition', expression: { factType: 'approval-fact' }, severity: 'error' } },
+      ],
+    }, 'behavior-batch'));
+    expect(retry).toMatchObject({ ok: false, issues: [{ code: 'OPERATION_CONFLICT' }] });
+  });
+
+  it('supports create, update and delete for each behavior contract definition', async () => {
+    const commands: CanonicalOntologyAuthoringCommand[] = [
+      command({ type: 'factType.create', value: { id: 'draft-fact', conceptId: 'order', name: 'Draft fact', propertyIds: [] } }, 'fact-create', 0),
+      command({ type: 'factType.update', factTypeId: 'draft-fact', patch: { name: 'Updated fact' } }, 'fact-update', 1),
+      command({ type: 'factType.delete', factTypeId: 'draft-fact' }, 'fact-delete', 2),
+      command({ type: 'rule.create', value: { id: 'draft-rule', name: 'Draft rule', kind: 'invariant', expression: true, severity: 'warning' } }, 'rule-create', 3),
+      command({ type: 'rule.update', ruleId: 'draft-rule', patch: { severity: 'info' } }, 'rule-update', 4),
+      command({ type: 'rule.delete', ruleId: 'draft-rule' }, 'rule-delete', 5),
+      command({ type: 'transition.create', value: { id: 'draft-transition', conceptId: 'order', name: 'Draft transition', fromStateId: 'draft', toStateId: 'draft' } }, 'transition-create', 6),
+      command({ type: 'transition.update', transitionId: 'draft-transition', patch: { name: 'Updated transition' } }, 'transition-update', 7),
+      command({ type: 'transition.delete', transitionId: 'draft-transition' }, 'transition-delete', 8),
+    ];
+    for (const entry of commands) {
+      expect(await service.execute(entry), JSON.stringify(entry)).toMatchObject({ ok: true });
+    }
+    const loaded = (await store.readOntology('project-1'))!.data;
+    expect(loaded.factTypes.map(({ id }) => id)).not.toContain('draft-fact');
+    expect(loaded.rules.map(({ id }) => id)).not.toContain('draft-rule');
+    expect(loaded.transitions.map(({ id }) => id)).not.toContain('draft-transition');
+    expect(getCanonicalOntologyAuthoringRevision(loaded)).toBe(9);
+  });
+
+  it('rejects an invalid behavior batch without changing the snapshot or revision', async () => {
+    const before = (await store.readOntology('project-1'))!.data;
+    const invalid = await service.execute(command({
+      type: 'batch',
+      commands: [
+        {
+          type: 'transition.create',
+          value: { id: 'invalid-transition', conceptId: 'order', name: 'Invalid', fromStateId: 'draft', toStateId: 'missing-state' },
+        },
+        {
+          type: 'rule.create',
+          value: { id: 'candidate-rule', name: 'Candidate', kind: 'invariant', expression: true, severity: 'error' },
+        },
+      ],
+    }, 'invalid-behavior-batch'));
+    expect(invalid).toMatchObject({ ok: false, issues: expect.arrayContaining([expect.objectContaining({ code: 'MISSING_REFERENCE' })]) });
+    const after = (await store.readOntology('project-1'))!.data;
+    expect(after.rules).toEqual(before.rules);
+    expect(after.transitions).toEqual(before.transitions);
+    expect(getCanonicalOntologyAuthoringRevision(after)).toBe(0);
+    expect(await store.readAuthoringReceipts('project-1')).toEqual([]);
+  });
+
+  it('rejects a batch above 100 commands before mutation', async () => {
+    const result = await service.execute(command({
+      type: 'batch',
+      commands: Array.from({ length: 101 }, (_, index) => ({
+        type: 'rule.create' as const,
+        value: { id: `rule-${index}`, name: `Rule ${index}`, kind: 'invariant' as const, expression: true, severity: 'error' as const },
+      })),
+    }, 'oversized-batch'));
+    expect(result).toMatchObject({ ok: false, issues: [{ code: 'AUTHORING_BATCH_TOO_LARGE' }] });
+    expect(getCanonicalOntologyAuthoringRevision((await store.readOntology('project-1'))!.data)).toBe(0);
+  });
 });

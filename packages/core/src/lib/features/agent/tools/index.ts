@@ -6,6 +6,7 @@ import { ontologyDataTools } from './ontology-data-tools';
 import { scheduleTools } from './schedule-tools';
 import { imCapabilityTools } from './im-capabilities';
 import { interviewOntologySyncTool } from './interview-ontology-sync';
+import { interviewBehaviorDraftTools } from './interview-behavior-draft';
 export * from '../../../integrations/pi-agent/tools';
 export * from './document-tools';
 export * from './ontology-tools';
@@ -13,10 +14,11 @@ export * from './ontology-data-tools';
 export * from './schedule-tools';
 export * from './im-capabilities';
 export * from './interview-ontology-sync';
+export * from './interview-behavior-draft';
 let initialized = false;
 export function initializeBuiltInTools(): void {
   initializeGenericTools();
   if (initialized) return;
-  [sendFileTool, ...imCapabilityTools, ...documentTools, ...ontologyTools, interviewOntologySyncTool, ...ontologyDataTools, ...scheduleTools].forEach(registerTool);
+  [sendFileTool, ...imCapabilityTools, ...documentTools, ...ontologyTools, interviewOntologySyncTool, ...interviewBehaviorDraftTools, ...ontologyDataTools, ...scheduleTools].forEach(registerTool);
   initialized = true;
 }

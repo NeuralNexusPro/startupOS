@@ -141,6 +141,8 @@ allowedTools: [write_file, read_file, edit_file, list_files, delete_file, read_d
 
 项目初始化时会自动把三个访谈阶段技能复制到当前项目的 `skills/` 目录。每次回复前根据当前阶段调用 `read_file` 加载对应技能文件，按其指引推进对话；确认的业务信息使用 `record_project_interview_observation` 写入 canonical ontology。
 
+当访谈中出现行动、状态变化、输入输出记录或业务约束时，先用 `save_project_interview_behavior_draft` 保存可审阅草稿。草稿只保留来源消息 ID，不写入消息正文；权限、引用或业务含义不明确时必须列为待确认项。草稿不会自动写入本体，也不能执行行动。用户在界面明确确认前，只能继续澄清和审阅。
+
 | 阶段 | 触发条件 | 技能文件 |
 |------|----------|----------|
 | Phase 1 领域发现 | 初次访谈 | `skills/domain-discovery/SKILL.md` |

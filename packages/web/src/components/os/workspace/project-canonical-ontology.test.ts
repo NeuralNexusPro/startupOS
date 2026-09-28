@@ -26,4 +26,27 @@ describe('canonical project ontology display adapter', () => {
       ],
     });
   });
+
+  it('keeps rules first-class while projecting them beneath relationships and actions', () => {
+    const model = canonicalToOntologyModel({
+      id: 'ontology-project-1', projectId: 'project-1', name: '项目本体', schemaVersion: '1.0.0', version: '1.0.0',
+      domains: [{ id: 'domain-1', name: '领域', description: '', createdAt: new Date(0), updatedAt: new Date(0) }],
+      concepts: [{ id: 'concept-batch', domainId: 'domain-1', name: '来料批次', type: 'entity', attributes: {}, createdAt: new Date(0), updatedAt: new Date(0) }],
+      instances: [], properties: [],
+      relations: [{ id: 'relation-1', name: '约束', sourceConceptId: 'concept-batch', targetConceptId: 'concept-batch', cardinality: 'one-to-one', ruleIds: ['rule-accept'] }],
+      businessStates: [{ id: 'state-pending', conceptId: 'concept-batch', name: '待验收' }, { id: 'state-passed', conceptId: 'concept-batch', name: '已验收' }],
+      transitions: [{ id: 'transition-accept', conceptId: 'concept-batch', name: '验收通过', fromStateId: 'state-pending', toStateId: 'state-passed', actionId: 'action-accept', ruleIds: ['rule-accept'] }],
+      factTypes: [{ id: 'fact-input', conceptId: 'concept-batch', name: '待验收批次', propertyIds: [] }, { id: 'fact-output', conceptId: 'concept-batch', name: '验收结果', propertyIds: [] }],
+      rules: [{ id: 'rule-accept', name: '检验合格后入库', kind: 'precondition', expression: { operator: 'passed' }, severity: 'error', description: '必须通过检验' }],
+      actions: [{ id: 'action-accept', name: '验收来料', conceptId: 'concept-batch', inputFactTypeIds: ['fact-input'], outputFactTypeIds: ['fact-output'], fromStateIds: ['state-pending'], toStateId: 'state-passed', ruleIds: ['rule-accept'], permissions: ['quality.accept'] }],
+      events: [], projections: [], createdAt: new Date(0), updatedAt: new Date(0),
+    });
+
+    expect(model.nodes.find((node) => node.id === 'relation-1')).toMatchObject({ ruleIds: ['rule-accept'] });
+    expect(model.behaviorContracts).toMatchObject({
+      rules: [{ id: 'rule-accept', name: '检验合格后入库' }],
+      actions: [{ id: 'action-accept', objectName: '来料批次', inputFactTypes: ['待验收批次'], outputFactTypes: ['验收结果'], beforeStates: ['待验收'], afterState: '已验收', ruleIds: ['rule-accept'] }],
+      transitions: [{ id: 'transition-accept', actionName: '验收来料', ruleIds: ['rule-accept'] }],
+    });
+  });
 });

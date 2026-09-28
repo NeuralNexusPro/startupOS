@@ -1,6 +1,6 @@
 # Story 1.8 验证计划
 
-当前状态：设计阶段，以下应用测试均未执行。OpenSpec 格式校验单独记录，不等同功能通过。
+当前状态：核心与 Web 集成测试已执行并通过；`desktop:dev` 的人工交互体验尚待发布线合入后执行。OpenSpec 格式校验不等同于产品体验验收。
 
 ## Verification goal
 
@@ -27,3 +27,12 @@
 使用独立临时 fixture 项目，包含 SQE、供应商、来料批次、来料检验、8D 报告、验收规范和待分类概念；模拟旧快照与非法交叉引用。不得使用或改写用户真实项目验证。
 
 运行受影响测试与类型检查、pnpm lint、pnpm lint:boundaries、node scripts/check-architecture-boundaries.cjs --self-test，再执行 openspec validate author-interview-behavior-contracts --strict。功能体验用 desktop:dev，不本地打包。实际命令、结果、耗时与未验证平台在实施后补录。
+
+## 2026-09-28 集成证据
+
+- `pnpm --filter @originos/core exec vitest run --config vitest.config.ts src/lib/features/ontology/__tests__/authoring-transport.test.ts src/lib/features/ontology/__tests__/authoring-service.test.ts src/lib/features/ontology/__tests__/validator.test.ts src/lib/features/project/__tests__/interview-behavior-draft-service.test.ts`：4 文件、33 项通过。
+- `pnpm --filter @originos/web exec vitest run src/components/os/workspace/project-canonical-ontology.test.ts`：2 项通过。
+- `pnpm --filter @originos/core exec tsc --noEmit` 与 `pnpm --filter @originos/web type-check`：通过。
+- `pnpm lint`：0 error，3126 条既有 warning；`pnpm lint:boundaries`：964 个生产文件、0 诊断；`node scripts/check-architecture-boundaries.cjs --self-test`：43 个用例在两种工作目录下通过。
+- `openspec validate author-interview-behavior-contracts --strict`：通过；`git diff --check`：通过。
+- 人工 `desktop:dev` 体验、窄窗口键盘操作和 50/200 节点性能数据尚未执行，未据此宣称通过。
