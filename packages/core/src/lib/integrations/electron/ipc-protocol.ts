@@ -270,6 +270,7 @@ export interface AgentProjectMessageRequest {
 
 export interface AgentProjectMessageResponse {
   started: boolean;
+  queued?: boolean;
 }
 
 export interface AgentProjectStopRequest {

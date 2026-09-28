@@ -1486,6 +1486,24 @@ export class OriginOSAgent {
 	}
 
 	/**
+	 * 在当前 turn 尚未结束时追加用户消息。
+	 * 底层 Pi Agent 会在当前回复完成后按顺序处理，避免并发 prompt()。
+	 */
+	queueFollowUp(message: string): void {
+		if (!this.agent) {
+			throw new Error("Agent 未初始化");
+		}
+		if (this.isDestroyed) {
+			throw new Error("Agent 已销毁");
+		}
+		const followUpMessage: SyntheticUserMessage = {
+			role: "user",
+			content: [{ type: "text", text: message }],
+		};
+		this.agent.followUp(followUpMessage as unknown as AgentMessage);
+	}
+
+	/**
 	 * 订阅事件
 	 */
 	subscribe(listener: (event: AgentEvent) => void): () => void {

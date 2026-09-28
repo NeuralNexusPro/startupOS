@@ -28,6 +28,39 @@ describe('agent business composition', () => {
     expect(() => new PersistentAgent({} as PersistentAgentConfig)).toThrow('business dependencies');
   });
 
+  it('queues a second project message while the current prompt is running', async () => {
+    const persistent = new PersistentAgent({
+      initializeTools: () => undefined,
+      sessionPersistence: {
+        createSession: async () => ({}) as never,
+        updateSession: async () => null,
+      },
+      projectId: 'project',
+      workingDirectory: directory,
+      agentDefinition: { agentId: 'agent', agentType: 'project', version: '1', name: 'Project', content: '' },
+      toolDefinition: { toolsVersion: '1', allowedTools: [], content: '' },
+      skillDefinition: { skills: [] },
+    });
+    let completeFirstPrompt: (() => void) | undefined;
+    const prompt = vi.fn(() => new Promise<void>((resolve) => { completeFirstPrompt = resolve; }));
+    const queueFollowUp = vi.fn();
+    const internal = persistent as unknown as {
+      isRunning: boolean;
+      agent: { prompt: typeof prompt; queueFollowUp: typeof queueFollowUp };
+    };
+    internal.isRunning = true;
+    internal.agent = { prompt, queueFollowUp };
+
+    const first = persistent.handleMessage('第一条消息');
+    await Promise.resolve();
+    const second = persistent.handleMessage('第二条消息');
+
+    expect(prompt).toHaveBeenCalledOnce();
+    expect(queueFollowUp).toHaveBeenCalledWith('第二条消息');
+    completeFirstPrompt?.();
+    await expect(Promise.all([first, second])).resolves.toEqual([undefined, undefined]);
+  });
+
   it('registers the complete collection once and retains scope and input contracts', async () => {
     initializeBuiltInTools();
     const registry = getToolRegistry();

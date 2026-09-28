@@ -162,6 +162,23 @@ export class AgentProjectService {
             ? SYSTEM_GREETING_PROMPT
             : request.content;
 
+          // 当前 turn 仍在运行时，消息由 PersistentAgent 追加到 follow-up 队列。
+          // 现有订阅会持续覆盖到该 follow-up；新请求不能再次订阅，否则会把上一轮
+          // 的流式片段重复投递给同一个项目窗口。
+          const isFollowUp = agent.isProcessing();
+          if (isFollowUp) {
+            void agent.handleMessage(actualContent, request.sessionId).catch((err: unknown) => {
+              sendToAllWindows(request.projectId, 'error', {
+                message: err instanceof Error ? err.message : 'Queued message processing failed',
+              });
+            });
+            return {
+              success: true,
+              data: { started: true, queued: true },
+              timestamp: new Date().toISOString(),
+            };
+          }
+
           // Track accumulated text for final assistant_message
           let assistantContent = '';
           let assistantMessageSent = false;

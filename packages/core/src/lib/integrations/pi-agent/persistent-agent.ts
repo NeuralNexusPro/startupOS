@@ -465,6 +465,14 @@ export class PersistentAgent {
 			throw new Error('Agent is not running');
 		}
 
+		// 同一项目会话只允许一个 prompt()。后续用户消息交给底层 Agent 的
+		// follow-up 队列，它会在当前 turn 完成后按顺序执行。
+		if (this.processingPromise) {
+			console.info(`[PersistentAgent] Queueing follow-up message for project ${this.projectId}`);
+			this.agent.queueFollowUp(message);
+			return this.processingPromise;
+		}
+
 		let resolve!: () => void;
 		this.processingPromise = new Promise<void>(r => { resolve = r; });
 
@@ -495,6 +503,11 @@ export class PersistentAgent {
 	 */
 	getAgent(): OriginOSAgent | null {
 		return this.agent;
+	}
+
+	/** 当前项目会话是否正在处理一个 turn。 */
+	isProcessing(): boolean {
+		return this.processingPromise !== null;
 	}
 
 	/**
