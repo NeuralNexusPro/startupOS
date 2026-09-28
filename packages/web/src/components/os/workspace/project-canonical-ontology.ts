@@ -18,11 +18,68 @@ export type CanonicalDisplayNode = OntologyModel['nodes'][number] & {
   sourceConceptId?: string;
   targetConceptId?: string;
   relationName?: string;
+  ruleIds?: string[];
 };
 
 export type CanonicalDisplayOntologyModel = Omit<OntologyModel, 'nodes'> & {
   nodes: CanonicalDisplayNode[];
+  /**
+   * Display-only behaviour contract projection.  The canonical ontology remains
+   * the source of truth; this shape deliberately contains no mutation helpers.
+   */
+  behaviorContracts: CanonicalBehaviorContractDisplay;
 };
+
+export interface CanonicalRuleDisplay {
+  id: string;
+  name: string;
+  kind: CanonicalOntology['rules'][number]['kind'];
+  severity: CanonicalOntology['rules'][number]['severity'];
+  description?: string;
+  expression: unknown;
+}
+
+export interface CanonicalActionDisplay {
+  id: string;
+  name: string;
+  objectName: string;
+  inputFactTypes: string[];
+  outputFactTypes: string[];
+  beforeStates: string[];
+  afterState?: string;
+  ruleIds: string[];
+  permissions: string[];
+}
+
+export interface CanonicalTransitionDisplay {
+  id: string;
+  name: string;
+  objectName: string;
+  fromState: string;
+  toState: string;
+  actionName?: string;
+  ruleIds: string[];
+}
+
+export interface CanonicalBehaviorContractDisplay {
+  rules: CanonicalRuleDisplay[];
+  actions: CanonicalActionDisplay[];
+  transitions: CanonicalTransitionDisplay[];
+  relationRuleIds: Record<string, string[]>;
+}
+
+/** Read-only DTO for the later interview draft service and its review surface. */
+export interface BehaviorDraftReviewDto {
+  id: string;
+  status: 'collecting' | 'ready' | 'needs_review' | 'published' | 'discarded';
+  summary: string;
+  candidateCount: number;
+  confirmation?: {
+    status: 'required' | 'confirmed' | 'not_required';
+    confirmedAt?: string;
+  };
+  error?: string;
+}
 
 export interface ProjectCanonicalOntologyResponse {
   entry: ProjectOntologyEntryResult;
@@ -188,6 +245,9 @@ export function canonicalToOntologyModel(
     ]);
   }
   const conceptsById = new Map(ontology.concepts.map((concept) => [concept.id, concept]));
+  const factTypesById = new Map(ontology.factTypes.map((factType) => [factType.id, factType]));
+  const statesById = new Map(ontology.businessStates.map((state) => [state.id, state]));
+  const actionsById = new Map(ontology.actions.map((action) => [action.id, action]));
   const relationNodes = ontology.relations.flatMap((relation) => {
     const source = conceptsById.get(relation.sourceConceptId);
     const target = conceptsById.get(relation.targetConceptId);
@@ -199,6 +259,7 @@ export function canonicalToOntologyModel(
       sourceConceptId: relation.sourceConceptId,
       targetConceptId: relation.targetConceptId,
       relationName: relation.name,
+      ruleIds: relation.ruleIds ?? [],
       description: relation.description
         ? `${relation.name}（${relation.description}）`
         : relation.name,
@@ -228,6 +289,37 @@ export function canonicalToOntologyModel(
       })),
       ...relationNodes,
     ],
+    behaviorContracts: {
+      rules: ontology.rules.map((rule) => ({
+        id: rule.id,
+        name: rule.name,
+        kind: rule.kind,
+        severity: rule.severity,
+        description: rule.description,
+        expression: rule.expression,
+      })),
+      actions: ontology.actions.map((action) => ({
+        id: action.id,
+        name: action.name,
+        objectName: conceptsById.get(action.conceptId)?.name ?? action.conceptId,
+        inputFactTypes: action.inputFactTypeIds.map((id) => factTypesById.get(id)?.name ?? id),
+        outputFactTypes: action.outputFactTypeIds.map((id) => factTypesById.get(id)?.name ?? id),
+        beforeStates: (action.fromStateIds ?? []).map((id) => statesById.get(id)?.name ?? id),
+        afterState: action.toStateId ? (statesById.get(action.toStateId)?.name ?? action.toStateId) : undefined,
+        ruleIds: action.ruleIds ?? [],
+        permissions: action.permissions ?? [],
+      })),
+      transitions: ontology.transitions.map((transition) => ({
+        id: transition.id,
+        name: transition.name,
+        objectName: conceptsById.get(transition.conceptId)?.name ?? transition.conceptId,
+        fromState: statesById.get(transition.fromStateId)?.name ?? transition.fromStateId,
+        toState: statesById.get(transition.toStateId)?.name ?? transition.toStateId,
+        actionName: transition.actionId ? actionsById.get(transition.actionId)?.name ?? transition.actionId : undefined,
+        ruleIds: transition.ruleIds ?? [],
+      })),
+      relationRuleIds: Object.fromEntries(ontology.relations.map((relation) => [relation.id, relation.ruleIds ?? []])),
+    },
     createdAt: new Date(ontology.createdAt).getTime(),
   };
 }
