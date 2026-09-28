@@ -14,6 +14,11 @@ import { AppWindowManager } from '@/services/AppWindowManager';
 import { ProjectWorkspace, WorkspaceWindow } from '@/components/os/workspace';
 import { normalizeOntologyId, normalizeProjectEntryId } from '@/components/os/workspace/project-identity';
 import { canonicalToOntologyModel, loadProjectCanonicalOntology } from '@/components/os/workspace/project-canonical-ontology';
+import {
+  confirmInterviewBehaviorDraft,
+  loadInterviewBehaviorDraft,
+  type BehaviorDraftReviewDto,
+} from '@/services/interview-behavior-drafts';
 import type { OntologyModel } from '@originos/core/types';
 
 interface InterviewWindowProps {
@@ -315,6 +320,9 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
   const [selectedEntity, setSelectedEntity] = useState<string | undefined>();
   const [activeTab, setActiveTab] = useState<'图谱' | '实体' | '关系' | '行动' | '规则'>('图谱');
   const [legacyMigrationRequired, setLegacyMigrationRequired] = useState(false);
+  const [behaviorDraftReview, setBehaviorDraftReview] = useState<BehaviorDraftReviewDto | null>(null);
+  const [isConfirmingBehaviorDraft, setIsConfirmingBehaviorDraft] = useState(false);
+  const [behaviorDraftError, setBehaviorDraftError] = useState<string | undefined>();
   const hasCheckedHistory = useRef(false); // 防止重复触发
   const displayModeRef = useRef<'empty' | 'collecting' | 'generating' | 'preview'>('empty');
 
@@ -322,6 +330,12 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
     displayModeRef.current = mode;
     setDisplayMode(mode);
   }, []);
+
+  const refreshBehaviorDraft = useCallback(async () => {
+    if (!projectId) return;
+    const draft = await loadInterviewBehaviorDraft(resolvedProjectId, resolvedSessionId);
+    setBehaviorDraftReview(draft);
+  }, [projectId, resolvedProjectId, resolvedSessionId]);
 
   const getEffectiveConfig = useSettingsStore((s) => s.getEffectiveConfig);
   const llmConfig = useMemo(() => {
@@ -373,10 +387,11 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
         setDisplayMode('preview');
         console.log('[InterviewWindow] Loaded canonical ontology');
       }
+      await refreshBehaviorDraft();
     };
 
     loadArtifacts().catch(console.error);
-  }, [projectId, resolvedProjectId, resolvedOntologyId, sessionId]);
+  }, [projectId, resolvedProjectId, resolvedOntologyId, sessionId, refreshBehaviorDraft]);
 
   // 发送初始触发消息，启动访谈流程
   // 注意：只在无历史消息时才发送触发消息
@@ -433,6 +448,7 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
     const lastTool = toolExecutions[toolExecutions.length - 1];
     if (!lastTool || lastTool.status !== 'completed') return;
 
+    refreshBehaviorDraft().catch((error) => console.warn('[InterviewWindow] behavior draft refresh failed', error));
     if (displayModeRef.current === 'preview') return;
 
     loadLatestModel(resolvedProjectId).then(model => {
@@ -451,7 +467,7 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
         handleProjectComplete();
       }
     }).catch(console.error);
-  }, [toolExecutions, projectId, resolvedProjectId, handleProjectComplete]);
+  }, [toolExecutions, projectId, resolvedProjectId, handleProjectComplete, refreshBehaviorDraft]);
 
   // 监听主进程 artifact_changed 事件，刷新右侧图谱
   // 解决 toolExecutions useEffect 只检查最后一个工具的缺陷
@@ -472,7 +488,28 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
         handleProjectComplete();
       }
     }).catch(console.error);
-  }, [artifactVersion, projectId, resolvedProjectId, handleProjectComplete]);
+    refreshBehaviorDraft().catch((error) => console.warn('[InterviewWindow] behavior draft refresh failed', error));
+  }, [artifactVersion, projectId, resolvedProjectId, handleProjectComplete, refreshBehaviorDraft]);
+
+  const handleConfirmBehaviorDraft = useCallback(async () => {
+    if (!behaviorDraftReview || isConfirmingBehaviorDraft) return;
+    setIsConfirmingBehaviorDraft(true);
+    setBehaviorDraftError(undefined);
+    try {
+      const published = await confirmInterviewBehaviorDraft(resolvedProjectId, behaviorDraftReview);
+      setBehaviorDraftReview(published);
+      const model = await loadLatestModel(resolvedProjectId);
+      if (model) {
+        setOntology(model);
+        setDisplayModeSync('preview');
+      }
+    } catch (error) {
+      setBehaviorDraftError(error instanceof Error ? error.message : '草稿未能发布，请刷新后重试。');
+      await refreshBehaviorDraft().catch(() => undefined);
+    } finally {
+      setIsConfirmingBehaviorDraft(false);
+    }
+  }, [behaviorDraftReview, isConfirmingBehaviorDraft, refreshBehaviorDraft, resolvedProjectId, setDisplayModeSync]);
 
   // 转换消息格式给 CUIDialogPanel
   const messages = useMemo(() => {
@@ -532,6 +569,10 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
               activeTab={activeTab}
               onTabChange={setActiveTab}
               legacyMigrationRequired={legacyMigrationRequired}
+              behaviorDraftReview={behaviorDraftReview ?? undefined}
+              onConfirmBehaviorDraft={handleConfirmBehaviorDraft}
+              isConfirmingBehaviorDraft={isConfirmingBehaviorDraft}
+              behaviorDraftError={behaviorDraftError}
             />
           }
           defaultLeftWidth={400}

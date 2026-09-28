@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { OntologyGraph } from './OntologyGraph';
 import type { OntologyModel, OntologyNode } from '@originos/core/types';
 import type { CanonicalSemanticKind } from '@originos/core/lib/features/ontology/types';
+import type { BehaviorDraftReviewDto } from '@/services/interview-behavior-drafts';
 
 import { SEMANTIC_KIND_OPTIONS, semanticKindLabel } from './semantic-kind';
 
@@ -51,16 +52,6 @@ interface BehaviorContracts {
 
 type BusinessModel = OntologyModel & { behaviorContracts?: BehaviorContracts };
 
-/** A presentation-only contract for persisted interview behaviour drafts. */
-export interface BehaviorDraftReviewDto {
-  id: string;
-  status: 'collecting' | 'ready' | 'needs_review' | 'published' | 'discarded';
-  summary: string;
-  candidateCount: number;
-  confirmation?: { status: 'required' | 'confirmed' | 'not_required'; confirmedAt?: string };
-  error?: string;
-}
-
 const asSemanticNode = (node: OntologyNode): SemanticNode => node as SemanticNode;
 const isConcept = (node: OntologyNode): boolean => node.type === 'entity' || node.type === 'class';
 const semanticKindOf = (node: OntologyNode): CanonicalSemanticKind => asSemanticNode(node).semanticKind ?? 'unclassified';
@@ -93,6 +84,9 @@ interface ArtifactDisplayPanelProps {
   onTabChange?: (tab: '图谱' | '实体' | '关系' | '行动' | '规则') => void;
   legacyMigrationRequired?: boolean;
   behaviorDraftReview?: BehaviorDraftReviewDto;
+  onConfirmBehaviorDraft?: () => void;
+  isConfirmingBehaviorDraft?: boolean;
+  behaviorDraftError?: string;
 }
 
 const PHASE_BADGE: Record<string, { label: string; className: string }> = {
@@ -154,6 +148,9 @@ export function ArtifactDisplayPanel({
   onTabChange,
   legacyMigrationRequired = false,
   behaviorDraftReview,
+  onConfirmBehaviorDraft,
+  isConfirmingBehaviorDraft = false,
+  behaviorDraftError,
 }: ArtifactDisplayPanelProps) {
   console.log('[ArtifactDisplayPanel] render', {
     mode,
@@ -178,6 +175,9 @@ export function ArtifactDisplayPanel({
             activeTab={activeTab}
             onTabChange={onTabChange}
             behaviorDraftReview={behaviorDraftReview}
+            onConfirmBehaviorDraft={onConfirmBehaviorDraft}
+            isConfirmingBehaviorDraft={isConfirmingBehaviorDraft}
+            behaviorDraftError={behaviorDraftError}
           />
         )}
       </div>
@@ -291,7 +291,7 @@ function GeneratingState({ message }: { message: string }) {
 type PreviewTab = '图谱' | '实体' | '关系' | '行动' | '规则';
 const TABS: PreviewTab[] = ['图谱', '实体', '关系', '行动', '规则'];
 
-function PreviewState({ ontology, onCreateProject, isCreatingProject, onEntityClick, selectedEntity, activeTab, onTabChange, behaviorDraftReview }: {
+function PreviewState({ ontology, onCreateProject, isCreatingProject, onEntityClick, selectedEntity, activeTab, onTabChange, behaviorDraftReview, onConfirmBehaviorDraft, isConfirmingBehaviorDraft, behaviorDraftError }: {
   ontology: BusinessModel;
   onCreateProject?: () => void;
   isCreatingProject?: boolean;
@@ -300,6 +300,9 @@ function PreviewState({ ontology, onCreateProject, isCreatingProject, onEntityCl
   activeTab?: PreviewTab;
   onTabChange?: (tab: PreviewTab) => void;
   behaviorDraftReview?: BehaviorDraftReviewDto;
+  onConfirmBehaviorDraft?: () => void;
+  isConfirmingBehaviorDraft: boolean;
+  behaviorDraftError?: string;
 }) {
   const [localActiveTab, setLocalActiveTab] = useState<PreviewTab>(activeTab || '图谱');
 
@@ -408,7 +411,7 @@ function PreviewState({ ontology, onCreateProject, isCreatingProject, onEntityCl
 
         {localActiveTab === '行动' && (
           <div className="space-y-3">
-            <BehaviorDraftReview draft={behaviorDraftReview} />
+            <BehaviorDraftReview draft={behaviorDraftReview} onConfirm={onConfirmBehaviorDraft} isConfirming={isConfirmingBehaviorDraft} error={behaviorDraftError} />
             {(contracts?.actions ?? []).map((action) => (
               <ActionCard key={action.id} action={action} rules={rules} />
             ))}
@@ -540,13 +543,16 @@ function TransitionCard({ transition, rules }: { transition: NonNullable<Behavio
   </article>;
 }
 
-function BehaviorDraftReview({ draft }: { draft?: BehaviorDraftReviewDto }) {
+function BehaviorDraftReview({ draft, onConfirm, isConfirming, error }: { draft?: BehaviorDraftReviewDto; onConfirm?: () => void; isConfirming: boolean; error?: string }) {
   if (!draft) return null;
   const confirmation = draft.confirmation?.status === 'confirmed' ? '已确认' : draft.confirmation?.status === 'required' ? '等待确认' : '无需确认';
+  const canConfirm = draft.status === 'ready' && draft.unresolvedClarificationCount === 0 && Boolean(onConfirm);
   return <section className="rounded-xl border border-border bg-muted/30 p-3" aria-live="polite" aria-label="行动草稿审阅状态">
     <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-medium text-foreground">行动草稿审阅</p><span className="rounded-full border border-border bg-background px-2 py-0.5 text-[11px] text-muted-foreground">{confirmation}</span></div>
     <p className="mt-1 text-xs text-muted-foreground">{draft.summary}</p>
     <p className="mt-2 text-[11px] text-muted-foreground">{draft.candidateCount} 项待写入定义 · 当前状态：{draft.status}</p>
-    {draft.error && <p role="alert" className="mt-2 text-xs text-destructive">{draft.error}</p>}
+    {draft.unresolvedClarificationCount > 0 && <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-300">请先在访谈中澄清 {draft.unresolvedClarificationCount} 项问题。</p>}
+    {draft.status === 'ready' && <button type="button" onClick={onConfirm} disabled={!canConfirm || isConfirming} className="mt-3 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50">{isConfirming ? '正在写入项目本体…' : '确认并写入项目本体'}</button>}
+    {error && <p role="alert" className="mt-2 text-xs text-destructive">{error}</p>}
   </section>;
 }

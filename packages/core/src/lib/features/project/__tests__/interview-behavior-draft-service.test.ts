@@ -85,6 +85,28 @@ describe('InterviewBehaviorDraftService', () => {
     expect(await service.publish(projectId, 'session-a', saved.draft.id, confirmed.draft.draftRevision, confirmed.draft.candidateHash, 'publish-1')).toMatchObject({ ok: true, recovered: true });
   });
 
+  it('publishes only after the trusted UI supplies the exact review identity', async () => {
+    const { service, projectId, store } = await setup();
+    const saved = await saveReady(service, projectId); if (!saved.ok) throw new Error('save failed');
+    const stale = await service.confirmAndPublishFromTrustedUi({
+      projectId, sourceId: 'session-a', draftId: saved.draft.id,
+      expectedDraftRevision: saved.draft.draftRevision + 1,
+      candidateHash: saved.draft.candidateHash,
+      confirmationId: 'ui-confirm-stale', operationId: 'publish-ui-stale',
+    });
+    expect(stale).toMatchObject({ ok: false, code: 'DRAFT_CONTENT_MISMATCH' });
+    expect((await store.readOntology(projectId))!.data.actions).toEqual([]);
+
+    const published = await service.confirmAndPublishFromTrustedUi({
+      projectId, sourceId: 'session-a', draftId: saved.draft.id,
+      expectedDraftRevision: saved.draft.draftRevision,
+      candidateHash: saved.draft.candidateHash,
+      confirmationId: 'ui-confirm-current', operationId: 'publish-ui-current',
+    });
+    expect(published).toMatchObject({ ok: true, draft: { status: 'published', confirmation: { kind: 'trusted_ui' } } });
+    expect((await store.readOntology(projectId))!.data.actions).toEqual([expect.objectContaining({ id: 'inspect' })]);
+  });
+
   it('isolates a draft by interview source and marks it for review when ontology changes', async () => {
     const { service, projectId, store } = await setup();
     const saved = await saveReady(service, projectId); if (!saved.ok) throw new Error('save failed');
