@@ -538,7 +538,7 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
   };
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="light h-full flex flex-col bg-background text-foreground">
       <InterviewHeader
         mode={displayMode}
         onClose={onClose}
