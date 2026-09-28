@@ -19,8 +19,59 @@ import { appendGlobalUserPreferencesPrompt } from '../../../../lib/integrations/
 import { getDataRoot } from '../../../paths';
 import { getBundledSkillDirs, materializeBundledSkill } from '../../../../lib/integrations/pi-agent/core/skills';
 import { ObservationPolicyResolver, readGlobalUserProfileSnapshot } from '../../../../modules/memory-core';
+import { ProjectOntologyEntryService } from '../../project';
+import { CanonicalOntologyStore } from '../../ontology';
 
 const MAX_TOOL_DESC_CHARS = 120;
+
+async function buildSolutionCanonicalContext(projectId: string): Promise<string> {
+  const entry = await new ProjectOntologyEntryService(getDataRoot()).resolveProject(projectId);
+  if (entry.kind !== 'canonical') {
+    return `## Solution Design Boundary
+
+This solution session has no bound canonical ontology. Do not inspect legacy business-model files, create domains or concepts, or generate project artifacts. Explain briefly that the project interview must first confirm its business model.`;
+  }
+
+  const stored = await new CanonicalOntologyStore(getDataRoot()).readOntology(projectId);
+  if (!stored || stored.data.id !== entry.ontology.ontologyId || stored.data.version !== entry.ontology.ontologyVersion) {
+    return `## Solution Design Boundary
+
+The bound canonical ontology cannot be read at its recorded version. Do not fall back to legacy files or ontology authoring tools; report that the project model needs attention.`;
+  }
+
+  const ontology = stored.data;
+  const concepts = ontology.concepts.map((concept) => ({
+    id: concept.id,
+    name: concept.name,
+    type: concept.type,
+    semanticKind: concept.semanticKind,
+    description: concept.description,
+  }));
+  const relations = ontology.relations.map((relation) => ({
+    id: relation.id,
+    name: relation.name,
+    sourceConceptId: relation.sourceConceptId,
+    targetConceptId: relation.targetConceptId,
+    cardinality: relation.cardinality,
+    ruleIds: relation.ruleIds,
+  }));
+
+  return `## Solution Design Boundary
+
+The following is the authoritative, read-only project ontology. Build the solution only from it.
+
+- Ontology: ${ontology.id} / ${ontology.version}
+- Project: ${ontology.projectId}
+- Concepts: ${JSON.stringify(concepts)}
+- Relations: ${JSON.stringify(relations)}
+- Fact types: ${JSON.stringify(ontology.factTypes)}
+- Actions: ${JSON.stringify(ontology.actions)}
+- Rules: ${JSON.stringify(ontology.rules)}
+
+Do not read, write, sync, or mention \`output/business-model.json\`. Do not invoke \`create_domain\`, \`create_concept\`, \`query_ontology\`, or any legacy ontology-data-store tool. A project has one ontology boundary; solution design consumes it and never authors it. Do not treat unconfirmed interview text as a FactType, Action, Rule, or permission.
+
+Creator skills are implementation references used only after a confirmed solution contract. Do not narrate their installation, paths, golden samples, tool calls, internal reasoning, or progress to the user. If a required canonical fact, action, rule, permission, or relationship is absent, state the business gap plainly and ask for the missing business decision.`;
+}
 
 function resolveOutputDirFromFrontmatter(outputDir: string): string {
   if (path.isAbsolute(outputDir)) {
@@ -422,12 +473,15 @@ export class SkillLauncher extends Launcher {
         prerequisites,
         resolvedOutputDir,
       );
+      const solutionCanonicalContext = ctx.entryId === 'solution-design' && ctx.projectId
+        ? await buildSolutionCanonicalContext(ctx.projectId)
+        : '';
       const inheritedMemory = resolveInheritedMemory(agentWorkingDir);
       const userProfile = readGlobalUserProfileSnapshot(getDataRoot(), ctx.userId ?? 'default');
       const promptWithUserProfile = userProfile
         ? `${systemPrompt}\n\n<global_user_profile readonly="true">\n${userProfile}\n</global_user_profile>`
         : systemPrompt;
-      const resolvedPrompt = injectInheritedMemory(promptWithUserProfile, inheritedMemory)
+      const resolvedPrompt = injectInheritedMemory(`${promptWithUserProfile}${solutionCanonicalContext ? `\n\n${solutionCanonicalContext}` : ''}`, inheritedMemory)
         .replace(/\$\{CLAUDE_SKILL_DIR\}/g, skillInfo.baseDir)
         .replace(/\$\{OUTPUT_DIR\}/g, resolvedOutputDir ?? '');
 

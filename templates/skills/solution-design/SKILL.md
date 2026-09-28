@@ -18,6 +18,8 @@ originos-system: true
 
 **交互模式：** 渐进式对话引导，每次聚焦一个决策点。对话中只呈现概要信息，详细规格存入执行清单产物。
 
+**本体边界（最高优先级）：** 项目绑定的 canonical ontology 是方案设计唯一的业务事实来源。方案设计只能读取并引用该本体，不能创建领域、概念、关系或其他本体结构；不得读取、写入或提及 `output/business-model.json`。访谈中的自然语言尚未经确认时不能当作 FactType、Action、Rule 或权限。创建器技能、样本、工具调用和内部推理都不得向用户展示。
+
 ## On Activation
 
 ### Step 0: Environment Setup
@@ -40,7 +42,7 @@ originos-system: true
    - All Skills generated for an Agent must be placed under that Agent's directory at `agents/{agent-id}/skills/{skill-code}/`.
    - Copy `skills/project-skill-creator` (from the project's skills directory) only as a creator reference if needed; generated Skill产物绝不能落到项目根 `skills/` 目录。
 
-4. **Check prerequisites:** Verify `output/business-model.json` exists and contains business objects, processes, or rules. If missing or empty, inform the user they need to complete Phase 1 (business modeling) first.
+4. **Check prerequisites:** Use the injected, read-only canonical ontology context. If it is unavailable or lacks the facts needed for a safe contract, explain the missing business decision in plain language and continue only after it is clarified. Do not inspect legacy project files as a fallback.
 
 ### Step 0.5: Load Existing Solutions & Determine State
 
@@ -110,11 +112,11 @@ If `--headless` or `-H` is passed, set `{headless_mode}=true`:
 
 ### Stage 1: Analyze Business Model
 
-**Outcome:** Understand the business model from `output/business-model.json`, recommend a modeling dimension with clear justification.
+**Outcome:** Understand the bound canonical ontology, recommend a modeling dimension with clear justification.
 
 **Process:**
 
-1. **Read the business model:** Load `output/business-model.json` using `read_file`.
+1. **Read the project model:** Use the injected canonical ontology context only.
 
 2. **Extract business structure:** Identify:
    - Business objects — entities, fields, relationships
@@ -138,7 +140,7 @@ If `--headless` or `-H` is passed, set `{headless_mode}=true`:
 
 **Flow rule for OriginOS AI solution window:** Do not pause for confirmation or call `ask_user_question` after Stage 1. Present the recommendation, then continue planning. Only stop if the user explicitly objects or asks to revise the direction.
 
-**Important constraint:** Do not introduce business objects, processes, or rules that do not exist in the business model. Every Agent and Skill must be traceable to at least one entity, relationship, business rule, or constraint in `output/business-model.json`. When generating Agent responsibilities or Skill capabilities, explicitly cite the business model element(s) they derive from (e.g., "Derived from: 审查流程 business rule + 设计表格 entity").
+**Important constraint:** Do not introduce business objects, processes, actions, fact types, rules, or permissions that do not exist in the canonical ontology. Every Agent and Skill must be traceable to an exact canonical concept, relation, fact type, action, rule, or constraint. When required semantics are absent, report the gap rather than inventing a contract.
 
 ---
 
