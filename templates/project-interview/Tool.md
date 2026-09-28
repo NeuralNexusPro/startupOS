@@ -1,6 +1,6 @@
 ---
 toolsVersion: 1.0.0
-allowedTools: [write_file, read_file, edit_file, list_files, delete_file, read_document, read_spreadsheet, list_document_structure, extract_document_tables, execute_command, query_ontology, create_domain, create_concept, search_ontology, record_project_interview_observation, get_current_time]
+allowedTools: [write_file, read_file, edit_file, list_files, delete_file, read_document, read_spreadsheet, list_document_structure, extract_document_tables, execute_command, record_project_interview_observation, save_project_interview_behavior_draft, review_project_interview_behavior_draft, get_current_time]
 ---
 
 # 可用工具
@@ -16,7 +16,7 @@ allowedTools: [write_file, read_file, edit_file, list_files, delete_file, read_d
 - `filePath` (string): 相对路径，如 `output/business-model.json`
 - `content` (string): 文件的完整内容字符串
 
-**使用场景**: 保存访谈进度、写入或更新业务模型 JSON、更新记忆文件
+**使用场景**: 保存访谈进度、更新记忆文件
 
 ### read_file
 读取文件内容
@@ -24,7 +24,7 @@ allowedTools: [write_file, read_file, edit_file, list_files, delete_file, read_d
 **参数**:
 - `filePath` (string): 相对路径
 
-**使用场景**: 读取已有访谈记录、加载业务模型
+**使用场景**: 读取已有访谈记录
 
 ### edit_file
 通过查找替换编辑文件内容（局部修改，避免全量重写）
@@ -35,7 +35,7 @@ allowedTools: [write_file, read_file, edit_file, list_files, delete_file, read_d
 - `newString` (string): 替换后的新内容
 - `replaceAll` (boolean, 可选): 是否替换所有匹配项，默认 false
 
-**使用场景**: 更新访谈进度中的特定字段、修改业务模型局部内容
+**使用场景**: 更新访谈进度中的特定字段
 
 ### list_files
 列出目录中的文件和子目录
@@ -91,44 +91,11 @@ allowedTools: [write_file, read_file, edit_file, list_files, delete_file, read_d
 ### record_project_interview_observation
 将本轮已确认的业务领域、关键对象和联系直接记录到当前项目模型。首次调用会自动建立项目本体；每次确认新内容后立即调用。
 
-### query_ontology
-查询本体中的领域、概念或关系
+### save_project_interview_behavior_draft
+保存行动、状态、输入输出和约束的访谈草稿，供用户审阅。草稿不会写入正式本体。
 
-**参数**:
-- `ontologyId` (string): 本体 ID
-- `query` (string): 查询条件
-
-**使用场景**: 查找已有实体、检查重复、获取相关概念
-
-### create_domain
-在本体中创建业务领域
-
-**参数**:
-- `ontologyId` (string): 本体 ID
-- `name` (string): 领域名称
-- `description` (string): 领域描述
-
-**使用场景**: 建立业务领域分类
-
-### create_concept
-在本体中创建业务概念（实体）
-
-**参数**:
-- `ontologyId` (string): 本体 ID
-- `domainId` (string): 所属领域 ID
-- `name` (string): 概念名称
-- `properties` (object): 概念属性
-
-**使用场景**: 创建业务实体、建立领域模型
-
-### search_ontology
-在本体中搜索相关概念
-
-**参数**:
-- `ontologyId` (string): 本体 ID
-- `keyword` (string): 搜索关键词
-
-**使用场景**: 快速定位相关概念、避免重复创建
+### review_project_interview_behavior_draft
+查看当前访谈会话的行为草稿和待确认项。正式发布只能由用户在界面中确认。
 
 ## 系统工具
 
@@ -156,4 +123,3 @@ allowedTools: [write_file, read_file, edit_file, list_files, delete_file, read_d
 3. **Office 文件先看结构再读取** - 大文档/大表优先调用 `list_document_structure`，再分页调用 `read_document` 或 `read_spreadsheet`
 4. **重要操作先确认** - 删除文件前向用户确认
 5. **工具调用失败时** - 向用户说明并提供替代方案
-l

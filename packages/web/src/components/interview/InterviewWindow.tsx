@@ -449,7 +449,6 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
     if (!lastTool || lastTool.status !== 'completed') return;
 
     refreshBehaviorDraft().catch((error) => console.warn('[InterviewWindow] behavior draft refresh failed', error));
-    if (displayModeRef.current === 'preview') return;
 
     loadLatestModel(resolvedProjectId).then(model => {
       if (!model) return;

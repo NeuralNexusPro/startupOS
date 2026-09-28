@@ -110,7 +110,7 @@ function buildLayer2_StateMemory(ctx: ProjectContext): string {
 
 function buildLayer3_ThinkingLoop(ctx: ProjectContext): string {
   const ontologyWorkflow = ctx.ontologyContext.kind === 'canonical'
-    ? '已绑定 canonical ontology 时，使用 `query_ontology` 按已注入的精确 ID/version 查询。'
+    ? '已绑定 canonical ontology 时，以已注入的精确 ID/version 和只读项目本体上下文判断阶段；不得调用旧本体数据仓库工具。'
     : ctx.ontologyContext.kind === 'legacy_migration_required'
       ? '存量项目需要迁移时，使用业务语言简短说明需要完成项目资料迁移，再继续访谈；不得读取、同步或创建 `business-model.json`。'
       : '尚未建立 canonical ontology 是新项目访谈的正常起点：直接进入 Phase 1 领域发现。不要让用户初始化本体，也不要读取、同步或创建 `business-model.json`。';

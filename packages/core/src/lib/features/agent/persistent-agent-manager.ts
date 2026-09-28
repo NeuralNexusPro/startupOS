@@ -50,6 +50,53 @@ function persistInterviewHistory(memoryCore: MemoryCore, messages: AgentMessage[
 	}
 }
 
+const LEGACY_INTERVIEW_ONTOLOGY_TOOLS = new Set([
+	'query_ontology',
+	'create_domain',
+	'create_concept',
+	'search_ontology',
+]);
+
+const INTERVIEW_DEFAULT_ALLOWED_TOOLS = [
+	'write_file',
+	'read_file',
+	'edit_file',
+	'list_files',
+	'delete_file',
+	'read_document',
+	'read_spreadsheet',
+	'list_document_structure',
+	'extract_document_tables',
+	'execute_command',
+	'record_project_interview_observation',
+	'save_project_interview_behavior_draft',
+	'review_project_interview_behavior_draft',
+	'get_current_time',
+];
+
+/**
+ * Project interviews have one authoritative ontology write path. Older project
+ * Tool.md files exposed generic ontology-data-store tools, which could create
+ * objects that the canonical graph deliberately does not project.
+ */
+function normalizeInterviewToolAccess(agentDefinition: AgentDefinition, toolDefinition: ToolDefinition): void {
+	if (agentDefinition.agentType !== 'interview') return;
+
+	if (toolDefinition.allowedTools.length === 0) {
+		toolDefinition.allowedTools = [...INTERVIEW_DEFAULT_ALLOWED_TOOLS];
+		return;
+	}
+
+	toolDefinition.allowedTools = toolDefinition.allowedTools.filter(
+		(toolName) => !LEGACY_INTERVIEW_ONTOLOGY_TOOLS.has(toolName),
+	);
+	for (const toolName of INTERVIEW_DEFAULT_ALLOWED_TOOLS.slice(-4)) {
+		if (!toolDefinition.allowedTools.includes(toolName)) {
+			toolDefinition.allowedTools.push(toolName);
+		}
+	}
+}
+
 // ============================================================================
 // Persistent Agent Manager
 // ============================================================================
@@ -116,16 +163,7 @@ export class PersistentAgentManager {
 		const agentDef = await this.loadAgentDefinition(projectDir);
 		console.log(`[Manager]   Agent: ${agentDef.name} (type=${agentDef.agentType}, version=${agentDef.version})`);
 		const toolDef = await this.loadToolDefinition(projectDir);
-		// System-managed project interviews always need the canonical write bridge.
-		// Keep legacy Tool.md customizations intact while making the current runtime
-		// capable of persisting confirmed interview observations.
-		if (
-			agentDef.agentType === 'interview' &&
-			toolDef.allowedTools.length > 0 &&
-			!toolDef.allowedTools.includes('record_project_interview_observation')
-		) {
-			toolDef.allowedTools.push('record_project_interview_observation');
-		}
+		normalizeInterviewToolAccess(agentDef, toolDef);
 		console.log(`[Manager]   Tools: ${toolDef.allowedTools.length > 0 ? toolDef.allowedTools.join(', ') : 'ALL'}`);
 		const skillDef = await parseSkillDefinition(projectDir);
 		console.log(`[Manager]   Skills: ${skillDef.content ? 'Skill.md' : skillDef.skills.length + ' skill(s)'}`);
@@ -276,6 +314,7 @@ export class PersistentAgentManager {
 		const projectDir = path.join(this.baseDir, projectId);
 		const agentDef = await this.loadAgentDefinition(projectDir);
 		const toolDef = await this.loadToolDefinition(projectDir);
+		normalizeInterviewToolAccess(agentDef, toolDef);
 		const skillDef = await parseSkillDefinition(projectDir);
 		const workspaceFiles = await loadWorkspaceFiles(projectDir);
 		console.log(`[PersistentAgentManager] Reloaded ${workspaceFiles.length} workspace files`);
