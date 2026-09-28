@@ -336,21 +336,21 @@ export function SolutionDesign({
 
   if (isInitializing) {
     return (
-      <div className="flex items-center justify-center h-full min-h-[400px]">
+      <div className="light flex h-full min-h-[400px] items-center justify-center bg-background text-foreground">
         <div className="text-center space-y-4">
           <Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" />
-          <p className="text-sm text-text-secondary">正在读取业务模型，分析中...</p>
+          <p className="text-sm text-muted-foreground">正在读取业务模型，分析中...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-0 flex-col h-full min-h-[500px]">
+    <div className="light flex h-full min-h-[500px] min-h-0 flex-col bg-background text-foreground">
       {/* Header */}
-      <div className="native-drag-region flex items-center gap-2 px-4 py-3 border-b border-white/20">
+      <div className="native-drag-region flex items-center gap-2 border-b border-border bg-card px-4 py-3">
         <Sparkles className="w-4 h-4 text-primary" />
-        <span className="text-sm font-medium text-gray-900">AI 解决方案设计</span>
+        <span className="text-sm font-medium text-foreground">AI 解决方案设计</span>
 
         <div className="native-no-drag flex items-center gap-1 ml-4">
           <button
@@ -358,7 +358,7 @@ export function SolutionDesign({
             className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs transition-colors ${
               activeTab === 'chat'
                 ? 'bg-primary/20 text-primary font-medium'
-                : 'text-gray-500 hover:text-gray-900'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted'
             }`}
           >
             <MessageSquare className="w-3 h-3" />
@@ -370,7 +370,7 @@ export function SolutionDesign({
               className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs transition-colors ${
                 activeTab === 'topology'
                   ? 'bg-primary/20 text-primary font-medium'
-                  : 'text-gray-500 hover:text-gray-900'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'
               }`}
             >
               <Network className="w-3 h-3" />
@@ -379,7 +379,7 @@ export function SolutionDesign({
           )}
         </div>
 
-        <span className="text-xs font-medium text-gray-900 ml-auto">{projectName}</span>
+        <span className="ml-auto text-xs font-medium text-foreground">{projectName}</span>
 
         <button
           onClick={() => {
@@ -407,7 +407,7 @@ export function SolutionDesign({
               }
             );
           }}
-          className="native-no-drag p-1.5 rounded-lg hover:bg-white/20 transition-colors text-gray-600 hover:text-gray-900"
+          className="native-no-drag rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           aria-label="打开工作区"
           title="打开工作区"
         >
@@ -445,7 +445,7 @@ export function SolutionDesign({
                 <div className="px-4 pb-3">
                   <button
                     onClick={onCancel}
-                    className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
+                    className="text-sm text-muted-foreground transition-colors hover:text-foreground"
                   >
                     取消设计
                   </button>
@@ -458,10 +458,10 @@ export function SolutionDesign({
           {activeTab === 'topology' && manifest && (
             <div className="flex-1 overflow-y-auto p-6">
               <div className="mb-4">
-                <h3 className="text-sm font-semibold text-gray-900 mb-1">
+                <h3 className="mb-1 text-sm font-semibold text-foreground">
                   {manifest.businessGoal || 'Agent 协作拓扑'}
                 </h3>
-                <div className="flex items-center gap-3 text-xs text-gray-500">
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
                   <span>版本 {manifest.solutionVersion}</span>
                   <span>·</span>
                   <span>{manifest.modelingDimension === 'task' ? '事的维度' : '人的维度'}</span>
@@ -470,7 +470,7 @@ export function SolutionDesign({
                 </div>
               </div>
 
-              <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
                 <SolutionGraphView
                   agents={manifest.agents}
                   skillDefs={manifest.skills}
@@ -535,14 +535,14 @@ export const ExtendedSolutionDesign = ({ projectId, projectName }: SolutionDesig
 
   if (!manifest) {
     return (
-      <div className="flex items-center justify-center py-10 text-gray-600">
+      <div className="light flex items-center justify-center bg-background py-10 text-muted-foreground">
         <Loader2 className="animate-spin mr-2" /> 加载解决方案数据中...
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
+    <div className="light space-y-4 bg-background text-foreground">
       <h2 className="text-lg font-semibold">AI 解决方案协作图谱 — {projectName}</h2>
       <SolutionGraphView
         agents={manifest.agents}

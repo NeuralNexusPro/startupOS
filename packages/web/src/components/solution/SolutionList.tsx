@@ -59,41 +59,41 @@ export function SolutionList({ projectId, onSelect, activeVersion }: SolutionLis
 
   if (loading) {
     return (
-      <div className="w-48 border-r border-white/20 bg-white/5 p-3">
-        <p className="text-xs text-gray-500">加载方案列表...</p>
+      <div className="w-48 border-r border-border bg-card p-3">
+        <p className="text-xs text-muted-foreground">加载方案列表...</p>
       </div>
     );
   }
 
   if (solutions.length === 0) {
     return (
-      <div className="w-48 border-r border-white/20 bg-white/5 p-3">
-        <p className="text-xs text-gray-500">暂无方案版本</p>
+      <div className="w-48 border-r border-border bg-card p-3">
+        <p className="text-xs text-muted-foreground">暂无方案版本</p>
       </div>
     );
   }
 
   return (
-    <div className="w-48 border-r border-white/20 bg-white/5 flex flex-col">
-      <div className="px-3 py-2 border-b border-white/10">
-        <h3 className="text-xs font-medium text-gray-600">方案版本</h3>
+    <div className="flex w-48 flex-col border-r border-border bg-card">
+      <div className="border-b border-border px-3 py-2">
+        <h3 className="text-xs font-medium text-muted-foreground">方案版本</h3>
       </div>
       <div className="flex-1 overflow-y-auto py-1">
         {solutions.map((sol) => (
           <button
             key={sol.id}
             onClick={() => onSelect(sol.version)}
-            className={`w-full text-left px-3 py-2 hover:bg-white/10 transition-colors border-b border-white/5 ${
+            className={`w-full border-b border-border px-3 py-2 text-left transition-colors hover:bg-muted ${
               sol.version === activeVersion ? 'bg-primary/10' : ''
             }`}
           >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-gray-800 truncate">{sol.name}</span>
+              <span className="truncate text-xs font-medium text-foreground">{sol.name}</span>
               <span className={`text-[10px] px-1.5 py-0.5 rounded ${STATUS_COLORS[sol.status as SolutionStatus] || STATUS_COLORS.draft}`}>
                 {STATUS_LABELS[sol.status as SolutionStatus] || '草稿'}
               </span>
             </div>
-            <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-500">
+            <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
               <span>{sol.modelingDimension === 'task' ? '事' : '人'}</span>
               <span>·</span>
               <span>{sol.agentCount} Agent</span>
