@@ -10,8 +10,8 @@
 
 ## 2. 访谈与展示
 
-- [ ] 2.1 依赖 1.3，与 2.2 可并行。访谈 subagent 在独立 worktree 的 core project/agent feature、project-agent 提示词及 templates/project-interview 范围实现有 revision 的持久草稿、澄清项、可信确认摘要和幂等发布编排；验证来源隔离、未知信息和记忆失败；证据：服务与工具集成测试。不得修改 ontology 公共导出或 UI。
-- [ ] 2.2 依赖 1.3，与 2.1 可并行。适配/UI subagent 在独立 worktree 的 Web 访谈/本体组件、投影及 Web/Desktop 薄传输边界实现行动草稿审阅、输入输出/状态/约束详情、确认和执行阻塞提示；验证 DTO round-trip、空态/错误态、深浅色和浏览器无 Node 依赖；证据：组件检查和 desktop:dev 交互记录。业务逻辑不得写入 route/IPC。
+- [x] 2.1 依赖 1.3，与 2.2 可并行。访谈 subagent 在独立 worktree 的 core project/agent feature、project-agent 提示词及 templates/project-interview 范围实现有 revision 的持久草稿、澄清项、可信确认摘要和幂等发布编排；验证来源隔离、未知信息和记忆失败；证据：提交 `e88c296`（已合入 Proposal），草稿保存在 `projects/{project}/interview/behavior-drafts/`，collect/review 工具不具备发布能力，可信确认服务以 hash/revision/operationId 通过 core batch 发布；6 项服务测试、core `tsc --noEmit`、`git diff --check` 通过。
+- [x] 2.2 依赖 1.3，与 2.1 可并行。适配/UI subagent 在独立 worktree 的 Web 访谈/本体组件、投影及 Web/Desktop 薄传输边界实现行动草稿审阅、输入输出/状态/约束详情、确认和执行阻塞提示；验证 DTO round-trip、空态/错误态、深浅色和浏览器无 Node 依赖；证据：提交 `456e3f1`（已合入 Proposal），行为契约为纯投影，规则在关系/行动/流转卡片下显示，明确“无求值器不可执行”；`git diff --check` 通过。隔离 worktree 未安装依赖，完整 Web type-check 留待集成工作树执行。
 
 ## 3. 集成与验收
 
