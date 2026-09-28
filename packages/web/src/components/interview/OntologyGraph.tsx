@@ -26,6 +26,22 @@ function colorFor(kind: CanonicalSemanticKind, color: (name: string) => string):
   return color(tokens[kind]!);
 }
 
+/** Keep canvas labels legible for both light and dark semantic node fills. */
+function labelColorFor(
+  kind: CanonicalSemanticKind,
+  color: (name: string, alpha?: number) => string,
+): { title: string; subtitle: string } {
+  const lightLabel = color('--primary-foreground');
+  const darkLabel = color('--foreground');
+  const usesLightFill = kind === 'organization' || kind === 'unclassified';
+  return {
+    title: usesLightFill ? darkLabel : lightLabel,
+    subtitle: usesLightFill
+      ? color('--foreground', 0.72)
+      : color('--primary-foreground', 0.78),
+  };
+}
+
 /** Renders canonical relations only when their authoritative concept IDs are present. */
 export function OntologyGraph({ ontology, className = '', onEntityClick, selectedEntity }: OntologyGraphProps) {
   const graphRef = useRef<HTMLDivElement>(null);
@@ -103,7 +119,8 @@ export function OntologyGraph({ ontology, className = '', onEntityClick, selecte
       for (const node of nodes) {
         const active = node.name === selectedEntity || node.id === hoveredNodeRef.current; context.beginPath(); context.arc(node.x, node.y, 24, 0, Math.PI * 2); context.fillStyle = colorFor(node.semanticKind, (name) => token(name)); context.globalAlpha = active ? 1 : 0.82; context.fill(); context.globalAlpha = 1;
         if (active) { context.strokeStyle = token('--foreground'); context.lineWidth = 2; context.stroke(); }
-        context.fillStyle = token('--foreground'); context.font = '11px system-ui'; context.textAlign = 'center'; context.textBaseline = 'middle'; context.fillText(node.name, node.x, node.y - 3); context.fillStyle = token('--card'); context.font = '9px system-ui'; context.fillText(semanticKindLabel(node.semanticKind), node.x, node.y + 10);
+        const labels = labelColorFor(node.semanticKind, token);
+        context.fillStyle = labels.title; context.font = '11px system-ui'; context.textAlign = 'center'; context.textBaseline = 'middle'; context.fillText(node.name, node.x, node.y - 3); context.fillStyle = labels.subtitle; context.font = '9px system-ui'; context.fillText(semanticKindLabel(node.semanticKind), node.x, node.y + 10);
       }
       animationRef.current = requestAnimationFrame(draw);
     };
