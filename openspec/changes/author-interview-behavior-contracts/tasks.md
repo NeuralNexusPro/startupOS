@@ -15,7 +15,7 @@
 
 ## 3. 集成与验收
 
-- [ ] 3.1 串行，依赖 2.1/2.2。集成 subagent 在集成 Task worktree 合并并处理冲突，限本 Story 受影响文件；执行 Story testing.md 验收、受影响包类型检查、pnpm lint、pnpm lint:boundaries、node scripts/check-architecture-boundaries.cjs --self-test；证据：真实命令和失败归因，不用存量问题掩盖新增违规。
-- [ ] 3.2 串行，依赖 3.1。文档角色仅更新本 Story 和 Proposal 的测试证据；执行 openspec validate author-interview-behavior-contracts --strict，并核对 Story verification goal：访谈草稿经确认发布完整契约、失败不留半套定义、重启幂等、规则无执行器仍拒绝执行。任何未验证项明确标未完成。
+- [x] 3.1 串行，依赖 2.1/2.2。集成 subagent 在集成 Task worktree 合并并处理冲突，限本 Story 受影响文件；执行 Story testing.md 验收、受影响包类型检查、pnpm lint、pnpm lint:boundaries、node scripts/check-architecture-boundaries.cjs --self-test；证据：核心聚焦 Vitest 4 文件 33 项、Web 投影 Vitest 2 项、Core `tsc --noEmit`、Web `type-check`、`pnpm lint`（0 error，3126 条既有 warning）、`lint:boundaries`（964 文件/0 诊断）、架构自检 43×2、`openspec validate --strict` 均通过；Web 投影未引入 Node 内建模块。未运行构建或打包。
+- [x] 3.2 串行，依赖 3.1。文档角色仅更新本 Story 和 Proposal 的测试证据；执行 openspec validate author-interview-behavior-contracts --strict，并核对 Story verification goal：访谈草稿经确认发布完整契约、失败不留半套定义、重启幂等、规则无执行器仍拒绝执行。证据已补录到 Story 测试计划；尚未进行 `desktop:dev` 人工交互体验，明确保留为发布线合入后的待验证项。
 - [ ] 3.3 串行，依赖 3.2。编排角色核对变更范围并将通过验收的 Task 分支合入 Proposal，再按用户授权合入目标发布线/dev；推送必须另有明确授权。范围仅本 Proposal 提交；证据：提交、合并及工作区状态。
 - [ ] 3.4 串行，依赖 3.3。编排角色清点本任务 worktree，确认成果已保存且无人使用后清理本任务临时工作树；不得清理用户既有 /tmp、其他 worktree 或构建现场；证据：保留/清理清单及可恢复提交。
