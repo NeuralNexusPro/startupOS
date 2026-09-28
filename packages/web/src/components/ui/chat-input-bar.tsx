@@ -115,7 +115,10 @@ export function ChatInputBar({
     [handleSubmit],
   );
 
-  const inputBgClass = 'bg-input-dark border border-border text-text-primary placeholder:text-text-secondary focus:ring-1 focus:ring-primary';
+  // `inputDark` is the Tailwind token backed by --input-bg.  The prior
+  // kebab-case class was not a configured token, so the browser fell back to
+  // its white native input background while retaining the dark-theme text.
+  const inputBgClass = 'bg-inputDark border border-border text-text-primary placeholder:text-text-secondary focus:ring-1 focus:ring-primary';
 
   const uploadBtnClass = 'bg-muted border border-border text-muted-foreground hover:text-foreground hover:bg-accent';
 

@@ -59,6 +59,14 @@ describe('ChatInputBar', () => {
     expect(screen.queryByRole('button', { name: '创建任务' })).not.toBeInTheDocument();
   });
 
+  it('uses the configured theme token for the message input background', () => {
+    render(<ChatInputBar onSubmit={vi.fn()} />);
+
+    const input = screen.getByPlaceholderText('输入消息...');
+    expect(input).toHaveClass('bg-inputDark', 'text-text-primary');
+    expect(input).not.toHaveClass('bg-input-dark');
+  });
+
   it('keeps task creation disabled while the conversation input is locked', () => {
     const onCreateTask = vi.fn();
     render(
