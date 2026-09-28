@@ -53,6 +53,12 @@ function summary(ontology: CanonicalOntology): ProjectCanonicalOntologySummary {
     name: ontology.name,
     domainCount: ontology.domains.length,
     conceptCount: ontology.concepts.length,
+    relationCount: ontology.relations.length,
+    factTypeCount: ontology.factTypes.length,
+    actionCount: ontology.actions.length,
+    ruleCount: ontology.rules.length,
+    businessStateCount: ontology.businessStates.length,
+    transitionCount: ontology.transitions.length,
   };
 }
 

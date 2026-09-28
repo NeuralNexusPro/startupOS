@@ -84,6 +84,7 @@ interface ArtifactDisplayPanelProps {
   onTabChange?: (tab: '图谱' | '实体' | '关系' | '行动' | '规则') => void;
   legacyMigrationRequired?: boolean;
   behaviorDraftReview?: BehaviorDraftReviewDto;
+  behaviorModelingRequired?: boolean;
   onConfirmBehaviorDraft?: () => void;
   isConfirmingBehaviorDraft?: boolean;
   behaviorDraftError?: string;
@@ -105,7 +106,7 @@ function PhaseBadge({ mode }: { mode: string }) {
   );
 }
 
-function PanelHeader({ mode, ontology }: { mode: string; ontology?: BusinessModel | null }) {
+function PanelHeader({ mode, ontology, behaviorModelingRequired = false }: { mode: string; ontology?: BusinessModel | null; behaviorModelingRequired?: boolean }) {
   const concepts = ontology?.nodes.filter(isConcept).length ?? 0;
   const relations = ontology?.nodes.filter((node) => node.type === 'relationship').length ?? 0;
   return (
@@ -114,7 +115,11 @@ function PanelHeader({ mode, ontology }: { mode: string; ontology?: BusinessMode
         <span className="text-sm font-semibold text-foreground">业务模型</span>
         {concepts > 0 && <p className="mt-0.5 text-xs text-muted-foreground">{concepts} 个业务概念 · {relations} 条联系</p>}
       </div>
-      <PhaseBadge mode={mode} />
+      {behaviorModelingRequired ? (
+        <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+          业务行为确认
+        </span>
+      ) : <PhaseBadge mode={mode} />}
     </div>
   );
 }
@@ -148,6 +153,7 @@ export function ArtifactDisplayPanel({
   onTabChange,
   legacyMigrationRequired = false,
   behaviorDraftReview,
+  behaviorModelingRequired = false,
   onConfirmBehaviorDraft,
   isConfirmingBehaviorDraft = false,
   behaviorDraftError,
@@ -160,7 +166,7 @@ export function ArtifactDisplayPanel({
   });
   return (
     <div className="flex flex-col h-full bg-background text-foreground">
-      <PanelHeader mode={mode} ontology={ontology} />
+      <PanelHeader mode={mode} ontology={ontology} behaviorModelingRequired={behaviorModelingRequired} />
       <div className="flex-1 overflow-y-auto">
         {mode === 'empty' && <EmptyState legacyMigrationRequired={legacyMigrationRequired} />}
         {mode === 'collecting' && <CollectingState ontology={ontology} onEntityClick={onEntityClick} selectedEntity={selectedEntity} />}
@@ -178,6 +184,7 @@ export function ArtifactDisplayPanel({
             onConfirmBehaviorDraft={onConfirmBehaviorDraft}
             isConfirmingBehaviorDraft={isConfirmingBehaviorDraft}
             behaviorDraftError={behaviorDraftError}
+            behaviorModelingRequired={behaviorModelingRequired}
           />
         )}
       </div>
@@ -291,7 +298,7 @@ function GeneratingState({ message }: { message: string }) {
 type PreviewTab = '图谱' | '实体' | '关系' | '行动' | '规则';
 const TABS: PreviewTab[] = ['图谱', '实体', '关系', '行动', '规则'];
 
-function PreviewState({ ontology, onCreateProject, isCreatingProject, onEntityClick, selectedEntity, activeTab, onTabChange, behaviorDraftReview, onConfirmBehaviorDraft, isConfirmingBehaviorDraft, behaviorDraftError }: {
+function PreviewState({ ontology, onCreateProject, isCreatingProject, onEntityClick, selectedEntity, activeTab, onTabChange, behaviorDraftReview, onConfirmBehaviorDraft, isConfirmingBehaviorDraft, behaviorDraftError, behaviorModelingRequired }: {
   ontology: BusinessModel;
   onCreateProject?: () => void;
   isCreatingProject?: boolean;
@@ -303,6 +310,7 @@ function PreviewState({ ontology, onCreateProject, isCreatingProject, onEntityCl
   onConfirmBehaviorDraft?: () => void;
   isConfirmingBehaviorDraft: boolean;
   behaviorDraftError?: string;
+  behaviorModelingRequired: boolean;
 }) {
   const [localActiveTab, setLocalActiveTab] = useState<PreviewTab>(activeTab || '图谱');
 
@@ -332,6 +340,12 @@ function PreviewState({ ontology, onCreateProject, isCreatingProject, onEntityCl
 
   return (
     <div className="flex flex-col h-full">
+      {behaviorModelingRequired && (
+        <div className="mx-5 mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-foreground">
+          <span className="font-medium">下一步：业务行为确认。</span>
+          请确认各业务对象的处理动作、输入输出、状态变化、规则与权限；确认后才会写入项目本体。
+        </div>
+      )}
       {/* Tabs */}
       <div className="flex border-b border-border px-5 shrink-0">
         {TABS.map((tab) => (

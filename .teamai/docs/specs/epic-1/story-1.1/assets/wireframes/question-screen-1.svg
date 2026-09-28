@@ -1,0 +1,60 @@
+<svg width="960" height="640" viewBox="0 0 960 640" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect x="0" y="0" width="960" height="640" fill="#0A1929"/>
+
+  <!-- Window Title Bar -->
+  <rect x="0" y="0" width="960" height="48" fill="#1A0F2E"/>
+  <line x1="0" y1="48" x2="960" y2="48" stroke="#B794F6" stroke-width="1"/>
+
+  <!-- Title Content -->
+  <circle cx="920" cy="24" r="6" fill="#EF4444"/>
+  <text x="20" y="30" fill="#E5E7EB" font-family="Arial" font-size="14">OriginOS - 快速开始</text>
+
+  <!-- Progress Indicator -->
+  <rect x="420" y="12" width="120" height="24" rx="12" fill="none" stroke="#00D9FF" stroke-width="1"/>
+  <text x="480" y="29" fill="#00D9FF" font-family="Arial" font-size="12" text-anchor="middle">1/3</text>
+
+  <!-- Back Button -->
+  <rect x="20" y="70" width="80" height="36" rx="4" fill="none" stroke="#374151"/>
+  <text x="60" y="93" fill="#9CA3AF" font-family="Arial" font-size="13" text-anchor="middle">&lt; 返回</text>
+
+  <!-- Question Badge -->
+  <rect x="380" y="120" width="200" height="32" rx="16" fill="none" stroke="#00D9FF" stroke-width="1"/>
+  <text x="480" y="142" fill="#00D9FF" font-family="Arial" font-size="13" text-anchor="middle">问题 1/3</text>
+
+  <!-- Question Title -->
+  <text x="480" y="200" fill="#E5E7EB" font-family="Arial" font-size="24" font-weight="bold" text-anchor="middle">你的工作领域是什么？</text>
+
+  <!-- Question Hint -->
+  <text x="480" y="235" fill="#9CA3AF" font-family="Arial" font-size="14" font-style="italic" text-anchor="middle">例如：互联网产品、人工智能、投资分析...</text>
+
+  <!-- Question Number Circle -->
+  <circle cx="180" cy="220" r="15" fill="#00D9FF" opacity="0.2"/>
+  <text x="180" y="225" fill="#00D9FF" font-family="Arial" font-size="14" font-weight="bold" text-anchor="middle">1</text>
+
+  <!-- Answer Items Preview (not filled) -->
+  <circle cx="200" cy="400" r="12" fill="none" stroke="#374151"/>
+  <rect x="225" y="390" width="500" height="20" fill="#1F2937" opacity="0.5"/>
+  <text x="245" y="405" fill="#6B7280" font-family="Arial" font-size="12">答案将在这里显示...</text>
+
+  <!-- Question 2 (dimmed) -->
+  <circle cx="200" cy="500" r="12" fill="none" stroke="#374151" opacity="0.3"/>
+  <rect x="225" y="490" width="400" height="20" fill="#1F2937" opacity="0.3"/>
+  <text x="245" y="505" fill="#4B5563" font-family="Arial" font-size="12">你的工作模式是什么？</text>
+
+  <!-- Question 3 (dimmed) -->
+  <circle cx="200" cy="560" r="12" fill="none" stroke="#374151" opacity="0.3"/>
+  <rect x="225" y="550" width="400" height="20" fill="#1F2937" opacity="0.3"/>
+  <text x="245" y="565" fill="#4B5563" font-family="Arial" font-size="12">主要任务有哪些？</text>
+
+  <!-- Next Button -->
+  <rect x="700" y="550" width="120" height="40" rx="8" fill="#00D9FF" opacity="0.9"/>
+  <text x="760" y="575" fill="#0A1929" font-family="Arial" font-size="14" font-weight="bold" text-anchor="middle">下一步 &gt;</text>
+
+  <!-- UI Labels -->
+  <text x="20" y="620" fill="#6B7280" font-family="Arial" font-size="10">图例：</text>
+  <circle cx="60" cy="616" r="6" fill="#00D9FF" opacity="0.2"/>
+  <text x="75" y="622" fill="#9CA3AF" font-family="Arial" font-size="10">当前问题</text>
+  <circle cx="140" cy="616" r="6" fill="none" stroke="#374151" opacity="0.3"/>
+  <text x="155" y="622" fill="#9CA3AF" font-family="Arial" font-size="10">未激活问题</text>
+</svg>

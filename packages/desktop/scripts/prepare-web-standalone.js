@@ -5,6 +5,52 @@ const repoRoot = path.resolve(__dirname, '..', '..', '..');
 const source = path.join(repoRoot, 'packages', 'web', '.next', 'standalone');
 const target = path.join(repoRoot, 'packages', 'desktop', '.packaging', 'web-standalone');
 const windowsShortZip = process.env.ORIGINOS_WINDOWS_SHORT_ZIP === '1';
+const workspaceUiPackages = [
+  fs.realpathSync(path.join(repoRoot, 'packages', 'web')),
+  fs.realpathSync(path.join(repoRoot, 'packages', 'desktop')),
+];
+
+function isWorkspaceUiPackage(realPath) {
+  return workspaceUiPackages.some((workspacePath) => (
+    realPath === workspacePath
+    || (!path.relative(workspacePath, realPath).startsWith('..')
+      && !path.isAbsolute(path.relative(workspacePath, realPath)))
+  ));
+}
+
+function destinationIsInsideSource(sourcePath, destinationPath) {
+  const relativePath = path.relative(sourcePath, destinationPath);
+  return relativePath === ''
+    || (relativePath !== '..'
+      && !relativePath.startsWith(`..${path.sep}`)
+      && !path.isAbsolute(relativePath));
+}
+
+function copyStandaloneEntry(sourcePath, destinationPath) {
+  const stats = fs.lstatSync(sourcePath);
+  if (stats.isSymbolicLink()) {
+    const realPath = fs.realpathSync(sourcePath);
+    if (isWorkspaceUiPackage(realPath) || destinationIsInsideSource(realPath, destinationPath)) {
+      return false;
+    }
+    fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
+    fs.symlinkSync(realPath, destinationPath, fs.statSync(realPath).isDirectory() ? 'dir' : 'file');
+    return true;
+  }
+
+  if (stats.isDirectory()) {
+    fs.mkdirSync(destinationPath, { recursive: true });
+    for (const entry of fs.readdirSync(sourcePath)) {
+      copyStandaloneEntry(path.join(sourcePath, entry), path.join(destinationPath, entry));
+    }
+    return true;
+  }
+
+  fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
+  fs.copyFileSync(sourcePath, destinationPath);
+  fs.chmodSync(destinationPath, stats.mode);
+  return true;
+}
 
 if (!fs.existsSync(source)) {
   throw new Error(`Next standalone output not found: ${source}`);
@@ -13,12 +59,9 @@ if (!fs.existsSync(source)) {
 fs.rmSync(target, { recursive: true, force: true });
 fs.mkdirSync(path.dirname(target), { recursive: true });
 
-fs.cpSync(source, target, {
-  recursive: true,
-  dereference: true,
-  errorOnExist: false,
-  force: true,
-});
+// Walk the source before any dereferencing copy. fs.cpSync({ dereference: true })
+// expands workspace links here, before materializeSymlink can guard them.
+copyStandaloneEntry(source, target);
 
 function collectSymlinks(dir) {
   const symlinks = [];
@@ -37,17 +80,16 @@ function collectSymlinks(dir) {
 
 function materializeSymlink(linkPath) {
   const realPath = fs.realpathSync(linkPath);
-  const stats = fs.statSync(realPath);
-  fs.rmSync(linkPath, { recursive: true, force: true });
-  const relativeDestination = path.relative(realPath, linkPath);
-  if (relativeDestination && !relativeDestination.startsWith('..')
-    && !path.isAbsolute(relativeDestination)) {
-    // Workspace package links can point at an ancestor of the packaging tree
-    // (for example @originos/desktop). Copying that ancestor into its own
-    // .packaging directory recurses forever; it is not a runtime dependency
-    // of the standalone Web server, so omit the link from the staged tree.
+  if (isWorkspaceUiPackage(realPath)) {
+    fs.rmSync(linkPath, { recursive: true, force: true });
     return;
   }
+  if (destinationIsInsideSource(realPath, linkPath)) {
+    fs.rmSync(linkPath, { recursive: true, force: true });
+    return;
+  }
+  const stats = fs.statSync(realPath);
+  fs.rmSync(linkPath, { recursive: true, force: true });
   if (stats.isDirectory()) {
     fs.cpSync(realPath, linkPath, {
       recursive: true,
@@ -61,6 +103,13 @@ function materializeSymlink(linkPath) {
 }
 
 function copyPackageIfMissing(packageSource, packageName, destinationNodeModules) {
+  try {
+    if (isWorkspaceUiPackage(fs.realpathSync(packageSource))) {
+      return false;
+    }
+  } catch {
+    // Preserve the existing copy path so the actual filesystem error remains visible.
+  }
   const destination = path.join(destinationNodeModules, ...packageName.split('/'));
   if (fs.existsSync(destination)) {
     return false;

@@ -81,6 +81,28 @@ describe('stable prompt boundary', () => {
     expect(boundary.systemPrompt).toContain('不得读取、同步或创建');
   });
 
+  it('概念与关系已确认但行为契约为空时，恢复业务行为确认阶段', () => {
+    const boundary = buildProjectPromptBoundary(projectContext({
+      ontologyContext: {
+        kind: 'canonical',
+        ontology: {
+          ontologyId: 'ontology-project-1',
+          ontologyVersion: '2.0.0',
+          name: '项目本体',
+          domainCount: 1,
+          conceptCount: 4,
+          relationCount: 3,
+          factTypeCount: 0,
+          actionCount: 0,
+          ruleCount: 0,
+        },
+      },
+    }));
+
+    expect(boundary.systemPrompt).toContain('业务行为确认');
+    expect(boundary.systemPrompt).toContain('save_project_interview_behavior_draft');
+  });
+
   it('新项目访谈把缺少 canonical ontology 视为领域发现的正常起点', () => {
     const boundary = buildProjectPromptBoundary(projectContext());
 

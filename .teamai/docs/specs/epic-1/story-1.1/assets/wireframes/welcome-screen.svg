@@ -1,0 +1,37 @@
+<svg width="960" height="640" viewBox="0 0 960 640" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect x="0" y="0" width="960" height="640" fill="#0A1929"/>
+
+  <!-- Window Title Bar -->
+  <rect x="0" y="0" width="960" height="48" fill="#1A0F2E"/>
+  <text x="20" y="30" fill="#E5E7EB" font-family="Arial" font-size="14">OriginOS</text>
+  <circle cx="920" cy="24" r="6" fill="#EF4444"/>
+  <circle cx="940" cy="24" r="6" fill="#4B5563"/>
+
+  <!-- Logo Area -->
+  <circle cx="480" cy="150" r="40" fill="none" stroke="#00D9FF" stroke-width="2" opacity="0.8"/>
+  <circle cx="480" cy="150" r="25" fill="none" stroke="#B794F6" stroke-width="2" opacity="0.6"/>
+  <circle cx="480" cy="150" r="10" fill="#00D9FF" opacity="0.4"/>
+  <line x1="480" y1="110" x2="480" y2="190" stroke="#00D9FF" stroke-width="2" opacity="0.3"/>
+  <line x1="440" y1="150" x2="520" y2="150" stroke="#00D9FF" stroke-width="2" opacity="0.3"/>
+
+  <!-- Title -->
+  <text x="480" y="240" fill="#E5E7EB" font-family="Arial" font-size="24" font-weight="bold" text-anchor="middle">欢迎来到 OriginOS</text>
+  <text x="480" y="275" fill="#9CA3AF" font-family="Arial" font-size="16" text-anchor="middle">你的 AI Native 个人操作系统</text>
+  <text x="480" y="305" fill="#9CA3AF" font-family="Arial" font-size="16" text-anchor="middle">让我们快速了解你的项目，帮你构建专属的知识图谱</text>
+
+  <!-- Start Button (Primary) -->
+  <rect x="320" y="360" width="320" height="48" rx="12" fill="#00D9FF" opacity="0.9"/>
+  <text x="480" y="392" fill="#0A1929" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle">开始访谈 (5分钟)</text>
+
+  <!-- Skip Button (Secondary) -->
+  <rect x="360" y="440" width="240" height="42" rx="8" fill="none" stroke="#4B5563" stroke-width="1" stroke-dasharray="5,3"/>
+  <text x="480" y="468" fill="#9CA3AF" font-family="Arial" font-size="14" text-anchor="middle">跳过，稍后再说</text>
+
+  <!-- UI Labels -->
+  <text x="20" y="620" fill="#6B7280" font-family="Arial" font-size="10">图例：</text>
+  <rect x="60" y="612" width="12" height="12" fill="#00D9FF" opacity="0.9"/>
+  <text x="78" y="622" fill="#9CA3AF" font-family="Arial" font-size="10">主按钮</text>
+  <rect x="140" y="612" width="12" height="12" fill="none" stroke="#4B5563"/>
+  <text x="158" y="622" fill="#9CA3AF" font-family="Arial" font-size="10">次按钮</text>
+</svg>

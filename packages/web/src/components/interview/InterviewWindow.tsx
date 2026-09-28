@@ -321,6 +321,7 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
   const [activeTab, setActiveTab] = useState<'图谱' | '实体' | '关系' | '行动' | '规则'>('图谱');
   const [legacyMigrationRequired, setLegacyMigrationRequired] = useState(false);
   const [behaviorDraftReview, setBehaviorDraftReview] = useState<BehaviorDraftReviewDto | null>(null);
+  const [behaviorModelingRequired, setBehaviorModelingRequired] = useState(false);
   const [isConfirmingBehaviorDraft, setIsConfirmingBehaviorDraft] = useState(false);
   const [behaviorDraftError, setBehaviorDraftError] = useState<string | undefined>();
   const hasCheckedHistory = useRef(false); // 防止重复触发
@@ -370,10 +371,11 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
       });
       const canonical = await loadProjectCanonicalOntology(resolvedProjectId);
       setLegacyMigrationRequired(canonical.entry.kind === 'legacy_migration_required');
-      const model = canonical.entry.kind === 'canonical' && canonical.ontology
-        ? canonicalToOntologyModel(canonical.ontology)
+      const canonicalOntology = canonical.entry.kind === 'canonical' ? canonical.ontology : undefined;
+      const model = canonicalOntology
+        ? canonicalToOntologyModel(canonicalOntology)
         : null;
-      if (model) {
+      if (model && canonicalOntology) {
         const converted = model;
         console.log('[InterviewWindow] Converted ontology:', {
           totalNodes: converted.nodes.length,
@@ -385,6 +387,17 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
         });
         setOntology(converted);
         setDisplayMode('preview');
+        const needsBehaviorModeling = (
+          canonicalOntology.factTypes.length === 0
+          && canonicalOntology.actions.length === 0
+          && canonicalOntology.rules.length === 0
+          && canonicalOntology.concepts.length > 0
+          && canonicalOntology.relations.length > 0
+        );
+        setBehaviorModelingRequired(needsBehaviorModeling);
+        if (needsBehaviorModeling) {
+          setActiveTab('行动');
+        }
         console.log('[InterviewWindow] Loaded canonical ontology');
       }
       await refreshBehaviorDraft();
@@ -396,24 +409,35 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
   // 发送初始触发消息，启动访谈流程
   // 注意：只在无历史消息时才发送触发消息
   useEffect(() => {
-    if (!isInitialized || hasCheckedHistory.current || piMessages.length > 0 || isThinking) {
+    if (!isInitialized || hasCheckedHistory.current || isThinking) {
       return;
     }
 
     const shouldAutoStart = async () => {
       hasCheckedHistory.current = true;
 
-      // 持久化 Agent 架构下，历史由 piMessages 管理，直接检查即可
-      if (hasSessionHistory(piMessages)) {
-        console.log('[InterviewWindow] Found existing session history, skipping auto-start');
-        return;
-      }
-
       const canonical = await loadProjectCanonicalOntology(resolvedProjectId);
       setLegacyMigrationRequired(canonical.entry.kind === 'legacy_migration_required');
       const existingModel = canonical.entry.kind === 'canonical' && canonical.ontology
         ? canonicalToOntologyModel(canonical.ontology)
         : null;
+      const needsBehaviorModeling = canonical.entry.kind === 'canonical' && canonical.ontology
+        ? canonical.ontology.factTypes.length === 0
+          && canonical.ontology.actions.length === 0
+          && canonical.ontology.rules.length === 0
+          && canonical.ontology.concepts.length > 0
+          && canonical.ontology.relations.length > 0
+        : false;
+      setBehaviorModelingRequired(needsBehaviorModeling);
+      if (hasSessionHistory(piMessages)) {
+        if (needsBehaviorModeling) {
+          console.log('[InterviewWindow] Resuming behavior confirmation for existing interview', { resolvedProjectId });
+          triggerGreeting().catch(console.error);
+        } else {
+          console.log('[InterviewWindow] Found existing session history, skipping auto-start');
+        }
+        return;
+      }
       if (existingModel) {
         console.log('[InterviewWindow] Existing canonical ontology found, triggering review mode', { resolvedProjectId });
         // 已有模型：显示已有数据，触发 Agent 生成审阅问候语
@@ -572,6 +596,7 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
               onConfirmBehaviorDraft={handleConfirmBehaviorDraft}
               isConfirmingBehaviorDraft={isConfirmingBehaviorDraft}
               behaviorDraftError={behaviorDraftError}
+              behaviorModelingRequired={behaviorModelingRequired}
             />
           }
           defaultLeftWidth={400}

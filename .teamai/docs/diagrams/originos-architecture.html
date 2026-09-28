@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OriginOS Architecture Diagram</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js" integrity="sha384-en/ztfPSRkGfME4KIm05joYXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/" crossorigin="anonymous"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'JetBrains Mono', monospace;
+      background: #020617;
+      min-height: 100vh;
+      padding: 2rem;
+      color: white;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .header {
+      margin-bottom: 2rem;
+    }
+
+    .header-row {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .pulse-dot {
+      width: 12px;
+      height: 12px;
+      background: #22d3ee;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+    }
+
+    .subtitle {
+      color: #94a3b8;
+      font-size: 0.875rem;
+      margin-left: 1.75rem;
+    }
+
+    .diagram-container {
+      background: rgba(15, 23, 42, 0.5);
+      border-radius: 1rem;
+      border: 1px solid #1e293b;
+      padding: 1.5rem;
+      overflow-x: auto;
+    }
+
+    svg {
+      width: 100%;
+      min-width: 900px;
+      display: block;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1rem;
+      margin-top: 2rem;
+    }
+
+    .card {
+      background: rgba(15, 23, 42, 0.5);
+      border-radius: 0.75rem;
+      border: 1px solid #1e293b;
+      padding: 1.25rem;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .card-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    .card-dot.cyan { background: #22d3ee; }
+    .card-dot.emerald { background: #34d399; }
+    .card-dot.violet { background: #a78bfa; }
+    .card-dot.amber { background: #fbbf24; }
+    .card-dot.rose { background: #fb7185; }
+
+    .card h3 {
+      font-size: 0.875rem;
+      font-weight: 600;
+    }
+
+    .card ul {
+      list-style: none;
+      color: #94a3b8;
+      font-size: 0.75rem;
+    }
+
+    .card li {
+      margin-bottom: 0.375rem;
+    }
+
+    .footer {
+      text-align: center;
+      margin-top: 1.5rem;
+      color: #475569;
+      font-size: 0.75rem;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 0.5rem;
+      margin-left: auto;
+      flex-shrink: 0;
+      align-items: center;
+    }
+    .toolbar-toggle {
+      background: transparent;
+      border: none;
+      color: #475569;
+      cursor: pointer;
+      font-size: 1.25rem;
+      line-height: 1;
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.375rem;
+      transition: color 0.2s, background 0.2s;
+    }
+    .toolbar-toggle:hover { color: #94a3b8; background: rgba(30, 41, 59, 0.5); }
+    .toolbar-actions {
+      display: none;
+      gap: 0.5rem;
+    }
+    .toolbar.expanded .toolbar-actions { display: flex; }
+    .toolbar-actions button {
+      background: rgba(30, 41, 59, 0.8);
+      border: 1px solid #334155;
+      color: #94a3b8;
+      padding: 0.375rem 0.75rem;
+      border-radius: 0.375rem;
+      font-family: inherit;
+      font-size: 0.75rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .toolbar-actions button:hover {
+      background: rgba(51, 65, 85, 0.8);
+      color: white;
+      border-color: #475569;
+    }
+
+    @media print {
+      body { background: #020617; padding: 1rem; }
+      .toolbar { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container" id="report-container">
+    <!-- Header -->
+    <div class="header">
+      <div class="header-row">
+        <div class="pulse-dot"></div>
+        <h1>OriginOS Architecture</h1>
+        <div class="toolbar">
+          <div class="toolbar-actions">
+            <button onclick="copyAsImage(this)">📋 Copy</button>
+            <button onclick="downloadPNG(this)">🖼️ PNG</button>
+            <button onclick="downloadPDF(this)">📄 PDF</button>
+          </div>
+          <button class="toolbar-toggle" onclick="this.parentElement.classList.toggle('expanded')" title="Export options" aria-label="Export options">⋯</button>
+        </div>
+      </div>
+      <p class="subtitle">AI Native OS — Pi Agent 驱动的三层架构 · 多 Agent 协作运行时 · 记忆核心 · v2.4.0</p>
+    </div>
+
+    <!-- Main Diagram -->
+    <div class="diagram-container">
+      <svg viewBox="0 0 1100 1200">
+        <!-- Definitions -->
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
+          </marker>
+          <marker id="arrowhead-cyan" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#22d3ee" />
+          </marker>
+          <marker id="arrowhead-emerald" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#34d399" />
+          </marker>
+          <marker id="arrowhead-violet" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#a78bfa" />
+          </marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+
+        <!-- Background Grid -->
+        <rect width="100%" height="100%" fill="url(#grid)" />
+
+        <!-- ============================
+             TIER 1: USER / FRONTEND
+             ============================ -->
+
+        <!-- Boundary: Web Tier (cyan dashed) -->
+        <rect x="20" y="30" width="500" height="280" rx="10" fill="rgba(8, 51, 68, 0.1)" stroke="#22d3ee" stroke-width="1" stroke-dasharray="4,4"/>
+        <text x="32" y="48" fill="#22d3ee" font-size="9" font-weight="600">Layer 4-5: Web / Presentation</text>
+
+        <!-- User -->
+        <rect x="40" y="60" width="140" height="50" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="110" y="80" fill="white" font-size="11" font-weight="600" text-anchor="middle">User / Browser</text>
+        <text x="110" y="96" fill="#94a3b8" font-size="8" text-anchor="middle">Next.js Web App</text>
+
+        <!-- Pages (app/) -->
+        <rect x="40" y="140" width="140" height="50" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="110" y="160" fill="white" font-size="10" font-weight="600" text-anchor="middle">Pages (app/)</text>
+        <text x="110" y="176" fill="#94a3b8" font-size="8" text-anchor="middle">App Router</text>
+
+        <!-- Components -->
+        <rect x="210" y="140" width="140" height="50" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="280" y="160" fill="white" font-size="10" font-weight="600" text-anchor="middle">Components</text>
+        <text x="280" y="176" fill="#94a3b8" font-size="8" text-anchor="middle">shadcn/ui + Zustand</text>
+
+        <!-- AppWindowManager -->
+        <rect x="380" y="60" width="120" height="50" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="440" y="80" fill="white" font-size="10" font-weight="600" text-anchor="middle">Window Manager</text>
+        <text x="440" y="96" fill="#94a3b8" font-size="8" text-anchor="middle">AppWindowManager</text>
+
+        <!-- MultiAgentLauncher UI -->
+        <rect x="380" y="140" width="120" height="50" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="440" y="160" fill="white" font-size="10" font-weight="600" text-anchor="middle">Collaboration UI</text>
+        <text x="440" y="176" fill="#94a3b8" font-size="8" text-anchor="middle">MultiAgentLauncher</text>
+
+        <!-- API Routes (app/api/) -->
+        <rect x="120" y="230" width="300" height="60" rx="8" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="270" y="252" fill="white" font-size="11" font-weight="600" text-anchor="middle">API Routes (app/api/)</text>
+        <text x="270" y="268" fill="#94a3b8" font-size="8" text-anchor="middle">/agent/sessions/ · /collaboration/sessions/ · /skills/ · /projects/ · /ontology/</text>
+        <text x="270" y="282" fill="#94a3b8" font-size="8" text-anchor="middle">SSE Real-time Streaming</text>
+
+        <!-- ============================
+             TIER 2: LIB / SERVICE LAYER
+             ============================ -->
+
+        <!-- Boundary: Service Tier (emerald dashed) -->
+        <rect x="20" y="340" width="500" height="400" rx="10" fill="rgba(6, 78, 59, 0.1)" stroke="#34d399" stroke-width="1" stroke-dasharray="4,4"/>
+        <text x="32" y="358" fill="#34d399" font-size="9" font-weight="600">Layer 1-3: Service / Integration / Storage</text>
+
+        <!-- lib/features/ -->
+        <rect x="40" y="370" width="140" height="50" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="110" y="390" fill="white" font-size="10" font-weight="600" text-anchor="middle">Features</text>
+        <text x="110" y="406" fill="#94a3b8" font-size="8" text-anchor="middle">agent/ culture/ interview/</text>
+
+        <!-- lib/integrations/pi-agent/ -->
+        <rect x="210" y="370" width="140" height="80" rx="8" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="280" y="392" fill="white" font-size="10" font-weight="600" text-anchor="middle">Pi Agent Core</text>
+        <text x="280" y="408" fill="#94a3b8" font-size="8" text-anchor="middle">core/agent.ts</text>
+        <text x="280" y="422" fill="#94a3b8" font-size="8" text-anchor="middle">role-agent/ · project-agent/</text>
+        <text x="280" y="436" fill="#94a3b8" font-size="8" text-anchor="middle">tools/ hooks/</text>
+
+        <!-- lib/integrations/claude-code/ -->
+        <rect x="380" y="370" width="120" height="50" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="440" y="390" fill="white" font-size="10" font-weight="600" text-anchor="middle">Claude Code</text>
+        <text x="440" y="406" fill="#94a3b8" font-size="8" text-anchor="middle">Intent / Query</text>
+
+        <!-- lib/storage/ -->
+        <rect x="40" y="450" width="140" height="50" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="110" y="470" fill="white" font-size="10" font-weight="600" text-anchor="middle">Storage</text>
+        <text x="110" y="486" fill="#94a3b8" font-size="8" text-anchor="middle">JsonStore (JSON files)</text>
+
+        <!-- Ontology System -->
+        <rect x="210" y="480" width="140" height="60" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="280" y="500" fill="white" font-size="10" font-weight="600" text-anchor="middle">Ontology System</text>
+        <text x="280" y="516" fill="#94a3b8" font-size="8" text-anchor="middle">Domain → Concept → Instance</text>
+        <text x="280" y="530" fill="#94a3b8" font-size="8" text-anchor="middle">data/ontology/</text>
+
+        <!-- Skill System -->
+        <rect x="380" y="450" width="120" height="50" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="440" y="470" fill="white" font-size="10" font-weight="600" text-anchor="middle">Skill System</text>
+        <text x="440" y="486" fill="#94a3b8" font-size="8" text-anchor="middle">bundled / project / user</text>
+
+        <!-- Collaboration Runtime Service -->
+        <rect x="40" y="530" width="140" height="60" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="110" y="550" fill="white" font-size="10" font-weight="600" text-anchor="middle">Collab Service</text>
+        <text x="110" y="566" fill="#94a3b8" font-size="8" text-anchor="middle">session management</text>
+        <text x="110" y="580" fill="#94a3b8" font-size="8" text-anchor="middle">SSE / HITL / persistence</text>
+
+        <!-- Multi-Agent Executor Bridge -->
+        <rect x="210" y="570" width="140" height="60" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="280" y="590" fill="white" font-size="10" font-weight="600" text-anchor="middle">Executor Bridge</text>
+        <text x="280" y="606" fill="#94a3b8" font-size="8" text-anchor="middle">DAG / Supervisor modes</text>
+        <text x="280" y="620" fill="#94a3b8" font-size="8" text-anchor="middle">event-mapper / agent-bridge</text>
+
+        <!-- Filesystem (data/) -->
+        <rect x="380" y="530" width="120" height="60" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="440" y="550" fill="white" font-size="10" font-weight="600" text-anchor="middle">Filesystem</text>
+        <text x="440" y="566" fill="#94a3b8" font-size="8" text-anchor="middle">data/projects/</text>
+        <text x="440" y="580" fill="#94a3b8" font-size="8" text-anchor="middle">data/agents/</text>
+
+        <!-- ============================
+             TIER 3: COLLABORATION MODULE
+             ============================ -->
+
+        <!-- Boundary: Collaboration Runtime (amber dashed) -->
+        <rect x="20" y="770" width="500" height="280" rx="10" fill="rgba(120, 53, 15, 0.08)" stroke="#fbbf24" stroke-width="1" stroke-dasharray="4,4"/>
+        <text x="32" y="788" fill="#fbbf24" font-size="9" font-weight="600">modules/collaboration-runtime/ (Epic 9)</text>
+
+        <!-- Session Layer -->
+        <rect x="40" y="800" width="140" height="70" rx="6" fill="rgba(251, 146, 60, 0.3)" stroke="#fb923c" stroke-width="1.5"/>
+        <text x="110" y="820" fill="white" font-size="10" font-weight="600" text-anchor="middle">Session Layer</text>
+        <text x="110" y="836" fill="#94a3b8" font-size="8" text-anchor="middle">Blackboard</text>
+        <text x="110" y="850" fill="#94a3b8" font-size="8" text-anchor="middle">FsEventStore (JSONL)</text>
+        <text x="110" y="864" fill="#94a3b8" font-size="8" text-anchor="middle">OrphanReconciler</text>
+
+        <!-- Engine -->
+        <rect x="210" y="800" width="140" height="70" rx="6" fill="rgba(251, 146, 60, 0.3)" stroke="#fb923c" stroke-width="1.5"/>
+        <text x="280" y="820" fill="white" font-size="10" font-weight="600" text-anchor="middle">Engine</text>
+        <text x="280" y="836" fill="#94a3b8" font-size="8" text-anchor="middle">DagExecutor (Workflow)</text>
+        <text x="280" y="850" fill="#94a3b8" font-size="8" text-anchor="middle">SupervisorMode</text>
+        <text x="280" y="864" fill="#94a3b8" font-size="8" text-anchor="middle">ConflictDetector</text>
+
+        <!-- Protocol -->
+        <rect x="380" y="800" width="120" height="50" rx="6" fill="rgba(251, 146, 60, 0.3)" stroke="#fb923c" stroke-width="1.5"/>
+        <text x="440" y="820" fill="white" font-size="10" font-weight="600" text-anchor="middle">Protocol</text>
+        <text x="440" y="836" fill="#94a3b8" font-size="8" text-anchor="middle">ACL / ContractNet</text>
+
+        <!-- Sandbox / AgentSpawner -->
+        <rect x="40" y="900" width="280" height="70" rx="8" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
+        <text x="180" y="922" fill="white" font-size="11" font-weight="600" text-anchor="middle">Sandbox / AgentSpawner</text>
+        <text x="180" y="938" fill="#94a3b8" font-size="8" text-anchor="middle">npx tsx → Agent Worker subprocess</text>
+        <text x="180" y="952" fill="#94a3b8" font-size="8" text-anchor="middle">stdio JSON Line protocol · HITL pause/resume</text>
+        <text x="180" y="966" fill="#94a3b8" font-size="8" text-anchor="middle">Node.js sandbox · fileOps · bash tools</text>
+
+        <!-- Observability -->
+        <rect x="350" y="900" width="150" height="70" rx="6" fill="rgba(251, 146, 60, 0.3)" stroke="#fb923c" stroke-width="1.5"/>
+        <text x="425" y="920" fill="white" font-size="10" font-weight="600" text-anchor="middle">Observability</text>
+        <text x="425" y="936" fill="#94a3b8" font-size="8" text-anchor="middle">Logging · Metrics · Tracing</text>
+        <text x="425" y="950" fill="#94a3b8" font-size="8" text-anchor="middle">CostController</text>
+        <text x="425" y="964" fill="#94a3b8" font-size="8" text-anchor="middle">CircuitBreaker</text>
+
+        <!-- ============================
+             TIER 4: AGENT WORKER SUBPROCESS
+             ============================ -->
+
+        <!-- Boundary: Agent Worker (violet dashed) -->
+        <rect x="560" y="800" width="520" height="370" rx="10" fill="rgba(76, 29, 149, 0.08)" stroke="#a78bfa" stroke-width="1" stroke-dasharray="4,4"/>
+        <text x="572" y="818" fill="#a78bfa" font-size="9" font-weight="600">Agent Worker Subprocess (stdio JSON Line)</text>
+
+        <!-- Agent Worker Entry -->
+        <rect x="580" y="830" width="480" height="50" rx="8" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="820" y="850" fill="white" font-size="11" font-weight="600" text-anchor="middle">agent-worker.mts (Worker Entry)</text>
+        <text x="820" y="866" fill="#94a3b8" font-size="8" text-anchor="middle">initializeOriginOSAgent() / initializeProjectAgent() / initializeSupervisorAgent()</text>
+
+        <!-- 7-Layer System Prompt -->
+        <rect x="580" y="900" width="220" height="100" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="690" y="920" fill="white" font-size="10" font-weight="600" text-anchor="middle">7-Layer System Prompt</text>
+        <text x="690" y="940" fill="#94a3b8" font-size="8" text-anchor="middle">1. Identity (Agent.md)</text>
+        <text x="690" y="954" fill="#94a3b8" font-size="8" text-anchor="middle">2. StateMemory (Memory/Knowledge/Patterns)</text>
+        <text x="690" y="968" fill="#94a3b8" font-size="8" text-anchor="middle">3. Thinking Loop (5-step reasoning)</text>
+        <text x="690" y="982" fill="#94a3b8" font-size="8" text-anchor="middle">4. Toolbox (skills + system tools)</text>
+        <text x="690" y="996" fill="#94a3b8" font-size="8" text-anchor="middle">5. Style (Taste.md) · 6. CWD · 7. Security</text>
+
+        <!-- Agent Types -->
+        <rect x="820" y="900" width="240" height="100" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="940" y="920" fill="white" font-size="10" font-weight="600" text-anchor="middle">Agent Types</text>
+        <text x="940" y="940" fill="#22d3ee" font-size="9" font-weight="500" text-anchor="middle">RoleAgent — State machine driven</text>
+        <text x="940" y="958" fill="#34d399" font-size="9" font-weight="500" text-anchor="middle">ProjectAgent — Context driven</text>
+        <text x="940" y="976" fill="#fbbf24" font-size="9" font-weight="500" text-anchor="middle">SupervisorAgent — Coordinator (read-only tools)</text>
+        <text x="940" y="994" fill="#94a3b8" font-size="8" text-anchor="middle">TaskAgent — Lightweight (post-MVP)</text>
+
+        <!-- Agent Working Directory Files -->
+        <rect x="580" y="1020" width="220" height="120" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="690" y="1040" fill="white" font-size="10" font-weight="600" text-anchor="middle">Agent Working Directory</text>
+        <text x="690" y="1058" fill="#94a3b8" font-size="8" text-anchor="middle">Agent.md · Role.md · Tool.md</text>
+        <text x="690" y="1072" fill="#94a3b8" font-size="8" text-anchor="middle">Taste.md · Memory.md</text>
+        <text x="690" y="1086" fill="#94a3b8" font-size="8" text-anchor="middle">Knowledge.md · Patterns.md</text>
+        <text x="690" y="1100" fill="#94a3b8" font-size="8" text-anchor="middle">.skills/ (symlinks)</text>
+        <text x="690" y="1114" fill="#94a3b8" font-size="8" text-anchor="middle">memory/ · knowledge/ · patterns/</text>
+        <text x="690" y="1128" fill="#94a3b8" font-size="8" text-anchor="middle">practice/ (JSONL turns)</text>
+
+        <!-- Tools -->
+        <rect x="820" y="1020" width="240" height="120" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="940" y="1040" fill="white" font-size="10" font-weight="600" text-anchor="middle">Agent Tools</text>
+        <text x="940" y="1060" fill="#94a3b8" font-size="8" text-anchor="middle">File Tools (read/write/list/exists)</text>
+        <text x="940" y="1074" fill="#94a3b8" font-size="8" text-anchor="middle">Bash Tools (sandboxed execution)</text>
+        <text x="940" y="1088" fill="#94a3b8" font-size="8" text-anchor="middle">Ontology Tools (query/modify)</text>
+        <text x="940" y="1102" fill="#94a3b8" font-size="8" text-anchor="middle">Skill Tools (dynamic loading)</text>
+        <text x="940" y="1116" fill="#94a3b8" font-size="8" text-anchor="middle">Coordinator Tools (dispatch/wait/verify)</text>
+        <text x="940" y="1130" fill="#94a3b8" font-size="8" text-anchor="middle">Blackboard Tools (bb_read/write/notify)</text>
+
+        <!-- Cognitive System -->
+        <rect x="580" y="1160" width="480" height="0" rx="6" fill="rgba(251, 146, 60, 0.3)" stroke="#fb923c" stroke-width="1.5"/>
+
+        <!-- ============================
+             TIER 5: MEMORY CORE (side panel)
+             ============================ -->
+
+        <!-- Boundary: Memory Core (rose dashed) -->
+        <rect x="560" y="300" width="520" height="460" rx="10" fill="rgba(136, 19, 55, 0.06)" stroke="#fb7185" stroke-width="1" stroke-dasharray="4,4"/>
+        <text x="572" y="318" fill="#fb7185" font-size="9" font-weight="600">Memory Core (Epic M) / Cognitive System (Epic C)</text>
+
+        <!-- CognitiveManager -->
+        <rect x="580" y="330" width="230" height="80" rx="8" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
+        <text x="695" y="352" fill="white" font-size="10" font-weight="600" text-anchor="middle">CognitiveManager</text>
+        <text x="695" y="370" fill="#22d3ee" font-size="8" text-anchor="middle">KnowledgeProvider</text>
+        <text x="695" y="384" fill="#34d399" font-size="8" text-anchor="middle">PatternProvider</text>
+        <text x="695" y="398" fill="#fbbf24" font-size="8" text-anchor="middle">MemoryProvider</text>
+
+        <!-- Memory Layer 1: Core Memory -->
+        <rect x="830" y="330" width="230" height="80" rx="8" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="945" y="352" fill="white" font-size="10" font-weight="600" text-anchor="middle">Core Memory (Blocks)</text>
+        <text x="945" y="370" fill="#94a3b8" font-size="8" text-anchor="middle">Semantic / Factual / Procedural</text>
+        <text x="945" y="384" fill="#94a3b8" font-size="8" text-anchor="middle">Memory Block Manager</text>
+        <text x="945" y="398" fill="#94a3b8" font-size="8" text-anchor="middle">Frozen Snapshot → Layer 2 prompt</text>
+
+        <!-- Memory Layer 2: Archival Memory -->
+        <rect x="580" y="430" width="230" height="80" rx="8" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="695" y="452" fill="white" font-size="10" font-weight="600" text-anchor="middle">Archival Memory</text>
+        <text x="695" y="470" fill="#94a3b8" font-size="8" text-anchor="middle">ONNX Embeddings + HNSW Index</text>
+        <text x="695" y="484" fill="#94a3b8" font-size="8" text-anchor="middle">Semantic Vector Search</text>
+        <text x="695" y="498" fill="#94a3b8" font-size="8" text-anchor="middle">RecallMemory.searchSemantic()</text>
+
+        <!-- Memory Layer 3: Recall Memory -->
+        <rect x="830" y="430" width="230" height="80" rx="8" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="945" y="452" fill="white" font-size="10" font-weight="600" text-anchor="middle">Recall Memory</text>
+        <text x="945" y="470" fill="#94a3b8" font-size="8" text-anchor="middle">JSONL Conversation History</text>
+        <text x="945" y="484" fill="#94a3b8" font-size="8" text-anchor="middle">Cursor-based Incremental Read</text>
+        <text x="945" y="498" fill="#94a3b8" font-size="8" text-anchor="middle">memory/history.jsonl</text>
+
+        <!-- Dream System -->
+        <rect x="580" y="530" width="230" height="60" rx="6" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
+        <text x="695" y="550" fill="white" font-size="10" font-weight="600" text-anchor="middle">Dream System</text>
+        <text x="695" y="566" fill="#94a3b8" font-size="8" text-anchor="middle">Phase 1: LLM Analysis → [ADD]/[UPDATE]/[REMOVE]</text>
+        <text x="695" y="580" fill="#94a3b8" font-size="8" text-anchor="middle">Phase 2: Precise File Editing of Memory.md</text>
+
+        <!-- Knowledge / Pattern Stores -->
+        <rect x="830" y="530" width="230" height="60" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="945" y="550" fill="white" font-size="10" font-weight="600" text-anchor="middle">Knowledge &amp; Pattern Stores</text>
+        <text x="945" y="566" fill="#94a3b8" font-size="8" text-anchor="middle">knowledge/wiki/ · knowledge/ontology/</text>
+        <text x="945" y="580" fill="#94a3b8" font-size="8" text-anchor="middle">patterns/registry.json · pattern-{id}.md</text>
+
+        <!-- Practice Log -->
+        <rect x="580" y="610" width="480" height="50" rx="6" fill="rgba(251, 146, 60, 0.3)" stroke="#fb923c" stroke-width="1.5"/>
+        <text x="820" y="630" fill="white" font-size="10" font-weight="600" text-anchor="middle">Practice Log (on_turn_end)</text>
+        <text x="820" y="646" fill="#94a3b8" font-size="8" text-anchor="middle">practice/turns/turn-{N}.json → Session-end Batch Analysis → Knowledge Extraction + Pattern Refinement</text>
+
+        <!-- ============================
+             COLLABORATION DATA FLOW (right side)
+             ============================ -->
+
+        <!-- LLM External -->
+        <rect x="580" y="680" width="480" height="50" rx="8" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="820" y="700" fill="white" font-size="10" font-weight="600" text-anchor="middle">LLM Backend (Claude / GPT / Gemini)</text>
+        <text x="820" y="716" fill="#94a3b8" font-size="8" text-anchor="middle">ANTHROPIC_BASE_URL / OPENAI_BASE_URL / GOOGLE_API_KEY</text>
+
+        <!-- Multi-Agent Execution Modes -->
+        <rect x="580" y="750" width="230" height="50" rx="6" fill="rgba(251, 146, 60, 0.3)" stroke="#fb923c" stroke-width="1.5"/>
+        <text x="695" y="770" fill="white" font-size="10" font-weight="600" text-anchor="middle">Execution Modes</text>
+        <text x="695" y="786" fill="#94a3b8" font-size="8" text-anchor="middle">Workflow (DAG) · System (Blackboard)</text>
+
+        <!-- HITL -->
+        <rect x="830" y="750" width="230" height="50" rx="6" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
+        <text x="945" y="770" fill="white" font-size="10" font-weight="600" text-anchor="middle">HITL (Human-in-the-Loop)</text>
+        <text x="945" y="786" fill="#94a3b8" font-size="8" text-anchor="middle">pause → HUMAN_REVIEW_REQUEST → resume</text>
+
+        <!-- ============================
+             ARROWS / CONNECTIONS
+             ============================ -->
+
+        <!-- User → Pages -->
+        <line x1="110" y1="110" x2="110" y2="138" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead-cyan)"/>
+
+        <!-- Pages → Components -->
+        <line x1="180" y1="165" x2="208" y2="165" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead-cyan)"/>
+
+        <!-- Components → API Routes -->
+        <line x1="280" y1="190" x2="280" y2="228" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead-cyan)"/>
+
+        <!-- Window Manager → Pages -->
+        <line x1="440" y1="110" x2="250" y2="140" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead-cyan)"/>
+
+        <!-- Collab UI → API Routes -->
+        <line x1="440" y1="190" x2="440" y2="228" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead-cyan)"/>
+
+        <!-- API Routes → Features -->
+        <line x1="150" y1="290" x2="120" y2="368" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-emerald)"/>
+
+        <!-- API Routes → Pi Agent Core -->
+        <line x1="270" y1="290" x2="280" y2="368" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-emerald)"/>
+
+        <!-- API Routes → Collab Service -->
+        <line x1="180" y1="290" x2="110" y2="528" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-emerald)"/>
+
+        <!-- Pi Agent Core → Claude Code -->
+        <line x1="350" y1="395" x2="378" y2="395" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-emerald)"/>
+
+        <!-- Pi Agent Core → Skill System -->
+        <line x1="350" y1="410" x2="378" y2="470" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-emerald)"/>
+
+        <!-- Pi Agent Core → Ontology -->
+        <line x1="300" y1="450" x2="300" y2="478" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowhead-violet)"/>
+
+        <!-- Features → Storage -->
+        <line x1="110" y1="420" x2="110" y2="448" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowhead-violet)"/>
+
+        <!-- Collab Service → Executor Bridge -->
+        <line x1="160" y1="590" x2="208" y2="595" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-emerald)"/>
+
+        <!-- Collab Service → Filesystem -->
+        <path d="M 180 560 Q 280 560 380 550" fill="none" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowhead-violet)"/>
+
+        <!-- Executor Bridge → Sandbox -->
+        <line x1="280" y1="630" x2="280" y2="768" stroke="#fb7185" stroke-width="1.5" marker-end="url(#arrowhead)" stroke-dasharray="4,4"/>
+        <text x="300" y="700" fill="#fb7185" font-size="8">spawn</text>
+
+        <!-- Sandbox → Agent Worker (cross-tier) -->
+        <line x1="320" y1="935" x2="578" y2="855" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowhead-violet)"/>
+        <text x="440" y="905" fill="#a78bfa" font-size="8">stdio (JSON Line)</text>
+
+        <!-- Agent Worker → LLM -->
+        <line x1="820" y1="880" x2="820" y2="678" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <text x="835" y="780" fill="#94a3b8" font-size="8">API</text>
+
+        <!-- Agent Worker → HITL -->
+        <line x1="900" y1="880" x2="945" y2="798" stroke="#fb7185" stroke-width="1.5" marker-end="url(#arrowhead)" stroke-dasharray="4,4"/>
+
+        <!-- HITL → Agent Worker (resume) -->
+        <line x1="980" y1="750" x2="980" y2="878" stroke="#fb7185" stroke-width="1.5" marker-end="url(#arrowhead)" stroke-dasharray="4,4"/>
+        <text x="995" y="820" fill="#fb7185" font-size="7">resume</text>
+
+        <!-- CognitiveManager → Core Memory -->
+        <line x1="810" y1="370" x2="828" y2="370" stroke="#fb7185" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+
+        <!-- CognitiveManager → Archival -->
+        <line x1="695" y1="410" x2="695" y2="428" stroke="#fb7185" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+
+        <!-- Core Memory → Archival -->
+        <line x1="870" y1="410" x2="870" y2="428" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+
+        <!-- Archival → Dream -->
+        <line x1="640" y1="510" x2="640" y2="528" stroke="#fb7185" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+
+        <!-- Dream → Knowledge/Pattern -->
+        <line x1="810" y1="560" x2="828" y2="560" stroke="#fb7185" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+
+        <!-- Practice Log → CognitiveManager (feedback loop) -->
+        <path d="M 580 635 Q 560 500 578 370" fill="none" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrowhead)" stroke-dasharray="4,4"/>
+        <text x="558" y="500" fill="#fb923c" font-size="7">batch</text>
+
+        <!-- Agent Worker → Practice Log -->
+        <line x1="820" y1="1020" x2="820" y2="660" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrowhead)" stroke-dasharray="4,4"/>
+        <text x="835" y="850" fill="#fb923c" font-size="7">turns</text>
+
+        <!-- Execution Modes → Agent Worker -->
+        <line x1="695" y1="800" x2="695" y2="828" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+
+        <!-- ============================
+             LEGEND
+             ============================ -->
+        <text x="820" y="30" fill="white" font-size="10" font-weight="600">Legend</text>
+
+        <rect x="820" y="42" width="16" height="10" rx="2" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1"/>
+        <text x="842" y="50" fill="#94a3b8" font-size="8">Frontend / Web</text>
+
+        <rect x="820" y="58" width="16" height="10" rx="2" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1"/>
+        <text x="842" y="66" fill="#94a3b8" font-size="8">Backend / Service</text>
+
+        <rect x="920" y="42" width="16" height="10" rx="2" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="942" y="50" fill="#94a3b8" font-size="8">Agent / Memory</text>
+
+        <rect x="920" y="58" width="16" height="10" rx="2" fill="rgba(251, 146, 60, 0.3)" stroke="#fb923c" stroke-width="1"/>
+        <text x="942" y="66" fill="#94a3b8" font-size="8">Collaboration Runtime</text>
+
+        <rect x="820" y="74" width="16" height="10" rx="2" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1"/>
+        <text x="842" y="82" fill="#94a3b8" font-size="8">Security / HITL</text>
+
+        <line x1="920" y1="79" x2="936" y2="79" stroke="#fb7185" stroke-width="1" stroke-dasharray="3,3"/>
+        <text x="942" y="82" fill="#94a3b8" font-size="8">HITL Flow</text>
+
+        <rect x="820" y="90" width="16" height="10" rx="2" fill="transparent" stroke="#fb7185" stroke-width="1" stroke-dasharray="3,3"/>
+        <text x="842" y="98" fill="#94a3b8" font-size="8">Boundary Group</text>
+      </svg>
+    </div>
+
+    <!-- Info Cards -->
+    <div class="cards">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot cyan"></div>
+          <h3>Web / Presentation Layer</h3>
+        </div>
+        <ul>
+          <li>• Next.js App Router (页面/组件/API路由)</li>
+          <li>• Zustand 状态管理 + shadcn/ui 组件库</li>
+          <li>• AppWindowManager 窗体管理</li>
+          <li>• SSE 实时事件流推送</li>
+          <li>• Collaboration UI (MultiAgentLauncher + TopologyGraph)</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot emerald"></div>
+          <h3>Service / Integration Layer</h3>
+        </div>
+        <ul>
+          <li>• Pi Agent Core (core/agent.ts) — Agent 生命周期</li>
+          <li>• RoleAgent / ProjectAgent / SupervisorAgent 三类型</li>
+          <li>• 7 层 System Prompt (Identity → Security)</li>
+          <li>• 本体系统 (Domain → Concept → Instance)</li>
+          <li>• Skill 多源加载 (bundled / project / user)</li>
+          <li>• 文件系统 JSON 存储 (无数据库 MVP)</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot amber"></div>
+          <h3>Collaboration Runtime (Epic 9)</h3>
+        </div>
+        <ul>
+          <li>• 三层进程隔离: Web → Runtime → Agent 子进程</li>
+          <li>• Session 层: Blackboard + FsEventStore + OrphanReconciler</li>
+          <li>• Engine: DagExecutor (Workflow) + SupervisorMode</li>
+          <li>• Protocol: ACL 消息 + ContractNet 招标-投标</li>
+          <li>• Sandbox: npx tsx Agent Worker + stdio JSON Line</li>
+          <li>• Observability: Logging/Metrics/Tracing/Cost/CircuitBreaker</li>
+          <li>• HITL: pause/resume 通过 AgentProcess.resume()</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot violet"></div>
+          <h3>Memory Core + Cognitive System</h3>
+        </div>
+        <ul>
+          <li>• Core Memory: Semantic/Factual/Procedural Blocks</li>
+          <li>• Archival Memory: ONNX + HNSW 语义向量检索</li>
+          <li>• Recall Memory: JSONL 对话历史 + cursor 增量读取</li>
+          <li>• Dream: LLM 分析 → [ADD/UPDATE/REMOVE] → 精准编辑</li>
+          <li>• CognitiveManager: KnowledgeProvider + PatternProvider</li>
+          <li>• Practice Log: on_turn_end → 周期批量分析</li>
+          <li>• Frozen Snapshot: 启动时加载知识快照到 Layer 2</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <p class="footer">
+      OriginOS v2.4.0 · AGENTS.md · Next.js App Router · Pi Agent Driven · 5-Layer Dependency Hierarchy · 3 Agent Types · 7-Layer System Prompt · 2026-05-22
+    </p>
+  </div>
+
+  <script>
+    async function copyAsImage(btn) {
+      const orig = btn.textContent;
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        btn.textContent = '✓ Copied!';
+      } catch (e) {
+        btn.textContent = '✗ Failed';
+      }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+
+    async function downloadPNG(btn) {
+      const orig = btn.textContent;
+      btn.textContent = '⏳ ...';
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const link = document.createElement('a');
+        link.download = 'originos-architecture.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        btn.textContent = '✓ Done!';
+      } catch (e) {
+        btn.textContent = '✗ Failed';
+      }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+
+    async function downloadPDF(btn) {
+      const orig = btn.textContent;
+      btn.textContent = '⏳ ...';
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const imgData = canvas.toDataURL('image/png');
+        const { jsPDF } = window.jspdf;
+        const orientation = canvas.width > canvas.height ? 'landscape' : 'portrait';
+        const pdf = new jsPDF({ orientation, unit: 'px', format: [canvas.width, canvas.height], hotfixes: ['px_scaling'] });
+        pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+        pdf.save('originos-architecture.pdf');
+        btn.textContent = '✓ Done!';
+      } catch (e) {
+        btn.textContent = '✗ Failed';
+      }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+  </script>
+</body>
+</html>

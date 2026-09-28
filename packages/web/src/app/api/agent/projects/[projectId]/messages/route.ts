@@ -88,7 +88,7 @@ function stripToolCodeBlocks(content: string): string {
  * 系统触发问候消息 —— 替换为隐藏的系统指令
  */
 const SYSTEM_TRIGGER_GREETING = '__SYSTEM_TRIGGER_GREETING__';
-const SYSTEM_GREETING_PROMPT = `系统启动触发: 请按照你的工作模式中的"启动时状态判断"流程，先列出 output 目录；仅当 business-model.json 存在时才读取它。文件不存在是正常的全新项目状态，请直接开始 Phase 1 访谈；文件存在时按内容判断后续阶段并生成相应问候语。`;
+const SYSTEM_GREETING_PROMPT = `系统启动触发：依据已注入的只读项目本体上下文判断当前访谈阶段。若概念与关系已确认而业务行为尚未建模，直接用自然、简短的业务语言说明接下来要确认处理动作、状态变化和规则，并只问一个最关键的问题；否则按当前阶段生成相应问候语。不要读取或提及 business-model.json、输出目录、内部阶段判断、工具调用或推理过程。`;
 
 export async function POST(
   request: NextRequest,

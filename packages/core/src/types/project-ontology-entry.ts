@@ -11,6 +11,13 @@ export interface ProjectCanonicalOntologySummary extends ProjectOntologyRef {
   name: string;
   domainCount: number;
   conceptCount: number;
+  /** Optional while callers compiled against the earlier summary DTO upgrade. */
+  relationCount?: number;
+  factTypeCount?: number;
+  actionCount?: number;
+  ruleCount?: number;
+  businessStateCount?: number;
+  transitionCount?: number;
 }
 
 export type ProjectOntologyEntryResult =

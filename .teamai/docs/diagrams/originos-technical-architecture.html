@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OriginOS 技术架构图</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js" integrity="sha384-en/ztfPSRkGfME4KIm05joYXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/" crossorigin="anonymous"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'JetBrains Mono', monospace; background: #020617; min-height: 100vh; padding: 2rem; color: white; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    .header { margin-bottom: 2rem; }
+    .header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+    .pulse-dot { width: 12px; height: 12px; background: #22d3ee; border-radius: 50%; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
+    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-left: 1.75rem; }
+    .diagram-container { background: rgba(15, 23, 42, 0.5); border-radius: 1rem; border: 1px solid #1e293b; padding: 1.5rem; overflow-x: auto; }
+    svg { width: 100%; min-width: 900px; display: block; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-top: 2rem; }
+    .card { background: rgba(15, 23, 42, 0.5); border-radius: 0.75rem; border: 1px solid #1e293b; padding: 1.25rem; }
+    .card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+    .card-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .card-dot.cyan { background: #22d3ee; }
+    .card-dot.emerald { background: #34d399; }
+    .card-dot.violet { background: #a78bfa; }
+    .card-dot.amber { background: #fbbf24; }
+    .card-dot.rose { background: #fb7185; }
+    .card h3 { font-size: 0.875rem; font-weight: 600; }
+    .card ul { list-style: none; color: #94a3b8; font-size: 0.75rem; }
+    .card li { margin-bottom: 0.375rem; }
+    .footer { text-align: center; margin-top: 1.5rem; color: #475569; font-size: 0.75rem; }
+    .toolbar { display: flex; gap: 0.5rem; margin-left: auto; flex-shrink: 0; align-items: center; }
+    .toolbar-toggle { background: transparent; border: none; color: #475569; cursor: pointer; font-size: 1.25rem; line-height: 1; padding: 0.25rem 0.5rem; border-radius: 0.375rem; transition: color 0.2s, background 0.2s; }
+    .toolbar-toggle:hover { color: #94a3b8; background: rgba(30, 41, 59, 0.5); }
+    .toolbar-actions { display: none; gap: 0.5rem; }
+    .toolbar.expanded .toolbar-actions { display: flex; }
+    .toolbar-actions button { background: rgba(30, 41, 59, 0.8); border: 1px solid #334155; color: #94a3b8; padding: 0.375rem 0.75rem; border-radius: 0.375rem; font-family: inherit; font-size: 0.75rem; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+    .toolbar-actions button:hover { background: rgba(51, 65, 85, 0.8); color: white; border-color: #475569; }
+    @media print { body { background: #020617; padding: 1rem; } .toolbar { display: none !important; } }
+  </style>
+</head>
+<body>
+  <div class="container" id="report-container">
+    <div class="header">
+      <div class="header-row">
+        <div class="pulse-dot"></div>
+        <h1>OriginOS 技术架构</h1>
+        <div class="toolbar">
+          <div class="toolbar-actions">
+            <button onclick="copyAsImage(this)">&#x1F4CB; Copy</button>
+            <button onclick="downloadPNG(this)">&#x1F5BC; PNG</button>
+            <button onclick="downloadPDF(this)">&#x1F4C4; PDF</button>
+          </div>
+          <button class="toolbar-toggle" onclick="this.parentElement.classList.toggle('expanded')" title="Export options" aria-label="Export options">&#x22EE;</button>
+        </div>
+      </div>
+      <p class="subtitle">5 层单向依赖 — Web &rarr; Components &rarr; Integrations &rarr; Collaboration Runtime &rarr; Agent Worker &rarr; Storage / Cognitive</p>
+    </div>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 970 1230">
+        <defs>
+          <marker id="ah" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#64748b"/></marker>
+          <marker id="ah-c" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#22d3ee"/></marker>
+          <marker id="ah-e" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#34d399"/></marker>
+          <marker id="ah-a" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#fbbf24"/></marker>
+          <marker id="ah-r" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#fb7185"/></marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/></pattern>
+        </defs>
+
+        <rect width="100%" height="100%" fill="url(#grid)"/>
+
+        <!-- ============================ ARROWS (painted first, behind boxes) -->
+
+        <!-- Client -> Layer 1 (Agent API) -->
+        <line x1="500" y1="70" x2="320" y2="113" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#ah-c)"/>
+
+        <!-- Client -> Layer 1 (Collab API) -->
+        <line x1="500" y1="70" x2="660" y2="113" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#ah-c)"/>
+
+        <!-- Layer 1 (Agent API) -> Layer 2 (Pi Agent Core) -->
+        <line x1="320" y1="155" x2="320" y2="218" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#ah-c)"/>
+        <text x="270" y="190" fill="#94a3b8" font-size="7">REST calls</text>
+
+        <!-- Layer 1 (Collab API) -> Layer 2 (Collab Runtime Svc) -->
+        <line x1="660" y1="155" x2="800" y2="218" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#ah-c)"/>
+        <text x="730" y="190" fill="#94a3b8" font-size="7">REST calls</text>
+
+        <!-- Layer 2 Pi Agent Core -> Skill System -->
+        <line x1="400" y1="249" x2="460" y2="249" stroke="#34d399" stroke-width="1.5" marker-end="url(#ah-e)"/>
+
+        <!-- Layer 2 Pi Agent Core -> Collab Runtime Svc -->
+        <line x1="400" y1="280" x2="685" y2="280" stroke="#34d399" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#ah-e)"/>
+
+        <!-- Layer 3 Components -> Layer 2 (downward) -->
+        <line x1="320" y1="315" x2="320" y2="323" stroke="#34d399" stroke-width="1.5" marker-end="url(#ah-e)"/>
+        <line x1="660" y1="315" x2="660" y2="323" stroke="#34d399" stroke-width="1.5" marker-end="url(#ah-e)"/>
+
+        <!-- Layer 2 -> Layer 4 Engine -->
+        <line x1="800" y1="291" x2="800" y2="443" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#ah-a)"/>
+        <text x="815" y="370" fill="#94a3b8" font-size="7">execute</text>
+
+        <!-- Layer 4 Spawner -> Engine -->
+        <line x1="245" y1="478" x2="460" y2="478" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#ah-a)"/>
+
+        <!-- Layer 4 Spawner -> Session -->
+        <line x1="245" y1="513" x2="690" y2="513" stroke="#fbbf24" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#ah-a)"/>
+
+        <!-- Layer 4 Spawner -> Layer 5 Workers -->
+        <line x1="180" y1="543" x2="180" y2="593" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#ah-a)"/>
+        <text x="120" y="572" fill="#94a3b8" font-size="7">spawn subprocess</text>
+
+        <!-- Layer 5 Workers -> Layer 6 Filesystem Storage -->
+        <line x1="180" y1="713" x2="119" y2="783" stroke="#a78bfa" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#ah)"/>
+
+        <!-- Layer 5 RoleAgent -> Cognitive System -->
+        <line x1="400" y1="713" x2="400" y2="783" stroke="#fb7185" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#ah-r)"/>
+
+        <!-- Layer 5 ProjectAgent -> Memory Core -->
+        <line x1="580" y1="713" x2="580" y2="783" stroke="#22d3ee" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#ah-c)"/>
+
+        <!-- Layer 5 Supervisor -> Skill Registry -->
+        <line x1="760" y1="713" x2="760" y2="783" stroke="#34d399" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#ah-e)"/>
+
+        <!-- HITL feedback loop (rose dashed, along right edge) -->
+        <path d="M 330 513 L 945 513 Q 955 513 955 503 L 955 60 Q 955 50 945 50 L 625 50" fill="none" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="5,5"/>
+        <line x1="625" y1="50" x2="615" y2="50" stroke="#fb7185" stroke-width="1.5" marker-end="url(#ah-r)"/>
+        <text x="790" y="43" fill="#fb7185" font-size="7" font-weight="500">HITL 人工确认 (stdio JSON Line resume)</text>
+
+        <!-- ============================ LAYER BOUNDARIES + LABELS -->
+
+        <!-- Layer 0: Client -->
+        <text x="14" y="48" fill="#94a3b8" font-size="7" font-weight="600">USER</text>
+
+        <!-- Layer 1 boundary -->
+        <rect x="12" y="83" width="946" height="74" rx="8" fill="none" stroke="#22d3ee" stroke-width="0.75" stroke-dasharray="4,3" opacity="0.4"/>
+        <text x="14" y="123" fill="#22d3ee" font-size="7" font-weight="600">L1</text>
+
+        <!-- Layer 2 boundary -->
+        <rect x="12" y="185" width="946" height="140" rx="8" fill="none" stroke="#34d399" stroke-width="0.75" stroke-dasharray="4,3" opacity="0.4"/>
+        <text x="14" y="260" fill="#34d399" font-size="7" font-weight="600">L2</text>
+
+        <!-- Layer 3 boundary -->
+        <rect x="12" y="325" width="946" height="80" rx="8" fill="none" stroke="#22d3ee" stroke-width="0.75" stroke-dasharray="4,3" opacity="0.4"/>
+        <text x="14" y="370" fill="#22d3ee" font-size="7" font-weight="600">L3</text>
+
+        <!-- Layer 4 boundary -->
+        <rect x="12" y="410" width="946" height="140" rx="8" fill="none" stroke="#fbbf24" stroke-width="0.75" stroke-dasharray="4,3" opacity="0.4"/>
+        <text x="14" y="485" fill="#fbbf24" font-size="7" font-weight="600">L4</text>
+
+        <!-- Layer 5 boundary -->
+        <rect x="12" y="560" width="946" height="155" rx="8" fill="none" stroke="#fb7185" stroke-width="0.75" stroke-dasharray="4,3" opacity="0.4"/>
+        <text x="14" y="640" fill="#fb7185" font-size="7" font-weight="600">L5</text>
+
+        <!-- Layer 6 boundary -->
+        <rect x="12" y="750" width="946" height="140" rx="8" fill="none" stroke="#a78bfa" stroke-width="0.75" stroke-dasharray="4,3" opacity="0.4"/>
+        <text x="14" y="825" fill="#a78bfa" font-size="7" font-weight="600">L6</text>
+
+        <!-- ============================ LAYER 0: CLIENT -->
+        <rect x="390" y="18" width="190" height="52" rx="8" fill="rgba(30, 41, 59, 0.6)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="485" y="40" fill="white" font-size="12" font-weight="600" text-anchor="middle">Client (Browser)</text>
+        <text x="485" y="56" fill="#94a3b8" font-size="8" text-anchor="middle">Next.js SSR &bull; SSE Event Stream</text>
+
+        <!-- ============================ LAYER 1: WEB / API ROUTES -->
+        <!-- Layer 1 title -->
+        <text x="30" y="102" fill="#22d3ee" font-size="9" font-weight="700">Web / API Routes (src/app/api)</text>
+
+        <!-- Agent API -->
+        <rect x="170" y="115" width="300" height="38" rx="5" fill="rgba(8, 51, 68, 0.5)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="320" y="133" fill="white" font-size="10" font-weight="600" text-anchor="middle">Agent API</text>
+        <text x="320" y="147" fill="#94a3b8" font-size="7" text-anchor="middle">/agent/sessions &bull; /projects/[id]/messages &bull; /skills</text>
+
+        <!-- Collaboration API -->
+        <rect x="510" y="115" width="300" height="38" rx="5" fill="rgba(8, 51, 68, 0.5)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="660" y="133" fill="white" font-size="10" font-weight="600" text-anchor="middle">Collaboration API</text>
+        <text x="660" y="147" fill="#94a3b8" font-size="7" text-anchor="middle">/collaboration/sessions &bull; /topology &bull; SSE</text>
+
+        <!-- Other APIs -->
+        <rect x="850" y="115" width="94" height="38" rx="5" fill="rgba(8, 51, 68, 0.5)" stroke="#22d3ee" stroke-width="1"/>
+        <text x="897" y="133" fill="white" font-size="8" font-weight="600" text-anchor="middle">Other APIs</text>
+        <text x="897" y="145" fill="#94a3b8" font-size="6.5" text-anchor="middle">/ontology, /files...</text>
+
+        <!-- ============================ LAYER 2: INTEGRATIONS -->
+        <!-- Layer 2 title -->
+        <text x="30" y="204" fill="#34d399" font-size="9" font-weight="700">Service &amp; Integration (src/lib)</text>
+
+        <!-- Pi Agent Core -->
+        <rect x="170" y="220" width="300" height="103" rx="7" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="320" y="240" fill="white" font-size="11" font-weight="600" text-anchor="middle">Pi Agent Core</text>
+        <text x="320" y="256" fill="#94a3b8" font-size="8" text-anchor="middle">OriginOSAgent &bull; AgentManager &bull; Session Store</text>
+        <text x="320" y="270" fill="#94a3b8" font-size="8" text-anchor="middle">RoleAgent &bull; ProjectAgent &bull; PersistentAgent</text>
+        <text x="320" y="284" fill="#94a3b8" font-size="8" text-anchor="middle">Tools: File, Bash, Skill, Ontology, URL</text>
+        <text x="320" y="298" fill="#94a3b8" font-size="8" text-anchor="middle">7-Layer System Prompt &bull; State Machine &bull; Dream</text>
+        <text x="320" y="314" fill="#34d399" font-size="7" text-anchor="middle">src/lib/integrations/pi-agent/</text>
+
+        <!-- Skill System -->
+        <rect x="510" y="220" width="220" height="103" rx="7" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="620" y="240" fill="white" font-size="11" font-weight="600" text-anchor="middle">Skill System</text>
+        <text x="620" y="256" fill="#94a3b8" font-size="8" text-anchor="middle">Multi-source Loading</text>
+        <text x="620" y="270" fill="#94a3b8" font-size="8" text-anchor="middle">(Bundled / Project / User)</text>
+        <text x="620" y="290" fill="#94a3b8" font-size="8" text-anchor="middle">.claude/skills/ (built-in)</text>
+        <text x="620" y="304" fill="#94a3b8" font-size="8" text-anchor="middle">data/skills/ (runtime)</text>
+        <text x="620" y="318" fill="#34d399" font-size="7" text-anchor="middle">SkillDialog &bull; SkillExecutor</text>
+
+        <!-- Collab Runtime Service -->
+        <rect x="770" y="220" width="180" height="103" rx="7" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="860" y="240" fill="white" font-size="10" font-weight="600" text-anchor="middle">Collab Runtime</text>
+        <text x="860" y="256" fill="#94a3b8" font-size="8" text-anchor="middle">Service</text>
+        <text x="860" y="276" fill="#94a3b8" font-size="7.5" text-anchor="middle">Session Management</text>
+        <text x="860" y="290" fill="#94a3b8" font-size="7.5" text-anchor="middle">Event Mapping</text>
+        <text x="860" y="304" fill="#94a3b8" font-size="7.5" text-anchor="middle">DAG Orchestration</text>
+        <text x="860" y="318" fill="#34d399" font-size="7" text-anchor="middle">HITL Resume via Spawner</text>
+
+        <!-- ============================ LAYER 3: COMPONENTS -->
+        <!-- Layer 3 title -->
+        <text x="30" y="344" fill="#22d3ee" font-size="9" font-weight="700">Components (src/components)</text>
+
+        <!-- OS Framework -->
+        <rect x="170" y="355" width="140" height="44" rx="5" fill="rgba(8, 51, 68, 0.5)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="240" y="373" fill="white" font-size="9" font-weight="600" text-anchor="middle">OS Framework</text>
+        <text x="240" y="387" fill="#94a3b8" font-size="7" text-anchor="middle">Sidebar &bull; Taskbar</text>
+
+        <!-- AppWindow -->
+        <rect x="330" y="355" width="140" height="44" rx="5" fill="rgba(8, 51, 68, 0.5)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="400" y="373" fill="white" font-size="9" font-weight="600" text-anchor="middle">AppWindowManager</text>
+        <text x="400" y="387" fill="#94a3b8" font-size="7" text-anchor="middle">Drag &bull; Resize &bull; Min/Max</text>
+
+        <!-- Skill Dialog -->
+        <rect x="490" y="355" width="140" height="44" rx="5" fill="rgba(8, 51, 68, 0.5)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="560" y="373" fill="white" font-size="9" font-weight="600" text-anchor="middle">SkillDialog</text>
+        <text x="560" y="387" fill="#94a3b8" font-size="7" text-anchor="middle">Skill Session UI</text>
+
+        <!-- Interview -->
+        <rect x="650" y="355" width="140" height="44" rx="5" fill="rgba(8, 51, 68, 0.5)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="720" y="373" fill="white" font-size="9" font-weight="600" text-anchor="middle">Interview UI</text>
+        <text x="720" y="387" fill="#94a3b8" font-size="7" text-anchor="middle">Ontology Editor &bull; Graph</text>
+
+        <!-- Collaboration Viewer -->
+        <rect x="810" y="355" width="140" height="44" rx="5" fill="rgba(8, 51, 68, 0.5)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="880" y="373" fill="white" font-size="9" font-weight="600" text-anchor="middle">Collaboration Viewer</text>
+        <text x="880" y="387" fill="#94a3b8" font-size="7" text-anchor="middle">TopologyGraph &bull; Timeline</text>
+
+        <!-- ============================ LAYER 4: COLLABORATION RUNTIME -->
+        <!-- Layer 4 title -->
+        <text x="30" y="429" fill="#fbbf24" font-size="9" font-weight="700">Collaboration Runtime (src/modules/collaboration-runtime)</text>
+
+        <!-- Agent Spawner -->
+        <rect x="130" y="445" width="230" height="98" rx="7" fill="rgba(120, 53, 15, 0.35)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="245" y="465" fill="white" font-size="11" font-weight="600" text-anchor="middle">Agent Spawner</text>
+        <text x="245" y="481" fill="#94a3b8" font-size="8" text-anchor="middle">npx tsx subprocess</text>
+        <text x="245" y="495" fill="#94a3b8" font-size="8" text-anchor="middle">stdio JSON Line protocol</text>
+        <text x="245" y="509" fill="#94a3b8" font-size="8" text-anchor="middle">globalThis.__globalSpawner</text>
+        <text x="245" y="523" fill="#94a3b8" font-size="8" text-anchor="middle">HMR-safe singleton</text>
+        <text x="245" y="537" fill="#fbbf24" font-size="7" text-anchor="middle">src/modules/collaboration-runtime/sandbox/</text>
+
+        <!-- Engine -->
+        <rect x="400" y="445" width="230" height="98" rx="7" fill="rgba(120, 53, 15, 0.35)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="515" y="465" fill="white" font-size="11" font-weight="600" text-anchor="middle">Collaboration Engine</text>
+        <text x="515" y="481" fill="#94a3b8" font-size="8" text-anchor="middle">DagExecutor (Workflow)</text>
+        <text x="515" y="495" fill="#94a3b8" font-size="8" text-anchor="middle">SupervisorMode (System)</text>
+        <text x="515" y="509" fill="#94a3b8" font-size="8" text-anchor="middle">TopologyParser &bull; ConflictDetector</text>
+        <text x="515" y="523" fill="#94a3b8" font-size="8" text-anchor="middle">CapabilityMatcher</text>
+        <text x="515" y="537" fill="#fbbf24" font-size="7" text-anchor="middle">src/modules/collaboration-runtime/engine/</text>
+
+        <!-- Session -->
+        <rect x="670" y="445" width="270" height="98" rx="7" fill="rgba(120, 53, 15, 0.35)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="805" y="465" fill="white" font-size="11" font-weight="600" text-anchor="middle">Session Layer</text>
+        <text x="805" y="481" fill="#94a3b8" font-size="8" text-anchor="middle">Blackboard (Append-Only + Provenance)</text>
+        <text x="805" y="495" fill="#94a3b8" font-size="8" text-anchor="middle">FsEventStore (JSONL event sourcing)</text>
+        <text x="805" y="509" fill="#94a3b8" font-size="8" text-anchor="middle">OrphanReconciler (PID-based GC)</text>
+        <text x="805" y="523" fill="#94a3b8" font-size="8" text-anchor="middle">SSE EventEmitter &bull; Grace Period Disconnect</text>
+        <text x="805" y="537" fill="#fbbf24" font-size="7" text-anchor="middle">src/modules/collaboration-runtime/session/</text>
+
+        <!-- Protocol (below session, narrower) -->
+        <rect x="670" y="545" width="270" height="0" rx="0" fill="none" stroke="none"/>
+
+        <!-- ============================ LAYER 5: AGENT WORKER SUBPROCESSES -->
+        <!-- Layer 5 title -->
+        <text x="30" y="579" fill="#fb7185" font-size="9" font-weight="700">Agent Worker Subprocesses (isolated, spawned via stdio)</text>
+
+        <!-- RoleAgent -->
+        <rect x="30" y="600" width="280" height="110" rx="7" fill="rgba(136, 19, 55, 0.45)" stroke="#fb7185" stroke-width="1.5"/>
+        <text x="170" y="622" fill="white" font-size="12" font-weight="600" text-anchor="middle">RoleAgent Worker</text>
+        <text x="170" y="638" fill="#94a3b8" font-size="8" text-anchor="middle">src/modules/collaboration-runtime/sandbox/agent-worker.mts</text>
+        <text x="170" y="656" fill="#94a3b8" font-size="7.5" text-anchor="middle">Agent.md &bull; Role.md &bull; 7-Layer Prompt</text>
+        <text x="170" y="670" fill="#94a3b8" font-size="7.5" text-anchor="middle">State Machine &bull; Dream Memory &bull; MemoryTracker</text>
+        <text x="170" y="684" fill="#94a3b8" font-size="7.5" text-anchor="middle">Skill Resolver &bull; Consolidator (预留)</text>
+        <text x="170" y="702" fill="#fb7185" font-size="7" text-anchor="middle">data/agents/{name}/ &bull; Memory.md + JSONL</text>
+
+        <!-- ProjectAgent -->
+        <rect x="330" y="600" width="300" height="110" rx="7" fill="rgba(136, 19, 55, 0.45)" stroke="#fb7185" stroke-width="1.5"/>
+        <text x="480" y="622" fill="white" font-size="12" font-weight="600" text-anchor="middle">ProjectAgent Worker</text>
+        <text x="480" y="638" fill="#94a3b8" font-size="8" text-anchor="middle">Interview / Solution type projects</text>
+        <text x="480" y="656" fill="#94a3b8" font-size="7.5" text-anchor="middle">ProjectContext (7 .md files + skill scan)</text>
+        <text x="480" y="670" fill="#94a3b8" font-size="7.5" text-anchor="middle">7-Layer Project Prompt</text>
+        <text x="480" y="684" fill="#94a3b8" font-size="7.5" text-anchor="middle">Frozen Snapshot (Knowledge.md + Patterns.md)</text>
+        <text x="480" y="702" fill="#fb7185" font-size="7" text-anchor="middle">data/projects/{id}/ &bull; business-model.json</text>
+
+        <!-- SupervisorAgent -->
+        <rect x="650" y="600" width="290" height="110" rx="7" fill="rgba(136, 19, 55, 0.45)" stroke="#fb7185" stroke-width="1.5"/>
+        <text x="795" y="622" fill="white" font-size="12" font-weight="600" text-anchor="middle">SupervisorAgent Worker</text>
+        <text x="795" y="638" fill="#94a3b8" font-size="8" text-anchor="middle">DAG coordination + HITL glue</text>
+        <text x="795" y="656" fill="#94a3b8" font-size="7.5" text-anchor="middle">Task Decomposition &bull; Worker Assignment</text>
+        <text x="795" y="670" fill="#94a3b8" font-size="7.5" text-anchor="middle">Failure Re-assignment &bull; Verifier</text>
+        <text x="795" y="684" fill="#94a3b8" font-size="7.5" text-anchor="middle">HITL: pause/resume via stdin resume command</text>
+        <text x="795" y="702" fill="#fb7185" font-size="7" text-anchor="middle">src/lib/collaboration-runtime-bridge/multi-agent-executor.ts</text>
+
+        <!-- ============================ LAYER 6: STORAGE + COGNITIVE -->
+        <!-- Layer 6 title -->
+        <text x="30" y="769" fill="#a78bfa" font-size="9" font-weight="700">Filesystem Storage + Cognitive System (data/)</text>
+
+        <!-- Interview Data -->
+        <rect x="30" y="788" width="176" height="44" rx="5" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="118" y="806" fill="white" font-size="9" font-weight="600" text-anchor="middle">Interview Data</text>
+        <text x="118" y="820" fill="#94a3b8" font-size="7" text-anchor="middle">data/interviews/ (JSON)</text>
+
+        <!-- Ontology Data -->
+        <rect x="226" y="788" width="176" height="44" rx="5" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="314" y="806" fill="white" font-size="9" font-weight="600" text-anchor="middle">Ontology Data</text>
+        <text x="314" y="820" fill="#94a3b8" font-size="7" text-anchor="middle">data/ontology/ (Domain/Concept/Instance)</text>
+
+        <!-- Agent Workspaces -->
+        <rect x="422" y="788" width="176" height="44" rx="5" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="510" y="806" fill="white" font-size="9" font-weight="600" text-anchor="middle">Agent Workspaces</text>
+        <text x="510" y="820" fill="#94a3b8" font-size="7" text-anchor="middle">data/agents/ (.md + JSONL + .skills/)</text>
+
+        <!-- Skills Data -->
+        <rect x="618" y="788" width="176" height="44" rx="5" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="706" y="806" fill="white" font-size="9" font-weight="600" text-anchor="middle">Skills Data</text>
+        <text x="706" y="820" fill="#94a3b8" font-size="7" text-anchor="middle">data/skills/ (runtime artifacts)</text>
+
+        <!-- Collab Sessions -->
+        <rect x="814" y="788" width="126" height="44" rx="5" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="877" y="806" fill="white" font-size="9" font-weight="600" text-anchor="middle">Collab Sessions</text>
+        <text x="877" y="820" fill="#94a3b8" font-size="7" text-anchor="middle">events.jsonl &bull; blackboard</text>
+
+        <!-- Cognitive System -->
+        <rect x="30" y="850" width="303" height="55" rx="7" fill="rgba(136, 19, 55, 0.3)" stroke="#fb7185" stroke-width="1"/>
+        <text x="181" y="871" fill="white" font-size="10" font-weight="600" text-anchor="middle">Cognitive System (Epic C)</text>
+        <text x="181" y="887" fill="#94a3b8" font-size="8" text-anchor="middle">KnowledgeProvider &bull; PatternProvider &bull; Dream &bull; Practice Log</text>
+        <text x="181" y="900" fill="#fb7185" font-size="7" text-anchor="middle">knowledge/ &bull; patterns/ &bull; practice/</text>
+
+        <!-- Memory Core -->
+        <rect x="348" y="850" width="303" height="55" rx="7" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1"/>
+        <text x="499" y="871" fill="white" font-size="10" font-weight="600" text-anchor="middle">Memory Core (Epic M)</text>
+        <text x="499" y="887" fill="#94a3b8" font-size="8" text-anchor="middle">Core Blocks &bull; Archival (HNSW) &bull; Recall (JSONL) &bull; MemoryCore</text>
+        <text x="499" y="900" fill="#22d3ee" font-size="7" text-anchor="middle">src/modules/memory-core/</text>
+
+        <!-- Skill Registry -->
+        <rect x="666" y="850" width="274" height="55" rx="7" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1"/>
+        <text x="803" y="871" fill="white" font-size="10" font-weight="600" text-anchor="middle">Skill Registry (Global)</text>
+        <text x="803" y="887" fill="#94a3b8" font-size="8" text-anchor="middle">.claude/skills/ (built-in, read-only) &bull; .skills/ symlinks</text>
+        <text x="803" y="900" fill="#34d399" font-size="7" text-anchor="middle">Multi-source: bundled &bull; project &bull; user</text>
+
+        <!-- ============================ LEGEND -->
+        <text x="830" y="935" fill="white" font-size="8" font-weight="600">Legend</text>
+        <rect x="830" y="947" width="12" height="8" rx="2" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1"/>
+        <text x="846" y="954" fill="#94a3b8" font-size="7">Frontend / Web</text>
+        <rect x="920" y="947" width="12" height="8" rx="2" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1"/>
+        <text x="936" y="954" fill="#94a3b8" font-size="7">Backend / Integration</text>
+        <rect x="830" y="961" width="12" height="8" rx="2" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="846" y="968" fill="#94a3b8" font-size="7">Collaboration Runtime</text>
+        <rect x="920" y="961" width="12" height="8" rx="2" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1"/>
+        <text x="936" y="968" fill="#94a3b8" font-size="7">Agent Worker</text>
+        <rect x="830" y="975" width="12" height="8" rx="2" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="846" y="982" fill="#94a3b8" font-size="7">Data / Storage</text>
+        <line x1="920" y1="979" x2="932" y2="979" stroke="#fb7185" stroke-width="1" stroke-dasharray="3,3"/>
+        <text x="936" y="982" fill="#94a3b8" font-size="7">HITL / Cognitive</text>
+      </svg>
+    </div>
+
+    <!-- Info Cards -->
+    <div class="cards">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot cyan"></div>
+          <h3>L1 Web + L3 Components</h3>
+        </div>
+        <ul>
+          <li>&bull; Next.js App Router (L1): Agent API, Collaboration API, Ontology API</li>
+          <li>&bull; API Routes 是纯委托层，所有业务逻辑在 src/lib/ 和 src/modules/ 中</li>
+          <li>&bull; Components (L3): OS Framework, AppWindowManager, SkillDialog, Interview UI, Collaboration Viewer</li>
+          <li>&bull; Zustand 状态管理 + SSE 实时更新</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot emerald"></div>
+          <h3>L2 Integrations</h3>
+        </div>
+        <ul>
+          <li>&bull; Pi Agent Core: OriginOSAgent, RoleAgent, ProjectAgent, PersistentAgent</li>
+          <li>&bull; 7-Layer System Prompt + State Machine + Dream 自动记忆</li>
+          <li>&bull; Skill System: 多源加载 (bundled/project/user), .claude/skills/ 只读</li>
+          <li>&bull; Collab Runtime Service: Session 管理 + DAG 编排 + HITL via Spawner</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot amber"></div>
+          <h3>L4 Collaboration Runtime</h3>
+        </div>
+        <ul>
+          <li>&bull; Agent Spawner: npx tsx 子进程 + stdio JSON Line + HMR-safe singleton</li>
+          <li>&bull; Engine: DAG Executor (Workflow) + Supervisor (System) + Conflict Detection</li>
+          <li>&bull; Session: Blackboard (Append-Only + Provenance) + FsEventStore (JSONL)</li>
+          <li>&bull; OrphanReconciler: PID-based GC, Grace Period SSE disconnect</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot rose"></div>
+          <h3>L5 Agent Workers + L6 Storage</h3>
+        </div>
+        <ul>
+          <li>&bull; RoleAgent / ProjectAgent / SupervisorAgent: 隔离子进程, Frozen Snapshot 模式</li>
+          <li>&bull; HITL: pause/resume via stdin resume command (简化回调机制)</li>
+          <li>&bull; Filesystem Storage: 无数据库 MVP, JSON + JSONL + .md 文件</li>
+          <li>&bull; Cognitive System + Memory Core + Skill Registry: 全局横切系统</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="footer">
+      OriginOS v2.4.0 &bull; Technical Architecture &bull; 5 层单向依赖 &bull; 进程隔离架构 &bull; 2026-05-22
+    </p>
+  </div>
+
+  <script>
+    async function copyAsImage(btn) {
+      const orig = btn.textContent;
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        btn.textContent = '\u2713 Copied!';
+      } catch (e) {
+        btn.textContent = '\u2717 Failed';
+      }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+
+    async function downloadPNG(btn) {
+      const orig = btn.textContent;
+      btn.textContent = '\u23F3 ...';
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const link = document.createElement('a');
+        link.download = 'originos-technical-architecture.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        btn.textContent = '\u2713 Done!';
+      } catch (e) {
+        btn.textContent = '\u2717 Failed';
+      }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+
+    async function downloadPDF(btn) {
+      const orig = btn.textContent;
+      btn.textContent = '\u23F3 ...';
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const imgData = canvas.toDataURL('image/png');
+        const { jsPDF } = window.jspdf;
+        const orientation = canvas.width > canvas.height ? 'landscape' : 'portrait';
+        const pdf = new jsPDF({ orientation, unit: 'px', format: [canvas.width, canvas.height], hotfixes: ['px_scaling'] });
+        pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+        pdf.save('originos-technical-architecture.pdf');
+        btn.textContent = '\u2713 Done!';
+      } catch (e) {
+        btn.textContent = '\u2717 Failed';
+      }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+  </script>
+</body>
+</html>
