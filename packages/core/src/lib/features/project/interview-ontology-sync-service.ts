@@ -1,15 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import { CANONICAL_ONTOLOGY_AUTHOR_PERMISSION, CANONICAL_ONTOLOGY_SCHEMA_VERSION, CanonicalOntologyAuthoringService, CanonicalOntologyStore, getCanonicalOntologyAuthoringRevision, type CanonicalClassificationSource, type CanonicalConcept, type CanonicalOntology, type CanonicalRelation, type CanonicalSemanticKind, type CanonicalValidationIssue } from '../ontology';
+import { CANONICAL_ONTOLOGY_AUTHOR_PERMISSION, CANONICAL_ONTOLOGY_SCHEMA_VERSION, CanonicalOntologyAuthoringService, CanonicalOntologyStore, getCanonicalOntologyAuthoringRevision, type CanonicalClassificationSource, type CanonicalConcept, type CanonicalOntology, type CanonicalProperty, type CanonicalRelation, type CanonicalSemanticKind, type CanonicalValidationIssue, type CanonicalValueType } from '../ontology';
 import { Memory } from '../../../modules/memory-core';
 import { getDataRoot } from '../../paths';
 import { ProjectOntologyEntryService } from './project-ontology-entry-service';
 
-export interface InterviewOntologyConceptInput { name: string; description?: string; type?: 'entity' | 'class'; semanticKind?: CanonicalSemanticKind; }
+export interface InterviewOntologyPropertyInput { name: string; valueType?: CanonicalValueType; required?: boolean; description?: string; }
+export interface InterviewOntologyConceptInput { name: string; description?: string; type?: 'entity' | 'class'; semanticKind?: CanonicalSemanticKind; properties?: readonly InterviewOntologyPropertyInput[]; }
 export interface InterviewOntologyClassificationCorrection { conceptId: string; semanticKind: CanonicalSemanticKind; }
 export interface InterviewOntologyRelationInput { name: string; sourceConceptId?: string; targetConceptId?: string; sourceConceptName?: string; targetConceptName?: string; cardinality?: 'one-to-one' | 'one-to-many' | 'many-to-one' | 'many-to-many'; description?: string; }
 export interface InterviewOntologyObservation { projectId: string; sourceId: string; operationId: string; projectName?: string; domain: { name: string; description?: string }; concepts: readonly InterviewOntologyConceptInput[]; classificationCorrections?: readonly InterviewOntologyClassificationCorrection[]; relations?: readonly InterviewOntologyRelationInput[]; }
-export interface InterviewOntologyItemResult { item: 'concept' | 'classification' | 'relation'; index: number; status: 'accepted' | 'rejected' | 'unchanged'; id?: string; issues?: readonly CanonicalValidationIssue[]; }
+export interface InterviewOntologyItemResult { item: 'concept' | 'property' | 'classification' | 'relation'; index: number; status: 'accepted' | 'rejected' | 'unchanged'; id?: string; issues?: readonly CanonicalValidationIssue[]; }
 export interface InterviewOntologySyncResult { ontology: CanonicalOntology; revision: number; results: readonly InterviewOntologyItemResult[]; memoryUpdated: boolean; }
 const normal = (value: string) => value.trim().toLocaleLowerCase();
 const id = (prefix: string) => `${prefix}-${randomUUID()}`;
@@ -33,11 +34,25 @@ export class InterviewOntologySyncService {
     for (const [index, concept] of input.concepts.entries()) {
       const name = concept.name.trim(); const matches = ontology.concepts.filter((item) => normal(item.name) === normal(name));
       if (!name || matches.length > 1) { results.push({ item: 'concept', index, status: 'rejected', issues: [problem(!name ? 'INVALID_CONCEPT_NAME' : 'AMBIGUOUS_CONCEPT_NAME', `concepts[${index}].name`, !name ? 'Concept name is required' : `Multiple concepts exactly match ${name}`)] }); continue; }
-      if (matches.length) { results.push({ item: 'concept', index, status: 'unchanged', id: matches[0]!.id }); continue; }
-      const domain = ontology.domains.find((item) => normal(item.name) === normal(input.domain.name));
-      if (!domain) { results.push({ item: 'concept', index, status: 'rejected', issues: [problem('DOMAIN_NOT_FOUND', 'domain.name', 'Interview domain is unavailable')] }); continue; }
-      const now = new Date(); const value: CanonicalConcept = { id: id('concept'), domainId: domain.id, name, type: concept.type ?? 'entity', attributes: {}, ...(concept.description?.trim() ? { description: concept.description.trim() } : {}), ...(concept.semanticKind ? { semanticKind: concept.semanticKind, classificationSource: this.source(input.sourceId, 'agent', false) } : {}), sourceRefs: [{ sourceType: 'interview', sourceId: input.sourceId }], createdAt: now, updatedAt: now };
-      if (!await run('concept', index, { type: 'concept.create', projectId: input.projectId, ontologyId: ontology.id, ontologyVersion: ontology.version, expectedRevision: revision, operationId: `${input.operationId}:concept:${index}`, permissions: [CANONICAL_ONTOLOGY_AUTHOR_PERMISSION], audit: { source: 'project-interview', sourceId: input.sourceId }, value }, value.id)) break;
+      let conceptId: string;
+      if (matches.length) {
+        conceptId = matches[0]!.id;
+        results.push({ item: 'concept', index, status: 'unchanged', id: conceptId });
+      } else {
+        const domain = ontology.domains.find((item) => normal(item.name) === normal(input.domain.name));
+        if (!domain) { results.push({ item: 'concept', index, status: 'rejected', issues: [problem('DOMAIN_NOT_FOUND', 'domain.name', 'Interview domain is unavailable')] }); continue; }
+        const now = new Date(); const value: CanonicalConcept = { id: id('concept'), domainId: domain.id, name, type: concept.type ?? 'entity', attributes: {}, ...(concept.description?.trim() ? { description: concept.description.trim() } : {}), ...(concept.semanticKind ? { semanticKind: concept.semanticKind, classificationSource: this.source(input.sourceId, 'agent', false) } : {}), sourceRefs: [{ sourceType: 'interview', sourceId: input.sourceId }], createdAt: now, updatedAt: now };
+        if (!await run('concept', index, { type: 'concept.create', projectId: input.projectId, ontologyId: ontology.id, ontologyVersion: ontology.version, expectedRevision: revision, operationId: `${input.operationId}:concept:${index}`, permissions: [CANONICAL_ONTOLOGY_AUTHOR_PERMISSION], audit: { source: 'project-interview', sourceId: input.sourceId }, value }, value.id)) break;
+        conceptId = value.id;
+      }
+      for (const property of concept.properties ?? []) {
+        const propertyName = property.name.trim();
+        if (!propertyName) { results.push({ item: 'property', index, status: 'rejected', issues: [problem('INVALID_PROPERTY_NAME', `concepts[${index}].properties`, 'Property name is required')] }); continue; }
+        const existing = ontology.properties.find((item) => item.conceptId === conceptId && normal(item.name) === normal(propertyName));
+        if (existing) { results.push({ item: 'property', index, status: 'unchanged', id: existing.id }); continue; }
+        const value: CanonicalProperty = { id: id('property'), conceptId, name: propertyName, valueType: property.valueType ?? 'string', required: property.required ?? false, ...(property.description?.trim() ? { description: property.description.trim() } : {}) };
+        if (!await run('property', index, { type: 'property.create', projectId: input.projectId, ontologyId: ontology.id, ontologyVersion: ontology.version, expectedRevision: revision, operationId: `${input.operationId}:concept:${index}:property:${normal(propertyName)}`, permissions: [CANONICAL_ONTOLOGY_AUTHOR_PERMISSION], audit: { source: 'project-interview', sourceId: input.sourceId }, value }, value.id)) break;
+      }
     }
     for (const [index, correction] of (input.classificationCorrections ?? []).entries()) {
       const concept = ontology.concepts.find((item) => item.id === correction.conceptId);

@@ -19,16 +19,17 @@ describe('InterviewOntologySyncService', () => {
     try {
       const initial = await service.record({
         projectId, sourceId: 'session-1', operationId: 'observation-1', projectName: '访谈项目',
-        domain: { name: '订单管理' }, concepts: [{ name: '客户', semanticKind: 'role' }, { name: '订单', semanticKind: 'object' }],
+        domain: { name: '订单管理' }, concepts: [{ name: '客户', semanticKind: 'role', properties: [{ name: '客户编号', valueType: 'string', required: true }] }, { name: '订单', semanticKind: 'object' }],
         relations: [{ name: '下单', sourceConceptName: '客户', targetConceptName: '订单', cardinality: 'one-to-many' }],
       });
       const updated = await service.record({
         projectId, sourceId: 'session-1', operationId: 'observation-2', domain: { name: '订单管理' }, concepts: [{ name: '订单' }, { name: '产品' }],
       });
-      expect(initial.results).toHaveLength(3);
+      expect(initial.results).toHaveLength(4);
       expect(updated.ontology.domains).toHaveLength(1);
       expect(updated.ontology.concepts.map((item) => item.name)).toEqual(['客户', '订单', '产品']);
       expect(updated.ontology.relations).toHaveLength(1);
+      expect(updated.ontology.properties).toMatchObject([{ conceptId: initial.ontology.concepts[0]!.id, name: '客户编号', valueType: 'string', required: true }]);
       expect((await entry.resolveProject(projectId)).kind).toBe('canonical');
       const memory = await readFile(path.join(root, 'projects', projectId, 'Memory.md'), 'utf8');
       expect(memory).toContain('## 已识别业务概念');

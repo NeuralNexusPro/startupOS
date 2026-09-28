@@ -12,6 +12,15 @@ const ConceptSchema = Type.Object({
     Type.Literal('role'), Type.Literal('organization'), Type.Literal('object'), Type.Literal('activity'),
     Type.Literal('document'), Type.Literal('standard'), Type.Literal('unclassified'),
   ])),
+  properties: Type.Optional(Type.Array(Type.Object({
+    name: Type.String({ minLength: 1 }),
+    valueType: Type.Optional(Type.Union([
+      Type.Literal('string'), Type.Literal('number'), Type.Literal('boolean'), Type.Literal('date'),
+      Type.Literal('object'), Type.Literal('array'), Type.Literal('reference'),
+    ])),
+    required: Type.Optional(Type.Boolean()),
+    description: Type.Optional(Type.String()),
+  }))),
 });
 const ClassificationCorrectionSchema = Type.Object({
   conceptId: Type.String({ minLength: 1 }),
@@ -45,7 +54,7 @@ const service = new InterviewOntologySyncService();
 export const interviewOntologySyncTool: ToolRegistration = {
   name: 'record_project_interview_observation',
   label: '记录访谈业务概念',
-  description: '记录已确认的业务概念、中文业务分类或联系。关系优先传稳定 concept ID；旧名称只能精确唯一匹配。分类来源由可信服务根据访谈会话构造，用户纠正使用 classificationCorrections。返回每项结果；不读取或写入 business-model.json。',
+  description: '记录已确认的业务概念、属性、中文业务分类或联系。关系优先传稳定 concept ID；旧名称只能精确唯一匹配。分类来源由可信服务根据访谈会话构造，用户纠正使用 classificationCorrections。返回每项结果；不读取或写入 business-model.json。',
   parameters: Params,
   category: 'ontology',
   enabled: true,
