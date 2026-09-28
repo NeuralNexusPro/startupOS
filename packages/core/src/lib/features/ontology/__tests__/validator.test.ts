@@ -90,6 +90,7 @@ describe('canonical ontology validator', () => {
     model.concepts[0]!.domainId = 'missing-domain';
     model.properties[2]!.referenceConceptId = 'missing-concept';
     model.relations[0]!.targetConceptId = 'missing-concept';
+    model.relations[0]!.ruleIds = ['missing-relation-rule'];
     model.factTypes[0]!.propertyIds = ['missing-property'];
     model.transitions[0]!.actionId = 'missing-action';
     model.transitions[0]!.ruleIds = ['missing-rule'];
@@ -102,6 +103,7 @@ describe('canonical ontology validator', () => {
       expect.objectContaining({ code: 'MISSING_REFERENCE', path: 'concepts[0].domainId' }),
       expect.objectContaining({ code: 'MISSING_REFERENCE', path: 'properties[2].referenceConceptId' }),
       expect.objectContaining({ code: 'MISSING_REFERENCE', path: 'relations[0].targetConceptId' }),
+      expect.objectContaining({ code: 'MISSING_REFERENCE', path: 'relations[0].ruleIds[0]' }),
       expect.objectContaining({ code: 'MISSING_REFERENCE', path: 'factTypes[0].propertyIds[0]' }),
       expect.objectContaining({ code: 'MISSING_REFERENCE', path: 'transitions[0].actionId' }),
       expect.objectContaining({ code: 'MISSING_REFERENCE', path: 'transitions[0].ruleIds[0]' }),

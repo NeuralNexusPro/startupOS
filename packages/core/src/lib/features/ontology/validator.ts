@@ -134,6 +134,9 @@ export function validateCanonicalOntology(ontology: CanonicalOntology): Canonica
   ontology.relations.forEach((relation, index) => {
     requireReference(concepts, relation.sourceConceptId, `relations[${index}].sourceConceptId`, 'concept', issues);
     requireReference(concepts, relation.targetConceptId, `relations[${index}].targetConceptId`, 'concept', issues);
+    relation.ruleIds?.forEach((ruleId, ruleIndex) => {
+      requireReference(rules, ruleId, `relations[${index}].ruleIds[${ruleIndex}]`, 'rule', issues);
+    });
   });
 
   ontology.businessStates.forEach((state, index) => {

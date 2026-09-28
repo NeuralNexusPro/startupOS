@@ -5,6 +5,7 @@ import {
   AUTHORING_REVISION_METADATA_KEY,
   CANONICAL_ONTOLOGY_AUTHOR_PERMISSION,
   type CanonicalOntologyAuthoringCommand,
+  type CanonicalOntologyAuthoringMutation,
   type CanonicalOntologyAuthoringResult,
 } from './authoring-types';
 import type { CanonicalOntology, CanonicalValidationIssue } from './types';
@@ -108,9 +109,9 @@ function create<T extends { id: string }>(
   return { ok: true, items: [...items, value] };
 }
 
-function mutateOntology(
+function mutateSingleOntology(
   ontology: CanonicalOntology,
-  command: CanonicalOntologyAuthoringCommand
+  command: CanonicalOntologyAuthoringMutation
 ): { ontology?: CanonicalOntology; issues?: CanonicalValidationIssue[] } {
   const now = new Date();
   let next: CanonicalOntology = { ...ontology, updatedAt: now };
@@ -231,6 +232,76 @@ function mutateOntology(
         }
       );
       break;
+    case 'factType.create':
+      apply(create(ontology.factTypes, command.value, 'value.id'), (items) => {
+        next = { ...next, factTypes: items };
+      });
+      break;
+    case 'factType.update':
+      apply(
+        updateById(
+          ontology.factTypes,
+          command.factTypeId,
+          command.patch,
+          'factTypeId'
+        ),
+        (items) => {
+          next = { ...next, factTypes: items };
+        }
+      );
+      break;
+    case 'factType.delete':
+      apply(
+        deleteById(ontology.factTypes, command.factTypeId, 'factTypeId'),
+        (items) => {
+          next = { ...next, factTypes: items };
+        }
+      );
+      break;
+    case 'rule.create':
+      apply(create(ontology.rules, command.value, 'value.id'), (items) => {
+        next = { ...next, rules: items };
+      });
+      break;
+    case 'rule.update':
+      apply(
+        updateById(ontology.rules, command.ruleId, command.patch, 'ruleId'),
+        (items) => {
+          next = { ...next, rules: items };
+        }
+      );
+      break;
+    case 'rule.delete':
+      apply(deleteById(ontology.rules, command.ruleId, 'ruleId'), (items) => {
+        next = { ...next, rules: items };
+      });
+      break;
+    case 'transition.create':
+      apply(create(ontology.transitions, command.value, 'value.id'), (items) => {
+        next = { ...next, transitions: items };
+      });
+      break;
+    case 'transition.update':
+      apply(
+        updateById(
+          ontology.transitions,
+          command.transitionId,
+          command.patch,
+          'transitionId'
+        ),
+        (items) => {
+          next = { ...next, transitions: items };
+        }
+      );
+      break;
+    case 'transition.delete':
+      apply(
+        deleteById(ontology.transitions, command.transitionId, 'transitionId'),
+        (items) => {
+          next = { ...next, transitions: items };
+        }
+      );
+      break;
     case 'businessState.create':
       apply(
         create(ontology.businessStates, command.value, 'value.id'),
@@ -292,7 +363,32 @@ function mutateOntology(
       break;
   }
 
-  if (mutationIssues) return { issues: mutationIssues };
+  return mutationIssues ? { issues: mutationIssues } : { ontology: next };
+}
+
+function mutateOntology(
+  ontology: CanonicalOntology,
+  command: CanonicalOntologyAuthoringCommand
+): { ontology?: CanonicalOntology; issues?: CanonicalValidationIssue[] } {
+  if (command.type === 'batch' && command.commands.length > 100) {
+    return {
+      issues: [
+        issue(
+          'AUTHORING_BATCH_TOO_LARGE',
+          'commands',
+          'An authoring batch can contain at most 100 commands'
+        ),
+      ],
+    };
+  }
+  let next = ontology;
+  const commands: readonly CanonicalOntologyAuthoringMutation[] =
+    command.type === 'batch' ? command.commands : [command];
+  for (const mutation of commands) {
+    const result = mutateSingleOntology(next, mutation);
+    if (!result.ontology || result.issues?.length) return result;
+    next = result.ontology;
+  }
   const validation = validateCanonicalOntology(next);
   return validation.valid ? { ontology: next } : { issues: validation.issues };
 }

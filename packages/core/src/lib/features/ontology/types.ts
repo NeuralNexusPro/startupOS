@@ -206,6 +206,8 @@ export interface CanonicalRelation {
   targetConceptId: string;
   cardinality: 'one-to-one' | 'one-to-many' | 'many-to-one' | 'many-to-many';
   description?: string;
+  /** Rules that constrain this business relationship. Rules remain first-class records. */
+  ruleIds?: string[];
   metadata?: Record<string, unknown>;
 }
 

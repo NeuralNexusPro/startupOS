@@ -61,4 +61,49 @@ describe('parseCanonicalOntologyAuthoringCommand', () => {
       ]),
     });
   });
+
+  it('parses behavior contract definitions and rejects an oversized atomic batch', () => {
+    const valid = parseCanonicalOntologyAuthoringCommand({
+      projectId: 'project-1', ontologyId: 'ontology-project-1', ontologyVersion: '1.0.0',
+      expectedRevision: 0, operationId: 'behavior-batch', permissions: ['ontology:author'],
+      type: 'batch',
+      commands: [
+        {
+          type: 'rule.create',
+          value: {
+            id: 'approved-before-ship', name: 'Approved before shipment',
+            kind: 'precondition', expression: { all: ['approved'] }, severity: 'error',
+          },
+        },
+        {
+          type: 'factType.create',
+          value: { id: 'approval-fact', conceptId: 'order', name: 'Approval', propertyIds: [] },
+        },
+        {
+          type: 'relation.create',
+          value: {
+            id: 'order-approval', name: 'has approval', sourceConceptId: 'order',
+            targetConceptId: 'approval', cardinality: 'one-to-one', ruleIds: ['approved-before-ship'],
+          },
+        },
+      ],
+    });
+    expect(valid.ok).toBe(true);
+
+    const oversized = parseCanonicalOntologyAuthoringCommand({
+      projectId: 'project-1', ontologyId: 'ontology-project-1', ontologyVersion: '1.0.0',
+      expectedRevision: 0, operationId: 'too-many', permissions: ['ontology:author'],
+      type: 'batch',
+      commands: Array.from({ length: 101 }, (_, index) => ({
+        type: 'rule.create',
+        value: { id: `rule-${index}`, name: `Rule ${index}`, kind: 'invariant', expression: true, severity: 'error' },
+      })),
+    });
+    expect(oversized).toMatchObject({
+      ok: false,
+      issues: expect.arrayContaining([
+        expect.objectContaining({ code: 'INVALID_AUTHORING_COMMAND', path: 'commands' }),
+      ]),
+    });
+  });
 });

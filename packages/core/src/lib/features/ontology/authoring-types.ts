@@ -3,9 +3,12 @@ import type {
   CanonicalBusinessState,
   CanonicalConcept,
   CanonicalDomain,
+  CanonicalFactType,
   CanonicalOntology,
   CanonicalProperty,
   CanonicalRelation,
+  CanonicalRule,
+  CanonicalStateTransition,
   CanonicalValidationIssue,
 } from './types';
 
@@ -31,7 +34,7 @@ type TimedPatch<T extends { id: string; createdAt: Date; updatedAt: Date }> =
   Partial<Omit<T, 'id' | 'createdAt' | 'updatedAt'>>;
 type PlainPatch<T extends { id: string }> = Partial<Omit<T, 'id'>>;
 
-export type CanonicalOntologyAuthoringCommand = CanonicalOntologyAuthoringBase &
+export type CanonicalOntologyAuthoringMutation =
   (
     | { type: 'domain.create'; value: CanonicalDomain }
     | {
@@ -75,7 +78,34 @@ export type CanonicalOntologyAuthoringCommand = CanonicalOntologyAuthoringBase &
         patch: PlainPatch<CanonicalAction>;
       }
     | { type: 'action.delete'; actionId: string }
+    | { type: 'factType.create'; value: CanonicalFactType }
+    | {
+        type: 'factType.update';
+        factTypeId: string;
+        patch: PlainPatch<CanonicalFactType>;
+      }
+    | { type: 'factType.delete'; factTypeId: string }
+    | { type: 'rule.create'; value: CanonicalRule }
+    | { type: 'rule.update'; ruleId: string; patch: PlainPatch<CanonicalRule> }
+    | { type: 'rule.delete'; ruleId: string }
+    | { type: 'transition.create'; value: CanonicalStateTransition }
+    | {
+        type: 'transition.update';
+        transitionId: string;
+        patch: PlainPatch<CanonicalStateTransition>;
+      }
+    | { type: 'transition.delete'; transitionId: string }
   );
+
+/**
+ * A batch is deliberately non-nestable. Its mutations are evaluated against one
+ * candidate snapshot and persisted through one compare-and-swap revision.
+ */
+export type CanonicalOntologyAuthoringCommand = CanonicalOntologyAuthoringBase &
+  (CanonicalOntologyAuthoringMutation | {
+    type: 'batch';
+    commands: readonly CanonicalOntologyAuthoringMutation[];
+  });
 
 export interface CanonicalOntologyAuthoringSummary {
   ontologyId: string;

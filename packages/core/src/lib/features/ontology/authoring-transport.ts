@@ -73,6 +73,7 @@ const relation = z.object({
   targetConceptId: identifier,
   cardinality: z.enum(['one-to-one', 'one-to-many', 'many-to-one', 'many-to-many']),
   description: z.string().optional(),
+  ruleIds: stringArray.optional(),
   metadata: metadata.optional(),
 }).strict();
 
@@ -98,6 +99,33 @@ const action = z.object({
   metadata: metadata.optional(),
 }).strict();
 
+const factType = z.object({
+  id: identifier,
+  conceptId: identifier,
+  name: identifier,
+  propertyIds: stringArray,
+  description: z.string().optional(),
+}).strict();
+
+const rule = z.object({
+  id: identifier,
+  name: identifier,
+  kind: z.enum(['invariant', 'precondition', 'postcondition', 'derivation', 'permission']),
+  expression: z.unknown(),
+  severity: z.enum(['error', 'warning', 'info']),
+  description: z.string().optional(),
+}).strict();
+
+const transition = z.object({
+  id: identifier,
+  conceptId: identifier,
+  name: identifier,
+  fromStateId: identifier,
+  toStateId: identifier,
+  actionId: identifier.optional(),
+  ruleIds: stringArray.optional(),
+}).strict();
+
 const base = {
   projectId: identifier,
   ontologyId: identifier,
@@ -108,7 +136,7 @@ const base = {
   audit: metadata.optional(),
 };
 
-const commandSchema = z.discriminatedUnion('type', [
+const mutationSchema = z.discriminatedUnion('type', [
   z.object({ ...base, type: z.literal('domain.create'), value: domain }).strict(),
   z.object({ ...base, type: z.literal('domain.update'), domainId: identifier, patch: domain.omit({ id: true, createdAt: true, updatedAt: true }).partial().strict() }).strict(),
   z.object({ ...base, type: z.literal('domain.delete'), domainId: identifier }).strict(),
@@ -127,6 +155,54 @@ const commandSchema = z.discriminatedUnion('type', [
   z.object({ ...base, type: z.literal('action.create'), value: action }).strict(),
   z.object({ ...base, type: z.literal('action.update'), actionId: identifier, patch: action.omit({ id: true }).partial().strict() }).strict(),
   z.object({ ...base, type: z.literal('action.delete'), actionId: identifier }).strict(),
+  z.object({ ...base, type: z.literal('factType.create'), value: factType }).strict(),
+  z.object({ ...base, type: z.literal('factType.update'), factTypeId: identifier, patch: factType.omit({ id: true }).partial().strict() }).strict(),
+  z.object({ ...base, type: z.literal('factType.delete'), factTypeId: identifier }).strict(),
+  z.object({ ...base, type: z.literal('rule.create'), value: rule }).strict(),
+  z.object({ ...base, type: z.literal('rule.update'), ruleId: identifier, patch: rule.omit({ id: true }).partial().strict() }).strict(),
+  z.object({ ...base, type: z.literal('rule.delete'), ruleId: identifier }).strict(),
+  z.object({ ...base, type: z.literal('transition.create'), value: transition }).strict(),
+  z.object({ ...base, type: z.literal('transition.update'), transitionId: identifier, patch: transition.omit({ id: true }).partial().strict() }).strict(),
+  z.object({ ...base, type: z.literal('transition.delete'), transitionId: identifier }).strict(),
+]);
+
+const commandSchema = z.discriminatedUnion('type', [
+  ...mutationSchema.options,
+  z.object({
+    ...base,
+    type: z.literal('batch'),
+    commands: z.array(
+      z.discriminatedUnion('type', [
+        z.object({ type: z.literal('domain.create'), value: domain }).strict(),
+        z.object({ type: z.literal('domain.update'), domainId: identifier, patch: domain.omit({ id: true, createdAt: true, updatedAt: true }).partial().strict() }).strict(),
+        z.object({ type: z.literal('domain.delete'), domainId: identifier }).strict(),
+        z.object({ type: z.literal('concept.create'), value: concept }).strict(),
+        z.object({ type: z.literal('concept.update'), conceptId: identifier, patch: concept.omit({ id: true, createdAt: true, updatedAt: true }).partial().strict() }).strict(),
+        z.object({ type: z.literal('concept.delete'), conceptId: identifier }).strict(),
+        z.object({ type: z.literal('property.create'), value: property }).strict(),
+        z.object({ type: z.literal('property.update'), propertyId: identifier, patch: property.omit({ id: true }).partial().strict() }).strict(),
+        z.object({ type: z.literal('property.delete'), propertyId: identifier }).strict(),
+        z.object({ type: z.literal('relation.create'), value: relation }).strict(),
+        z.object({ type: z.literal('relation.update'), relationId: identifier, patch: relation.omit({ id: true }).partial().strict() }).strict(),
+        z.object({ type: z.literal('relation.delete'), relationId: identifier }).strict(),
+        z.object({ type: z.literal('businessState.create'), value: businessState }).strict(),
+        z.object({ type: z.literal('businessState.update'), businessStateId: identifier, patch: businessState.omit({ id: true }).partial().strict() }).strict(),
+        z.object({ type: z.literal('businessState.delete'), businessStateId: identifier }).strict(),
+        z.object({ type: z.literal('action.create'), value: action }).strict(),
+        z.object({ type: z.literal('action.update'), actionId: identifier, patch: action.omit({ id: true }).partial().strict() }).strict(),
+        z.object({ type: z.literal('action.delete'), actionId: identifier }).strict(),
+        z.object({ type: z.literal('factType.create'), value: factType }).strict(),
+        z.object({ type: z.literal('factType.update'), factTypeId: identifier, patch: factType.omit({ id: true }).partial().strict() }).strict(),
+        z.object({ type: z.literal('factType.delete'), factTypeId: identifier }).strict(),
+        z.object({ type: z.literal('rule.create'), value: rule }).strict(),
+        z.object({ type: z.literal('rule.update'), ruleId: identifier, patch: rule.omit({ id: true }).partial().strict() }).strict(),
+        z.object({ type: z.literal('rule.delete'), ruleId: identifier }).strict(),
+        z.object({ type: z.literal('transition.create'), value: transition }).strict(),
+        z.object({ type: z.literal('transition.update'), transitionId: identifier, patch: transition.omit({ id: true }).partial().strict() }).strict(),
+        z.object({ type: z.literal('transition.delete'), transitionId: identifier }).strict(),
+      ])
+    ).max(100),
+  }).strict(),
 ]);
 
 export type CanonicalOntologyAuthoringCommandParseResult =
