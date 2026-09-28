@@ -35,9 +35,9 @@ import {
 } from './services/ontology-cross-package-ipc';
 import { JevProviderService } from './services/jev-provider/jev-provider-service';
 import { attachDevToolsContextMenu } from './devtools-context-menu';
-import { agentManager } from '../../../core/src/lib/features/agent/server/index';
-import { persistentAgentManager } from '../../../core/src/lib/features/agent/server/index';
-import { shutdownGlobalSpawner } from '../../../core/src/modules/collaboration-runtime/sandbox/agent-spawner';
+import { agentManager } from '@originos/core/lib/features/agent/server';
+import { persistentAgentManager } from '@originos/core/lib/features/agent/server';
+import { shutdownGlobalSpawner } from '@originos/core/modules/collaboration-runtime/sandbox/agent-spawner';
 
 if (process.platform === 'darwin' && process.arch === 'x64') {
   app.commandLine.appendSwitch('use-angle', 'gl');
