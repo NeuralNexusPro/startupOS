@@ -1,6 +1,7 @@
 export * from './project-creation-service';
 export * from './project-ontology-entry-service';
 export * from './interview-ontology-sync-service';
+export * from './interview-behavior-draft-service';
 export * from './ontology-cross-package-contract';
 export * from './ontology-cross-package-service';
 export * from './ontology-work-item-recovery';

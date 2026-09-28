@@ -1,0 +1,276 @@
+import { createHash, randomUUID } from 'node:crypto';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+
+import {
+  CANONICAL_ONTOLOGY_AUTHOR_PERMISSION,
+  CanonicalOntologyAuthoringService,
+  CanonicalOntologyStore,
+  getCanonicalOntologyAuthoringRevision,
+  type CanonicalAction,
+  type CanonicalBusinessState,
+  type CanonicalFactType,
+  type CanonicalRule,
+  type CanonicalStateTransition,
+  type CanonicalValidationIssue,
+} from '../ontology';
+import { getDataRoot } from '../../paths';
+
+export type InterviewBehaviorDraftStatus =
+  | 'collecting'
+  | 'ready'
+  | 'needs_review'
+  | 'published'
+  | 'discarded';
+
+/** Deliberately contains only a source message identifier, never its text. */
+export interface InterviewBehaviorMessageRef { messageId: string; }
+
+export interface InterviewBehaviorCandidates {
+  actions: readonly CanonicalAction[];
+  factTypes: readonly CanonicalFactType[];
+  businessStates: readonly CanonicalBusinessState[];
+  transitions: readonly CanonicalStateTransition[];
+  rules: readonly CanonicalRule[];
+}
+
+export interface InterviewBehaviorClarification {
+  id: string;
+  kind: 'permission' | 'reference' | 'business_meaning';
+  question: string;
+  candidateId?: string;
+  resolved: boolean;
+}
+
+export interface TrustedInterviewBehaviorConfirmation {
+  /** This value is only created by the renderer's trusted explicit-confirmation boundary. */
+  kind: 'trusted_ui';
+  confirmationId: string;
+  confirmedAt: string;
+  candidateHash: string;
+}
+
+export interface InterviewBehaviorPublication {
+  operationId: string;
+  publishedAt: string;
+  beforeRevision: number;
+  afterRevision: number;
+}
+
+export interface InterviewBehaviorDraft {
+  id: string;
+  projectId: string;
+  ontologyId: string;
+  ontologyVersion: string;
+  baseRevision: number;
+  draftRevision: number;
+  sourceId: string;
+  sourceMessageRefs: readonly InterviewBehaviorMessageRef[];
+  candidates: InterviewBehaviorCandidates;
+  clarifications: readonly InterviewBehaviorClarification[];
+  status: InterviewBehaviorDraftStatus;
+  candidateHash: string;
+  confirmation?: TrustedInterviewBehaviorConfirmation;
+  publication?: InterviewBehaviorPublication;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SaveInterviewBehaviorDraftInput {
+  projectId: string;
+  sourceId: string;
+  draftId?: string;
+  expectedDraftRevision?: number;
+  ontologyId: string;
+  ontologyVersion: string;
+  baseRevision: number;
+  sourceMessageRefs: readonly InterviewBehaviorMessageRef[];
+  candidates: InterviewBehaviorCandidates;
+  clarifications?: readonly InterviewBehaviorClarification[];
+  /** The granted capability names known to the caller; unknown values become review questions. */
+  knownPermissionIds?: readonly string[];
+}
+
+export type InterviewBehaviorDraftResult =
+  | { ok: true; draft: InterviewBehaviorDraft; recovered?: boolean }
+  | { ok: false; code: string; issues: readonly CanonicalValidationIssue[]; draft?: InterviewBehaviorDraft };
+
+const issue = (code: string, path: string, message: string): CanonicalValidationIssue =>
+  ({ code, path, message, severity: 'error' });
+
+function stable(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stable);
+  if (value && typeof value === 'object') return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, item]) => [key, stable(item)]),
+  );
+  return value;
+}
+
+export function hashInterviewBehaviorCandidates(candidates: InterviewBehaviorCandidates): string {
+  return createHash('sha256').update(JSON.stringify(stable(candidates))).digest('hex');
+}
+
+function idsOnly(refs: readonly InterviewBehaviorMessageRef[]): boolean {
+  return refs.every((ref) => Boolean(ref) && typeof ref.messageId === 'string' && ref.messageId.trim().length > 0 && Object.keys(ref).length === 1);
+}
+
+function candidateClarifications(
+  candidates: InterviewBehaviorCandidates,
+  knownPermissionIds: readonly string[],
+): InterviewBehaviorClarification[] {
+  const known = new Set(knownPermissionIds);
+  const result: InterviewBehaviorClarification[] = [];
+  for (const action of candidates.actions) {
+    for (const permission of action.permissions ?? []) {
+      if (!known.has(permission)) result.push({
+        id: `permission:${action.id}:${permission}`,
+        kind: 'permission',
+        candidateId: action.id,
+        question: `请确认“${action.name}”是否拥有“${permission}”权限。`,
+        resolved: false,
+      });
+    }
+  }
+  return result;
+}
+
+/**
+ * Persists interview-proposed behavior contracts separately from canonical ontology.
+ * The agent can collect and revise a draft; only a trusted UI confirmation may publish it.
+ */
+export class InterviewBehaviorDraftService {
+  private readonly authoring: CanonicalOntologyAuthoringService;
+
+  constructor(
+    private readonly store = new CanonicalOntologyStore(),
+    private readonly dataRoot = getDataRoot(),
+  ) {
+    this.authoring = new CanonicalOntologyAuthoringService(store);
+  }
+
+  async save(input: SaveInterviewBehaviorDraftInput): Promise<InterviewBehaviorDraftResult> {
+    const sourceCheck = this.validateSourceRefs(input.sourceMessageRefs);
+    if (sourceCheck.length) return this.failure('INVALID_SOURCE_REFS', sourceCheck);
+    const candidateHash = hashInterviewBehaviorCandidates(input.candidates);
+    const existing = input.draftId ? await this.read(input.projectId, input.draftId) : undefined;
+    if (existing && existing.sourceId !== input.sourceId) return this.failure('DRAFT_SOURCE_MISMATCH', [issue('DRAFT_SOURCE_MISMATCH', 'sourceId', 'A draft belongs to a different interview source')], existing);
+    if (existing && input.expectedDraftRevision !== existing.draftRevision) return this.failure('DRAFT_REVISION_CONFLICT', [issue('DRAFT_REVISION_CONFLICT', 'expectedDraftRevision', 'Draft revision changed; review the current draft before saving')], existing);
+    if (existing?.status === 'published' || existing?.status === 'discarded') return this.failure('DRAFT_NOT_EDITABLE', [issue('DRAFT_NOT_EDITABLE', 'status', `A ${existing.status} draft cannot be edited`)], existing);
+
+    const ontology = await this.store.readOntology(input.projectId);
+    if (!ontology || ontology.data.id !== input.ontologyId || ontology.data.version !== input.ontologyVersion) return this.failure('ONTOLOGY_NOT_FOUND', [issue('ONTOLOGY_NOT_FOUND', 'ontologyId', 'The selected canonical ontology is unavailable')], existing);
+    const automatic = candidateClarifications(input.candidates, input.knownPermissionIds ?? []);
+    const clarifications = this.mergeClarifications(input.clarifications ?? [], automatic);
+    const now = new Date().toISOString();
+    const draft: InterviewBehaviorDraft = {
+      id: existing?.id ?? input.draftId ?? `behavior-draft-${randomUUID()}`,
+      projectId: input.projectId,
+      ontologyId: input.ontologyId,
+      ontologyVersion: input.ontologyVersion,
+      baseRevision: input.baseRevision,
+      draftRevision: (existing?.draftRevision ?? 0) + 1,
+      sourceId: input.sourceId,
+      sourceMessageRefs: input.sourceMessageRefs.map((ref) => ({ messageId: ref.messageId })),
+      candidates: input.candidates,
+      clarifications,
+      status: clarifications.some((item) => !item.resolved) ? 'collecting' : 'ready',
+      candidateHash,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+    await this.write(draft);
+    return { ok: true, draft };
+  }
+
+  async review(projectId: string, sourceId: string, draftId: string): Promise<InterviewBehaviorDraftResult> {
+    const draft = await this.read(projectId, draftId);
+    if (!draft) return this.failure('DRAFT_NOT_FOUND', [issue('DRAFT_NOT_FOUND', 'draftId', 'Behavior draft was not found')]);
+    if (draft.sourceId !== sourceId) return this.failure('DRAFT_SOURCE_MISMATCH', [issue('DRAFT_SOURCE_MISMATCH', 'sourceId', 'A draft belongs to a different interview source')], draft);
+    return { ok: true, draft };
+  }
+
+  /** Called only from the renderer/IPC confirmation boundary, never by model tool input. */
+  async confirmFromTrustedUi(projectId: string, sourceId: string, draftId: string, confirmationId: string): Promise<InterviewBehaviorDraftResult> {
+    const reviewed = await this.review(projectId, sourceId, draftId);
+    if (!reviewed.ok) return reviewed;
+    const draft = reviewed.draft;
+    if (draft.status !== 'ready') return this.failure('DRAFT_NOT_READY', [issue('DRAFT_NOT_READY', 'status', 'Resolve all clarification items before confirmation')], draft);
+    if (!confirmationId.trim()) return this.failure('INVALID_CONFIRMATION', [issue('INVALID_CONFIRMATION', 'confirmationId', 'A trusted confirmation ID is required')], draft);
+    const next: InterviewBehaviorDraft = {
+      ...draft,
+      confirmation: { kind: 'trusted_ui', confirmationId, confirmedAt: new Date().toISOString(), candidateHash: draft.candidateHash },
+      updatedAt: new Date().toISOString(),
+    };
+    await this.write(next);
+    return { ok: true, draft: next };
+  }
+
+  async publish(projectId: string, sourceId: string, draftId: string, expectedDraftRevision: number, candidateHash: string, operationId: string): Promise<InterviewBehaviorDraftResult> {
+    const reviewed = await this.review(projectId, sourceId, draftId);
+    if (!reviewed.ok) return reviewed;
+    const draft = reviewed.draft;
+    if (draft.status === 'published' && draft.publication?.operationId === operationId) return { ok: true, draft, recovered: true };
+    if (draft.status !== 'ready' || !draft.confirmation || draft.confirmation.kind !== 'trusted_ui') return this.failure('TRUSTED_CONFIRMATION_REQUIRED', [issue('TRUSTED_CONFIRMATION_REQUIRED', 'confirmation', 'A trusted explicit UI confirmation is required before publication')], draft);
+    if (draft.draftRevision !== expectedDraftRevision || draft.candidateHash !== candidateHash || draft.confirmation.candidateHash !== draft.candidateHash) return this.failure('DRAFT_CONTENT_MISMATCH', [issue('DRAFT_CONTENT_MISMATCH', 'candidateHash', 'Draft contents changed; review and confirm again before publication')], draft);
+    if (hashInterviewBehaviorCandidates(draft.candidates) !== draft.candidateHash) return this.failure('DRAFT_TAMPERED', [issue('DRAFT_TAMPERED', 'candidateHash', 'Draft candidate integrity check failed')], draft);
+    const stored = await this.store.readOntology(projectId);
+    if (!stored || stored.data.id !== draft.ontologyId || stored.data.version !== draft.ontologyVersion) return this.failure('ONTOLOGY_NOT_FOUND', [issue('ONTOLOGY_NOT_FOUND', 'ontologyId', 'The selected canonical ontology is unavailable')], draft);
+    const revision = getCanonicalOntologyAuthoringRevision(stored.data);
+    if (revision !== draft.baseRevision) return this.needsReview(draft, 'ONTOLOGY_REVISION_CONFLICT', 'The ontology changed after this draft was collected; review it again before publication');
+
+    const commands = [
+      ...draft.candidates.factTypes.map((value) => ({ type: 'factType.create' as const, value })),
+      ...draft.candidates.businessStates.map((value) => ({ type: 'businessState.create' as const, value })),
+      ...draft.candidates.rules.map((value) => ({ type: 'rule.create' as const, value })),
+      ...draft.candidates.actions.map((value) => ({ type: 'action.create' as const, value })),
+      ...draft.candidates.transitions.map((value) => ({ type: 'transition.create' as const, value })),
+    ];
+    const result = await this.authoring.execute({
+      type: 'batch', projectId, ontologyId: draft.ontologyId, ontologyVersion: draft.ontologyVersion,
+      expectedRevision: revision, operationId, permissions: [CANONICAL_ONTOLOGY_AUTHOR_PERMISSION],
+      audit: { source: 'project-interview-behavior-draft', sourceId, draftId, confirmationId: draft.confirmation.confirmationId }, commands,
+    });
+    if (result.ok === false) return this.needsReview(draft, 'PUBLISH_REJECTED', 'The behavior draft could not be applied; review its references and try again', result.issues);
+    const published: InterviewBehaviorDraft = {
+      ...draft,
+      status: 'published',
+      publication: { operationId, publishedAt: new Date().toISOString(), beforeRevision: result.receipt.beforeRevision, afterRevision: result.receipt.afterRevision },
+      updatedAt: new Date().toISOString(),
+    };
+    await this.write(published);
+    return { ok: true, draft: published };
+  }
+
+  private async needsReview(draft: InterviewBehaviorDraft, code: string, message: string, issues: readonly CanonicalValidationIssue[] = [issue(code, 'publish', message)]): Promise<InterviewBehaviorDraftResult> {
+    const next = { ...draft, status: 'needs_review' as const, confirmation: undefined, updatedAt: new Date().toISOString() };
+    await this.write(next);
+    return this.failure(code, issues, next);
+  }
+
+  private validateSourceRefs(refs: readonly InterviewBehaviorMessageRef[]): CanonicalValidationIssue[] {
+    return idsOnly(refs) ? [] : [issue('INVALID_SOURCE_REFS', 'sourceMessageRefs', 'Source references must contain only non-sensitive message IDs')];
+  }
+
+  private mergeClarifications(explicit: readonly InterviewBehaviorClarification[], automatic: readonly InterviewBehaviorClarification[]): InterviewBehaviorClarification[] {
+    const entries = new Map<string, InterviewBehaviorClarification>();
+    for (const item of [...automatic, ...explicit]) entries.set(item.id, { ...item });
+    return [...entries.values()];
+  }
+
+  private root(projectId: string): string { return path.join(this.dataRoot, 'projects', projectId, 'interview', 'behavior-drafts'); }
+  private file(projectId: string, draftId: string): string { return path.join(this.root(projectId), `${draftId}.json`); }
+  private async read(projectId: string, draftId: string): Promise<InterviewBehaviorDraft | undefined> {
+    try { return JSON.parse(await readFile(this.file(projectId, draftId), 'utf8')) as InterviewBehaviorDraft; }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error; }
+  }
+  private async write(draft: InterviewBehaviorDraft): Promise<void> {
+    await mkdir(this.root(draft.projectId), { recursive: true });
+    const target = this.file(draft.projectId, draft.id);
+    const temporary = `${target}.${randomUUID()}.tmp`;
+    await writeFile(temporary, JSON.stringify(draft, null, 2), 'utf8');
+    await rename(temporary, target);
+  }
+  private failure(code: string, issues: readonly CanonicalValidationIssue[], draft?: InterviewBehaviorDraft): InterviewBehaviorDraftResult { return { ok: false, code, issues, ...(draft ? { draft } : {}) }; }
+}

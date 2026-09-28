@@ -27,7 +27,7 @@ export class InterviewOntologySyncService {
     const results: InterviewOntologyItemResult[] = [];
     const run = async (item: InterviewOntologyItemResult['item'], index: number, command: Parameters<CanonicalOntologyAuthoringService['execute']>[0], entityId: string) => {
       const result = await this.authoring.execute(command);
-      if (!result.ok) { results.push({ item, index, status: 'rejected', issues: result.issues }); return false; }
+      if (result.ok === false) { results.push({ item, index, status: 'rejected', issues: result.issues }); return false; }
       ontology = result.ontology; revision = result.receipt.afterRevision; results.push({ item, index, status: 'accepted', id: entityId }); return true;
     };
     for (const [index, concept] of input.concepts.entries()) {
