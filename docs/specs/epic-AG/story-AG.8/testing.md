@@ -112,3 +112,11 @@ pnpm --filter @originos/desktop test
 | TC-6 | ✅ 无回退 | desktop 测试失败 6 全部为存量（与未改动主 workspace 对照一致）；core/web 套件无新增失败 |
 
 **自动化覆盖说明：** TC-5 无法完全自动化（需真实 Electron 窗口交互），人工步骤：`pnpm --filter @originos/desktop pack` → 启动 `release/mac-arm64/OriginOS CE.app` → 验证 [setup-data-root] 日志、无 MODULE_NOT_FOUND → 走 TC-5 三场景。剩余风险：动态计算 import 的 @originos/core 说明符目前不存在，若未来引入，打包态会在启动期以 MODULE_NOT_FOUND 显式暴露（staging 闭集校验只覆盖静态 require）。
+
+## AG.8-T2 测试结果记录（2026-09-29）
+
+| 用例 | 结果 | 证据 |
+|------|------|------|
+| TC-2（self-test，WP-1 侧） | ✅ 通过 | `check-architecture-boundaries.cjs --self-test` 51/51（50→51，新增 export 形态穿透用例 + 正式配置 error 判定断言：severity === 2、errorCount === 1、message 含 AGENTS.md v2.6.4） |
+| core type-check（WP-1 侧） | ✅ 通过 | `npx tsc --noEmit -p tsconfig.json`（packages/core）0 error；types index 重导出 OntologyEntity/OntologyRelation |
+| TC-1 / TC-3 / TC-4 / TC-5 / TC-6 | ⏳ 待集成验证 | WP-2 desktop services 批量迁移与打包验证在集成阶段补齐（基线 grep 清零、双端编译、打包冒烟、IPC 回归、测试基线） |
