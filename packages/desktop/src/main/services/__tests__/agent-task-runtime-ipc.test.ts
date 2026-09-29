@@ -6,7 +6,7 @@ import {
   type AgentTaskRuntimeSnapshotV1,
   type ControlAgentTaskRequestV1,
   type CreateAgentTaskRequestV1,
-} from '@originos/core/lib/integrations/pi-agent/task-runtime';
+} from '@originos/core/lib/integrations/pi-agent';
 import type { AgentTaskRuntimeCoordinator } from '@originos/core/lib/integrations/pi-agent/task-runtime/coordinator';
 import type { AgentTaskRuntimeBindingOptions } from '@originos/core/lib/integrations/pi-agent/agent-manager';
 

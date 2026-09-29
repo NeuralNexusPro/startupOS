@@ -20,7 +20,7 @@ import type {
   SkillListResponse,
   SkillSessionsRequest,
   SkillSessionsResponse,
-} from '@originos/core/lib/integrations/electron/ipc-protocol';
+} from '@originos/core/lib/integrations/electron';
 import { handleSkillEvolution } from '@originos/core/lib/features/agent/server';
 import {
   completeSkillExecution,

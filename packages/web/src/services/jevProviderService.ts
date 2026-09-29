@@ -1,7 +1,7 @@
 import type { JevProviderSummary } from '@originos/core/types';
 import type { JevProviderUpdate } from '@originos/core/lib/features/perception';
-import { getIpcRenderer, isElectron } from '@originos/core/lib/integrations/electron/env';
-import { IPC_CHANNELS, type IpcResponse } from '@originos/core/lib/integrations/electron/ipc-protocol';
+import { getIpcRenderer, isElectron } from '@originos/core/lib/integrations/electron';
+import { IPC_CHANNELS, type IpcResponse } from '@originos/core/lib/integrations/electron';
 
 export async function getJevProvider(): Promise<JevProviderSummary> {
   return request('GET', IPC_CHANNELS.JEV_PROVIDER_GET);

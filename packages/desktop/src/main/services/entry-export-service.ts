@@ -9,7 +9,7 @@ import type {
   EntryExportRequest,
   EntryExportResponse,
   IpcResponse,
-} from '@originos/core/lib/integrations/electron/ipc-protocol';
+} from '@originos/core/lib/integrations/electron';
 import {
   isSystemSkillFrontmatter,
   parseFrontmatter,

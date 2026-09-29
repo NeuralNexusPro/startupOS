@@ -8,7 +8,7 @@ import { useMemo, useCallback, useEffect } from 'react';
 import { useAppWindowStore } from '@/store/appWindowStore';
 import { AppWindowConfig, AppWindowData, ComponentContent } from '@originos/core/types';
 import { useElectronWindow } from '@/hooks/useElectronWindow';
-import { isElectron } from '@originos/core/lib/integrations/electron/env';
+import { isElectron } from '@originos/core/lib/integrations/electron';
 import { createNativeWindow } from '@originos/core/lib/integrations/electron/window';
 import { destroyAgentSession, consolidateMemory } from '@originos/core/lib/integrations/electron/services/agent-session';
 

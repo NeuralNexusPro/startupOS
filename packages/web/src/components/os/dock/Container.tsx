@@ -7,7 +7,7 @@
 'use client';
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { isElectron } from '@originos/core/lib/integrations/electron/env';
+import { isElectron } from '@originos/core/lib/integrations/electron';
 import type { DockSide } from '@originos/core/types';
 
 export default function DockContainer({

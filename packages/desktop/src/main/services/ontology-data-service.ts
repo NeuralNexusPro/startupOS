@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron';
 import { existsSync } from 'fs';
 import { IPC_CHANNELS } from '../ipc-protocol';
-import type { IpcResponse } from '@originos/core/lib/integrations/electron/ipc-protocol';
+import type { IpcResponse } from '@originos/core/lib/integrations/electron';
 import { schemaPath } from '@originos/core/lib/features/ontology-data-store/config';
 import {
   loadOrCreateOntology,

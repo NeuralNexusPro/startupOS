@@ -1,4 +1,4 @@
-import type { IpcResponse } from '@originos/core/lib/integrations/electron/ipc-protocol';
+import type { IpcResponse } from '@originos/core/lib/integrations/electron';
 import {
   ONTOLOGY_CROSS_PACKAGE_CONTRACT_VERSION,
   type AgentTaskProjectPriorityV1,
@@ -21,7 +21,7 @@ import {
   type ProjectTaskSummary,
 } from '@originos/core/lib/features/project/client';
 import type { DesignGap } from '@originos/core/lib/features/solution/types';
-import { isElectron } from '@originos/core/lib/integrations/electron/env';
+import { isElectron } from '@originos/core/lib/integrations/electron';
 
 const TASK_BOARD_ACTOR_ID = 'project-task-board';
 const MAX_PAGE_SIZE = 50;

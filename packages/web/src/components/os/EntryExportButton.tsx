@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
-import { isElectron } from '@originos/core/lib/integrations/electron/env';
+import { isElectron } from '@originos/core/lib/integrations/electron';
 import { exportWorkspaceEntry } from '@originos/core/lib/integrations/electron/services/workspace';
 import { Download, Loader2 } from 'lucide-react';
 
-import type { ExportableEntryType } from '@originos/core/lib/integrations/electron/ipc-protocol';
+import type { ExportableEntryType } from '@originos/core/lib/integrations/electron';
 
 interface EntryExportButtonProps {
   entryType: ExportableEntryType;

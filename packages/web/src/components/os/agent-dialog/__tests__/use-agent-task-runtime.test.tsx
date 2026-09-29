@@ -10,7 +10,7 @@ import {
 
 import { useAgentTaskRuntime } from '../use-agent-task-runtime';
 
-import type { AgentTaskRuntimeSnapshotV1 } from '@originos/core/lib/integrations/pi-agent/task-runtime';
+import type { AgentTaskRuntimeSnapshotV1 } from '@originos/core/lib/integrations/pi-agent';
 
 vi.mock('@/services/agent-task-runtime', async () => {
   const actual = await vi.importActual<typeof import('@/services/agent-task-runtime')>(

@@ -10,7 +10,7 @@
 import React from 'react';
 import { useAppWindowStore } from '@/store/appWindowStore';
 import { AppWindow } from './AppWindow';
-import { isElectron } from '@originos/core/lib/integrations/electron/env';
+import { isElectron } from '@originos/core/lib/integrations/electron';
 
 export function AppWindowContainer() {
   const windows = useAppWindowStore((state) => state.windows);

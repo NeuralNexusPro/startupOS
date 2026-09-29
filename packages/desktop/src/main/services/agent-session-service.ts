@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../ipc-protocol';
-import type { IpcResponse } from '@originos/core/lib/integrations/electron/ipc-protocol';
+import type { IpcResponse } from '@originos/core/lib/integrations/electron';
 import { agentSessionService } from '@originos/core/lib/features/agent';
 import { persistRuntimeLLMConfig } from '@originos/core/lib/features/user-config';
 import { agentManager } from '@originos/core/lib/features/agent/server';

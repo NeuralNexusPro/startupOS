@@ -9,7 +9,7 @@ import { createPortal } from 'react-dom';
 import { AcrylicPanel } from '@/components/os/acrylic';
 import { useAppWindow } from '@/hooks/useAppWindow';
 import { AppWindowConfig, DEFAULT_WINDOW_CONSTRAINTS } from '@originos/core/types';
-import { isElectron } from '@originos/core/lib/integrations/electron/env';
+import { isElectron } from '@originos/core/lib/integrations/electron';
 import { WindowTitleBar } from './WindowTitleBar';
 import { WindowResizer } from './WindowResizer';
 import { ViewRenderer } from './ViewRenderer';

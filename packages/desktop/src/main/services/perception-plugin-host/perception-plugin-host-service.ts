@@ -37,7 +37,7 @@ import { SafeStoragePerceptionCredentialAdapter } from './safe-storage-perceptio
 import { SafeStorageMailCredentialAdapter } from '../perception-mail/safe-storage-credential-adapter';
 import { PluginReplyDeliveryService } from './plugin-reply-delivery-service';
 import { IPC_CHANNELS } from '../../ipc-protocol';
-import type { IpcResponse } from '@originos/core/lib/integrations/electron/ipc-protocol';
+import type { IpcResponse } from '@originos/core/lib/integrations/electron';
 import type {
   JsonValue,
   PerceptionPluginManifest,

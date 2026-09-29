@@ -7,7 +7,7 @@
 import { useMemo, useCallback } from 'react';
 import { useAppWindowStore } from '@/store/appWindowStore';
 import { AppWindowData, AppWindowPosition } from '@originos/core/types';
-import { isElectron } from '@originos/core/lib/integrations/electron/env';
+import { isElectron } from '@originos/core/lib/integrations/electron';
 import { closeNativeWindow, focusNativeWindow, maximizeNativeWindow, minimizeNativeWindow } from '@originos/core/lib/integrations/electron/window';
 
 export interface UseAppWindowOptions {

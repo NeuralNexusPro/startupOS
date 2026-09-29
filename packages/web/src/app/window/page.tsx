@@ -3,7 +3,7 @@
 import { Suspense, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import { isElectron } from '@originos/core/lib/integrations/electron/env';
+import { isElectron } from '@originos/core/lib/integrations/electron';
 
 const SkillDialog = dynamic<any>(() => import('@/components/skills/SkillDialog').then(m => ({ default: m.SkillDialog })), { ssr: false });
 const WorkspaceWindow = dynamic<any>(() => import('@/components/os/workspace/WorkspaceWindow').then(m => ({ default: m.WorkspaceWindow })), { ssr: false });
