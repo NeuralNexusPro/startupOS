@@ -6,7 +6,7 @@
 
 import { app } from 'electron';
 import path from 'path';
-import { setElectronDataRoot, setMonorepoRoot } from '../../../core/src/lib/paths';
+import { setElectronDataRoot, setMonorepoRoot } from '@originos/core/lib/paths';
 
 if (app.isPackaged) {
   // 打包模式：数据目录指向用户数据目录（可写）

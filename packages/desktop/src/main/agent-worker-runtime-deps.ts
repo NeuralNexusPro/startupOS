@@ -4,28 +4,29 @@
  * The agent worker loads these modules via dynamic absolute imports at runtime,
  * so TypeScript/electron-builder cannot discover them from the normal static
  * desktop entry graph. Keeping this file in the desktop tsconfig include set
- * forces the required core modules to be emitted into dist-electron/core/src.
+ * forces the required core modules to be emitted into the build output via
+ * side-effect imports that use the @originos/core package specifier.
  */
 
-import '../../../core/src/lib/integrations/pi-agent/cognitive/knowledge-provider';
-import '../../../core/src/lib/integrations/pi-agent/cognitive/manager';
-import '../../../core/src/lib/features/agent/cognitive/pattern/index';
-import '../../../core/src/lib/integrations/pi-agent/cognitive/practice-logger';
-import '../../../core/src/lib/integrations/pi-agent/cognitive/sleep-compute';
-import '../../../core/src/lib/integrations/pi-agent/core/agent';
-import '../../../core/src/lib/integrations/pi-agent/persistent-agent';
-import '../../../core/src/lib/integrations/pi-agent/project-agent/collaboration-prompt';
-import '../../../core/src/lib/integrations/pi-agent/project-agent/project-collaboration-context';
-import '../../../core/src/lib/integrations/pi-agent/project-agent/project-context';
-import '../../../core/src/lib/integrations/pi-agent/project-agent/project-prompt';
-import '../../../core/src/lib/integrations/pi-agent/server-config';
-import '../../../core/src/lib/integrations/pi-agent/tools/index';
-import '../../../core/src/lib/integrations/pi-agent/tools/context';
-import '../../../core/src/modules/collaboration-runtime/engine/agent-context-writer';
-import '../../../core/src/modules/collaboration-runtime/session/blackboard';
-import '../../../core/src/modules/memory-core/index';
-import '../../../core/src/modules/memory-core/session/memory-provider';
-import '../../../core/src/modules/memory-core/tools/archival-memory-tools';
-import '../../../core/src/modules/memory-core/tools/core-memory-tools';
+import '@originos/core/lib/integrations/pi-agent/cognitive/knowledge-provider';
+import '@originos/core/lib/integrations/pi-agent/cognitive/manager';
+import '@originos/core/lib/features/agent/cognitive/pattern/index';
+import '@originos/core/lib/integrations/pi-agent/cognitive/practice-logger';
+import '@originos/core/lib/integrations/pi-agent/cognitive/sleep-compute';
+import '@originos/core/lib/integrations/pi-agent/core/agent';
+import '@originos/core/lib/integrations/pi-agent/persistent-agent';
+import '@originos/core/lib/integrations/pi-agent/project-agent/collaboration-prompt';
+import '@originos/core/lib/integrations/pi-agent/project-agent/project-collaboration-context';
+import '@originos/core/lib/integrations/pi-agent/project-agent/project-context';
+import '@originos/core/lib/integrations/pi-agent/project-agent/project-prompt';
+import '@originos/core/lib/integrations/pi-agent/server-config';
+import '@originos/core/lib/integrations/pi-agent/tools/index';
+import '@originos/core/lib/integrations/pi-agent/tools/context';
+import '@originos/core/modules/collaboration-runtime/engine/agent-context-writer';
+import '@originos/core/modules/collaboration-runtime/session/blackboard';
+import '@originos/core/modules/memory-core/index';
+import '@originos/core/modules/memory-core/session/memory-provider';
+import '@originos/core/modules/memory-core/tools/archival-memory-tools';
+import '@originos/core/modules/memory-core/tools/core-memory-tools';
 
-import '../../../core/src/lib/features/agent/server/index';
+import '@originos/core/lib/features/agent/server/index';
