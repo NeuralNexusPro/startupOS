@@ -6,10 +6,10 @@ import type {
   IpcResponse,
   WorkspaceUploadRequest,
   WorkspaceUploadResponse,
-} from '../../../../core/src/lib/integrations/electron/ipc-protocol';
-import { getDataRoot, getMonorepoRoot } from '../../../../core/src/lib/paths';
-import { loadSkills } from '../../../../core/src/lib/integrations/pi-agent/core/skills';
-import { recordUploads } from '../../../../core/src/lib/integrations/pi-agent/upload-tracker';
+} from '@originos/core/lib/integrations/electron/ipc-protocol';
+import { getDataRoot, getMonorepoRoot } from '@originos/core/lib/paths';
+import { loadSkills } from '@originos/core/lib/integrations/pi-agent/core/skills';
+import { recordUploads } from '@originos/core/lib/integrations/pi-agent/upload-tracker';
 import {
   assertRealPathWithin,
   assertSafeWorkspaceFileName,
@@ -17,7 +17,7 @@ import {
   isPathWithin,
   resolveWorkspaceBasePath,
   writeWorkspaceUploadFile,
-} from '../../../../core/src/lib/integrations/electron/workspace-paths';
+} from '@originos/core/lib/integrations/electron/workspace-paths';
 import { resolveExportableEntryDirectory } from './entry-paths';
 
 const ALLOWED_BASES = [

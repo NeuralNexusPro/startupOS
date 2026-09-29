@@ -1,26 +1,26 @@
 import { ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../ipc-protocol';
-import type { IpcResponse } from '../../../../core/src/lib/integrations/electron/ipc-protocol';
-import { agentSessionService } from '../../../../core/src/lib/features/agent';
-import { persistRuntimeLLMConfig } from '../../../../core/src/lib/features/user-config';
-import { agentManager } from '../../../../core/src/lib/features/agent/server/index';
-import { createAutoModel } from '../../../../core/src/lib/integrations/pi-agent/server-config';
-import { extractDisplayContent } from '../../../../core/src/lib/integrations/pi-agent/display-content';
-import { getVisibleStreamDelta, reconcileFinalStreamContent } from '../../../../core/src/lib/integrations/pi-agent/stream-dedupe';
-import { normalizeAgentTokenUsage, summarizeSessionTokenUsage } from '../../../../core/src/lib/integrations/pi-agent/token-usage';
-import type { AgentMessage } from '../../../../core/src/types/agent';
-import type { RuntimeLLMConfig } from '../../../../core/src/lib/integrations/pi-agent/llm-config';
+import type { IpcResponse } from '@originos/core/lib/integrations/electron/ipc-protocol';
+import { agentSessionService } from '@originos/core/lib/features/agent';
+import { persistRuntimeLLMConfig } from '@originos/core/lib/features/user-config';
+import { agentManager } from '@originos/core/lib/features/agent/server';
+import { createAutoModel } from '@originos/core/lib/integrations/pi-agent/server-config';
+import { extractDisplayContent } from '@originos/core/lib/integrations/pi-agent/display-content';
+import { getVisibleStreamDelta, reconcileFinalStreamContent } from '@originos/core/lib/integrations/pi-agent/stream-dedupe';
+import { normalizeAgentTokenUsage, summarizeSessionTokenUsage } from '@originos/core/lib/integrations/pi-agent/token-usage';
+import type { AgentMessage } from '@originos/core/types';
+import type { RuntimeLLMConfig } from '@originos/core/lib/integrations/pi-agent/llm-config';
 import {
   consolidateOwnedMemory,
   type MemoryConsolidationEntryType,
-} from '../../../../core/src/modules/memory-core';
-import { getDataRoot, getClaudeDir } from '../../../../core/src/lib/paths';
+} from '@originos/core/modules/memory-core';
+import { getDataRoot, getClaudeDir } from '@originos/core/lib/paths';
 import path from 'path';
 import { existsSync, readFileSync } from 'fs';
 import { StreamEventBatcher } from './stream-event-batcher';
 import { applyAssistantMessageEnd } from './assistant-stream-state';
 import { processHealthMonitor } from './process-health-monitor';
-import type { ChannelFlowMessageIngress } from '../../../../core/src/modules/channel-runtime';
+import type { ChannelFlowMessageIngress } from '@originos/core/modules/channel-runtime';
 import { runUiChannelStream } from './channel-ui-stream';
 import {
   AgentTaskRuntimeIpcController,
@@ -32,7 +32,7 @@ import {
   toRestoreAgentSessionError,
   type RestoreAgentEntryType,
   type RestoreAgentSessionRequest,
-} from '../../../../core/src/lib/integrations/pi-agent/session-restore';
+} from '@originos/core/lib/integrations/pi-agent/session-restore';
 
 function extractTextContent(content: unknown): string {
   // Thinking blocks are internal reasoning. They must never become chat content.

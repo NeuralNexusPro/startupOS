@@ -1,11 +1,11 @@
 import { ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../ipc-protocol';
-import type { IpcResponse } from '../../../../core/src/lib/integrations/electron/ipc-protocol';
-import type { OntologyEntity, OntologyRelation } from '../../../../core/src/types/ontology';
-import type { ChatRequest, GenerateOntologyRequest, OntologyEditOperation } from '../../../../core/src/types';
-import type { InterviewSession } from '../../../../core/src/lib/features/ontology/types';
-import { ontologyStorage } from '../../../../core/src/lib/features/ontology/storage';
-import { ontologyService, interviewService } from '../../../../core/src/lib/features/ontology';
+import type { IpcResponse } from '@originos/core/lib/integrations/electron/ipc-protocol';
+import type { OntologyEntity, OntologyRelation } from '@originos/core/types';
+import type { ChatRequest, GenerateOntologyRequest, OntologyEditOperation } from '@originos/core/types';
+import type { InterviewSession } from '@originos/core/lib/features/ontology/types';
+import { ontologyStorage } from '@originos/core/lib/features/ontology/storage';
+import { ontologyService, interviewService } from '@originos/core/lib/features/ontology';
 
 export class OntologyService {
   constructor() {

@@ -4,7 +4,7 @@ import path from 'node:path';
 import type {
   JsonValue,
   PluginStatePort,
-} from '../../../../../core/src/modules/perception-runtime';
+} from '@originos/core/modules/perception-runtime';
 
 export class FilePluginStateAdapter implements PluginStatePort {
   constructor(private readonly dataRoot: string) {}

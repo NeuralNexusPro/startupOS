@@ -1,4 +1,4 @@
-import { sanitizePluginLog, type PluginLogSink } from '../../../../core/src/modules/perception-runtime/plugins';
+import { sanitizePluginLog, type PluginLogSink } from '@originos/core/modules/perception-runtime/plugins';
 import { BufferedDailyLogWriter, type PluginLogChannel } from './daily-log-writer';
 
 export function createPluginLogSink(writer: BufferedDailyLogWriter, sources: Readonly<Record<string, string>>): PluginLogSink {
