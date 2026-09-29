@@ -97,6 +97,15 @@ function materializeSymlink(linkPath) {
     fs.rmSync(linkPath, { recursive: true, force: true });
     return;
   }
+  // Materializing the monorepo root node_modules into the staged tree
+  // recurses forever whenever a self-referential node_modules link exists
+  // anywhere inside it (each pass copies the whole tree back in with a fresh
+  // copy of the same link; observed growth: 130 GB). The root store is never
+  // a runtime dependency shape, so drop such links instead.
+  if (realPath === fs.realpathSync(path.join(repoRoot, 'node_modules'))) {
+    fs.rmSync(linkPath, { recursive: true, force: true });
+    return;
+  }
   const stats = fs.statSync(realPath);
   fs.rmSync(linkPath, { recursive: true, force: true });
   if (stats.isDirectory()) {
