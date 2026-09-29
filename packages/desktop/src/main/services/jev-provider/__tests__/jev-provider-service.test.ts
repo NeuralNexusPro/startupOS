@@ -1,8 +1,8 @@
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { JevProviderConfigService } from '../../../../../../core/src/lib/features/perception';
+import { JevProviderConfigService } from '@originos/core/lib/features/perception';
 import { IPC_CHANNELS } from '../../../ipc-protocol';
-import type { JevDecisionAnswer } from '../../../../../../core/src/types/perception';
+import type { JevDecisionAnswer } from '@originos/core/types';
 
 const mocks = vi.hoisted(() => ({ handle: vi.fn() }));
 vi.mock('electron', () => ({ ipcMain: { handle: mocks.handle }, safeStorage: {} }));

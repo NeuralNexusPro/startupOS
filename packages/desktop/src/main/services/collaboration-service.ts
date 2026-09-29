@@ -1,17 +1,17 @@
 import { BrowserWindow, ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../ipc-protocol';
-import type { IpcResponse } from '../../../../core/src/lib/integrations/electron/ipc-protocol';
-import { addElectronForwarder } from '../../../../core/src/modules/collaboration-runtime/facade/event-bus';
-import { persistRuntimeLLMConfig } from '../../../../core/src/lib/features/user-config';
-import type { RuntimeLLMConfig } from '../../../../core/src/lib/integrations/pi-agent/llm-config';
-import { loadProjectSolutionTopologyProjection } from '../../../../core/src/lib/features/solution';
+import type { IpcResponse } from '@originos/core/lib/integrations/electron/ipc-protocol';
+import { addElectronForwarder } from '@originos/core/modules/collaboration-runtime/facade/event-bus';
+import { persistRuntimeLLMConfig } from '@originos/core/lib/features/user-config';
+import type { RuntimeLLMConfig } from '@originos/core/lib/integrations/pi-agent/llm-config';
+import { loadProjectSolutionTopologyProjection } from '@originos/core/lib/features/solution';
 
 // Dynamic import wrapper — collaboration-runtime is a heavy module
-let facade: typeof import('../../../../core/src/modules/collaboration-runtime/facade') | null = null;
+let facade: typeof import('@originos/core/modules/collaboration-runtime/facade') | null = null;
 
 async function getFacade() {
   if (!facade) {
-    facade = await import('../../../../core/src/modules/collaboration-runtime/facade');
+    facade = await import('@originos/core/modules/collaboration-runtime/facade');
   }
   return facade;
 }

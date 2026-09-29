@@ -1,13 +1,13 @@
 import type { IpcMainInvokeEvent } from 'electron';
 import { ipcMain } from 'electron';
-import type { IpcResponse } from '../../../../core/src/lib/integrations/electron/ipc-protocol';
-import type { AgentSession } from '../../../../core/src/types/agent';
-import { agentSessionService } from '../../../../core/src/lib/features/agent';
+import type { IpcResponse } from '@originos/core/lib/integrations/electron/ipc-protocol';
+import type { AgentSession } from '@originos/core/types';
+import { agentSessionService } from '@originos/core/lib/features/agent';
 import {
   agentManager,
   type AgentTaskRuntimeBindingOptions,
-} from '../../../../core/src/lib/features/agent/server/index';
-import type { AgentTaskRuntimeCoordinator } from '../../../../core/src/lib/integrations/pi-agent/task-runtime/coordinator';
+} from '@originos/core/lib/features/agent/server';
+import type { AgentTaskRuntimeCoordinator } from '@originos/core/lib/integrations/pi-agent/task-runtime/coordinator';
 import {
   AGENT_TASK_RUNTIME_PROTOCOL_VERSION,
   AGENT_TASK_RUNTIME_SCHEMA_VERSION,
@@ -18,9 +18,9 @@ import {
   type ControlAgentTaskRequestV1,
   type CreateAgentTaskRequestV1,
   type GetAgentTaskRequestV1,
-} from '../../../../core/src/lib/integrations/pi-agent/task-runtime';
+} from '@originos/core/lib/integrations/pi-agent/task-runtime';
 import { IPC_CHANNELS } from '../ipc-protocol';
-import { routeTaskAwareChannelMessage } from '../../../../core/src/modules/channel-runtime/task-aware-execution';
+import { routeTaskAwareChannelMessage } from '@originos/core/modules/channel-runtime/task-aware-execution';
 
 interface TaskEventSender {
   isDestroyed(): boolean;

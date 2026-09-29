@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { AtomicDataFileStore, resolvePerceptionPath } from '../../../../../core/src/modules/perception-runtime';
-import type { WeComBotCredentialPort, WeComBotSecret, WeComBotSecretInput } from '../../../../../core/src/types/perception';
+import { AtomicDataFileStore, resolvePerceptionPath } from '@originos/core/modules/perception-runtime';
+import type { WeComBotCredentialPort, WeComBotSecret, WeComBotSecretInput } from '@originos/core/types';
 
 interface SafeStorageLike { isEncryptionAvailable(): boolean; encryptString(value: string): Buffer; decryptString(value: Buffer): string }
 interface CipherRecord { connectorId: string; ciphertextBase64: string }

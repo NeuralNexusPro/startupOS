@@ -1,6 +1,6 @@
 
-import { agentSessionService } from '../../../../core/src/lib/features/agent';
-import { agentManager } from '../../../../core/src/lib/features/agent/server';
+import { agentSessionService } from '@originos/core/lib/features/agent';
+import { agentManager } from '@originos/core/lib/features/agent/server';
 import {
   createProjectContractRuntimeComposition,
   projectContractRuntimeHost,
@@ -11,11 +11,11 @@ import {
   type ProjectTaskSubscription,
   type ProjectTaskSubscriptionInput,
   type ProjectTaskSubscriptionObserver,
-} from '../../../../core/src/lib/features/project';
-import { getDataRoot } from '../../../../core/src/lib/paths';
+} from '@originos/core/lib/features/project';
+import { getDataRoot } from '@originos/core/lib/paths';
 import { IPC_CHANNELS } from '../ipc-protocol';
 
-import type { IpcResponse } from '../../../../core/src/lib/integrations/electron/ipc-protocol';
+import type { IpcResponse } from '@originos/core/lib/integrations/electron/ipc-protocol';
 import type { IpcMainInvokeEvent } from 'electron';
 
 interface IpcRegistrar {

@@ -24,7 +24,16 @@
 
 ### AG.8-T2 — services 批量迁移 + error 升级（Proposal 2，依赖 T1）
 
-**交付物：**
+**已实施（2026-09-29，WP-1 范围：core toolchain 侧）：**
+
+1. `packages/core/src/types/index.ts` ontology 显式重导出列表补入 `OntologyEntity`、`OntologyRelation`（core type-check 0 error），支撑 desktop 将 `types/ontology` 深路径相对导入迁移为 `@originos/core/types` 说明符。
+2. `.eslintrc.cjs` `no-restricted-syntax` warning → error，违规 message 更新为强制执行表述（AGENTS.md v2.6.4）；zones 弃用说明注释保留。
+3. `scripts/check-architecture-boundaries.cjs` checker 保持 error 级镜像；违规 message 同步更新；selfTest 新增 export 形态穿透用例 + 「正式配置 error 判定」断言（severity === 2、errorCount、message 含 v2.6.4），50 → 51 例。
+4. AGENTS.md 版本升 v2.6.4（2026-09-29），「跨包相对路径检查」段落更新为迁移完成、规则 error 强制执行状态。
+
+**WP-2（并行进行中）：** `packages/desktop/src/main/services/` 批量迁移 + 测试文件同型导入清理 + TC-1~TC-6 集成验证（打包冒烟、IPC 回归、基线 grep 清零），在集成阶段交付。
+
+**交付物（原计划）：**
 
 1. `packages/desktop/src/main/services/` 26 个文件批量迁移（约 99 处 from 形态 + 动态 import：`collaboration-service.ts`、`channel-runtime-service.ts`）。
 2. 测试文件同型导入清理（desktop 测试 24 处 + web 测试 2 处）。

@@ -1,14 +1,14 @@
 import { ipcMain } from 'electron';
-import { getDataRoot } from '../../../../../core/src/lib/paths';
+import { getDataRoot } from '@originos/core/lib/paths';
 import {
   JevProviderConfigError,
   JevProviderConfigService,
   type JevProviderSnapshot,
   type JevProviderUpdate,
-} from '../../../../../core/src/lib/features/perception';
-import { JevHttpAdapter } from '../../../../../core/src/lib/integrations/jev';
-import type { JevDecisionRequest, JevProviderSummary, PerceptionDecisionPort } from '../../../../../core/src/types/perception';
-import type { IpcResponse } from '../../../../../core/src/lib/integrations/electron/ipc-protocol';
+} from '@originos/core/lib/features/perception';
+import { JevHttpAdapter } from '@originos/core/lib/integrations/jev';
+import type { JevDecisionRequest, JevProviderSummary, PerceptionDecisionPort } from '@originos/core/types';
+import type { IpcResponse } from '@originos/core/lib/integrations/electron/ipc-protocol';
 import { IPC_CHANNELS } from '../../ipc-protocol';
 import { SafeStorageJevCredentialAdapter } from './safe-storage-credential-adapter';
 

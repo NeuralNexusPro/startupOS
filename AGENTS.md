@@ -1,7 +1,7 @@
 # OriginOS 架构规约 (AGENTS.md)
 
-**版本：** 2.6.3
-**日期：** 2026-09-28
+**版本：** 2.6.4
+**日期：** 2026-09-29
 **状态：** 强制执行
 
 > **单一事实源声明：** 本文件是 OriginOS 唯一的架构规约。根目录 `CLAUDE.md` 仅为工具兼容指针（内容为 `@AGENTS.md` 导入），不承载任何规约内容。历史版本（≤ 2.6.2）中与本文冲突的描述一律以本文为准。
@@ -329,7 +329,7 @@ node scripts/check-architecture-boundaries.cjs --self-test  # 检查器正反例
 
 AG5-T1 首轮以建立真实存量基线为验收目标，既有违规仍属待治理项；本次不将有存量失败的独立扫描接为全量 CI 合并门禁，不通过 allowlist 隐藏违规。该阶段说明不放宽依赖规约。
 
-**跨包相对路径检查（v2.6.3 起）：** `lint:boundaries` 必须覆盖「下游包中解析到其他包 `src/` 的相对导入」这一规则（`.eslintrc.cjs` 的 `import/no-restricted-paths` zones）。该规则纳入后，存量违规按 Story AG.8 的迁移计划消化；规则以 warning 起步，迁移完成后升级为 error 并接入 CI。
+**跨包相对路径检查（v2.6.3 起，v2.6.4 强制执行）：** `lint:boundaries` 必须覆盖「下游包中解析到其他包 `src/` 的相对导入」这一规则（`.eslintrc.cjs` 的 `no-restricted-syntax` 字面量 selector，覆盖 from / side-effect / import type / export / dynamic import / typeof import 全部形态）。存量违规已按 Story AG.8 完成迁移（AG.8-T1 启动关键文件 spike、AG.8-T2 services 批量迁移与 types 重导出补充），规则已升级为 error 强制执行；新增违规直接导致 lint 与架构扫描失败。
 
 ### 违规处理
 
@@ -1277,5 +1277,5 @@ git worktree add ../startupos-add-agent-task-runtime-task-2 \
 
 ---
 
-**最后更新：** 2026-09-28（v2.6.3：确立 AGENTS.md 为单一事实源并替换 CLAUDE.md 为指针；技术栈表补入 Monorepo/Electron；新增多 Agent 协作运行时章节及模块内分层边界（facade/ui 组装豁免）；依赖规约新增「跨包导入必须使用包名说明符」条款；性能约束补入协作运行时指标；数据存储补入 channels/perception 等实际目录与 getDataRoot 解析规则；禁止事项新增跨包相对路径穿透与 exports 白名单绕过）
+**最后更新：** 2026-09-29（v2.6.4：AG.8-T2 存量迁移完成、跨包相对导入拦截规则升 error；core types 补充重导出 OntologyEntity/OntologyRelation 以支撑 desktop 说明符迁移）
 **下次审查：** Story AG.8 / AG.9 完成后

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { MailCredentialPort, MailSecret, MailSecretInput } from '../../../../../core/src/types/perception';
-import { AtomicDataFileStore, resolvePerceptionPath } from '../../../../../core/src/modules/perception-runtime';
+import type { MailCredentialPort, MailSecret, MailSecretInput } from '@originos/core/types';
+import { AtomicDataFileStore, resolvePerceptionPath } from '@originos/core/modules/perception-runtime';
 
 interface SafeStorageLike {
   isEncryptionAvailable(): boolean;

@@ -2,14 +2,14 @@ import { ipcMain, safeStorage } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { PluginLogSink } from '../../../../../core/src/modules/perception-runtime/plugins';
+import type { PluginLogSink } from '@originos/core/modules/perception-runtime/plugins';
 import { dingtalkPlugin } from '@originos/perception-plugin-dingtalk';
 import { emailPlugin } from '@originos/perception-plugin-email';
 import { feishuPlugin } from '@originos/perception-plugin-feishu';
 import { weComPlugin } from '@originos/perception-plugin-wecom';
-import { fingerprintMailProfile, validateMailConnectorSettings } from '../../../../../core/src/lib/integrations/perception/email';
-import { getDataRoot } from '../../../../../core/src/lib/paths';
-import { FileSystemPerceptionTargetRegistry } from '../../../../../core/src/lib/features/services/perception-target-registry';
+import { fingerprintMailProfile, validateMailConnectorSettings } from '@originos/core/lib/integrations/perception/email';
+import { getDataRoot } from '@originos/core/lib/paths';
+import { FileSystemPerceptionTargetRegistry } from '@originos/core/lib/features/services/perception-target-registry';
 import {
   ChannelTriggerExecutionAdapter,
   ConnectorHealthStore,
@@ -30,18 +30,18 @@ import {
   type PerceptionPluginWebhookResult,
   type PluginSchedulePort,
   type PerceptionDecisionPort,
-} from '../../../../../core/src/modules/perception-runtime';
-import type { ChannelMessageIngress } from '../../../../../core/src/modules/channel-runtime';
+} from '@originos/core/modules/perception-runtime';
+import type { ChannelMessageIngress } from '@originos/core/modules/channel-runtime';
 import { SafeStorageWeComCredentialAdapter } from '../perception-wecom/safe-storage-wecom-credential-adapter';
 import { SafeStoragePerceptionCredentialAdapter } from './safe-storage-perception-credential-adapter';
 import { SafeStorageMailCredentialAdapter } from '../perception-mail/safe-storage-credential-adapter';
 import { PluginReplyDeliveryService } from './plugin-reply-delivery-service';
 import { IPC_CHANNELS } from '../../ipc-protocol';
-import type { IpcResponse } from '../../../../../core/src/lib/integrations/electron/ipc-protocol';
+import type { IpcResponse } from '@originos/core/lib/integrations/electron/ipc-protocol';
 import type {
   JsonValue,
   PerceptionPluginManifest,
-} from '../../../../../core/src/modules/perception-runtime';
+} from '@originos/core/modules/perception-runtime';
 import { FilePluginStateAdapter } from './file-plugin-state-adapter';
 import { showNativeSystemNotification, type NativeNotificationResult } from '../native-notification-service';
 
@@ -389,7 +389,7 @@ export class PerceptionPluginHostService {
       ? new DecisionOrchestrator(this.decisions, new DecisionReceiptStore(this.dataRoot), decisionHashSalt(this.dataRoot))
       : undefined;
     const targets = new FileSystemPerceptionTargetRegistry(this.dataRoot);
-    const writeDecisionLog = async ({ phase, event, rule, candidateKeys, receipt, outcome }: Parameters<NonNullable<import('../../../../../core/src/modules/perception-runtime').DecisionPendingNotificationPort['logDecision']>>[0]) => {
+    const writeDecisionLog = async ({ phase, event, rule, candidateKeys, receipt, outcome }: Parameters<NonNullable<import('@originos/core/modules/perception-runtime').DecisionPendingNotificationPort['logDecision']>>[0]) => {
       const labels = { ask_user_to_choose_target: '请用户选择角色或能力', ...Object.fromEntries(await Promise.all(rule.decision.candidates.map(async (candidate) => [
         candidate.key,
         candidate.action === 'dispatch' ? (await targets.describe(candidate.target))?.name ?? candidate.key : candidate.action === 'ignore' ? '忽略事件' : candidate.action === 'notify_user' ? '通知用户' : '请用户选择角色或能力',

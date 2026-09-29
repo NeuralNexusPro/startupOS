@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../ipc-protocol';
-import type { IpcResponse } from '../../../../core/src/lib/integrations/electron/ipc-protocol';
-import type { UserAgent, UserSkill } from '../../../../core/src/lib/features/user-registry';
+import type { IpcResponse } from '@originos/core/lib/integrations/electron/ipc-protocol';
+import type { UserAgent, UserSkill } from '@originos/core/lib/features/user-registry';
 import {
   listUserAgents,
   getUserAgent,
@@ -9,7 +9,7 @@ import {
   getUserSkill,
   deleteUserAgent as deleteUserAgentFromRegistry,
   deleteUserSkill as deleteUserSkillFromRegistry,
-} from '../../../../core/src/lib/features/user-registry';
+} from '@originos/core/lib/features/user-registry';
 
 export class UserRegistryService {
   constructor() {

@@ -1,4 +1,4 @@
-import { reconcileFinalStreamContent } from '../../../../core/src/lib/integrations/pi-agent/stream-dedupe';
+import { reconcileFinalStreamContent } from '@originos/core/lib/integrations/pi-agent/stream-dedupe';
 
 export interface AssistantStreamState {
   content: string;

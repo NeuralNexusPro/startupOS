@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { AgentSession } from '../../../../../core/src/types/agent';
-import { DefaultChannelMessageIngress, type ChannelRuntimeTarget, type ChannelFlowMessageIngress } from '../../../../../core/src/modules/channel-runtime';
+import type { AgentSession } from '@originos/core/types';
+import { DefaultChannelMessageIngress, type ChannelRuntimeTarget, type ChannelFlowMessageIngress } from '@originos/core/modules/channel-runtime';
 import { runUiChannelStream, toUiChannelTarget } from '../channel-ui-stream';
 
 const session: AgentSession = {

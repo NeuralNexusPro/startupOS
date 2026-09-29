@@ -19,32 +19,32 @@ vi.mock('electron', () => ({
   BrowserWindow: { getAllWindows: vi.fn(() => []) },
 }));
 
-vi.mock('../../../../../core/src/lib/features/project', () => ({
+vi.mock('@originos/core/lib/features/project', () => ({
   ProjectOntologyEntryService: class {
     resolveProject = mocks.resolveProject;
     migrateAndBindLegacyOntology = mocks.migrateAndBindLegacyOntology;
   },
 }));
 
-vi.mock('../../../../../core/src/lib/features/ontology', () => ({
+vi.mock('@originos/core/lib/features/ontology', () => ({
   previewLegacyOntologyFile: mocks.previewLegacyOntologyFile,
 }));
 
-vi.mock('../../../../../core/src/lib/features/services/project-service-real', () => ({
+vi.mock('@originos/core/lib/features/services/project-service-real', () => ({
   projectService: { getProject: mocks.getProject },
 }));
 
-vi.mock('../../../../../core/src/lib/features/project/project-creation-service', () => ({
+vi.mock('@originos/core/lib/features/project/project-creation-service', () => ({
   projectCreationService: {},
 }));
 
-vi.mock('../../../../../core/src/lib/integrations/pi-agent/project-agent/project-skill-provisioning', () => ({
+vi.mock('@originos/core/lib/integrations/pi-agent/project-agent/project-skill-provisioning', () => ({
   PROJECT_DEFAULT_SKILLS: [],
   provisionProjectSkill: vi.fn(),
   provisionProjectSkills: vi.fn(),
 }));
 
-vi.mock('../../../../../core/src/lib/features/services/launcher/registry', () => ({ launch: vi.fn() }));
+vi.mock('@originos/core/lib/features/services/launcher/registry', () => ({ launch: vi.fn() }));
 
 import { ProjectService } from '../project-service';
 

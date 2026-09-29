@@ -133,6 +133,9 @@ async function selfTest() {
     add('web/src/app', 'core/src/lib/paths');
     add('perception-plugins/email/src', 'core/src/lib/paths');
     add('desktop/src/main', 'core/src/lib/paths', false, '@originos/core/lib/paths');
+    // AG.8-T2: export-form penetration case backing the formal-config error-severity assertion below.
+    add('desktop/src/main', 'core/src/lib/paths', true, undefined, 'export');
+    const errorSeverityCase = cases[cases.length - 1];
     for (const item of cases) await write(item.file, item.code);
     const cfg = require(path.join(fixture, '.eslintrc.cjs'));
     let previous;
@@ -150,6 +153,13 @@ async function selfTest() {
       const normal = new ESLint({ cwd: directory, resolvePluginsRelativeTo: root });
       const [result] = await normal.lintFiles([path.join(fixture, cases[0].file)]);
       assert.equal(result.messages.filter((message) => message.ruleId === rule && message.severity === 1).length, 1);
+      // AG.8-T2: the formal config must judge the penetration rule as error (severity 2), not warning.
+      const [formalResult] = await normal.lintFiles([path.join(fixture, errorSeverityCase.file)]);
+      const formalMessages = formalResult.messages.filter((message) => message.ruleId === 'no-restricted-syntax');
+      assert.equal(formalMessages.length, 1, JSON.stringify(formalResult));
+      assert.equal(formalMessages[0].severity, 2, JSON.stringify(formalMessages));
+      assert.equal(formalResult.errorCount, 1, JSON.stringify(formalResult));
+      assert(formalMessages[0].message.includes('AGENTS.md v2.6.4'), formalMessages[0].message);
     }
     for (const dir of excluded) await write(`packages/web/src/${dir}/bad.ts`, 'invalid source !');
     for (const file of ['bad.test.ts', 'bad.spec.tsx', 'bad.test.mts', 'bad.d.ts', 'bad.d.mts']) await write(`packages/web/src/${file}`, 'invalid source !');
@@ -175,7 +185,7 @@ async function selfTest() {
     const invalid = run();
     assert.notEqual(invalid.status, 0);
     assert(invalid.stderr.includes('SyntaxError'));
-    console.log(`架构自测通过：${cases.length} 个导入用例 × 2 个 CWD；正式配置 warning、扫描排除、合法/违规退出、空扫描与非法配置均通过。`);
+    console.log(`架构自测通过：${cases.length} 个导入用例 × 2 个 CWD；正式配置 warning、拦截规则 error 判定（AG.8-T2）、扫描排除、合法/违规退出、空扫描与非法配置均通过。`);
   } finally {
     process.chdir(cwd);
     await fs.rm(fixture, { recursive: true, force: true });

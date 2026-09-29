@@ -83,26 +83,27 @@ module.exports = {
     }],
 
     // ========================================
-    // 跨包相对路径穿透（AGENTS.md v2.6.3，Story AG.8）
+    // 跨包相对路径穿透（AGENTS.md v2.6.4，Story AG.8）
     // 说明：不使用 import/no-restricted-paths zones —— 该规则按解析后的文件路径判定，
     // 而 @originos/core 说明符经 workspace 链接同样解析进 packages/core/src，会对合法
     // 说明符产生大量误报。此处按导入字面量匹配「core/src 路径段」，覆盖 from /
     // side-effect / import type / export / dynamic import / typeof import 全部形态。
+    // AG.8-T2：存量迁移完成，severity 升级为 error 强制执行。
     // ========================================
-    "no-restricted-syntax": ["warn", {
-      "message": "禁止通过相对路径穿透 core/src，必须使用 @originos/core 包名说明符（AGENTS.md v2.6.3，迁移见 Story AG.8）。",
+    "no-restricted-syntax": ["error", {
+      "message": "强制执行（AGENTS.md v2.6.4）：禁止相对路径穿透 core/src，必须使用 @originos/core 包名说明符。",
       "selector": "ImportDeclaration[source.value=/(^|[\\/])core[\\/]src([\\/]|$)/]"
     }, {
-      "message": "禁止通过相对路径穿透 core/src，必须使用 @originos/core 包名说明符（AGENTS.md v2.6.3，迁移见 Story AG.8）。",
+      "message": "强制执行（AGENTS.md v2.6.4）：禁止相对路径穿透 core/src，必须使用 @originos/core 包名说明符。",
       "selector": "ImportExpression[source.value=/(^|[\\/])core[\\/]src([\\/]|$)/]"
     }, {
-      "message": "禁止通过相对路径穿透 core/src，必须使用 @originos/core 包名说明符（AGENTS.md v2.6.3，迁移见 Story AG.8）。",
+      "message": "强制执行（AGENTS.md v2.6.4）：禁止相对路径穿透 core/src，必须使用 @originos/core 包名说明符。",
       "selector": "ExportNamedDeclaration[source.value=/(^|[\\/])core[\\/]src([\\/]|$)/]"
     }, {
-      "message": "禁止通过相对路径穿透 core/src，必须使用 @originos/core 包名说明符（AGENTS.md v2.6.3，迁移见 Story AG.8）。",
+      "message": "强制执行（AGENTS.md v2.6.4）：禁止相对路径穿透 core/src，必须使用 @originos/core 包名说明符。",
       "selector": "ExportAllDeclaration[source.value=/(^|[\\/])core[\\/]src([\\/]|$)/]"
     }, {
-      "message": "禁止通过相对路径穿透 core/src，必须使用 @originos/core 包名说明符（AGENTS.md v2.6.3，迁移见 Story AG.8）。",
+      "message": "强制执行（AGENTS.md v2.6.4）：禁止相对路径穿透 core/src，必须使用 @originos/core 包名说明符。",
       "selector": "TSImportType Literal[value=/(^|[\\/])core[\\/]src([\\/]|$)/]"
     }],
 

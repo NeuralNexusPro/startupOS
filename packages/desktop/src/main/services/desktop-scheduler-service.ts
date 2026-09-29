@@ -4,7 +4,7 @@ import {
   SchedulerService,
   type ScheduledTask,
   type ScheduledTaskRun,
-} from '../../../../core/src/modules/scheduler';
+} from '@originos/core/modules/scheduler';
 
 const DEFAULT_POLL_INTERVAL_MS = 1_000;
 const DEFAULT_USER_SCAN_INTERVAL_MS = 30_000;
