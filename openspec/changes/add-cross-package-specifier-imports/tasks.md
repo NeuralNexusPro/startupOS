@@ -1,19 +1,19 @@
 # AG.8-T1 实施工作包
 
-本 Proposal 唯一对应 Story AG.8-T1。以下编号是内部工作包，不是新增可独立交付的 Story Task。当前均未实施。
+本 Proposal 唯一对应 Story AG.8-T1。以下编号是内部工作包，不是新增可独立交付的 Story Task。
 
 ## 1. lint 防线
 
-- [ ] 1.1 串行；依赖设计批准。编排角色核对基线（`grep -rEn "from ['\"](\.\./)+(\.\./)?core/src/" packages/desktop/src packages/web/src --include="*.ts" --include="*.tsx" | grep -v "__tests__\|\.test\."` 输出 123 处 / 30 文件；side-effect 21 处于 agent-worker-runtime-deps.ts），建立 Proposal integration branch `proposal/add-cross-package-specifier-imports` 与 subagent Task worktree；范围为本 Proposal 文档。证据：分支/worktree 建立命令与基线数字。
-- [ ] 1.2 串行，依赖 1.1。工具链 subagent 在 `.eslintrc.cjs` 与 `scripts/check-architecture-boundaries.cjs` 范围新增 3 条 zones 规则（desktop/web/perception-plugins → core/src，warning）与 selfTest 正反例（invalid：from / side-effect / import type 三形态相对穿 core；valid：`@originos/core/lib/paths`）；验证 `node scripts/check-architecture-boundaries.cjs --self-test` 通过、`pnpm lint:boundaries` 报出存量违规且数量与基线一致。证据：warning 基线数字留档。
-- [ ] 1.3 串行，依赖 1.2。核心 subagent 在同一 worktree 迁移 spike 文件：`setup-data-root.ts`（1 处）、`main.ts`（3 处）、`agent-worker-runtime-deps.ts`（21 处 side-effect，同步更新文件头注释）；统一改为 `@originos/core/...` 说明符，不改任何导出符号与逻辑；验证 `pnpm --filter @originos/desktop build` 0 error。证据：tsc 通过输出与 diff。
+- [x] 1.1 串行；依赖设计批准。编排角色核对基线（grep 实测：desktop 非测试 `from` 形态 123 处 / 30 文件，side-effect 21 处于 `agent-worker-runtime-deps.ts`；web 生产源码 0、仅测试文件 2 处），建立 Proposal integration branch `proposal/add-cross-package-specifier-imports` 与 subagent Task worktree。证据：分支 `proposal-task/add-cross-package-specifier-imports-1-toolchain`（a3ca994）与 `-2-core`（8256af7）。
+- [x] 1.2 串行，依赖 1.1。工具链 subagent 落地拦截（**机制偏离见 design.md：zones 因 ~589 误报被弃，改用 `no-restricted-syntax` 字面量匹配 5 selector，warning**）；selfTest 43→50 例（含 side-effect / import type / 动态 import / typeof import 反例）。证据：`node scripts/check-architecture-boundaries.cjs --self-test` 50/50 通过；`pnpm lint:boundaries` 真实违规 128（迁移后口径），零误报。
+- [x] 1.3 串行，依赖 1.2。核心 subagent 迁移 spike 文件：`setup-data-root.ts`、`main.ts`、`agent-worker-runtime-deps.ts`（25 处导入 → `@originos/core/...`，文件头注释同步更新）；不改导出符号与逻辑。证据：commit 8256af7，`pnpm --filter @originos/desktop build` 0 error；`main.ts` 使用 `@originos/core/lib/features/agent/server`（显式目录入口，实测 `/index` 后缀会 MODULE_NOT_FOUND）。
 
 ## 2. 产物验证
 
-- [ ] 2.1 串行，依赖 1.3。核心 subagent 执行 `pnpm desktop:build:app` 打包并检查 `dist-electron/desktop/src/main/setup-data-root.js` 的 require 形态与产物启动；启动正常且无 `MODULE_NOT_FOUND` → 结论写入 Story architecture.md C-1；说明符字面量残留且无法加载 → 按 F1/F2 预案实施并留证。证据：require 形态摘录、启动日志关键行。
-- [ ] 2.2 串行，依赖 2.1。文档角色把 spike 结论（产物解析机制、Fallback 决策）同步回 Story AG.8 architecture.md/implementation.md，并记录 warning 基线到 tasks.md；执行 `openspec validate add-cross-package-specifier-imports --strict`。证据：strict validation 通过输出。
+- [x] 2.1 串行，依赖 1.3。打包实测：**tsc 保留说明符字面量**（`dist-electron/desktop/src/main/setup-data-root.js:1` = `require("@originos/core/lib/paths")`），启用 F1：新增 `scripts/prepare-core-runtime.js`（staging dist-electron/core + 运行时 exports 改写 + 24 个真实消费说明符闭集 exact 条目 + 24/24 resolve fail-fast），`electron-builder.yml` 增加 `.packaging/core-runtime → node_modules/@originos/core`，`build:app` 挂载 staging 步骤。**TC-4 完整通过**：`build:app` 端到端 0 退出（含两个前置既有脚本缺陷修复：`prepare-web-standalone.js` isWorkspaceUiPackage 误拒、`verify-ontology-runtime.js` 挂起不退出），`verify-ontology-runtime.js` 开发态全项 ok。desktop 测试 6 失败经对照未改动主 workspace 确认为存量（email-provisioning ×5、verify-windows-package ×1），非本 Proposal 回退。
+- [x] 2.2 串行，依赖 2.1。spike 结论（tsc 不重写说明符、exports 通配 15/24 错配、F1 选择与证据）已同步回 Story AG.8 architecture.md A-0/C-1/C-2 与 implementation.md；warning 基线 128 留档。`openspec validate add-cross-package-specifier-imports --strict` 于 3.1 集成后随文档更新复跑（见 3.1 证据）。
 
 ## 3. 集成与验收
 
-- [ ] 3.1 串行，依赖 2.2。集成 subagent 合并 Task 分支到 Proposal integration branch，处理冲突（限本 Story 受影响文件）；执行 Story testing.md TC-2/TC-3/TC-4、`pnpm lint`（确认无新增 error）、`pnpm lint:boundaries`、`node scripts/check-architecture-boundaries.cjs --self-test`、`pnpm test` 基线不回退。证据：各项命令输出摘要。
+- [x] 3.1 串行，依赖 2.2。Task 分支已合并回 Proposal integration branch（2f87b7c、ab1aa88，无冲突）；TC-2/TC-3 通过、TC-4 完整通过（含 electron-builder `--dir`）；`pnpm lint` 无新增 error、`pnpm lint:boundaries` 基线 128、self-test 50/50、desktop 测试无新增失败。文档回写（design/tasks/Story）后复跑 `openspec validate add-cross-package-specifier-imports --strict` 通过。证据见 Story AG.8 testing.md TC-4 记录。
 - [ ] 3.2 串行，依赖 3.1。编排角色将 Proposal 分支合入发布线（需用户授权），清理本任务 worktree（确认成果已保存且无人使用）；Story AG.8 README 状态更新。证据：合并提交哈希与清理清单。

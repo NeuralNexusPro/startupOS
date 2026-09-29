@@ -463,6 +463,9 @@ Promise.all([
 ])
   .then(() => {
     console.log(`[verify-ontology-runtime] ${packagedAsar ? 'packaged' : 'development'} module resolution, IPC wiring, process recovery, and frozen WorkItem execution ok`);
+    // Required runtime modules keep live handles (spawner watch, agent pool);
+    // exit explicitly so the build chain does not hang on an idle event loop.
+    process.exit(0);
   })
   .finally(() => {
     if (extracted) fs.rmSync(extracted, { recursive: true, force: true });

@@ -2,7 +2,7 @@
 
 **Story:** 包边界治理 — 消灭跨包相对路径穿透
 **Epic:** AG — 架构治理与围栏对齐
-**最后更新:** 2026-09-28
+**最后更新:** 2026-09-29
 
 ---
 
@@ -10,21 +10,17 @@
 
 每个 Task 一对一创建 OpenSpec Proposal；Task 之间串行（T2 的迁移机制依赖 T1 的 spike 结论）。
 
-### AG.8-T1 — lint 规则 + 启动关键文件 spike（Proposal 1）
+### AG.8-T1 — lint 规则 + 启动关键文件 spike（Proposal 1）— **已完成（2026-09-29）**
 
-**交付物：**
+**交付物（含实施偏离，机制详见 [architecture.md](./architecture.md) A-0/C-2）：**
 
-1. `.eslintrc.cjs` `import/no-restricted-paths` zones 新增 3 条规则（desktop / web / perception-plugins → core/src 相对导入拦截），**warning 级起步**。
-2. `scripts/check-architecture-boundaries.cjs` selfTest 新增正反例：
-   - invalid：`from '../../../../core/src/...'`、side-effect `import '../../../core/src/...'`、`import type ... from '...core/src/...'`
-   - valid：`@originos/core/lib/paths` 等包名说明符
-3. Spike 迁移 3 个含违规的启动关键文件（2026-09-28 复核：`lib/paths.ts`、`local-agent-bridge.ts` 无跨包导入，仅作核实记录）：
-   - `packages/desktop/src/main/setup-data-root.ts`（1 处 from）
-   - `packages/desktop/src/main/main.ts`（3 处 from，含值导入）
-   - `packages/desktop/src/main/agent-worker-runtime-deps.ts`（21 处 side-effect import，需验证 emit 语义不变）
-4. 产物解析结论固化到 [architecture.md](./architecture.md) C-1/C-2：tsc 是否将说明符重写为产物内相对路径；否则按 F1/F2 决策并留证。
+1. ~~zones 规则~~ → 实施改为 `no-restricted-syntax` 字面量匹配（`.eslintrc.cjs` 5 个 esquery selector，warning）：`import/no-restricted-paths` 按 ESM 解析后物理路径判定，pnpm 链接使合法说明符也解析进 core/src，误报 ~589 条，不可用。拦截语义不变：desktop/web/感知插件相对穿 core/src 全部报出，合法 `@originos/core/...` 零误报。
+2. selfTest 43→50 例：新增 side-effect、`import type`、动态 `import()`、`typeof import` 反例（checker 以 error 级镜像同组 selector，`slice(1)` 展开变参 options）。
+3. Spike 迁移 3 个启动关键文件（25 处导入，commit 8256af7）：`setup-data-root.ts`、`main.ts`、`agent-worker-runtime-deps.ts`（side-effect 21 处 + 值导入 4 处，文件头注释同步更新，emit 语义实测不变）。
+4. 产物解析结论（architecture.md C-1/C-2）：**tsc 保留说明符字面量**；启用 **Fallback-F1** —— 新增 `scripts/prepare-core-runtime.js`（staging `dist-electron/core` → `.packaging/core-runtime`，exports `./src/*.ts` → `./dist/src/*.js` 改写，按产物真实消费的 24 个说明符闭集追加 exact 条目并 24/24 resolve fail-fast），`electron-builder.yml` 增加 `.packaging/core-runtime → node_modules/@originos/core`，`build:app` 挂载 staging。
+5. 前置既有缺陷修复 2 处（打包链路暴露，非本 Proposal 引入）：`prepare-web-standalone.js`（isWorkspaceUiPackage 误拒 stage 内 store 条目 → `isPathInside` 守卫）、`verify-ontology-runtime.js`（活句柄挂起 → 成功路径显式 exit）。
 
-**验收：** TC-2（自测）、TC-3（desktop build）、TC-4（打包冒烟）、warning 基线留档。
+**验收：** TC-2/TC-3/TC-4 通过、TC-6 无回退；结果记录见 [testing.md](./testing.md) AG.8-T1 测试结果表。
 
 ### AG.8-T2 — services 批量迁移 + error 升级（Proposal 2，依赖 T1）
 

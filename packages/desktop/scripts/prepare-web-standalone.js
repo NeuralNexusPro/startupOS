@@ -26,6 +26,15 @@ function destinationIsInsideSource(sourcePath, destinationPath) {
       && !path.isAbsolute(relativePath));
 }
 
+// True when candidatePath is inside ancestorPath (or equal to it).
+function isPathInside(candidatePath, ancestorPath) {
+  const relativePath = path.relative(ancestorPath, candidatePath);
+  return relativePath === ''
+    || (relativePath !== '..'
+      && !relativePath.startsWith(`..${path.sep}`)
+      && !path.isAbsolute(relativePath));
+}
+
 function copyStandaloneEntry(sourcePath, destinationPath) {
   const stats = fs.lstatSync(sourcePath);
   if (stats.isSymbolicLink()) {
@@ -104,7 +113,12 @@ function materializeSymlink(linkPath) {
 
 function copyPackageIfMissing(packageSource, packageName, destinationNodeModules) {
   try {
-    if (isWorkspaceUiPackage(fs.realpathSync(packageSource))) {
+    const realSource = fs.realpathSync(packageSource);
+    // Store entries staged inside the packaging tree live under the desktop
+    // workspace path, so the prefix check alone would refuse to hoist them.
+    // Only refuse packages that resolve into the actual workspace sources
+    // outside the packaging target.
+    if (!isPathInside(realSource, target) && isWorkspaceUiPackage(realSource)) {
       return false;
     }
   } catch {
