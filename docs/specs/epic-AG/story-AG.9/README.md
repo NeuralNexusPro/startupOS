@@ -1,12 +1,13 @@
 # Story AG.9: core 包治理 — 公共 API 收缩与定位如实化
 
 **Epic:** AG — 架构治理与围栏对齐
-**状态:** 📋 Planning
+**状态:** 🔧 In Review（实施完成，TC-1~TC-7 全过；Proposal 分支待授权合并）
 **优先级:** 🔴 Critical（公共 API 遵守率当前为 0，core 实质是「任意深度可 import 的目录」）
 **估计工时:** 3–5 天
 **依赖:** 建议在 AG.8（包边界迁移）完成后启动——迁移后所有跨包导入都已走 `@originos/core/...` 说明符，收缩 exports 才不会同时面对两套导入形态
 **创建日期:** 2026-09-28
 **规约依据:** AGENTS.md v2.6.3 依赖规约（feature 必须通过 index.ts 导出公共 API）+ 禁止事项 #10
+**OpenSpec Proposal:** `govern-core-public-api`（`openspec/changes/govern-core-public-api/`）
 
 ---
 
@@ -29,11 +30,13 @@
 |------|------|
 | [requirements.md](./requirements.md) | 用户故事、验收标准、风险与回滚 |
 | [architecture.md](./architecture.md) | exports 收缩分类、门面补齐策略、jsx 清理 |
-| [testing.md](./testing.md) | 测试策略、验收测试用例 |
+| [implementation.md](./implementation.md) | 实施记录（WP 划分、基线差异、关键事实） |
+| [testing.md](./testing.md) | 测试策略、验收测试用例、TC 结果表 |
+| [interaction.md](./interaction.md) | 不适用（纯架构治理） |
 
 ## 状态
 
-- [ ] 需求确认
-- [ ] 架构设计
-- [ ] 开发实施
-- [ ] 测试验证
+- [x] 需求确认
+- [x] 架构设计
+- [x] 开发实施（WP-1 + WP-2，2026-09-29）
+- [x] 测试验证（TC-1 ~ TC-7 全过，见 [testing.md](./testing.md) 结果表）
