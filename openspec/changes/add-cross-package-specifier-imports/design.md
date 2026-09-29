@@ -18,9 +18,11 @@
 
 ## Decisions
 
-### zones 规则放 `.eslintrc.cjs` 而非独立检查器脚本
+### zones 规则放 `.eslintrc.cjs` 而非独立检查器脚本（实施偏离：zones 不可行）
 
-`import/no-restricted-paths` 已承载现有 zones（Layer 依赖方向），跨包相对路径是同族规则，放同一处保持单一配置源；`check-architecture-boundaries.cjs` 继续通过 ESLint 执行（而非自行解析 AST），selfTest 以真实 ESLint 运行正反例。新增规则初始为 `warn`，因为存量 123 处尚未迁移，error 会阻塞全部开发。
+原计划用 `import/no-restricted-paths` zones。实施时发现该规则按 **ESM 解析后的物理路径** 判定违规：pnpm workspace 使合法的 `@originos/core/...` 说明符也解析进 `core/src`，产生约 589 条误报（740 总诊断 = 151 真实 + 589 误报），无法以「合法说明符白名单」收敛（每加一条白名单就是一个新的维护面）。
+
+实际落地：`no-restricted-syntax` 字面量匹配——5 个 esquery selector 匹配 `source.value` 中含 `core/src` 路径段的字面量（ImportDeclaration / ImportExpression / ExportNamedDeclaration / ExportAllDeclaration / TSImportType），severity=warning，零误报；天然覆盖 side-effect import、`import type`、动态 `import()`、`typeof import` 全部语法形态。`check-architecture-boundaries.cjs` checker 以 error 级镜像同组 selector（注意 ESLint rule options 是 `[severity, ...options]` 变参形态，须 `slice(1)` 展开全部 selector），selfTest 43→50 例（新增 side-effect / import-type / 动态 import / typeof import 反例）。保留「单一配置源」初衷：检查器与 `.eslintrc.cjs` 同组 selector 镜像，PR 内注明同步义务。
 
 备选方案：在 `check-architecture-boundaries.cjs` 内手写相对路径解析。放弃原因：与既有 zones 双轨易漂移，且自研路径解析需处理 tsconfig paths/别名组合，正确性成本高于复用插件。
 
@@ -28,16 +30,18 @@
 
 `setup-data-root.ts`（数据根注入，Electron 启动第一环，1 处值导入）、`main.ts`（进程入口，3 处值导入含 agentManager 单例）、`agent-worker-runtime-deps.ts`（21 处 side-effect import，验证 emit 强制语义在说明符形态下不变）。三者覆盖值导入 + side-effect import + 启动链路；`lib/paths.ts`、`local-agent-bridge.ts` 经 2026-09-28 复核无跨包导入，从 spike 清单移除（Story 早先清单基于估算）。
 
-### 产物验证判据
+### 产物验证判据（结论已固化，Fallback-F1 落地）
 
-编译后检查 `dist-electron/desktop/src/main/setup-data-root.js` 的 require 形态：
+编译后检查 `dist-electron/desktop/src/main/setup-data-root.js` 的 require 形态。实测：**tsc 保留 `@originos/core/...` 字面量**（desktop tsconfig `paths` 仅服务类型解析，不重写 emit），Node 打包态 require `.ts` 必然失败，启用 **F1**：
 
-- 若为产物内相对路径（tsc paths 重写或保持相对）→ 无 Fallback 需求，结论写入 Story architecture.md C-1。
-- 若保留 `@originos/core/...` 字面量 → Node 走 pnpm hoisted 链接 require 到 `.ts` 会失败，必须启用 Fallback：F1（electron-builder `files` 纳入 core 编译产物与 package.json）或 F2（desktop tsconfig paths 显式映射 + stage 脚本同步 core 产物）。F1/F2 选择以打包冒烟实测为准，证据记录在实施 PR。
+- `scripts/prepare-core-runtime.js`（新增）：把 desktop tsc 的副产物 `dist-electron/core` 镜像到 `.packaging/core-runtime`，生成运行时 `package.json`（`main`/`exports` 的 `./src/*.ts` → `./dist/src/*.js`），并按 dist-electron 产物真实 require 的 24 个 `@originos/core/...` 说明符闭集追加 exact exports 条目——源 exports 的 `*/index.ts` 形状通配与真实平铺文件（如 `cognitive/knowledge-provider.ts`）错配，若照抄则 24 个中 15 个在打包态不可解析（staging 冒烟实测）。脚本 fail-fast：24/24 说明符必须经 staged exports `resolve` 成功。
+- `electron-builder.yml` `files` 增加 `.packaging/core-runtime → node_modules/@originos/core`；`build:app` 在 desktop tsc 之后挂载 staging。
+- 只做解析级校验、不做模块执行冒烟：核心运行时模块持有活句柄（spawner watch、agent pool），全量 require 会挂起事件循环（`verify-ontology-runtime.js` 的挂起已实测并修复为其显式 `process.exit(0)`）；打包完整冒烟由 electron-builder `--dir` + 启动检查承担。
+- F2（tsconfig 显式 paths + stage 同步）放弃：tsc paths 不重写产物，F2 无法解决打包态解析，只有 staging 能让说明符在产物内可解析。
 
-### 不在本 Proposal 内动 exports
-
-迁移目标说明符（如 `@originos/core/lib/paths`）已被现有 exports 通配条目（`./lib/paths`、`./lib/features/*` 等 74 条）覆盖；即使个别深路径未被覆盖，tsc paths 也能编译通过，exports 语义收敛统一交给 AG.9，避免两条战线交叉。
+附带修复的两个**前置既有缺陷**（与本 Proposal 无因果，打包链路实测暴露，单独提交）：
+- `prepare-web-standalone.js`：pnpm store 条目被 stage 进 `.packaging` 后落在 desktop workspace 路径内，`isWorkspaceUiPackage` 前缀判定误拒 hoisting，导致 `next.js` 断言失败 → 增加 `isPathInside(realSource, target)` 守卫。
+- `verify-ontology-runtime.js`：全部校验通过后事件循环被运行时活句柄挂住不退出（未改动主 workspace 可复现）→ 成功路径显式 `process.exit(0)`。
 
 ## Risks / Trade-offs
 
