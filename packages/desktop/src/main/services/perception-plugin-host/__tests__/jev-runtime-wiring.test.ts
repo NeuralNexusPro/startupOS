@@ -9,9 +9,9 @@ import {
   PerceptionEventStore,
   TriggerRuleStore,
   type PerceptionPluginHostPorts,
-} from '../../../../../../core/src/modules/perception-runtime';
-import type { ChannelMessageIngress } from '../../../../../../core/src/modules/channel-runtime';
-import type { JevDecisionAnswer, JevDecisionRequest, PerceptionEventV1, PerceptionTriggerRule } from '../../../../../../core/src/types/perception';
+} from '@originos/core/modules/perception-runtime';
+import type { ChannelMessageIngress } from '@originos/core/modules/channel-runtime';
+import type { JevDecisionAnswer, JevDecisionRequest, PerceptionEventV1, PerceptionTriggerRule } from '@originos/core/types';
 import { PerceptionPluginHostService } from '../perception-plugin-host-service';
 import { IPC_CHANNELS } from '../../../ipc-protocol';
 

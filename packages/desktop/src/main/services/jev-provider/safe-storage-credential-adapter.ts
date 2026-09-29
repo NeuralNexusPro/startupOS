@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { safeStorage } from 'electron';
-import { AtomicDataFileStore } from '../../../../../core/src/modules/perception-runtime';
-import { JevProviderConfigError, type JevCredentialPort } from '../../../../../core/src/lib/features/perception';
+import { AtomicDataFileStore } from '@originos/core/modules/perception-runtime';
+import { JevProviderConfigError, type JevCredentialPort } from '@originos/core/lib/features/perception';
 
 const SECRET_REF = 'secret://model-provider/jev';
 interface SafeStorageLike {

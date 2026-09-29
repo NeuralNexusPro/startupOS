@@ -20,8 +20,8 @@ import type {
   SkillListResponse,
   SkillSessionsRequest,
   SkillSessionsResponse,
-} from '../../../../core/src/lib/integrations/electron/ipc-protocol';
-import { handleSkillEvolution } from '../../../../core/src/lib/features/agent/server/index';
+} from '@originos/core/lib/integrations/electron/ipc-protocol';
+import { handleSkillEvolution } from '@originos/core/lib/features/agent/server';
 import {
   completeSkillExecution,
   getSkillExecutionTimeline,
@@ -33,7 +33,7 @@ import {
   SkillServiceError,
   startSkillExecution,
   streamSkillExecutionMessage,
-} from '../../../../core/src/lib/features/skills/service';
+} from '@originos/core/lib/features/skills/service';
 import { StreamEventBatcher } from './stream-event-batcher';
 
 export class SkillService {

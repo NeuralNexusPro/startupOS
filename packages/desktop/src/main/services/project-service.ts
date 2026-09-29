@@ -5,14 +5,14 @@ import path from 'path';
 import { ipcMain, BrowserWindow } from 'electron';
 
 import { IPC_CHANNELS } from '../ipc-protocol';
-import type { IpcResponse } from '../../../../core/src/lib/integrations/electron/ipc-protocol';
+import type { IpcResponse } from '@originos/core/lib/integrations/electron/ipc-protocol';
 import type {
   Project,
   ProjectListItem,
   CreateProjectRequest,
   UpdateProjectRequest,
   ProjectQuery,
-} from '../../../../core/src/types/project';
+} from '@originos/core/types';
 import type {
   CompleteCreationRequest,
   CompleteCreationResponse,
@@ -20,25 +20,25 @@ import type {
   StartProjectCreationResponse,
   SubmitAnswerRequest,
   SubmitAnswerResponse,
-} from '../../../../core/src/types/project-creation';
-import { calculateProgress } from '../../../../core/src/types/project-creation';
-import { projectService } from '../../../../core/src/lib/features/services/project-service-real';
-import { projectCreationService } from '../../../../core/src/lib/features/project/project-creation-service';
+} from '@originos/core/types';
+import { calculateProgress } from '@originos/core/types';
+import { projectService } from '@originos/core/lib/features/services/project-service-real';
+import { projectCreationService } from '@originos/core/lib/features/project/project-creation-service';
 import {
   ProjectOntologyEntryService,
   type ProjectOntologyEntryResult,
-} from '../../../../core/src/lib/features/project';
+} from '@originos/core/lib/features/project';
 import {
   previewLegacyOntologyFile,
   type LegacyOntologySourceKind,
-} from '../../../../core/src/lib/features/ontology';
-import { getDataRoot, getTemplatesDir } from '../../../../core/src/lib/paths';
+} from '@originos/core/lib/features/ontology';
+import { getDataRoot, getTemplatesDir } from '@originos/core/lib/paths';
 import {
   PROJECT_DEFAULT_SKILLS,
   provisionProjectSkill,
   provisionProjectSkills,
-} from '../../../../core/src/lib/integrations/pi-agent/project-agent/project-skill-provisioning';
-import { launch } from '../../../../core/src/lib/features/services/launcher/registry';
+} from '@originos/core/lib/integrations/pi-agent/project-agent/project-skill-provisioning';
+import { launch } from '@originos/core/lib/features/services/launcher/registry';
 
 interface LegacyOntologyMigrationRequest {
   projectId: string;

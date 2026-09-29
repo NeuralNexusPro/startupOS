@@ -10,14 +10,14 @@ import type {
   AgentProjectStopResponse,
   AgentProjectAbortRequest,
   AgentProjectAbortResponse,
-} from '../../../../core/src/lib/integrations/electron/ipc-protocol';
-import { persistentAgentManager } from '../../../../core/src/lib/features/agent/server/index';
-import { extractDisplayContent } from '../../../../core/src/lib/integrations/pi-agent/display-content';
-import { getVisibleStreamDelta } from '../../../../core/src/lib/integrations/pi-agent/stream-dedupe';
-import { normalizeAgentTokenUsage, summarizeSessionTokenUsage } from '../../../../core/src/lib/integrations/pi-agent/token-usage';
-import type { AgentMessage } from '../../../../core/src/types/agent';
+} from '@originos/core/lib/integrations/electron/ipc-protocol';
+import { persistentAgentManager } from '@originos/core/lib/features/agent/server';
+import { extractDisplayContent } from '@originos/core/lib/integrations/pi-agent/display-content';
+import { getVisibleStreamDelta } from '@originos/core/lib/integrations/pi-agent/stream-dedupe';
+import { normalizeAgentTokenUsage, summarizeSessionTokenUsage } from '@originos/core/lib/integrations/pi-agent/token-usage';
+import type { AgentMessage } from '@originos/core/types';
 import { applyAssistantMessageEnd } from './assistant-stream-state';
-import { persistRuntimeLLMConfig } from '../../../../core/src/lib/features/user-config';
+import { persistRuntimeLLMConfig } from '@originos/core/lib/features/user-config';
 
 const SYSTEM_TRIGGER_GREETING = '__SYSTEM_TRIGGER_GREETING__';
 const SYSTEM_GREETING_PROMPT = `开始一次项目访谈。直接用自然、简短的业务语言欢迎用户，并只问一个有助于了解其日常工作的问题。不要解释或输出内部阶段判断、项目本体状态、canonical ontology、business-model.json、技能文件、工具调用或任何推理过程。`;

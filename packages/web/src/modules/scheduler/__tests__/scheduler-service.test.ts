@@ -3,8 +3,7 @@ import { Type } from "@sinclair/typebox";
 import type { AgentToolResult } from "@originos/pi-agent-adapter";
 import { SchedulerService, computeNextRunAt, DefaultSchedulerActionRunner, ScheduleStore } from "@originos/core/modules/scheduler";
 import type { ScheduledTask, ScheduledTaskRun } from "@originos/core/modules/scheduler";
-import type { ToolRegistration } from "../../../../../core/src/lib/integrations/pi-agent/types";
-import { getToolRegistry } from "../../../../../core/src/lib/integrations/pi-agent/tools/registry";
+import { getToolRegistry, type ToolRegistration } from "@originos/core/lib/integrations/pi-agent/tools";
 
 class MemoryScheduleStore extends ScheduleStore {
 	tasks: ScheduledTask[] = [];

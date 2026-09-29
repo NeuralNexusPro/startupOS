@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { getDataRoot } from '../../../../core/src/lib/paths';
+import { getDataRoot } from '@originos/core/lib/paths';
 
 export const EXPORTABLE_ENTRY_TYPES = ['skill', 'agent', 'role-agent'] as const;
 

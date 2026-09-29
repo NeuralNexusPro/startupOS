@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { safeStorage } from 'electron';
-import { AtomicDataFileStore, resolvePerceptionPath } from '../../../../../core/src/modules/perception-runtime';
-import type { PluginCredentialPort } from '../../../../../core/src/modules/perception-runtime/plugins';
+import { AtomicDataFileStore, resolvePerceptionPath } from '@originos/core/modules/perception-runtime';
+import type { PluginCredentialPort } from '@originos/core/modules/perception-runtime/plugins';
 
 interface SafeStorageLike { isEncryptionAvailable(): boolean; encryptString(value: string): Buffer; decryptString(value: Buffer): string }
 interface SecretRecord { connectorId: string; name: string; ciphertextBase64: string }

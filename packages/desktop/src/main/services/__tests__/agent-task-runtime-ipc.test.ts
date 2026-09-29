@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AgentSession } from '../../../../../core/src/types/agent';
+import type { AgentSession } from '@originos/core/types';
 import {
   createIdleAgentTaskExecutionState,
   type AgentTaskRuntimePersistenceV1,
   type AgentTaskRuntimeSnapshotV1,
   type ControlAgentTaskRequestV1,
   type CreateAgentTaskRequestV1,
-} from '../../../../../core/src/lib/integrations/pi-agent/task-runtime';
-import type { AgentTaskRuntimeCoordinator } from '../../../../../core/src/lib/integrations/pi-agent/task-runtime/coordinator';
-import type { AgentTaskRuntimeBindingOptions } from '../../../../../core/src/lib/integrations/pi-agent/agent-manager';
+} from '@originos/core/lib/integrations/pi-agent/task-runtime';
+import type { AgentTaskRuntimeCoordinator } from '@originos/core/lib/integrations/pi-agent/task-runtime/coordinator';
+import type { AgentTaskRuntimeBindingOptions } from '@originos/core/lib/integrations/pi-agent/agent-manager';
 
 const { ipcHandle } = vi.hoisted(() => ({ ipcHandle: vi.fn() }));
 

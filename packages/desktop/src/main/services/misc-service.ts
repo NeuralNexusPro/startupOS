@@ -1,14 +1,14 @@
 import { ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../ipc-protocol';
-import type { IpcResponse } from '../../../../core/src/lib/integrations/electron/ipc-protocol';
-import { interviewService } from '../../../../core/src/lib/features/ontology';
-import { getNotificationManager, NotificationStatus, NotificationType } from '../../../../core/src/lib/integrations/pi-agent/notification-system';
-import { launch } from '../../../../core/src/lib/features/services/launcher/registry';
-import type { EntryType, LaunchContext } from '../../../../core/src/lib/features/services/launcher/base';
-import { getSessionService } from '../../../../core/src/lib/features/culture/services/CultureSessionService';
-import { getDetectionService } from '../../../../core/src/lib/features/culture/services/CultureDetectionService';
-import { listSandboxApps } from '../../../../core/src/lib/features/sandbox/app-scanner';
-import { readUserConfigWithProductDefaults, updateUserConfig } from '../../../../core/src/lib/features/user-config';
+import type { IpcResponse } from '@originos/core/lib/integrations/electron/ipc-protocol';
+import { interviewService } from '@originos/core/lib/features/ontology';
+import { getNotificationManager, NotificationStatus, NotificationType } from '@originos/core/lib/integrations/pi-agent/notification-system';
+import { launch } from '@originos/core/lib/features/services/launcher/registry';
+import type { EntryType, LaunchContext } from '@originos/core/lib/features/services/launcher/base';
+import { getSessionService } from '@originos/core/lib/features/culture/services/CultureSessionService';
+import { getDetectionService } from '@originos/core/lib/features/culture/services/CultureDetectionService';
+import { listSandboxApps } from '@originos/core/lib/features/sandbox/app-scanner';
+import { readUserConfigWithProductDefaults, updateUserConfig } from '@originos/core/lib/features/user-config';
 import { showNativeSystemNotification } from './native-notification-service';
 
 export class MiscService {

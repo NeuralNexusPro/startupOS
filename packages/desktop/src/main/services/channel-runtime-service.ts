@@ -5,9 +5,9 @@ import {
   SessionSerializingChannelRuntime,
   registerAgentFamilyRuntimes,
   type ChannelSessionProvisionerPort,
-} from '../../../../core/src/modules/channel-runtime';
-import type { ChannelSessionMessageStorePort, ChannelSessionResolverPort } from '../../../../core/src/modules/channel-runtime/runtime-adapter';
-import { CollaborationChannelRuntimeAdapter, type CollaborationChannelBackendPort } from '../../../../core/src/modules/collaboration-runtime/integrations/channel-runtime-adapter';
+} from '@originos/core/modules/channel-runtime';
+import type { ChannelSessionMessageStorePort, ChannelSessionResolverPort } from '@originos/core/modules/channel-runtime/runtime-adapter';
+import { CollaborationChannelRuntimeAdapter, type CollaborationChannelBackendPort } from '@originos/core/modules/collaboration-runtime/integrations/channel-runtime-adapter';
 import { routeAgentSessionUserMessage, type AgentTaskRuntimeIpcController } from './agent-task-runtime-ipc';
 
 export interface DesktopChannelRuntimeDependencies {
@@ -41,12 +41,12 @@ export async function createDefaultDesktopChannelRuntime(
   taskRuntimeIpc?: AgentTaskRuntimeIpcController,
 ): Promise<ReturnType<typeof composeDesktopChannelRuntime>> {
   const [agentFeature, launcher, manager, paths, channelGateway, collaborationBackend] = await Promise.all([
-    import('../../../../core/src/lib/features/agent'),
-    import('../../../../core/src/lib/features/services/launcher'),
-    import('../../../../core/src/lib/features/agent/server/index'),
-    import('../../../../core/src/lib/paths'),
-    import('../../../../core/src/modules/channel-runtime/pi-agent-session-gateway'),
-    import('../../../../core/src/modules/collaboration-runtime/integrations/facade-channel-backend'),
+    import('@originos/core/lib/features/agent'),
+    import('@originos/core/lib/features/services/launcher'),
+    import('@originos/core/lib/features/agent/server'),
+    import('@originos/core/lib/paths'),
+    import('@originos/core/modules/channel-runtime/pi-agent-session-gateway'),
+    import('@originos/core/modules/collaboration-runtime/integrations/facade-channel-backend'),
   ]);
   const agentGateway = new channelGateway.PiAgentChannelSessionGateway({
     launch: launcher.launch,

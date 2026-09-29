@@ -9,11 +9,11 @@ import type {
   EntryExportRequest,
   EntryExportResponse,
   IpcResponse,
-} from '../../../../core/src/lib/integrations/electron/ipc-protocol';
+} from '@originos/core/lib/integrations/electron/ipc-protocol';
 import {
   isSystemSkillFrontmatter,
   parseFrontmatter,
-} from '../../../../core/src/lib/integrations/pi-agent/core/skills';
+} from '@originos/core/lib/integrations/pi-agent/core/skills';
 import { IPC_CHANNELS } from '../ipc-protocol';
 import {
   EntryPathError,

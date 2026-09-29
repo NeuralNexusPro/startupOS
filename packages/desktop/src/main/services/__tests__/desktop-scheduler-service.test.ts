@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { SchedulerService } from '../../../../../core/src/modules/scheduler';
-import type { ScheduleStore } from '../../../../../core/src/modules/scheduler/schedule-store';
+import { SchedulerService } from '@originos/core/modules/scheduler';
+import type { ScheduleStore } from '@originos/core/modules/scheduler/schedule-store';
 import { DesktopSchedulerService, getNativeNotificationRequest } from '../desktop-scheduler-service';
 
 const memoryStore = (): ScheduleStore => ({

@@ -1,15 +1,15 @@
 import { randomUUID } from 'node:crypto';
-import type { AgentSession } from '../../../../core/src/types/agent';
-import type { AgentTokenUsage } from '../../../../core/src/types/agent';
+import type { AgentSession } from '@originos/core/types';
+import type { AgentTokenUsage } from '@originos/core/types';
 import type {
   AgentOutputEvent,
   ChannelFlowMessageIngress,
   ChannelRuntimeTarget,
-} from '../../../../core/src/modules/channel-runtime';
+} from '@originos/core/modules/channel-runtime';
 import {
   getVisibleStreamDelta,
   reconcileFinalStreamContent,
-} from '../../../../core/src/lib/integrations/pi-agent/stream-dedupe';
+} from '@originos/core/lib/integrations/pi-agent/stream-dedupe';
 import { StreamEventBatcher } from './stream-event-batcher';
 
 interface UiChannelStreamRequest {

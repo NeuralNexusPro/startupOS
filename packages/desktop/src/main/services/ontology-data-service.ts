@@ -1,21 +1,21 @@
 import { ipcMain } from 'electron';
 import { existsSync } from 'fs';
 import { IPC_CHANNELS } from '../ipc-protocol';
-import type { IpcResponse } from '../../../../core/src/lib/integrations/electron/ipc-protocol';
-import { schemaPath } from '../../../../core/src/lib/features/ontology-data-store/config';
+import type { IpcResponse } from '@originos/core/lib/integrations/electron/ipc-protocol';
+import { schemaPath } from '@originos/core/lib/features/ontology-data-store/config';
 import {
   loadOrCreateOntology,
-} from '../../../../core/src/lib/features/ontology-data-store/ontology-ops';
-import { listInstanceRelations } from '../../../../core/src/lib/features/ontology-data-store/instance-relations';
+} from '@originos/core/lib/features/ontology-data-store/ontology-ops';
+import { listInstanceRelations } from '@originos/core/lib/features/ontology-data-store/instance-relations';
 import {
   queryInstances,
-} from '../../../../core/src/lib/features/ontology-data-store/query-engine';
-import { loadConceptSchema } from '../../../../core/src/lib/features/ontology-data-store/schema-validator';
+} from '@originos/core/lib/features/ontology-data-store/query-engine';
+import { loadConceptSchema } from '@originos/core/lib/features/ontology-data-store/schema-validator';
 import {
   CanonicalOntologyAuthoringService,
   parseCanonicalOntologyAuthoringCommand,
   type CanonicalOntologyAuthoringResult,
-} from '../../../../core/src/lib/features/ontology';
+} from '@originos/core/lib/features/ontology';
 
 export class OntologyDataService {
   constructor(

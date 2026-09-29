@@ -7,8 +7,8 @@ import {
   type ChannelDeliveryPort,
   type DeliveryReceipt,
   type FlowPacket,
-} from '../../../../../core/src/modules/channel-runtime';
-import type { ChannelReplyFile, PluginReplyEvent, PluginReplyPort, PluginReplyReceipt } from '../../../../../core/src/modules/perception-runtime/plugins';
+} from '@originos/core/modules/channel-runtime';
+import type { ChannelReplyFile, PluginReplyEvent, PluginReplyPort, PluginReplyReceipt } from '@originos/core/modules/perception-runtime/plugins';
 
 type ReplyDelivery = (event: PluginReplyEvent) => Promise<PluginReplyReceipt>;
 

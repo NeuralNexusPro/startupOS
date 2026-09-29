@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ChannelDeliveryStore } from '../../../../../core/src/modules/channel-runtime';
+import { ChannelDeliveryStore } from '@originos/core/modules/channel-runtime';
 import { PluginReplyDeliveryService } from '../perception-plugin-host/plugin-reply-delivery-service';
 
 const roots: string[] = [];
