@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ChannelInvocation } from '../../../../../core/src/modules/channel-runtime';
+import type { ChannelInvocation } from '@originos/core/modules/channel-runtime';
 import { composeDesktopChannelRuntime } from '../channel-runtime-service';
 
 // The composition test runs in Node; task-runtime IPC imports the Electron host.

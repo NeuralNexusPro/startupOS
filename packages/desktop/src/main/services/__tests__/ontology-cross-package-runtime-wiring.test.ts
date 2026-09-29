@@ -22,17 +22,17 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../../../../../core/src/lib/features/project', () => ({
+vi.mock('@originos/core/lib/features/project', () => ({
   createProjectContractRuntimeComposition: mocks.compose,
   projectContractRuntimeHost: mocks.host,
 }));
-vi.mock('../../../../../core/src/lib/features/agent', () => ({
+vi.mock('@originos/core/lib/features/agent', () => ({
   agentSessionService: mocks.sessions,
 }));
-vi.mock('../../../../../core/src/lib/features/agent/server', () => ({
+vi.mock('@originos/core/lib/features/agent/server', () => ({
   agentManager: mocks.agents,
 }));
-vi.mock('../../../../../core/src/lib/paths', () => ({ getDataRoot: (): string => '/data-root' }));
+vi.mock('@originos/core/lib/paths', () => ({ getDataRoot: (): string => '/data-root' }));
 
 import { createOntologyCrossPackageService } from '../ontology-cross-package-ipc';
 

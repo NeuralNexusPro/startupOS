@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitest/config';
+import path from 'path';
 
 export default defineConfig({
   test: {
@@ -9,5 +10,12 @@ export default defineConfig({
     ],
     mockReset: true,
     restoreMocks: true,
+  },
+  resolve: {
+    alias: {
+      // Mirror packages/web/vitest.config.ts so tests resolve the same
+      // @originos/core package specifier the migrated production files use.
+      '@originos/core': path.resolve(__dirname, '../core/src'),
+    },
   },
 });

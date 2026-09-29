@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PerceptionConnectorConfigStore } from '../../../../../../core/src/modules/perception-runtime';
-import type { ChannelMessageIngress } from '../../../../../../core/src/modules/channel-runtime';
+import { PerceptionConnectorConfigStore } from '@originos/core/modules/perception-runtime';
+import type { ChannelMessageIngress } from '@originos/core/modules/channel-runtime';
 import { IPC_CHANNELS } from '../../../ipc-protocol';
 import { PerceptionPluginHostService } from '../perception-plugin-host-service';
 
