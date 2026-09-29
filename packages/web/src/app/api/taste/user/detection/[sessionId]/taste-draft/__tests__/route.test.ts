@@ -118,7 +118,7 @@ describe('GET /api/taste/user/detection/:sessionId/taste-draft', () => {
 
   describe('TC-API-013: 分析未完成', () => {
     it('should return 425 when analysis is not completed', async () => {
-      const { getSessionService } = await import('@/lib/features/culture/services/CultureSessionService');
+      const { getSessionService } = await import('@originos/core/lib/features/culture/services/CultureSessionService');
       const mockGetSessionService = vi.mocked(getSessionService);
 
       mockGetSessionService.mockReturnValueOnce({
@@ -138,7 +138,7 @@ describe('GET /api/taste/user/detection/:sessionId/taste-draft', () => {
     });
 
     it('should return 425 when session is active', async () => {
-      const { getSessionService } = await import('@/lib/features/culture/services/CultureSessionService');
+      const { getSessionService } = await import('@originos/core/lib/features/culture/services/CultureSessionService');
       const mockGetSessionService = vi.mocked(getSessionService);
 
       mockGetSessionService.mockReturnValueOnce({
@@ -159,7 +159,7 @@ describe('GET /api/taste/user/detection/:sessionId/taste-draft', () => {
 
   describe('TC-API-014: 会话不存在', () => {
     it('should return 404 when session not found', async () => {
-      const { getSessionService } = await import('@/lib/features/culture/services/CultureSessionService');
+      const { getSessionService } = await import('@originos/core/lib/features/culture/services/CultureSessionService');
       const mockGetSessionService = vi.mocked(getSessionService);
 
       mockGetSessionService.mockReturnValueOnce({
@@ -181,7 +181,7 @@ describe('GET /api/taste/user/detection/:sessionId/taste-draft', () => {
 
   describe('TC-API-015: 错误处理', () => {
     it('should handle service errors gracefully', async () => {
-      const { getSessionService } = await import('@/lib/features/culture/services/CultureSessionService');
+      const { getSessionService } = await import('@originos/core/lib/features/culture/services/CultureSessionService');
       const mockGetSessionService = vi.mocked(getSessionService);
 
       mockGetSessionService.mockReturnValueOnce({
@@ -201,7 +201,7 @@ describe('GET /api/taste/user/detection/:sessionId/taste-draft', () => {
     });
 
     it('should handle detection service errors', async () => {
-      const { getDetectionService } = await import('@/lib/features/culture/services/CultureDetectionService');
+      const { getDetectionService } = await import('@originos/core/lib/features/culture/services/CultureDetectionService');
       const mockGetDetectionService = vi.mocked(getDetectionService);
 
       mockGetDetectionService.mockReturnValueOnce({

@@ -50,7 +50,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApiRespon
       );
     }
 
-    const instance = await (await import('@/lib/features/ontology-data-store/store')).createInstance(
+    const instance = await (await import('@originos/core/lib/features/ontology-data-store/store')).createInstance(
       ontologyId, conceptId, fields, createdBy ?? 'user'
     );
 

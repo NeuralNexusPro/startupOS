@@ -155,7 +155,7 @@ export async function DELETE(
     }
 
     // Delete from storage
-    const { jsonStore } = await import('@/lib/storage/json-store');
+    const { jsonStore } = await import('@originos/core/lib/storage/json-store');
     await jsonStore.delete(jsonStore.getOntologyPath(id));
 
     return NextResponse.json<ApiResponse<{ deleted: true }>>(
