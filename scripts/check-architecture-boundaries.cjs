@@ -37,7 +37,13 @@ function checker(repo, cfg, extraRules = {}) {
       parser: require.resolve('@typescript-eslint/parser'),
       parserOptions: { ecmaVersion: 'latest', sourceType: 'module', ecmaFeatures: { jsx: true } },
       plugins: ['import'],
-      rules: { [rule]: ['error', cfg.rules[rule][1]], ...extraRules },
+      rules: {
+        [rule]: ['error', cfg.rules[rule][1]],
+        // Mirror the literal-specifier penetration rule so scans and self-test exercise it.
+        // Rule options are variadic ([severity, ...options]); spread preserves every selector.
+        ...(cfg.rules['no-restricted-syntax'] ? { 'no-restricted-syntax': ['error', ...cfg.rules['no-restricted-syntax'].slice(1)] } : {}),
+        ...extraRules,
+      },
       overrides: cfg.overrides.filter((override) => override.settings),
     },
     resolvePluginsRelativeTo: root,
@@ -63,15 +69,22 @@ async function selfTest() {
     }
     // Local workspace links exercise actual package exports instead of alias substitutes.
     for (const pkg of ['web', 'core']) {
-      await write(`packages/${pkg}/package.json`, JSON.stringify({ name: `@originos/${pkg}`, exports: { '.': pkg === 'web' ? './src/components/ui/target.ts' : './src/index.ts' } }));
+      const exports = pkg === 'web'
+        ? { '.': './src/components/ui/target.ts' }
+        : { '.': './src/index.ts', './lib/paths': './src/lib/paths.ts' };
+      await write(`packages/${pkg}/package.json`, JSON.stringify({ name: `@originos/${pkg}`, exports }));
       await fs.mkdir(path.join(fixture, 'packages/core/node_modules/@originos'), { recursive: true });
       await fs.symlink(path.join(fixture, 'packages', pkg), path.join(fixture, 'packages/core/node_modules/@originos', pkg), 'dir');
     }
-    await fs.mkdir(path.join(fixture, 'packages/web/node_modules/@originos'), { recursive: true });
-    await fs.symlink(path.join(fixture, 'packages/core'), path.join(fixture, 'packages/web/node_modules/@originos/core'), 'dir');
-    const targets = ['web/src/components/ui', 'web/src/components/os', 'web/src/components/interview', 'web/src/app', 'desktop/src/main', 'core/src/lib/features/example', 'core/src/modules/example', 'core/src/lib/storage', 'core/src/lib/shared'];
+    for (const pkg of ['web', 'desktop']) {
+      await fs.mkdir(path.join(fixture, 'packages', pkg, 'node_modules/@originos'), { recursive: true });
+      await fs.symlink(path.join(fixture, 'packages/core'), path.join(fixture, 'packages', pkg, 'node_modules/@originos/core'), 'dir');
+    }
+    const targets = ['web/src/components/ui', 'web/src/components/os', 'web/src/components/interview', 'web/src/app', 'desktop/src/main', 'core/src/lib/features/example', 'core/src/modules/example', 'core/src/lib/storage', 'core/src/lib/shared', 'core/src/lib/paths'];
     for (const target of targets) await write(`packages/${target}/target.ts`);
     await write('packages/core/src/index.ts');
+    // Exports entry target backing the valid `@originos/core/lib/paths` specifier case.
+    await write('packages/core/src/lib/paths.ts');
 
     const cases = [];
     function add(source, target, invalid = true, specifier, syntax = 'import') {
@@ -80,7 +93,9 @@ async function selfTest() {
       const spec = JSON.stringify(specifier || (relative.startsWith('.') ? relative : `./${relative}`));
       const code = syntax === 'type' ? `import type { Value } from ${spec};`
         : syntax === 'export' ? `export { value } from ${spec};`
-          : syntax === 'dynamic' ? `const value = import(${spec});` : `import { value } from ${spec};`;
+          : syntax === 'dynamic' ? `const value = import(${spec});`
+            : syntax === 'typeof' ? `let value: typeof import(${spec});`
+              : syntax === 'side-effect' ? `import ${spec};` : `import { value } from ${spec};`;
       cases.push({ file, code, invalid });
     }
     for (const source of ['web/src/services', 'web/src/store']) {
@@ -110,6 +125,14 @@ async function selfTest() {
     add('core/src/lib/features/example', 'core/src/lib/storage', false);
     add('core/src/lib/features/example', 'core/src/lib/shared', false, '@/lib/shared/target');
     add('web/src/components/os', 'web/src/components/ui', false);
+    // AG.8-T1: cross-package relative penetration into core/src + valid package-specifier escape hatch.
+    add('desktop/src/main', 'core/src/lib/paths');
+    add('desktop/src/main', 'core/src/lib/paths', true, undefined, 'side-effect');
+    add('desktop/src/main', 'core/src/lib/paths', true, undefined, 'type');
+    add('desktop/src/main', 'core/src/lib/paths', true, undefined, 'typeof');
+    add('web/src/app', 'core/src/lib/paths');
+    add('perception-plugins/email/src', 'core/src/lib/paths');
+    add('desktop/src/main', 'core/src/lib/paths', false, '@originos/core/lib/paths');
     for (const item of cases) await write(item.file, item.code);
     const cfg = require(path.join(fixture, '.eslintrc.cjs'));
     let previous;
@@ -117,7 +140,7 @@ async function selfTest() {
       process.chdir(directory);
       const results = await checker(fixture, cfg, { 'import/no-unresolved': 'error' }).lintFiles(cases.map((item) => path.join(fixture, item.file)));
       for (const [index, result] of results.entries()) {
-        assert.equal(result.messages.filter((message) => message.ruleId !== rule).length, 0, JSON.stringify(result));
+        assert.equal(result.messages.filter((message) => message.ruleId !== rule && message.ruleId !== 'no-restricted-syntax').length, 0, JSON.stringify(result));
         assert.equal(result.errorCount, Number(cases[index].invalid), JSON.stringify({ item: cases[index], result }));
       }
       const signature = results.map((result) => result.messages);
