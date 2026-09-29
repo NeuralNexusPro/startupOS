@@ -4,7 +4,8 @@
 
 ## 1. 准备
 
-- [ ] 1.1 串行；依赖设计批准。编排角色确认基线（exports 74/52、唯一说明符 120、严格解析失败 23、jsx 11、web 壳 4 文件 3 组）、建立 Task worktree 与分支。证据：基线命令输出与分支创建记录。
+- [x] 1.1 串行；依赖设计批准。编排角色确认基线（exports 74/52、唯一说明符 120、严格解析失败 23、jsx 11、web 壳 4 文件 3 组）、建立 Task worktree 与分支。证据：基线命令输出与分支创建记录。
+  - **证据（编排）**：基线 @ 3d1d4c8 实测（exports 74 条 / 52 通配 / 22 显式；120 唯一说明符，严格 Node 语义 97/120 可解析、23 条宽松存活；jsx 11 文件；web 壳 culture 2 + ontology-data-store 1 + json-store 1）；工作包实施记录见 implementation.md 基线表。worktree `../startupos-govern-core-public-api-task-1`（分支 proposal-task/govern-core-public-api-1-core）与 `...-task-2`（分支 proposal-task/govern-core-public-api-2-callers）均从 proposal/govern-core-public-api 创建。
 
 ## 2. exports 展开工具与 core 侧（WP-1）
 
@@ -28,9 +29,11 @@
 
 - [x] 4.1 串行，依赖 3.3。subagent 新建 `packages/core/README.md`（定位如实化，D4）；修订 AGENTS.md 目录结构 core 段落（删 `components/` 不存在行、hooks 注 zustand store）；确认 exports 白名单形态描述与实际一致。证据：README 与 AGENTS.md diff。
   - **证据（WP-1）**：commit `314df17`（2 文件，+41/-2）。新建 `packages/core/README.md`（core = 共享 TS 运行时、依赖分层、exports 白名单即公共 API、expand 脚本用法）；AGENTS.md core 树删除 `components/` 行、`hooks/` 注释改为 `# React hooks（含 zustand store）`。未升版本号。
-- [ ] 4.2 串行，依赖 4.1。文档角色更新 Story AG.9 文档：testing.md TC-2 阈值修正（design D2，记录修正原因）、implementation.md 实施记录、README 状态流转。证据：Story 文档 diff。
+- [x] 4.2 串行，依赖 4.1。文档角色更新 Story AG.9 文档：testing.md TC-2 阈值修正（design D2，记录修正原因）、implementation.md 实施记录、README 状态流转。证据：Story 文档 diff。
+  - **证据（编排）**：commit `29c641b`（3 文件，+116/-10）。testing.md TC-2 重写为 verify 门禁 + ≥15% 阈值（修正原因全文记录）；TC-1~TC-7 结果表 @ 380ebb8（含 asar 内 core package.json 132 显式 / 0 通配的 TC-4 证据）；implementation.md 新增（基线差异表、WP 任务表带 commit、5 项关键事实、回滚）；README 状态 🔧 In Review、勾选全 [x]、文档导航表。
 
 ## 5. 集成与验收
 
-- [ ] 5.1 串行，依赖 4.2。编排角色全量回归：TC-1（exports 零通配）、TC-2（修正后口径）、TC-3、TC-4（打包冒烟）、TC-5（madge 基线）、TC-6（jsx 0 + 壳目录不存在）、TC-7（desktop 测试失败集合与基线零 delta：存量 6；web 425 基线）；`openspec validate govern-core-public-api --strict` 通过；Task 分支合并回 Proposal 集成分支。证据：TC 全表输出。
+- [x] 5.1 串行，依赖 4.2。编排角色全量回归：TC-1（exports 零通配）、TC-2（修正后口径）、TC-3、TC-4（打包冒烟）、TC-5（madge 基线）、TC-6（jsx 0 + 壳目录不存在）、TC-7（desktop 测试失败集合与基线零 delta：存量 6；web 425 基线）；`openspec validate govern-core-public-api --strict` 通过；Task 分支合并回 Proposal 集成分支。证据：TC 全表输出。
+  - **证据（编排，@ 380ebb8 集成终态）**：TC-1 `node -e` 断言 132/0 退出 0；TC-2 `expand-core-exports.cjs --verify` PASSED（118 消费说明符精确命中、门面下限满足、无悬空，132 显式 / 0 通配）；TC-3 web build exit 0 + desktop build 0 error；TC-4 `build:app` exit 0、`electron-builder --dir` 产出 OriginOS CE.app，asar 提取 `node_modules/@originos/core/package.json` 实测 **132 条显式 / 0 通配**，prepare-core-runtime staged "132 exports entries, 67 consumed specifiers verified"；TC-5 madge 12 环 = 基线 0 新增；TC-6 jsx = 0、culture/ontology-data-store/json-store 壳 `No such file`、壳引用 grep 清零；TC-7 web 425/425（零 delta）、desktop 失败集合 = 基线 6（email-provisioning ×5 + verify-windows-package ×1，零 delta）；`openspec validate govern-core-public-api --strict` valid。Task 分支已 fast-forward 合并入 proposal/govern-core-public-api（WP-2 @ 380ebb8）。Story 测试验证 goal：TC-1~TC-7 全过；打包产物交互启动冒烟为人工步骤（桌面环境依赖），合并后在主工作区按 T2 同法复跑，剩余风险已在 testing.md 记录。
 - [ ] 5.2 串行，依赖 5.1。编排角色将 Proposal 分支合入 `refactor/arch-governance`（需用户授权），清理 task worktree；Story AG.9 README 状态更新；docs/changes 记录（全量流水 + 版本归档）。证据：合并哈希与清理清单。
