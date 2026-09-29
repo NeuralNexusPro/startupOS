@@ -1,7 +1,7 @@
 # Story AG.9: core 包治理 — 公共 API 收缩与定位如实化
 
 **Epic:** AG — 架构治理与围栏对齐
-**状态:** 🔧 In Review（实施完成，TC-1~TC-7 全过；Proposal 分支待授权合并）
+**状态:** ✅ Completed（2026-09-29：Proposal `govern-core-public-api` 已合并 `refactor/arch-governance` 并归档；TC-1~TC-7 全过，主工作区复验一致）
 **优先级:** 🔴 Critical（公共 API 遵守率当前为 0，core 实质是「任意深度可 import 的目录」）
 **估计工时:** 3–5 天
 **依赖:** 建议在 AG.8（包边界迁移）完成后启动——迁移后所有跨包导入都已走 `@originos/core/...` 说明符，收缩 exports 才不会同时面对两套导入形态
