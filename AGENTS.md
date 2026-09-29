@@ -1,6 +1,6 @@
 # OriginOS 架构规约 (AGENTS.md)
 
-**版本：** 2.6.4
+**版本：** 2.6.5
 **日期：** 2026-09-29
 **状态：** 强制执行
 
@@ -314,6 +314,14 @@ import { setElectronDataRoot } from '../../../core/src/lib/paths';
 - 存量违规清单与迁移方案见 Story AG.8（`docs/specs/epic-AG/story-AG.8/`）。
 - `import type` 的跨包相对导入同样禁止（编译产物中虽被擦除，但源码边界已破坏，且会诱使后续改为值导入）。
 
+#### core exports 白名单（强制，v2.6.5）
+
+`packages/core/package.json` 的 `exports` 已收敛为**全显式白名单**（132 条 / 0 通配，Story AG.9）：每条 `@originos/core/<spec>` 导入 MUST 在 exports 中精确命中且目标文件存在；低热度深路径条目为过渡态，按热度渐进收口（AG.11）。
+
+- 新增 core 深路径导入前，先确认对应 exports 条目存在；无条目时应优先消费 feature 门面（`./lib/features/<name>`）或补门面导出。
+- 提交前运行 `node scripts/expand-core-exports.cjs --verify`（只读门禁：零通配 + 消费闭集精确命中 + 门面下限 + 无悬空条目，任一失败非零退出）。
+- 规格约束见 `openspec/specs/core-exports-whitelist/spec.md`；core 定位与用法见 `packages/core/README.md`。
+
 ### 依赖验证
 
 **在每次提交前必须运行：**
@@ -322,6 +330,7 @@ import { setElectronDataRoot } from '../../../core/src/lib/paths';
 pnpm lint  # Web lint，架构规则保持 warning 级兼容
 pnpm lint:boundaries  # Web/Core/Desktop/感知插件生产源码架构扫描
 node scripts/check-architecture-boundaries.cjs --self-test  # 检查器正反例验收
+node scripts/expand-core-exports.cjs --verify  # core exports 白名单门禁（改动 core 导入/exports 时）
 ```
 
 架构检查规则以仓库根目录定位，根目录或包目录运行必须得到一致结果。`lint:boundaries` 对违规、配置失败或空扫描集合非零退出；产物、测试与运行数据不属于生产扫描范围。动态计算 import、跨 feature 私有导入和循环依赖仍需其他检查或审查，不能将本命令通过等同于全部架构规约满足。
@@ -1276,5 +1285,5 @@ git worktree add ../startupos-add-agent-task-runtime-task-2 \
 
 ---
 
-**最后更新：** 2026-09-29（v2.6.4：AG.8-T2 存量迁移完成、跨包相对导入拦截规则升 error；core types 补充重导出 OntologyEntity/OntologyRelation 以支撑 desktop 说明符迁移）
-**下次审查：** Story AG.8 / AG.9 完成后
+**最后更新：** 2026-09-29（v2.6.5：AG.9 完成——core exports 收敛为 132 条显式 / 0 通配白名单，`scripts/expand-core-exports.cjs --verify` 为门禁，spec `core-exports-whitelist` 正式生效；core 定位如实化为共享 TypeScript 运行时，见 `packages/core/README.md`）
+**下次审查：** Story AG.10 / AG.11 完成后

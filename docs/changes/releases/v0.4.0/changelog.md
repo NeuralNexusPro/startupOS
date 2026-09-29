@@ -2,6 +2,13 @@
 
 ---
 
+## 2026-09-29 — feat：AG.9 core 公共 API 收缩与定位如实化（Story AG.9 完成）
+
+**类型**：feat
+**影响模块**：`packages/core/package.json`、`scripts/expand-core-exports.cjs`、`packages/core/src/`、`packages/web/src/`、`packages/desktop/src/`、`packages/core/README.md`、`AGENTS.md`、`docs/specs/epic-AG/story-AG.9/`、`openspec/`（spec `core-exports-whitelist` 新增）
+**摘要**：Proposal `govern-core-public-api`（已归档）实施 core 公共 API 收缩：exports 74 条/52 通配 → 132 条显式 / 0 通配（新增 `expand-core-exports.cjs --verify` 门禁）；新建 electron 门面并迁移 electron/culture/pi-agent-task-runtime 热点深路径导入；删除 11 个 jsx 副本与 web 壳 4 文件；`packages/core/README.md` 定位如实化（共享 TS 运行时，exports 白名单即公共 API）。TC-1~TC-7 全过，测试基线零 delta。
+
+
 ## 2026-09-28 — docs：架构围栏治理与 Epic AG Story 追加（AG.8–AG.11）
 
 **类型**：docs

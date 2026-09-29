@@ -99,7 +99,7 @@
 | **AG.4** | 组件分层条款修订（CLAUDE.md + 现状对齐） | 🟠 High | 1 天 | 📋 Planning |
 | **AG.5** | 自动化围栏（ESLint 边界 + dead-code 工具 + any 预算 + CI 接入） | 🟡 Medium | 2 天 | 🚧 In Progress（AG5-T1 完成） |
 | **AG.8** | 包边界治理 — 消灭跨包相对路径穿透（desktop/web → core src 共 125 处 + lint zones） | 🔴 Critical | 2–3 天 | ✅ Completed（2026-09-29：T1 lint 拦截 + spike + F1 staging；T2 存量 154 处迁移 + error 升级；lint:boundaries 0 诊断，规约 v2.6.4 强制执行） |
-| **AG.9** | core 包治理 — 公共 API 收缩与定位如实化（exports 收缩 + jsx 副本清理 + web 壳清理） | 🔴 Critical | 3–5 天 | 📋 Planning（2026-09-28 追加，依赖 AG.8） |
+| **AG.9** | core 包治理 — 公共 API 收缩与定位如实化（exports 收缩 + jsx 副本清理 + web 壳清理） | 🔴 Critical | 3–5 天 | ✅ Completed（2026-09-29：Proposal `govern-core-public-api` 已实施合并并归档；exports 74/52 → 132 显式 / 0 通配；jsx 11 + web 壳 4 清零；TC-1~TC-7 全过，见 story-AG.9/testing.md） |
 | **AG.10** | 巨型文件拆分 — 单一职责重构（7 个 1100–2600 行文件，按文件增量交付） | 🟠 High | 5–8 天 | 📋 Planning（2026-09-28 追加） |
 | **AG.11** | 重复与死代码嗅探治理（knip 基线 + .teamai 双文档树 + 空壳包处置） | 🟡 Medium | 2–3 天 | 📋 Planning（2026-09-28 追加，依赖 AG.9） |
 
@@ -298,3 +298,7 @@ AG2-T1当前34处存量边界已修复，通知中文入口及会话恢复快照
 [Testing](./story-AG.2/testing.md)
 
 AG2-T4：Windows发布校验同步迁移后的业务工具位置，沿用0.2.2重新构建发布。
+
+## AG.9 完成（2026-09-29）
+
+Proposal `govern-core-public-api`（已归档 `archive/2026-09-29-govern-core-public-api`）：core exports 74 条/52 通配 → 132 条显式 / 0 通配；新建 electron 门面；热点深路径收口；11 个 jsx 副本 + web 壳 4 文件删除；`packages/core/README.md` 定位如实化。TC-1~TC-7 全过（证据见 [story-AG.9/testing.md](story-AG.9/testing.md)）。spec `core-exports-whitelist` 已落为正式规格。深路径显式白名单保留为过渡态，AG.11 继续按热度消化。

@@ -2,6 +2,14 @@
 
 ---
 
+## 2026-09-29 — feat：AG.9 core 公共 API 收缩与定位如实化（Story AG.9 完成）
+
+**类型**：feat
+**影响模块**：`packages/core/package.json`（exports 74 条/52 通配 → 132 条显式 / 0 通配）、`scripts/expand-core-exports.cjs`（新增）、`packages/core/src/lib/integrations/electron/index.ts`（新增门面）、`packages/core/src/`（门面补导出 + 'use client' + 删 11 jsx）、`packages/web/src/`（37+ 文件收口 + 删 4 壳）、`packages/desktop/src/`（导入收口 + /index 归一）、`packages/core/README.md`（新增）、`AGENTS.md`（core 树 2 处）、`docs/specs/epic-AG/story-AG.9/`、`openspec/changes/archive/2026-09-29-govern-core-public-api/`、`openspec/specs/core-exports-whitelist/`
+**摘要**：AG.9 以 Proposal `govern-core-public-api`（已归档）实施 core 公共 API 收缩：exports 全部通配符以消费闭集机械展开为显式条目（基线 23 条宽松解析存活说明符全部修复），新建 electron 门面并迁移 electron env/ipc-protocol 48 处、culture 10+、pi-agent/task-runtime 10 处热点导入；删除 11 个 .jsx 无类型副本与 web 壳 4 文件；新增 `expand-core-exports.cjs --verify` 门禁（零通配 + 闭集精确命中 + 门面下限 + 无悬空）。TC-1~TC-7 全过（web 425/425；desktop 失败=基线 6；madge 12 环=基线；打包 asar 内 core exports 132 显式 / 0 通配）。spec `core-exports-whitelist` 落为正式规格；深路径显式白名单为过渡态，AG.11 继续消化。
+
+---
+
 ## 2026-09-29 — feat：AG.8-T2 desktop 存量说明符迁移与 error 强制执行（Story AG.8 完成）
 
 **类型**：feat
