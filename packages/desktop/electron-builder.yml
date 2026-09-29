@@ -14,6 +14,11 @@ electronDownload:
 
 files:
   - dist-electron/**/*
+  - from: .packaging/core-runtime
+    to: node_modules/@originos/core
+    filter:
+      - "package.json"
+      - "dist/**/*"
   - from: dist-electron/core/src/lib
     to: dist-electron/core/src/lib
     filter:
