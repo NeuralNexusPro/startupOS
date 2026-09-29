@@ -16,7 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '@originos/core/lib/utils';
-import { getIpcRenderer, isElectron as detectElectron } from '@originos/core/lib/integrations/electron/env';
+import { getIpcRenderer, isElectron as detectElectron } from '@originos/core/lib/integrations/electron';
 import type { DockSide } from '@originos/core/types';
 import useDockStore from '@/store/dockStore';
 

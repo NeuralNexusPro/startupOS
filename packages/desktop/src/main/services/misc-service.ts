@@ -1,12 +1,11 @@
 import { ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../ipc-protocol';
-import type { IpcResponse } from '@originos/core/lib/integrations/electron/ipc-protocol';
+import type { IpcResponse } from '@originos/core/lib/integrations/electron';
 import { interviewService } from '@originos/core/lib/features/ontology';
 import { getNotificationManager, NotificationStatus, NotificationType } from '@originos/core/lib/integrations/pi-agent/notification-system';
 import { launch } from '@originos/core/lib/features/services/launcher/registry';
 import type { EntryType, LaunchContext } from '@originos/core/lib/features/services/launcher/base';
-import { getSessionService } from '@originos/core/lib/features/culture/services/CultureSessionService';
-import { getDetectionService } from '@originos/core/lib/features/culture/services/CultureDetectionService';
+import { getSessionService, getDetectionService } from '@originos/core/lib/features/culture';
 import { listSandboxApps } from '@originos/core/lib/features/sandbox/app-scanner';
 import { readUserConfigWithProductDefaults, updateUserConfig } from '@originos/core/lib/features/user-config';
 import { showNativeSystemNotification } from './native-notification-service';

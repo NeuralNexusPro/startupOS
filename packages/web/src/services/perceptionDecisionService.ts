@@ -1,5 +1,5 @@
-import { getIpcRenderer, isElectron } from '@originos/core/lib/integrations/electron/env';
-import { IPC_CHANNELS, type IpcResponse } from '@originos/core/lib/integrations/electron/ipc-protocol';
+import { getIpcRenderer, isElectron } from '@originos/core/lib/integrations/electron';
+import { IPC_CHANNELS, type IpcResponse } from '@originos/core/lib/integrations/electron';
 import type { JevDecisionReceipt } from '@originos/core/types';
 
 export async function listPendingPerceptionDecisions(): Promise<JevDecisionReceipt[]> {

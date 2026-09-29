@@ -6,7 +6,7 @@ import type {
   IpcResponse,
   WorkspaceUploadRequest,
   WorkspaceUploadResponse,
-} from '@originos/core/lib/integrations/electron/ipc-protocol';
+} from '@originos/core/lib/integrations/electron';
 import { getDataRoot, getMonorepoRoot } from '@originos/core/lib/paths';
 import { loadSkills } from '@originos/core/lib/integrations/pi-agent/core/skills';
 import { recordUploads } from '@originos/core/lib/integrations/pi-agent/upload-tracker';

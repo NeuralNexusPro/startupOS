@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
-import type { AgentTaskRuntimeSnapshotV1 } from '@originos/core/lib/integrations/pi-agent/task-runtime';
+import type { AgentTaskRuntimeSnapshotV1 } from '@originos/core/lib/integrations/pi-agent';
 
 const mocks = vi.hoisted(() => ({ restore: vi.fn(), control: vi.fn(), status: 'paused' as 'paused' | 'failed' | 'waiting_user' }));
 vi.mock('@originos/core/lib/integrations/pi-agent/hooks', async () => {

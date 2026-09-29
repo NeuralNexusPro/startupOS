@@ -4,8 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionService } from '@originos/core/lib/features/culture/services/CultureSessionService';
-import { getDetectionService } from '@originos/core/lib/features/culture/services/CultureDetectionService';
+import { getSessionService, getDetectionService } from '@originos/core/lib/features/culture';
 import {
   CultureDetectionError,
   ERROR_CODES,

@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../ipc-protocol';
-import type { IpcResponse } from '@originos/core/lib/integrations/electron/ipc-protocol';
+import type { IpcResponse } from '@originos/core/lib/integrations/electron';
 import type { OntologyEntity, OntologyRelation } from '@originos/core/types';
 import type { ChatRequest, GenerateOntologyRequest, OntologyEditOperation } from '@originos/core/types';
 import type { InterviewSession } from '@originos/core/lib/features/ontology/types';

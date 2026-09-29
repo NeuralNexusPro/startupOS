@@ -5,7 +5,7 @@ import path from 'path';
 import { ipcMain, BrowserWindow } from 'electron';
 
 import { IPC_CHANNELS } from '../ipc-protocol';
-import type { IpcResponse } from '@originos/core/lib/integrations/electron/ipc-protocol';
+import type { IpcResponse } from '@originos/core/lib/integrations/electron';
 import type {
   Project,
   ProjectListItem,

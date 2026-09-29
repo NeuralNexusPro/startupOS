@@ -10,7 +10,7 @@ import type {
   AgentTaskRuntimeSnapshotV1,
   ControlAgentTaskRequestV1,
   CreateAgentTaskRequestV1,
-} from '@originos/core/lib/integrations/pi-agent/task-runtime';
+} from '@originos/core/lib/integrations/pi-agent';
 
 export interface AgentTaskDraftInput {
   requestId: string;

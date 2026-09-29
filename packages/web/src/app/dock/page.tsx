@@ -11,8 +11,8 @@
  */
 
 import React, { useEffect } from 'react';
-import { isElectron, getIpcRenderer } from '@originos/core/lib/integrations/electron/env';
-import { IPC_CHANNELS } from '@originos/core/lib/integrations/electron/ipc-protocol';
+import { isElectron, getIpcRenderer } from '@originos/core/lib/integrations/electron';
+import { IPC_CHANNELS } from '@originos/core/lib/integrations/electron';
 import type { DockApp } from '@originos/core/types';
 import useDockStore from '@/store/dockStore';
 import Dock from '@/components/os/dock';

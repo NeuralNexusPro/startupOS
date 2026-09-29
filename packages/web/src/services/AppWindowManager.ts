@@ -5,10 +5,10 @@
 import { AppWindowConfig, AppWindowData, ComponentContent, IframeContent } from '@originos/core/types';
 import { useAppWindowStore } from '@/store/appWindowStore';
 import { createNativeWindow, focusNativeWindow } from '@originos/core/lib/integrations/electron/window';
-import { isElectron, getIpcRenderer } from '@originos/core/lib/integrations/electron/env';
+import { isElectron, getIpcRenderer } from '@originos/core/lib/integrations/electron';
 import { destroyAgentSession, consolidateMemory } from '@originos/core/lib/integrations/electron/services/agent-session';
 import useDockStore from '@/store/dockStore';
-import { IPC_CHANNELS } from '@originos/core/lib/integrations/electron/ipc-protocol';
+import { IPC_CHANNELS } from '@originos/core/lib/integrations/electron';
 import type { DockApp } from '@originos/core/types';
 
 const MEMORY_ENTRY_TYPES = new Set(['role-agent', 'agent', 'project', 'solution', 'skill']);

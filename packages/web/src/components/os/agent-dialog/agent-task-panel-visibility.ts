@@ -1,4 +1,4 @@
-import type { AgentTaskRuntimeSnapshotV1 } from '@originos/core/lib/integrations/pi-agent/task-runtime';
+import type { AgentTaskRuntimeSnapshotV1 } from '@originos/core/lib/integrations/pi-agent';
 
 export function shouldShowAgentTaskPanel(
   snapshot: AgentTaskRuntimeSnapshotV1 | null,

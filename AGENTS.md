@@ -117,7 +117,7 @@ originos/
 │   │   │   │   │       ├── system/
 │   │   │   │   │       └── tools/
 │   │   │   │   ├── storage/      # JSON / 文件存储基础设施
-│   │   │   │   ├── hooks/
+│   │   │   │   ├── hooks/        # React hooks（含 zustand store）
 │   │   │   │   └── shared/
 │   │   │   ├── modules/
 │   │   │   │   ├── collaboration-runtime/
@@ -132,7 +132,6 @@ originos/
 │   │   │   │   ├── neural-channel/
 │   │   │   │   ├── view-manager/
 │   │   │   │   └── view-reconciler/
-│   │   │   ├── components/       # core 可复用组件（非 Web 页面）
 │   │   │   └── types/
 │   │   └── vitest.config.ts
 │   │

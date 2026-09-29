@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { isElectron } from '@originos/core/lib/integrations/electron/env';
+import { isElectron } from '@originos/core/lib/integrations/electron';
 import {
   deleteLocalFile,
   listLocalFiles,

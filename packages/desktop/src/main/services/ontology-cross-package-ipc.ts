@@ -15,7 +15,7 @@ import {
 import { getDataRoot } from '@originos/core/lib/paths';
 import { IPC_CHANNELS } from '../ipc-protocol';
 
-import type { IpcResponse } from '@originos/core/lib/integrations/electron/ipc-protocol';
+import type { IpcResponse } from '@originos/core/lib/integrations/electron';
 import type { IpcMainInvokeEvent } from 'electron';
 
 interface IpcRegistrar {

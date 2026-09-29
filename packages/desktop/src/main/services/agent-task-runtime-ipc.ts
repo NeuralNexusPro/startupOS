@@ -1,6 +1,6 @@
 import type { IpcMainInvokeEvent } from 'electron';
 import { ipcMain } from 'electron';
-import type { IpcResponse } from '@originos/core/lib/integrations/electron/ipc-protocol';
+import type { IpcResponse } from '@originos/core/lib/integrations/electron';
 import type { AgentSession } from '@originos/core/types';
 import { agentSessionService } from '@originos/core/lib/features/agent';
 import {
@@ -18,7 +18,7 @@ import {
   type ControlAgentTaskRequestV1,
   type CreateAgentTaskRequestV1,
   type GetAgentTaskRequestV1,
-} from '@originos/core/lib/integrations/pi-agent/task-runtime';
+} from '@originos/core/lib/integrations/pi-agent';
 import { IPC_CHANNELS } from '../ipc-protocol';
 import { routeTaskAwareChannelMessage } from '@originos/core/modules/channel-runtime/task-aware-execution';
 

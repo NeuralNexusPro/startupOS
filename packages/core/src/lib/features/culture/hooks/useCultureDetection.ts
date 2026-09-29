@@ -1,3 +1,5 @@
+'use client';
+
 /**
  * useCultureDetection Hook
  * React Hook for user taste detection

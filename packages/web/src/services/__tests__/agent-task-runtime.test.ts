@@ -9,7 +9,7 @@ import {
   submitAgentTaskDraft,
 } from '../agent-task-runtime';
 
-import type { AgentTaskRuntimeSnapshotV1 } from '@originos/core/lib/integrations/pi-agent/task-runtime';
+import type { AgentTaskRuntimeSnapshotV1 } from '@originos/core/lib/integrations/pi-agent';
 
 vi.mock('@originos/core/lib/integrations/electron/services/agent-session', () => ({
   controlAgentTask: vi.fn(),

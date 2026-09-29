@@ -1,8 +1,8 @@
 import {
   IPC_CHANNELS,
   type IpcResponse,
-} from '@originos/core/lib/integrations/electron/ipc-protocol';
-import { getIpcRenderer, isElectron } from '@originos/core/lib/integrations/electron/env';
+} from '@originos/core/lib/integrations/electron';
+import { getIpcRenderer, isElectron } from '@originos/core/lib/integrations/electron';
 import type {
   JsonValue,
   PerceptionPluginManifest,

@@ -6,7 +6,7 @@ import { AgentTaskDraftCard } from '../AgentTaskDraftCard';
 import { shouldShowAgentTaskPanel } from '../agent-task-panel-visibility';
 import { supportsAgentTaskRuntime } from '../use-agent-task-runtime';
 
-import type { AgentTaskRuntimeSnapshotV1 } from '@originos/core/lib/integrations/pi-agent/task-runtime';
+import type { AgentTaskRuntimeSnapshotV1 } from '@originos/core/lib/integrations/pi-agent';
 
 function createSnapshot(
   overrides: Partial<AgentTaskRuntimeSnapshotV1['execution']> = {},

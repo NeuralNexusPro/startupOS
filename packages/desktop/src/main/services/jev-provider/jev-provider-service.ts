@@ -8,7 +8,7 @@ import {
 } from '@originos/core/lib/features/perception';
 import { JevHttpAdapter } from '@originos/core/lib/integrations/jev';
 import type { JevDecisionRequest, JevProviderSummary, PerceptionDecisionPort } from '@originos/core/types';
-import type { IpcResponse } from '@originos/core/lib/integrations/electron/ipc-protocol';
+import type { IpcResponse } from '@originos/core/lib/integrations/electron';
 import { IPC_CHANNELS } from '../../ipc-protocol';
 import { SafeStorageJevCredentialAdapter } from './safe-storage-credential-adapter';
 

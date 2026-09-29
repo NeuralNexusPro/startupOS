@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   consolidateOwnedMemory,
   type MemoryConsolidationEntryType,
-} from '@originos/core/modules/memory-core/index';
+} from '@originos/core/modules/memory-core';
 import type { ApiResponse } from '@originos/core/types';
 import { getDataRoot } from '@originos/core/lib/paths';
 import { createAutoModel } from '@originos/core/lib/integrations/pi-agent/server-config';

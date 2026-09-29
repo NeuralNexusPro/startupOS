@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useWorkspace } from '@/hooks/use-workspace';
-import { isElectron } from '@originos/core/lib/integrations/electron/env';
+import { isElectron } from '@originos/core/lib/integrations/electron';
 import { resolveWorkspace } from '@originos/core/lib/integrations/electron/services/workspace';
 import { useLocalFS } from '@/hooks/useLocalFS';
 import { DirectoryTree } from './DirectoryTree';

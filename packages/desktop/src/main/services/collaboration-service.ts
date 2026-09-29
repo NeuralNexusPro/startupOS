@@ -1,6 +1,6 @@
 import { BrowserWindow, ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../ipc-protocol';
-import type { IpcResponse } from '@originos/core/lib/integrations/electron/ipc-protocol';
+import type { IpcResponse } from '@originos/core/lib/integrations/electron';
 import { addElectronForwarder } from '@originos/core/modules/collaboration-runtime/facade/event-bus';
 import { persistRuntimeLLMConfig } from '@originos/core/lib/features/user-config';
 import type { RuntimeLLMConfig } from '@originos/core/lib/integrations/pi-agent/llm-config';

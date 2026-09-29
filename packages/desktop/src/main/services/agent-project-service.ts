@@ -10,7 +10,7 @@ import type {
   AgentProjectStopResponse,
   AgentProjectAbortRequest,
   AgentProjectAbortResponse,
-} from '@originos/core/lib/integrations/electron/ipc-protocol';
+} from '@originos/core/lib/integrations/electron';
 import { persistentAgentManager } from '@originos/core/lib/features/agent/server';
 import { extractDisplayContent } from '@originos/core/lib/integrations/pi-agent/display-content';
 import { getVisibleStreamDelta } from '@originos/core/lib/integrations/pi-agent/stream-dedupe';

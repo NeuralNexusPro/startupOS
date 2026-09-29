@@ -10,7 +10,7 @@
 
 import '@originos/core/lib/integrations/pi-agent/cognitive/knowledge-provider';
 import '@originos/core/lib/integrations/pi-agent/cognitive/manager';
-import '@originos/core/lib/features/agent/cognitive/pattern/index';
+import '@originos/core/lib/features/agent/cognitive/pattern';
 import '@originos/core/lib/integrations/pi-agent/cognitive/practice-logger';
 import '@originos/core/lib/integrations/pi-agent/cognitive/sleep-compute';
 import '@originos/core/lib/integrations/pi-agent/core/agent';
@@ -20,13 +20,13 @@ import '@originos/core/lib/integrations/pi-agent/project-agent/project-collabora
 import '@originos/core/lib/integrations/pi-agent/project-agent/project-context';
 import '@originos/core/lib/integrations/pi-agent/project-agent/project-prompt';
 import '@originos/core/lib/integrations/pi-agent/server-config';
-import '@originos/core/lib/integrations/pi-agent/tools/index';
+import '@originos/core/lib/integrations/pi-agent/tools';
 import '@originos/core/lib/integrations/pi-agent/tools/context';
 import '@originos/core/modules/collaboration-runtime/engine/agent-context-writer';
 import '@originos/core/modules/collaboration-runtime/session/blackboard';
-import '@originos/core/modules/memory-core/index';
+import '@originos/core/modules/memory-core';
 import '@originos/core/modules/memory-core/session/memory-provider';
 import '@originos/core/modules/memory-core/tools/archival-memory-tools';
 import '@originos/core/modules/memory-core/tools/core-memory-tools';
 
-import '@originos/core/lib/features/agent/server/index';
+import '@originos/core/lib/features/agent/server';
