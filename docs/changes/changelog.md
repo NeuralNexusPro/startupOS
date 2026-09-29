@@ -2,6 +2,14 @@
 
 ---
 
+## 2026-09-29 — feat：AG.8-T2 desktop 存量说明符迁移与 error 强制执行（Story AG.8 完成）
+
+**类型**：feat
+**影响模块**：`packages/desktop/src/`（27 服务文件 + 测试）、`packages/web/src/`（测试）、`packages/core/src/types/index.ts`、`packages/desktop/vitest.config.ts`、`.eslintrc.cjs`、`scripts/check-architecture-boundaries.cjs`、`AGENTS.md`（v2.6.4）、`docs/specs/epic-AG/story-AG.8/`
+**摘要**：AG.8-T2 迁移剩余 154 处跨包相对导入为 `@originos/core/...` 说明符（含 vi.mock 字面量），types 深路径收敛 `@originos/core/types`，拦截规则升 error（lint:boundaries 966 文件 0 诊断），AGENTS.md 升 v2.6.4 标记强制执行；F1 打包 staging 扩展至 70 消费说明符，打包冒烟通过，测试基线零 delta。Story AG.8 全部完成。
+
+---
+
 ## 2026-09-29 — feat：AG.8-T1 跨包说明符边界（lint 拦截 + 启动文件 spike + F1 打包 staging）
 
 **类型**：feat

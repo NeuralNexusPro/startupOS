@@ -98,7 +98,7 @@
 | **AG.3** | `src/lib/` 业务目录回归 `features/` + 循环依赖拆解 | 🟠 High | 3–5 天 | 📋 Planning |
 | **AG.4** | 组件分层条款修订（CLAUDE.md + 现状对齐） | 🟠 High | 1 天 | 📋 Planning |
 | **AG.5** | 自动化围栏（ESLint 边界 + dead-code 工具 + any 预算 + CI 接入） | 🟡 Medium | 2 天 | 🚧 In Progress（AG5-T1 完成） |
-| **AG.8** | 包边界治理 — 消灭跨包相对路径穿透（desktop/web → core src 共 125 处 + lint zones） | 🔴 Critical | 2–3 天 | 🚧 In Progress（T1 完成 2026-09-29：lint 拦截 no-restricted-syntax + 3 启动文件 spike + F1 打包 staging；存量 128 待 T2） |
+| **AG.8** | 包边界治理 — 消灭跨包相对路径穿透（desktop/web → core src 共 125 处 + lint zones） | 🔴 Critical | 2–3 天 | ✅ Completed（2026-09-29：T1 lint 拦截 + spike + F1 staging；T2 存量 154 处迁移 + error 升级；lint:boundaries 0 诊断，规约 v2.6.4 强制执行） |
 | **AG.9** | core 包治理 — 公共 API 收缩与定位如实化（exports 收缩 + jsx 副本清理 + web 壳清理） | 🔴 Critical | 3–5 天 | 📋 Planning（2026-09-28 追加，依赖 AG.8） |
 | **AG.10** | 巨型文件拆分 — 单一职责重构（7 个 1100–2600 行文件，按文件增量交付） | 🟠 High | 5–8 天 | 📋 Planning（2026-09-28 追加） |
 | **AG.11** | 重复与死代码嗅探治理（knip 基线 + .teamai 双文档树 + 空壳包处置） | 🟡 Medium | 2–3 天 | 📋 Planning（2026-09-28 追加，依赖 AG.9） |
