@@ -41,5 +41,5 @@
 
 - [x] 需求确认
 - [x] 架构设计
-- [ ] 开发实施（T1 ✅ 2026-09-30：page.tsx 1609→108 行，Proposal `refactor-home-page-structure`；T2–T7 待实施）
+- [ ] 开发实施（T1 ✅ 2026-09-30：page.tsx 1609→108 行，Proposal `refactor-home-page-structure`；T2 ✅ 2026-09-30：client-hooks.ts 1317→7 文件，Proposal `refactor-client-hooks`；T3–T7 待实施）
 - [ ] 测试验证（T1 TC-1~TC-6 已过，见 [testing.md](./testing.md) AG.10-T1 执行结果；Story 整体待 T2–T7）

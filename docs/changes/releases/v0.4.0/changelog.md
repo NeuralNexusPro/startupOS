@@ -2,6 +2,14 @@
 
 ---
 
+## 2026-09-30 — refactor：AG.10-T2 Pi Agent 客户端 hooks 巨型文件拆分
+
+**类型**：refactor
+**影响模块**：`packages/core/src/lib/integrations/pi-agent/client-hooks.ts`（→ `client-hooks/` 7 文件）、`packages/core/package.json`（exports target 切换）、`docs/specs/epic-AG/story-AG.10/`
+**摘要**：Proposal `refactor-client-hooks` 实施 client-hooks.ts 纯机械拆分：store/types/api 逐字移入，send/stream 函数体按 D3 规则外移，index.ts 承接全部公共导出，调用方零改动。TC-1~TC-6 全过（web 425/425；desktop 182/182；madge 12 环=基线）。Story AG.10 完成 2/7。
+
+---
+
 ## 2026-09-30 — refactor：AG.10-T1 首页 page.tsx 巨型文件拆分（首个 task 完成）
 
 **类型**：refactor
