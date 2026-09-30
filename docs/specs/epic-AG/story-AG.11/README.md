@@ -1,7 +1,7 @@
 # Story AG.11: 重复与死代码嗅探治理
 
 **Epic:** AG — 架构治理与围栏对齐
-**状态:** 📋 Planning
+**状态:** ✅ Completed（2026-09-30，Proposal `clean-redundant-docs-and-dead-code`）
 **优先级:** 🟡 Medium
 **估计工时:** 2–3 天
 **依赖:** 建议在 AG.9（core 治理）之后实施——AG.9 已清理 collaboration-runtime jsx 副本与 web culture/ontology-data-store 壳，本 Story 处理剩余项并建立常态化检测
@@ -31,10 +31,25 @@
 | [requirements.md](./requirements.md) | 用户故事、验收标准、风险与回滚 |
 | [architecture.md](./architecture.md) | 逐项处置方案、knip 接入 |
 | [testing.md](./testing.md) | 测试策略、验收测试用例 |
+| [knip-baseline.md](./knip-baseline.md) | dead-code 基线报告（AG.11 新增，只记录不阻塞） |
+| [implementation.md](./implementation.md) | 实施记录（AG.11 新增） |
 
 ## 状态
 
-- [ ] 需求确认
-- [ ] 架构设计
-- [ ] 开发实施
-- [ ] 测试验证
+- [x] 需求确认
+- [x] 架构设计
+- [x] 开发实施
+- [x] 测试验证
+
+## 完成记录（2026-09-30）
+
+| Story 盘点项 | 处置结果 |
+|--------------|---------|
+| `.teamai/docs` 双文档树 | `git rm -r --cached`（868 文件移出追踪，本地保留）+ `.gitignore` 追加 `.teamai/`；实测 teamai 搜索索引 847 条目全部指向其自有克隆，无工作区消费方 |
+| `packages/service/` 空壳 | 物理删除；`git grep @originos/service` 零引用留痕于 commit |
+| `data/data/` 误嵌套 | 未追踪产物；Proposal worktree 无该目录，主工作区物理删除于合并后执行（见 implementation.md） |
+| `release/` | `.gitignore` 已含 `/release`（实测早于本 Story 已忽略），无需处置 |
+| `packages/web/data` | `git rm -r` 61 文件；抽样比对确认根 `data/` 存在同名且更新的数据；worktree 无本地 data 目录 |
+| `packages/desktop/data` | 实测不存在（Story 文档盘点有误），无需处置 |
+| any 预算 | 按范围定义移交 AG.5，不在本 Story 处理 |
+| knip 基线 | `knip.json` + `knip-baseline.md`（files 121 / exports 80 / types 71 / deps 64 / devDeps 32），只记录不接 CI |
