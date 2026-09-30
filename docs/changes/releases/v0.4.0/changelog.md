@@ -2,6 +2,14 @@
 
 ---
 
+## 2026-09-30 — refactor：AG.10-T3 task-runtime coordinator 巨型文件拆分
+
+**类型**：refactor
+**影响模块**：`packages/core/src/lib/integrations/pi-agent/task-runtime/coordinator.ts`（1142→689）、`task-runtime/coordinator-{types,shared,commands,controls}.ts`（新建 4 文件）、`docs/specs/epic-AG/story-AG.10/`
+**摘要**：Proposal `refactor-task-coordinator` 实施 coordinator.ts 纯机械拆分：host/配置类型与错误类/模块级 helper 逐字移入 types/shared，Project metadata/Evidence/Review 命令与 pause/cancel/resume/retry 控制动作按 D3 ctx 变换外移（`this.*` → `ctx.*`，可变字段经 `bumpContinuationGeneration`/`resetRunningPromise` 访问器、`state` 经 getter/setter 保持引用语义），主类保留 host 生命周期、续跑循环编排与状态机/持久化。4 个公共符号 re-export 可导入，desktop 深路径与包内导入零改动。TC-1~TC-6 全过（web 425/425；desktop 182/182；coordinator.test 21/21；双端 build 0 error；madge 12 环=基线；coordinator.ts 689 ≤ 700，新文件最大 328 ≤ 600）。集成复核 token 级逐字一致性：28 个保留方法与 10 个外移函数体全部一致（唯一变换为访问器调用与 helper 重命名）。Story AG.10 完成 3/7。
+
+---
+
 ## 2026-09-30 — refactor：AG.10-T2 Pi Agent 客户端 hooks 巨型文件拆分
 
 **类型**：refactor

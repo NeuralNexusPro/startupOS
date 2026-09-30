@@ -1,14 +1,21 @@
-import type { AgentMessage } from "@originos/pi-agent-adapter";
-import type { OriginOSAgent } from "../core/agent";
+// AgentTaskRuntimeCoordinator 主类——host 生命周期、任务生命周期与续跑循环编排、状态机与持久化。
+
+import type { TaskHostState, TaskSessionHost, TaskSessionHostFactory, RuntimeAgentTool, AgentTaskRuntimeCoordinatorOptions } from "./coordinator-types";
 import {
-	TaskContinuationController,
-	type AgentTaskContinuationDecision,
-} from "./continuation-controller";
-import {
-	createAgentTaskProgressFingerprint,
-	projectPiTaskSnapshot,
-	type PiTaskSnapshotLike,
-} from "./projection";
+	toTaskBranchEntries,
+	defaultHostFactory,
+	internalUserMessage,
+	visibleUserMessage,
+	taskStatusFromProjection,
+	isActiveExecution,
+	errorMessage,
+	AgentTaskRuntimeConflictError,
+	AgentTaskRuntimeProtocolError,
+} from "./coordinator-shared";
+import { runMutateProjectTaskMetadata, runRecordVerifiedEvidence, runMutateReview, runCompletionInput, type CoordinatorCommandsCtx } from "./coordinator-commands";
+import { runPauseTask, runCancelTask, runResumeTask, runRetryTask, buildContinuationPromptText, runInvokeReadOnlyTaskTool, type CoordinatorControlsCtx } from "./coordinator-controls";
+import { TaskContinuationController, type AgentTaskContinuationDecision } from "./continuation-controller";
+import { createAgentTaskProgressFingerprint, projectPiTaskSnapshot } from "./projection";
 import {
 	AGENT_TASK_RUNTIME_PROTOCOL_VERSION,
 	createIdleAgentTaskExecutionState,
@@ -28,145 +35,8 @@ import {
 	type ProjectTaskMetadataMutationPort,
 } from "./types";
 
-type TaskBranchEntry = Record<string, unknown> & { id: string };
-type RuntimeAgentTool = ReturnType<OriginOSAgent["getTools"]>[number];
-
-interface TaskHostScope {
-	sessionId: string;
-	cursor: string | null;
-	revision: number;
-	bridgeEpoch: number;
-}
-
-interface TaskHostTool {
-	name: string;
-	label: string;
-	description: string;
-	parameters: unknown;
-	execute(
-		toolCallId: string,
-		input: Record<string, unknown>,
-		signal?: AbortSignal,
-		onUpdate?: (update: unknown) => void,
-	): Promise<unknown>;
-}
-
-interface TaskHostState {
-	scope: TaskHostScope;
-	snapshot: PiTaskSnapshotLike;
-}
-
-interface TaskSessionHost {
-	restore(entries: readonly TaskBranchEntry[]): Promise<TaskHostState>;
-	getSnapshot(): PiTaskSnapshotLike;
-	getScope(): TaskHostScope;
-	getAgentTools(): readonly TaskHostTool[];
-	invoke(command: {
-		version: 1;
-		requestId: string;
-		toolName: string;
-		scope: {
-			sessionId: string;
-			expectedCursor: string | null;
-			expectedRevision: number;
-			bridgeEpoch: number;
-		};
-		input: Record<string, unknown>;
-	}): Promise<unknown>;
-	subscribeState(listener: (state: TaskHostState) => void): () => void;
-	invalidate(): void;
-}
-
-interface TaskSessionHostFactoryOptions {
-	sessionId: string;
-	bridgeEpoch: number;
-	entries: readonly TaskBranchEntry[];
-	persistEntries(
-		entries: readonly TaskBranchEntry[],
-		context: unknown,
-	): void | Promise<void>;
-}
-
-type TaskSessionHostFactory = (
-	options: TaskSessionHostFactoryOptions,
-) => Promise<TaskSessionHost>;
-
-export interface AgentTaskRuntimeCoordinatorOptions {
-	sessionId: string;
-	/** Project ownership is required by project metadata mutation requests. */
-	projectId?: string;
-	agent: OriginOSAgent;
-	initialState?: AgentTaskRuntimePersistenceV1;
-	persist(state: AgentTaskRuntimePersistenceV1): void | Promise<void>;
-	onState?(snapshot: AgentTaskRuntimeSnapshotV1): void;
-	onAssistantMessage?(content: string): void;
-	hasPendingUserMessage?(): boolean;
-	hasBudgetRemaining?(): boolean;
-	hostFactory?: TaskSessionHostFactory;
-	maxContinuations?: number;
-	maxNoProgressTurns?: number;
-}
-
-export class AgentTaskRuntimeConflictError extends Error {
-	readonly code = "TASK_RUNTIME_CONFLICT";
-}
-
-export class AgentTaskRuntimeProtocolError extends Error {
-	readonly code = "TASK_RUNTIME_PROTOCOL_ERROR";
-}
-
-function toTaskBranchEntries(entries: readonly unknown[]): TaskBranchEntry[] {
-	return entries.filter((entry): entry is TaskBranchEntry => {
-		return entry !== null && typeof entry === "object"
-			&& typeof (entry as { id?: unknown }).id === "string";
-	});
-}
-
-async function defaultHostFactory(
-	options: TaskSessionHostFactoryOptions,
-): Promise<TaskSessionHost> {
-	const module = await import("@originos/pi-agent-adapter/task-runtime") as unknown as {
-		createPiTaskSessionHost(input: TaskSessionHostFactoryOptions): Promise<TaskSessionHost>;
-	};
-	return module.createPiTaskSessionHost(options);
-}
-
-function internalUserMessage(text: string): AgentMessage {
-	return {
-		role: "user",
-		content: [{ type: "text", text }],
-	} as unknown as AgentMessage;
-}
-
-function visibleUserMessage(text: string): AgentMessage {
-	return {
-		role: "user",
-		content: [{ type: "text", text }],
-	} as unknown as AgentMessage;
-}
-
-function taskStatusFromProjection(
-	projection: AgentTaskProjectionV1,
-): AgentTaskExecutionStateV1["status"] {
-	switch (projection.status) {
-		case "done":
-			return "completed";
-		case "cancelled":
-			return "cancelled";
-		case "blocked":
-			return "waiting_user";
-		default:
-			return "running";
-	}
-}
-
-function isActiveExecution(status: AgentTaskExecutionStateV1["status"]): boolean {
-	return status === "planning" || status === "running" || status === "waiting_user" || status === "paused";
-}
-
-function errorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
-}
+export type { AgentTaskRuntimeCoordinatorOptions } from "./coordinator-types";
+export { AgentTaskRuntimeConflictError, AgentTaskRuntimeProtocolError } from "./coordinator-shared";
 
 export class AgentTaskRuntimeCoordinator implements AgentTaskEvidencePort, AgentTaskReviewPort, ProjectTaskMetadataMutationPort {
 	private readonly controller = new TaskContinuationController();
@@ -272,144 +142,59 @@ export class AgentTaskRuntimeCoordinator implements AgentTaskEvidencePort, Agent
 	private async mutateProjectTaskMetadata(
 		input: AgentTaskProjectMetadataMutationRequestV1,
 	): Promise<AgentTaskProjectMetadataMutationReceiptV1> {
-		await this.initialize();
-		if (input.version !== AGENT_TASK_RUNTIME_PROTOCOL_VERSION
-			|| !input.projectId.trim() || !input.sessionId.trim()
-			|| !input.taskId.trim() || !input.requestId.trim()) {
-			throw new AgentTaskRuntimeProtocolError("Project metadata 请求缺少必填字段");
-		}
-		if (input.sessionId !== this.options.sessionId
-			|| (this.options.projectId !== undefined && input.projectId !== this.options.projectId)) {
-			throw new AgentTaskRuntimeConflictError("Project metadata 请求跨越了 Project 或 Session");
-		}
-		const receipts = this.state.execution.projectMetadataMutationReceipts ?? [];
-		const recorded = receipts.find((receipt) => receipt.requestId === input.requestId);
-		if (recorded) {
-			if (recorded.projectId !== input.projectId || recorded.sessionId !== input.sessionId
-				|| recorded.taskId !== input.taskId || recorded.priority !== input.priority
-				|| recorded.revisionBefore !== input.expectedRevision
-				|| recorded.cursorBefore !== input.expectedCursor
-				|| recorded.bridgeEpoch !== input.bridgeEpoch) {
-				throw new AgentTaskRuntimeConflictError("Project metadata requestId 已用于不同请求");
-			}
-			return structuredClone(recorded);
-		}
-		const host = this.requireHost();
-		const scope = host.getScope();
-		const projection = projectPiTaskSnapshot(host.getSnapshot());
-		if (!projection || projection.taskId !== input.taskId) {
-			throw new AgentTaskRuntimeConflictError("Project metadata 只能修改当前 Session 的活动任务");
-		}
-		if (scope.revision !== input.expectedRevision || scope.cursor !== input.expectedCursor
-			|| scope.bridgeEpoch !== input.bridgeEpoch) {
-			throw new AgentTaskRuntimeConflictError("Project metadata revision、cursor 或 epoch 已过期");
-		}
-		await host.invoke({
-			version: 1,
-			requestId: input.requestId,
-			toolName: "task_update",
-			scope: {
-				sessionId: scope.sessionId,
-				expectedCursor: scope.cursor,
-				expectedRevision: scope.revision,
-				bridgeEpoch: scope.bridgeEpoch,
+		return runMutateProjectTaskMetadata(this.createCommandsCtx(), input);
+	}
+
+	private createCommandsCtx(): CoordinatorCommandsCtx {
+		// ctx.state must stay live: updateFromProjection replaces this.state
+		// mid-command, and the moved bodies keep mutating the current object.
+		const coordinator = this;
+		return {
+			get state() {
+				return coordinator.state;
 			},
-			input: {
-				task_id: input.taskId,
-				activity: `Project priority set to ${input.priority}`,
-				scope: "within_step",
+			set state(value) {
+				coordinator.state = value;
 			},
-		});
-		const nextScope = host.getScope();
-		const updated = projectPiTaskSnapshot(host.getSnapshot());
-		if (!updated || updated.taskId !== input.taskId
-			|| nextScope.revision <= scope.revision || nextScope.cursor === scope.cursor
-			|| nextScope.bridgeEpoch !== scope.bridgeEpoch) {
-			throw new AgentTaskRuntimeProtocolError("Project metadata mutation 未推进权威 Task scope");
-		}
-		const previous = this.state.execution.projectMetadata;
-		const metadata = {
-			version: 1 as const,
-			priority: input.priority,
-			semanticRefs: [...(previous?.semanticRefs ?? [])],
-			inputVersions: (previous?.inputVersions ?? []).map((entry) => ({ ...entry })),
+			options: this.options,
+			initialize: () => this.initialize(),
+			requireHost: () => this.requireHost(),
+			updateFromProjection: (projection, mode, fullTurnBaseline) =>
+				this.updateFromProjection(projection, mode, fullTurnBaseline),
+			publishState: () => this.publishState(),
+			getSnapshot: () => this.getSnapshot(),
+			completionInput: (projection, snapshot) => runCompletionInput(projection, snapshot),
 		};
-		const acceptedAt = new Date().toISOString();
-		const receipt: AgentTaskProjectMetadataMutationReceiptV1 = {
-			version: 1,
-			projectId: input.projectId,
-			sessionId: input.sessionId,
-			taskId: input.taskId,
-			requestId: input.requestId,
-			priority: input.priority,
-			revisionBefore: scope.revision,
-			revisionAfter: nextScope.revision,
-			cursorBefore: scope.cursor,
-			cursorAfter: nextScope.cursor,
-			bridgeEpoch: scope.bridgeEpoch,
-			metadata,
-			acceptedAt,
+	}
+
+	private createControlsCtx(): CoordinatorControlsCtx {
+		const coordinator = this;
+		return {
+			get state() {
+				return coordinator.state;
+			},
+			set state(value) {
+				coordinator.state = value;
+			},
+			options: this.options,
+			requireHost: () => this.requireHost(),
+			installTaskTools: () => this.installTaskTools(),
+			restoreBaselineTools: () => this.restoreBaselineTools(),
+			publishState: () => this.publishState(),
+			startContinuationLoop: () => this.startContinuationLoop(),
+			createTask: (request) => this.createTask(request),
+			bumpContinuationGeneration: () => {
+				this.continuationGeneration += 1;
+			},
+			resetRunningPromise: () => {
+				this.runningPromise = null;
+			},
 		};
-		this.updateFromProjection(updated, updated.status === "done" || updated.status === "cancelled" ? "chat" : "task_running");
-		this.state.execution = {
-			...this.state.execution,
-			projectMetadata: metadata,
-			projectMetadataMutationReceipts: [...receipts, receipt].slice(-100),
-			updatedAt: acceptedAt,
-		};
-		await this.publishState();
-		return structuredClone(receipt);
 	}
 
 	/** Controlled public Evidence command that retains the current Session scope. */
 	async recordVerifiedEvidence(input: AgentTaskEvidenceSubmissionV1): Promise<AgentTaskEvidenceReceiptV1> {
-		await this.initialize();
-		if (input.version !== AGENT_TASK_RUNTIME_PROTOCOL_VERSION) {
-			throw new AgentTaskRuntimeProtocolError("不支持的 Evidence protocol version");
-		}
-		if (!input.requestId.trim() || !input.taskId.trim() || !input.summary.trim()
-			|| !input.references.length || !input.artifactRefs.length || !input.verifier.trim() || !input.contentHash.trim()) {
-			throw new AgentTaskRuntimeProtocolError("Evidence 请求缺少必填字段");
-		}
-		const projection = this.state.execution.projection;
-		if (!projection || projection.taskId !== input.taskId) {
-			throw new AgentTaskRuntimeConflictError("Evidence 只能写入当前 Agent Session 的活动任务");
-		}
-		const host = this.requireHost();
-		const scope = host.getScope();
-		const result = await host.invoke({
-			version: 1,
-			requestId: input.requestId,
-			toolName: "task_evidence",
-			scope: {
-				sessionId: scope.sessionId,
-				expectedCursor: scope.cursor,
-				expectedRevision: scope.revision,
-				bridgeEpoch: scope.bridgeEpoch,
-			},
-			input: {
-				task_id: input.taskId,
-				type: "agent_output",
-				level: "runtime",
-				summary: input.summary,
-				passed: "true",
-				references: [...input.references],
-				...(input.stepId ? { step_ids: [input.stepId] } : {}),
-				quality: {
-					source: "collaboration-runtime",
-					reproducible: true,
-					verifier: input.verifier,
-					artifactRefs: [...input.artifactRefs],
-					observedOutput: input.contentHash,
-				},
-			},
-		});
-		const receipt = result as Partial<AgentTaskEvidenceReceiptV1> & { isError?: boolean };
-		if (receipt.isError || typeof receipt.eventId !== "string" || typeof receipt.revisionBefore !== "number"
-			|| typeof receipt.revisionAfter !== "number" || typeof receipt.stateHash !== "string") {
-			throw new AgentTaskRuntimeProtocolError("task_evidence 未返回可确认的回执");
-		}
-		return { version: 1, requestId: input.requestId, eventId: receipt.eventId, revisionBefore: receipt.revisionBefore, revisionAfter: receipt.revisionAfter, stateHash: receipt.stateHash };
+		return runRecordVerifiedEvidence(this.createCommandsCtx(), input);
 	}
 
 	async requestReview(input: AgentTaskReviewRequestV1): Promise<AgentTaskRuntimeSnapshotV1> {
@@ -428,133 +213,7 @@ export class AgentTaskRuntimeCoordinator implements AgentTaskEvidencePort, Agent
 		input: AgentTaskReviewRequestV1,
 		action: "request_review" | "approve_completion" | "reject_review",
 	): Promise<AgentTaskRuntimeSnapshotV1> {
-		await this.initialize();
-		if (input.version !== AGENT_TASK_RUNTIME_PROTOCOL_VERSION || !input.requestId.trim()
-			|| !input.sessionId.trim() || !input.taskId.trim()) {
-			throw new AgentTaskRuntimeProtocolError("Review 请求缺少必填字段");
-		}
-		if (input.sessionId !== this.options.sessionId) {
-			throw new AgentTaskRuntimeConflictError("Review 请求跨越了 Agent Session");
-		}
-		const host = this.requireHost();
-		const scope = host.getScope();
-		if (scope.revision !== input.expectedRevision || scope.cursor !== input.expectedCursor
-			|| scope.bridgeEpoch !== input.leaseEpoch) {
-			throw new AgentTaskRuntimeConflictError("Review 请求的 revision、cursor 或 lease 已过期");
-		}
-		const projection = projectPiTaskSnapshot(host.getSnapshot());
-		if (!projection || projection.taskId !== input.taskId) {
-			throw new AgentTaskRuntimeConflictError("Review 只能修改当前 Agent Session 的活动任务");
-		}
-		if (action === "request_review" && projection.status !== "active") {
-			throw new AgentTaskRuntimeConflictError("只有 active Task 可以请求审核");
-		}
-		if ((action === "approve_completion" || action === "reject_review")
-			&& projection.status !== "review") {
-			throw new AgentTaskRuntimeConflictError("只有 review Task 可以审核");
-		}
-
-		let toolName = "task_update";
-		let toolInput: Record<string, unknown> = {
-			task_id: input.taskId,
-			status: action === "request_review" ? "review" : "active",
-			activity: action === "request_review" ? "请求 Task 完成审核" : "审核拒绝，Task 返回执行",
-			scope: "within_step",
-			...(input.reason?.trim() ? { reason: input.reason.trim(), note: input.reason.trim() } : {}),
-		};
-		if (action === "approve_completion") {
-			const completion = this.completionInput(projection, host.getSnapshot());
-			toolName = "task_complete";
-			toolInput = {
-				task_id: input.taskId,
-				summary: input.reason?.trim() || "Task review approved with verified evidence",
-				evidence_ids: completion.evidenceIds,
-				criterion_results: completion.criterionResults,
-			};
-		}
-		await host.invoke({
-			version: 1,
-			requestId: input.requestId,
-			toolName,
-			scope: {
-				sessionId: scope.sessionId,
-				expectedCursor: input.expectedCursor,
-				expectedRevision: input.expectedRevision,
-				bridgeEpoch: input.leaseEpoch,
-			},
-			input: toolInput,
-		});
-		const updated = projectPiTaskSnapshot(host.getSnapshot());
-		if (!updated || updated.taskId !== input.taskId) {
-			throw new AgentTaskRuntimeProtocolError("Review mutation 未返回当前 Task 投影");
-		}
-		this.updateFromProjection(
-			updated,
-			updated.status === "done" || updated.status === "cancelled" ? "chat" : "task_running",
-		);
-		await this.publishState();
-		return this.getSnapshot();
-	}
-
-	private completionInput(
-		projection: AgentTaskProjectionV1,
-		snapshot: PiTaskSnapshotLike,
-	): {
-		readonly evidenceIds: readonly string[];
-		readonly criterionResults: readonly Record<string, unknown>[];
-	} {
-		const gaps: string[] = [];
-		for (const blocker of projection.blockers) {
-			if (!blocker.resolved) gaps.push(`blocker:${blocker.id}`);
-		}
-		for (const step of projection.steps) {
-			if (step.status !== "done" && step.status !== "skipped") gaps.push(`step:${step.id}:status`);
-			if (step.evidenceRequired && step.status === "done" && step.evidenceCount < 1) gaps.push(`step:${step.id}:evidence`);
-		}
-		for (const criterion of projection.criteria) {
-			if (criterion.status !== "satisfied" && criterion.status !== "skipped") {
-				gaps.push(`criterion:${criterion.id}:status`);
-			}
-			if (criterion.status === "satisfied" && criterion.evidenceCount < 1) {
-				gaps.push(`criterion:${criterion.id}:evidence`);
-			}
-		}
-		if (projection.evidenceCount < 1) gaps.push("task:evidence");
-		if (gaps.length > 0) {
-			throw new AgentTaskRuntimeConflictError(`TASK_EVIDENCE_GATE_FAILED:${gaps.join(",")}`);
-		}
-		const state = snapshot.state && typeof snapshot.state === "object"
-			? snapshot.state as Record<string, unknown>
-			: {};
-		const tasks = state["tasks"] && typeof state["tasks"] === "object"
-			? state["tasks"] as Record<string, unknown>
-			: {};
-		const task = tasks[projection.taskId] && typeof tasks[projection.taskId] === "object"
-			? tasks[projection.taskId] as Record<string, unknown>
-			: {};
-		const evidenceIds = Array.isArray(task["evidence"])
-			? task["evidence"].flatMap((item) => item && typeof item === "object"
-				&& typeof (item as { id?: unknown }).id === "string" ? [(item as { id: string }).id] : [])
-			: [];
-		if (evidenceIds.length < 1) {
-			throw new AgentTaskRuntimeConflictError("TASK_EVIDENCE_GATE_FAILED:task:evidence_ids");
-		}
-		const criterionResults = Array.isArray(task["acceptanceCriteria"])
-			? task["acceptanceCriteria"].flatMap((item) => {
-				if (!item || typeof item !== "object") return [];
-				const criterion = item as Record<string, unknown>;
-				if (typeof criterion["id"] !== "string" || typeof criterion["status"] !== "string") return [];
-				return [{
-					criterionId: criterion["id"],
-					status: criterion["status"],
-					evidenceIds: Array.isArray(criterion["evidenceIds"])
-						? criterion["evidenceIds"].filter((id): id is string => typeof id === "string")
-						: [],
-					...(typeof criterion["note"] === "string" ? { note: criterion["note"] } : {}),
-				}];
-			})
-			: [];
-		return { evidenceIds, criterionResults };
+		return runMutateReview(this.createCommandsCtx(), input, action);
 	}
 
 	async createTask(request: CreateAgentTaskRequestV1): Promise<AgentTaskRuntimeSnapshotV1> {
@@ -886,7 +545,7 @@ export class AgentTaskRuntimeCoordinator implements AgentTaskEvidencePort, Agent
 			if (generation !== this.continuationGeneration) return;
 			await this.options.agent.prompt(
 				internalUserMessage([
-					this.buildContinuationPrompt(),
+					buildContinuationPromptText(),
 					"运行时已预取 task_next 的当前结果；直接执行其中给出的唯一下一步，不要只描述计划。",
 					`task_next 结果：${nextAction}`,
 				].join("\n\n")),
@@ -953,135 +612,23 @@ export class AgentTaskRuntimeCoordinator implements AgentTaskEvidencePort, Agent
 	}
 
 	private async pauseTask(): Promise<void> {
-		if (this.state.execution.mode !== "task_running" || !isActiveExecution(this.state.execution.status)) {
-			throw new AgentTaskRuntimeConflictError("只有活动任务可以停止");
-		}
-		this.continuationGeneration += 1;
-		this.runningPromise = null;
-		this.options.agent.abort();
-		this.state.execution.status = "paused";
-		this.state.execution.lastError = {
-			code: "TASK_PAUSED_BY_USER",
-			message: "用户停止了当前任务执行，进度已保留",
-			retryable: true,
-		};
-		this.state.execution.updatedAt = new Date().toISOString();
-		this.restoreBaselineTools();
-		await this.publishState();
+		return runPauseTask(this.createControlsCtx());
 	}
 
 	private async cancelTask(requestId: string): Promise<void> {
-		this.continuationGeneration += 1;
-		this.runningPromise = null;
-		this.options.agent.abort();
-		const projection = this.state.execution.projection;
-		if (projection && projection.status !== "done" && projection.status !== "cancelled") {
-			const scope = this.requireHost().getScope();
-			await this.requireHost().invoke({
-				version: 1,
-				requestId,
-				toolName: "task_update",
-				scope: {
-					sessionId: this.options.sessionId,
-					expectedCursor: scope.cursor,
-					expectedRevision: scope.revision,
-					bridgeEpoch: scope.bridgeEpoch,
-				},
-				input: {
-					task_id: projection.taskId,
-					status: "cancelled",
-					reason: "用户取消任务",
-					activity: "用户从 Task 卡片取消任务",
-				},
-			});
-		}
-		this.state.execution.mode = "chat";
-		this.state.execution.status = "cancelled";
-		this.state.execution.updatedAt = new Date().toISOString();
-		this.restoreBaselineTools();
-		await this.publishState();
+		return runCancelTask(this.createControlsCtx(), requestId);
 	}
 
 	private resumeTask(): void {
-		if (this.state.execution.status !== "paused" && this.state.execution.status !== "waiting_user") {
-			throw new AgentTaskRuntimeConflictError("只有暂停或等待用户的任务可以恢复");
-		}
-		this.state.execution.mode = "task_running";
-		this.state.execution.status = "running";
-		this.state.execution.lastError = undefined;
-		this.state.execution.updatedAt = new Date().toISOString();
-		this.installTaskTools();
-		void this.publishState();
-		this.startContinuationLoop();
+		return runResumeTask(this.createControlsCtx());
 	}
 
 	private async retryTask(requestId: string): Promise<void> {
-		const draft = this.state.execution.draft;
-		if (this.state.execution.status !== "failed") {
-			throw new AgentTaskRuntimeConflictError("只有失败的任务可以重试");
-		}
-		if (this.state.execution.projection) {
-			this.state.execution.mode = "task_running";
-			this.state.execution.status = "running";
-			this.state.execution.lastError = undefined;
-			this.state.execution.updatedAt = new Date().toISOString();
-			this.installTaskTools();
-			await this.publishState();
-			this.startContinuationLoop();
-			return;
-		}
-		if (!draft) {
-			throw new AgentTaskRuntimeConflictError("失败任务没有可重试的草稿或 canonical state");
-		}
-		await this.createTask({
-			version: 1,
-			requestId,
-			sessionId: this.options.sessionId,
-			objective: draft.objective,
-			title: draft.title,
-			context: draft.context,
-			acceptanceCriteria: draft.acceptanceCriteria,
-		});
-	}
-
-	private buildContinuationPrompt(): string {
-		return [
-			"[Internal Task Runtime] 继续当前 canonical pi-tasks 任务。",
-			"先调用 task_focus 或 task_next 获取唯一当前步骤，只执行该步骤。",
-			"完成可验证工作后先用 task_evidence 记录可复现证据，再用 task_update 更新步骤。",
-			"任务规划的最后一步必须是最终交付：读取或确认最终交付物，整理关键结论、文件路径/链接、证据和限制，并直接在当前会话中向用户呈现；仅写入文件或调用 task_complete 不算完成交付。",
-			"只有全部步骤和验收标准具备有效证据且无 blocker 时才能调用 task_complete。",
-			"若确实需要用户或外部条件，记录 blocker 并清楚说明所需输入；不要仅承诺稍后继续。",
-		].join("\n\n");
+		return runRetryTask(this.createControlsCtx(), requestId);
 	}
 
 	private async invokeReadOnlyTaskTool(toolName: "task_next" | "task_focus", requestId: string): Promise<string> {
-		const host = this.requireHost();
-		const tool = host.getAgentTools().find((candidate) => candidate.name === toolName);
-		if (!tool) {
-			throw new Error(`Task read-only tool is not active: ${toolName}`);
-		}
-		// Read-only tools are intentionally invoked through their agent-tool
-		// descriptor.  The adapter command contract only allowlists mutations;
-		// routing task_next/task_focus through host.invoke would be rejected.
-		const result = await tool.execute(requestId, {});
-		if (result && typeof result === "object" && "content" in result) {
-			const content = (result as { content?: unknown }).content;
-			if (Array.isArray(content)) {
-				const text = content
-					.filter((block): block is { type?: string; text?: string } =>
-						Boolean(block) && typeof block === "object" && typeof (block as { text?: unknown }).text === "string")
-					.map((block) => block.text ?? "")
-					.join("\n")
-					.trim();
-				if (text) return text;
-			}
-		}
-		try {
-			return JSON.stringify(result);
-		} catch {
-			return String(result);
-		}
+		return runInvokeReadOnlyTaskTool(this.createControlsCtx(), toolName, requestId);
 	}
 
 	private assertCreateRequest(request: CreateAgentTaskRequestV1): void {
