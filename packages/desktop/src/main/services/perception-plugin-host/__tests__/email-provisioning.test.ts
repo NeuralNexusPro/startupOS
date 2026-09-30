@@ -14,6 +14,7 @@ vi.mock('electron', () => ({
 }));
 vi.mock('imapflow', () => ({ ImapFlow: class {
   usable = true;
+  on = vi.fn();
   connect = mocks.connect;
   mailboxOpen = mocks.mailboxOpen;
   logout = vi.fn();
@@ -75,7 +76,16 @@ describe('Email plugin activation', () => {
     expect(store.get(request.connectorId)).toEqual(saved);
   });
   it('does not add email verification records to other plugins', async () => {
-    expect(await provision(undefined, { ...request, pluginId: 'originos.dingtalk', connectorId: 'dingtalk-test' })).toMatchObject({ success: true });
+    // DingTalk has had a real provision step since ae509e7, so supply its own
+    // settings/secrets; the assertion is that the email testReceipt is absent.
+    const dingtalkRequest = {
+      ...request,
+      pluginId: 'originos.dingtalk',
+      connectorId: 'dingtalk-test',
+      settings: { appId: 'ding-app', robotCode: 'ding-robot' },
+      secrets: { appSecret: 'ding-secret' },
+    };
+    expect(await provision(undefined, dingtalkRequest)).toMatchObject({ success: true });
     expect(store.get('dingtalk-test')?.settings).not.toHaveProperty('testReceipt');
     expect(mocks.connect).not.toHaveBeenCalled();
   });

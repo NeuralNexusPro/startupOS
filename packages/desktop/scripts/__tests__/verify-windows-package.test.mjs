@@ -16,9 +16,13 @@ afterEach(() => { for (const root of roots.splice(0)) fs.rmSync(root, { recursiv
 const modules = [
   'lib/paths', 'lib/integrations/pi-agent/display-content', 'lib/integrations/pi-agent/core/agent',
   'lib/integrations/pi-agent/tools/index', 'lib/integrations/pi-agent/tools/loop-detector',
-  'lib/features/skills/service', 'lib/features/services/launcher/skill', 'lib/integrations/electron/workspace-paths',
+  'lib/features/skills/service',
+  'lib/features/project/ontology-cross-package-service', 'lib/features/project/ontology-work-item-recovery',
+  'lib/features/project/contract-bound-runtime-composition', 'lib/features/project/project-task-source',
+  'modules/collaboration-runtime/facade/contract-execution',
+  'lib/features/services/launcher/skill', 'lib/integrations/electron/workspace-paths',
 ].map(p => `dist-electron/core/src/${p}.js`).concat(schedule, [
-  'services/workspace-service', 'services/entry-export-service', 'main',
+  'services/workspace-service', 'services/entry-export-service', 'services/ontology-cross-package-ipc', 'main', 'ipc-protocol',
 ].map(p => `dist-electron/desktop/src/main/${p}.js`));
 const deps = ['@anthropic-ai/sdk', '@aws-sdk/client-bedrock-runtime', '@google/genai', '@mistralai/mistralai', '@opentelemetry/api', '@smithy/node-http-handler', 'http-proxy-agent', 'https-proxy-agent', 'openai', '@larksuiteoapi/node-sdk', '@wecom/aibot-node-sdk', '@wecom/cli', '@wecom/cli-win32-x64', 'imapflow', 'mailparser', ...['email', 'wecom', 'feishu', 'dingtalk'].map(p => `@originos/perception-plugin-${p}`)];
 const workerFiles = ['agent-worker.mjs', 'agent-worker-module-specifier.mjs', 'core/lib/integrations/pi-agent/channel-office-capabilities.js', 'core/lib/integrations/pi-agent/tools/loop-detector.js'].map(p => `agent-worker/${p}`);
@@ -26,6 +30,14 @@ const resources = ['web/packages/web/server.js', 'web/packages/web/node_modules/
   ...['onnxruntime_binding.node', 'onnxruntime.dll'].map(p => `app.asar.unpacked/node_modules/onnxruntime-node/bin/napi-v6/win32/x64/${p}`),
   'app.asar.unpacked/node_modules/@wecom/cli-win32-x64/bin/wecom-cli.exe'];
 function write(root, name, text = '') { const target = path.join(root, name); fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(target, text); }
+// ONT/project-runtime modules the Windows verifier smoke-loads from the ASAR;
+// exports must be functions for the typeof checks in verifyAsar().
+const smokeModules = {
+  'dist-electron/core/src/lib/features/project/ontology-cross-package-service.js': 'exports.OntologyCrossPackageService = function OntologyCrossPackageService() {};',
+  'dist-electron/core/src/lib/features/project/ontology-work-item-recovery.js': 'exports.OntologyWorkItemRecovery = function OntologyWorkItemRecovery() {};',
+  'dist-electron/core/src/lib/features/project/contract-bound-runtime-composition.js': 'exports.ProjectContractTaskRuntimeRecovery = function ProjectContractTaskRuntimeRecovery() {}; exports.createProjectContractRuntimeComposition = function createProjectContractRuntimeComposition() {};',
+  'dist-electron/core/src/lib/features/project/project-task-source.js': 'exports.RuntimeProjectTaskSource = function RuntimeProjectTaskSource() {};',
+};
 function zip(names) {
   const headers = names.map(name => { const text = Buffer.from(name); const header = Buffer.alloc(46); header.writeUInt32LE(0x02014b50); header.writeUInt16LE(text.length, 28); return Buffer.concat([header, text]); });
   const directory = Buffer.concat(headers); const end = Buffer.alloc(22); end.writeUInt32LE(0x06054b50); end.writeUInt16LE(names.length, 10); end.writeUInt32LE(directory.length, 12); return Buffer.concat([directory, end]);
@@ -33,7 +45,7 @@ function zip(names) {
 async function fixture({ missingSchedule = false, omitWorker = false } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'win-verification-')); roots.push(root);
   const payload = path.join(root, 'payload'); const resourceRoot = path.join(root, 'release/win-unpacked/resources');
-  for (const entry of modules) if (!missingSchedule || entry !== schedule) write(payload, entry, 'getBundledSkillDirs materializeBundledSkill loadSkillFromDirectory');
+  for (const entry of modules) if (!missingSchedule || entry !== schedule) write(payload, entry, smokeModules[entry] ?? 'getBundledSkillDirs materializeBundledSkill loadSkillFromDirectory');
   for (const entry of deps) write(payload, `node_modules/${entry}/package.json`, '{}');
   for (const entry of ['index.js', 'ai.js', 'goal.js', 'dist/index.cjs', 'dist/ai.cjs', 'dist/goal.cjs']) write(payload, `node_modules/@originos/pi-agent-adapter/${entry}`);
   write(payload, 'node_modules/archiver/index.js');
@@ -48,6 +60,10 @@ async function fixture({ missingSchedule = false, omitWorker = false } = {}) {
   const runtimeRequire = request => {
     if (request.endsWith('workspace-paths.js')) return { resolveWorkspaceBasePath: () => 'C:\\Users\\admin\\AppData\\Roaming\\@originos\\desktop\\data\\agents\\release-smoke' };
     if (request.endsWith('/goal')) return () => {};
+    if (request.endsWith('ontology-cross-package-service.js')) return { OntologyCrossPackageService: () => {} };
+    if (request.endsWith('ontology-work-item-recovery.js')) return { OntologyWorkItemRecovery: () => {} };
+    if (request.endsWith('contract-bound-runtime-composition.js')) return { ProjectContractTaskRuntimeRecovery: () => {}, createProjectContractRuntimeComposition: () => {} };
+    if (request.endsWith('project-task-source.js')) return { RuntimeProjectTaskSource: () => {} };
     return { Agent: () => {}, streamSimple: () => {}, completeSimple: () => {}, ZipArchive: () => {}, plugin: { manifest: { id: 'fixture' } } };
   };
   runtimeRequire.resolve = request => { resolved.push(request); if (path.isAbsolute(request) && !fs.existsSync(request)) throw Error(`missing module: ${request}`); return request; };
