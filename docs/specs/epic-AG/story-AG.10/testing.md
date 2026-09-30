@@ -131,3 +131,36 @@ wc -l <每个新文件>
 
 - use-home-handlers.ts 779 行超过 600 常规上限（编排类允许 ≤ 800）：后续可按「窗口 handler vs 事件订阅 vs spotlight」再拆，不阻塞本 task。
 - eslint warnings 3211 vs 基线 3140（仅 warning 级，源于 eslint-disable 注释随代码块重新分布），0 error 不变。
+
+---
+
+## AG.10-T2（client-hooks.ts）执行结果
+
+**Proposal:** `refactor-client-hooks`（分支 `proposal/refactor-client-hooks`，实施分支 `proposal-task/refactor-client-hooks-1-split`）
+**执行日期:** 2026-09-30
+**基线:** web 425/425（71 文件）、desktop 182/182（30 文件）、madge core 12 环、client-hooks.ts 1317 行
+
+| 用例 | 结果 | 证据 |
+|------|------|------|
+| TC-1 导出符号不变 | ✅ | `client-hooks/index.ts` 承接原 7 个公共符号（`usePiAgent`/`usePiAgentEvent`/`usePiAgentStatus`/`UseClientPiAgentState`/`ClientAgentEvent`/`_updateSessionState`/`_subscribeToSession`）+ `SessionState`/`ClientHookMessage` 类型；`hooks.ts` 桥接 diff 为空；SolutionDesign 深路径导入与 3 个测试文件 specifier 零变化；exports 条目仅 target 改指 index.ts |
+| TC-2 双端编译 | ✅ | web build 0 error；desktop build（tsc -p）0 error；`expand-core-exports.cjs --verify` VERIFY PASSED |
+| TC-3 测试基线 | ✅ | web **425/425（71 文件）**、desktop **182/182（30 文件）**。注：`client-hooks-session-isolation.test.ts` 有 2 个存量失败（"does not deliver project-level AGENT_EVENT payloads…" / "TC-U4/TC-I1 restores B…"），已在拆分前 HEAD 逐字复现（git stash 验证），失败集合与基线一致，非拆分引入 |
+| TC-4 循环检查 | ✅ | madge = **12 环 = 基线**；`client-hooks/` 相关循环 0 |
+| TC-5 模块冒烟 | ✅（部分人工） | 自动化：隔离端口 3179 `next dev` HTTP 200、渲染正常、`✓ Compiled / in 7.7s (6331 modules)`、0 error；Electron IPC 流分支以 session-isolation 9/11（=基线）覆盖。人工项：Skill 入口发消息依赖 LLM 实际响应（步骤见下） |
+| TC-6 行数达标 | ✅ | message-stream 538 / use-pi-agent 518 / api 121 / message-send 127 / types 96 / session-store 71 / index 20，全部 ≤ 600 |
+
+**逐字一致性复核（集成时 token 级归一化验证，超出 subagent 自查）：**
+
+- 三个纯移动文件（session-store / types / api）与原文件对应段 **token-identical**（剔除文件头注释、import 路径机械加深一级、export 关键字后）。
+- `message-send.ts` / `message-stream.ts` 函数体 **token-identical**（2142 / 12968 token，D3 deps 解构后逐字）。
+- 主 hook 的 initialize / restoreSession / abort~return / uiState+return / 辅助 hooks 段全部 **token-identical**；`ClientHookMessage` 类型与原 `messages` useState 内联类型逐字一致。
+- `sendMessage`/`sendMessageStream` 副作用调用序列（console/setXxx/emitEvent）合并薄包装后 **8/8、23/23 MATCH**；useCallback 依赖数组保持 `[emitEvent]`。
+
+**人工验证步骤（TC-5 未自动化部分）:**
+
+1. `pnpm dev` 打开首页 → 任一技能入口发送一条消息，确认流式回复正常渲染、错误提示与中止按钮可用。
+
+**剩余风险:**
+
+- session-isolation 存量 2 个失败与本次拆分无关（拆分前已存在），归属既有测试债，不阻塞本 task。
+- deps 对象每次渲染重建：useCallback 依赖数组仍为 `[emitEvent]`，函数身份不变，下游 useEffect 不受影响（已由 SolutionDesign 集成测试与 web 425 全绿佐证）。
