@@ -2,6 +2,14 @@
 
 ---
 
+## 2026-09-30 — refactor：AG.10-T1 首页 page.tsx 巨型文件拆分（首个 task 完成）
+
+**类型**：refactor
+**影响模块**：`packages/web/src/app/page.tsx`（1609 → 108 行）、`packages/web/src/app/home/`（新增 5 文件：desktop-layout 486 / use-home-handlers 779 / project-card 190 / use-home-state 178 / welcome-section 80）、`packages/desktop/src/main/services/perception-plugin-host/__tests__/email-provisioning.test.ts`（decaab3 遗留 tsc 类型收窄修复）、`docs/specs/epic-AG/story-AG.10/`、`docs/specs/epic-AG/README.md`
+**摘要**：AG.10-T1 以 Proposal `refactor-home-page-structure` 实施首页 page.tsx 纯机械拆分：page.tsx 收敛为布局门面（`useHomeState` → `useHomeHandlers` → `<DesktopLayout/>`），展示组件、状态集群、handler/effect 逐字移入就近目录 `app/home/`；导出符号（`OSHomePage`）与调用方 import 零改动。TC-1~TC-6 全过（web 425/425；desktop 182/182；双端 build 0 error；madge 12 环=基线；隔离端口首页冒烟 200/0 error；page.tsx 108 ≤ 300，use-home-handlers 779 为编排类 ≤ 800 已说明）。偏差 2 处已留痕：布局 JSX 超出单文件约束移入 desktop-layout.tsx；desktop 侧 tsc 错误系 decaab3 遗留（非拆分引入），顺带修复。Story AG.10 状态转 In Progress，T2–T7 待实施。
+
+---
+
 ## 2026-09-30 — refactor：AG.11 重复与死代码治理（Story AG.11 完成）
 
 **类型**：refactor
