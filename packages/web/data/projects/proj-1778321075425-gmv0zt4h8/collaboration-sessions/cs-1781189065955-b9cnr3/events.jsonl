@@ -1,3 +1,0 @@
-{"id":"evt-welcome-1781189067494","sessionId":"cs-1781189065955-b9cnr3","seq":0,"type":"ASSISTANT_MESSAGE","payload":{"content":"你好！我是多 Agent 协作系统的 Supervisor。请告诉我你想完成什么目标，我会负责分解任务并协调各 Agent 为你执行。"},"source":"supervisor","timestamp":"2026-06-11T14:44:27.494Z"}
-{"id":"evt-user-goal-1781189077978","sessionId":"cs-1781189065955-b9cnr3","seq":0,"type":"USER_INPUT","payload":{"message":"当前有哪些项目"},"source":"user","target":"supervisor","timestamp":"2026-06-11T14:44:37.978Z"}
-{"id":"sup-start-1781189077984","sessionId":"cs-1781189065955-b9cnr3","seq":0,"type":"SUPERVISOR_AGENT_START","payload":{"agentCount":7,"edgeCount":9},"source":"supervisor","timestamp":"2026-06-11T14:44:37.984Z"}

@@ -2,6 +2,14 @@
 
 ---
 
+## 2026-09-30 — refactor：AG.11 重复与死代码治理（Story AG.11 完成）
+
+**类型**：refactor
+**影响模块**：`.teamai/docs`（移出 git）、`.gitignore`、`packages/service/`（删除）、`packages/web/data/`（出库）、`knip.json`、`docs/specs/epic-AG/story-AG.11/`、`AGENTS.md`
+**摘要**：Proposal `clean-redundant-docs-and-dead-code` 实施仓库卫生治理：`.teamai/docs` 868 文件移出 git（本地保留，实测零消费方）；`packages/service` 空壳删除；`packages/web/data` 61 文件出库；knip 6.38.0 基线入库（files 121 / exports 80，只记录不接 CI）。TC-1~TC-6 全过，测试基线零 delta。AGENTS.md 升 v2.6.6。
+
+---
+
 ## 2026-09-29 — feat：AG.9 core 公共 API 收缩与定位如实化（Story AG.9 完成）
 
 **类型**：feat

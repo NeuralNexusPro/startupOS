@@ -1,6 +1,6 @@
 # OriginOS 架构规约 (AGENTS.md)
 
-**版本：** 2.6.5
+**版本：** 2.6.6
 **日期：** 2026-09-29
 **状态：** 强制执行
 
@@ -100,8 +100,7 @@ originos/
 │   │   │   ├── store/            # Zustand stores
 │   │   │   ├── styles/           # Tailwind / 全局样式入口
 │   │   │   └── modules/          # Web 侧模块适配，不承载 core 业务主实现
-│   │   ├── public/
-│   │   └── data/                 # Web 开发态运行数据
+│   │   └── public/               # 静态资源（packages/web/data 运行数据副本已于 AG.11 移出 git，运行数据只写数据根 data/）
 │   │
 │   ├── core/                     # 共享核心业务、集成、模块与类型
 │   │   ├── src/
@@ -149,7 +148,7 @@ originos/
 │   │   ├── wecom/
 │   │   ├── feishu/
 │   │   └── dingtalk/
-│   └── service/                  # 服务包（按 package 边界维护）
+│   └── (packages/service 已删除 — AG.11：零源码零引用空壳)
 │
 ├── docs/
 │   ├── specs/                    # Epic / Story 规格文档
@@ -251,7 +250,7 @@ Layer 1: packages/core/src/lib/storage/    # 存储层
 
 #### 5. 共享业务层 (`packages/core/src/lib/features/`, `packages/core/src/modules/`)
 - ✅ 可以依赖：`packages/core/src/lib/storage/`、`packages/core/src/lib/integrations/`、`packages/core/src/lib/shared/`、`packages/core/src/types/`
-- ❌ 禁止依赖：`packages/web/`、`packages/desktop/`、`packages/service/`
+- ❌ 禁止依赖：`packages/web/`、`packages/desktop/`（`packages/service` 空壳已于 AG.11 删除）
 - **Feature 之间依赖规则：**
   - 必须通过 index.ts 导出公共 API
   - 禁止直接导入其他 feature 的内部实现
@@ -1285,5 +1284,5 @@ git worktree add ../startupos-add-agent-task-runtime-task-2 \
 
 ---
 
-**最后更新：** 2026-09-29（v2.6.5：AG.9 完成——core exports 收敛为 132 条显式 / 0 通配白名单，`scripts/expand-core-exports.cjs --verify` 为门禁，spec `core-exports-whitelist` 正式生效；core 定位如实化为共享 TypeScript 运行时，见 `packages/core/README.md`）
+**最后更新：** 2026-09-30（v2.6.6：AG.11 完成——`packages/service` 空壳删除、`packages/web/data` 运行数据副本移出 git、`.teamai/docs` 快照移出 git（`.gitignore` 增 `.teamai/`）、knip dead-code 基线入库（`knip.json` + story AG.11 基线报告，只记录不阻塞）；目录树与数据存储章节同步）
 **下次审查：** Story AG.10 / AG.11 完成后

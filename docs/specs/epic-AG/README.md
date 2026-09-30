@@ -101,7 +101,7 @@
 | **AG.8** | 包边界治理 — 消灭跨包相对路径穿透（desktop/web → core src 共 125 处 + lint zones） | 🔴 Critical | 2–3 天 | ✅ Completed（2026-09-29：T1 lint 拦截 + spike + F1 staging；T2 存量 154 处迁移 + error 升级；lint:boundaries 0 诊断，规约 v2.6.4 强制执行） |
 | **AG.9** | core 包治理 — 公共 API 收缩与定位如实化（exports 收缩 + jsx 副本清理 + web 壳清理） | 🔴 Critical | 3–5 天 | ✅ Completed（2026-09-29：Proposal `govern-core-public-api` 已实施合并并归档；exports 74/52 → 132 显式 / 0 通配；jsx 11 + web 壳 4 清零；TC-1~TC-7 全过，见 story-AG.9/testing.md） |
 | **AG.10** | 巨型文件拆分 — 单一职责重构（7 个 1100–2600 行文件，按文件增量交付） | 🟠 High | 5–8 天 | 📋 Planning（2026-09-28 追加） |
-| **AG.11** | 重复与死代码嗅探治理（knip 基线 + .teamai 双文档树 + 空壳包处置） | 🟡 Medium | 2–3 天 | 📋 Planning（2026-09-28 追加，依赖 AG.9） |
+| **AG.11** | 重复与死代码嗅探治理（knip 基线 + .teamai 双文档树 + 空壳包处置） | 🟡 Medium | 2–3 天 | ✅ Completed（2026-09-30，Proposal `clean-redundant-docs-and-dead-code`；TC-1~6 证据见 [story-AG.11/testing.md](story-AG.11/testing.md)） |
 
 ### 可选追加（用户后续决策）
 
@@ -302,3 +302,7 @@ AG2-T4：Windows发布校验同步迁移后的业务工具位置，沿用0.2.2�
 ## AG.9 完成（2026-09-29）
 
 Proposal `govern-core-public-api`（已归档 `archive/2026-09-29-govern-core-public-api`）：core exports 74 条/52 通配 → 132 条显式 / 0 通配；新建 electron 门面；热点深路径收口；11 个 jsx 副本 + web 壳 4 文件删除；`packages/core/README.md` 定位如实化。TC-1~TC-7 全过（证据见 [story-AG.9/testing.md](story-AG.9/testing.md)）。spec `core-exports-whitelist` 已落为正式规格。深路径显式白名单保留为过渡态，AG.11 继续按热度消化。
+
+## AG.11 完成（2026-09-30）
+
+Proposal `clean-redundant-docs-and-dead-code`：`.teamai/docs` 868 文件移出 git（本地保留，实测 teamai 索引零消费）；`packages/service` 空壳物理删除；`packages/web/data` 61 文件出库（根 `data/` 有现行副本）；`data/data` 误嵌套留待合并后在主工作区删除；knip 6.38.0 基线入库（files 121 / exports 80 / types 71 / deps 64 / devDeps 32，只记录不阻塞）。TC-1~TC-6 全过（证据见 [story-AG.11/testing.md](story-AG.11/testing.md)）。勘误：`release/` 已被 ignore、`packages/desktop/data` 实际不存在，两者无需处置。
