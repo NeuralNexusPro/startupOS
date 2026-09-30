@@ -27,7 +27,13 @@ vi.mock('@originos/perception-plugin-dingtalk', async () => vi.importActual('../
 
 const settings = { host: 'imap.example.test', port: 993, secure: true, username: 'test@example.test', authMode: 'password', mailbox: 'INBOX', pollIntervalSeconds: 60 };
 const request = { pluginId: 'originos.email', connectorId: 'email-test', settings, secrets: { secret: 'test-only-secret' } };
-type Provision = (event: unknown, input: typeof request) => Promise<{ success: boolean }>;
+type ProvisionInput = {
+  pluginId: string;
+  connectorId: string;
+  settings: Record<string, unknown>;
+  secrets: Record<string, unknown>;
+};
+type Provision = (event: unknown, input: ProvisionInput) => Promise<{ success: boolean }>;
 let directory: string;
 let store: PerceptionConnectorConfigStore;
 let provision: Provision;
