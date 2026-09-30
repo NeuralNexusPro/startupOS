@@ -94,7 +94,7 @@
     "./lib/integrations/pi-agent": "./src/lib/integrations/pi-agent/index.ts",
     "./lib/integrations/pi-agent/agent-manager": "./src/lib/integrations/pi-agent/agent-manager.ts",
     "./lib/integrations/pi-agent/client": "./src/lib/integrations/pi-agent/client.ts",
-    "./lib/integrations/pi-agent/client-hooks": "./src/lib/integrations/pi-agent/client-hooks.ts",
+    "./lib/integrations/pi-agent/client-hooks": "./src/lib/integrations/pi-agent/client-hooks/index.ts",
     "./lib/integrations/pi-agent/cognitive/knowledge-provider": "./src/lib/integrations/pi-agent/cognitive/knowledge-provider.ts",
     "./lib/integrations/pi-agent/cognitive/manager": "./src/lib/integrations/pi-agent/cognitive/manager.ts",
     "./lib/integrations/pi-agent/cognitive/practice-logger": "./src/lib/integrations/pi-agent/cognitive/practice-logger.ts",
