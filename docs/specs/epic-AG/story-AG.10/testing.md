@@ -164,3 +164,50 @@ wc -l <每个新文件>
 
 - session-isolation 存量 2 个失败与本次拆分无关（拆分前已存在），归属既有测试债，不阻塞本 task。
 - deps 对象每次渲染重建：useCallback 依赖数组仍为 `[emitEvent]`，函数身份不变，下游 useEffect 不受影响（已由 SolutionDesign 集成测试与 web 425 全绿佐证）。
+
+---
+
+## AG.10-T3（task-runtime/coordinator.ts）执行结果
+
+**Proposal:** `refactor-task-coordinator`（分支 `proposal/refactor-task-coordinator`，实施分支 `proposal-task/refactor-task-coordinator-1-split`）
+**执行日期:** 2026-09-30
+**基线:** web 425/425（71 文件）、desktop 182/182（30 文件）、madge core 12 环、coordinator.ts 1142 行（类体约 971 行）
+
+| 用例 | 结果 | 证据 |
+|------|------|------|
+| TC-1 导出符号不变 | ✅ | 4 个公共符号（`AgentTaskRuntimeCoordinator`/`AgentTaskRuntimeConflictError`/`AgentTaskRuntimeProtocolError`/`AgentTaskRuntimeCoordinatorOptions`）经 coordinator.ts re-export/class 原位可导入；desktop 2 处深路径导入（`agent-task-runtime-ipc.ts` + 测试）specifier 零变化；`task-runtime/index.ts` 的 `export * from "./coordinator"` 不变 |
+| TC-2 双端编译 | ✅ | web build `✓ Compiled successfully` 0 error；desktop `tsc -p tsconfig.json` 0 error；`expand-core-exports.cjs --verify` VERIFY PASSED |
+| TC-3 测试基线 | ✅ | web **425/425（71 文件）**、desktop **182/182（30 文件）**；`coordinator.test.ts` **21/21**（5 describe）。注：desktop 首轮 1 suite flaky（jev-runtime-wiring），重跑 30 文件全绿，与既有 flaky 记录一致，非拆分引入 |
+| TC-4 循环检查 | ✅ | madge = **12 环 = 基线**（存量环为 mcp-in-browser/neural-channel/view-reconciler 等）；`task-runtime/` 内部无新环 |
+| TC-5 模块冒烟 | ✅（部分人工） | IPC 协议层：`agent-task-runtime-ipc.test.ts` 13 例全绿（含创建/推进/暂停/恢复/损坏态拒绝）；状态机：coordinator.test 21/21。人工项：Agent 会话内创建正式任务观察状态机推进（依赖 LLM 实际响应，步骤见下） |
+| TC-6 行数达标 | ✅ | coordinator.ts **689** ≤ 700；coordinator-commands **328**、coordinator-controls **166**、coordinator-shared **73**、coordinator-types **87** 全部 ≤ 600，首部职责注释齐备（FR-3） |
+
+**拆分产物（1142 行 → 5 文件共 1343 行，含头注释/导入）：**
+
+- `task-runtime/coordinator.ts`（689）— `AgentTaskRuntimeCoordinator` 主类：host 生命周期、任务生命周期、续跑循环编排、状态机与持久化 + 4 个公共符号
+- `task-runtime/coordinator-types.ts`（87）— host 桥接与配置类型（逐字移动）
+- `task-runtime/coordinator-shared.ts`（73）— 错误类 + 7 个模块级纯 helper（逐字移动）
+- `task-runtime/coordinator-commands.ts`（328）— Project metadata / Evidence / Review 命令方法体（D3 ctx 变换）
+- `task-runtime/coordinator-controls.ts`（166）— pause/cancel/resume/retry 控制动作 + prompt 构建 + 只读工具调用（D3 ctx 变换）
+
+**逐字一致性复核（集成时 token 级归一化验证，超出 subagent 自查）：**
+
+- `coordinator-types.ts`、`coordinator-shared.ts` 两文件与原文件对应段 **token-identical**（剔除 export 关键字差异）。
+- commands 4 个函数体（runMutateProjectTaskMetadata / runRecordVerifiedEvidence / runMutateReview / runCompletionInput）与原方法体 **token-identical**（括号配对提取 + 空白归一 + `this.`→`ctx.` 归一后）。
+- controls 6 个函数体中：retryTask / buildContinuationPrompt→buildContinuationPromptText / invokeReadOnlyTaskTool / resumeTask **token-identical**；pauseTask/cancelTask 唯一差异为可变字段访问器变换（`this.continuationGeneration += 1` → `ctx.bumpContinuationGeneration()`、`this.runningPromise = null` → `ctx.resetRunningPromise()`，原文 2 处 → 访问器调用 2 处，一一对应）。
+- 主类 28 个保留方法（constructor/initialize/getSnapshot/createTask/controlTask/submitUserReply/updateFromProjection/runContinuationLoop/publishState/queuePersist 等）**全部 token-identical**（逐字）；runContinuationLoop 唯一差异为 `this.buildContinuationPrompt()` → `buildContinuationPromptText()` 重命名调用（归一后 identical）。
+- ctx 构造：`createCommandsCtx()`/`createControlsCtx()` 中 `state` 用 getter/setter（`updateFromProjection` 会整体替换 `this.state`，保持对象引用语义——源码注释已标明）；`options`/`initialize`/`requireHost`/`publishState` 等字段与 design.md D3 清单一致。
+
+**实施偏差（1 处，design.md 已预案）：**
+
+1. **ctx 可变字段访问器形态**：design.md D3 建议的 `ctx.getContinuationGeneration()`/`ctx.setRunningPromise(v)` 实施为 `bumpContinuationGeneration()`/`resetRunningPromise()`（按「原方法体对该字段的操作类型」选择最小访问器集合，design.md 明文允许）；`ctx.state` 采用 getter/setter 而非直接对象引用（应对 `updateFromProjection` 整体替换 state 的场景）。降级路径（控制动作留主类）未触发。
+
+**人工验证步骤（TC-5 未自动化部分）:**
+
+1. `pnpm dev` 打开首页 → Agent 会话内创建一个正式任务，观察状态从 planning → running 推进，完成后状态 done 且产出消息渲染正常。
+2. 任务运行中点击「停止」再「恢复」，确认暂停/恢复行为与拆分前一致。
+
+**剩余风险:**
+
+- coordinator.ts 689 行仍为编排类大文件（≤ 700 约束内）；后续如需进一步收敛，可按「host 桥接 vs 状态机 vs 持久化」再拆，不阻塞本 task。
+- desktop jev-runtime-wiring suite 存在 flaky 记录（重跑即绿），归属既有测试债。
