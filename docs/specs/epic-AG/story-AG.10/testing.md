@@ -211,3 +211,52 @@ wc -l <每个新文件>
 
 - coordinator.ts 689 行仍为编排类大文件（≤ 700 约束内）；后续如需进一步收敛，可按「host 桥接 vs 状态机 vs 持久化」再拆，不阻塞本 task。
 - desktop jev-runtime-wiring suite 存在 flaky 记录（重跑即绿），归属既有测试债。
+
+---
+
+## AG.10-T4（features/project/contract-bound-runtime-composition.ts）执行结果
+
+**Proposal:** `refactor-contract-runtime-composition`（分支 `proposal/refactor-contract-runtime-composition`，实施分支 `proposal-task/refactor-contract-runtime-composition-1-split`）
+**执行日期:** 2026-09-30
+**基线:** web 425/425（71 文件）、desktop 182/182（30 文件）、madge core 12 环、contract-bound-runtime-composition.ts 1102 行
+
+| 用例 | 结果 | 证据 |
+|------|------|------|
+| TC-1 导出符号不变 | ✅ | 9 个公共符号经主文件 re-export/原位可导入（50–52 行 re-export 段）；`features/project/index.ts` `export *` 不变；3 个包内测试相对导入 specifier 零变化；web/desktop 门面导入与 2 处 `vi.mock('@originos/core/lib/features/project')` 零改动；subagent 以临时 vitest 测试实际 import 全部 9 符号 + 调用组合成功（15/15，验证后删除） |
+| TC-2 双端编译 | ✅ | web build `✓ Compiled successfully`；desktop `tsc -p tsconfig.json` 0 error；`expand-core-exports.cjs --verify` VERIFY PASSED（Task + Proposal 双 worktree） |
+| TC-3 测试基线 | ✅ | web **425/425（71 文件）**、desktop **182/182（30 文件）**（双 worktree 复验）；3 个 T4 目标测试（composition/recovery/project-task-recovery）**15/15**。注：`solution-design-source.test.ts` 1 例失败已在拆分前基线（主仓 f3afc50，git stash）逐字复现——存量测试债，非拆分引入 |
+| TC-4 循环检查 | ✅ | madge = **12 环 = 基线**，0 条路径经过 `composition/`；实施中出现的 13 环（artifact-runtime 经 `agent/server` barrel type import 回边）已用深路径 `../../agent/server/contract-bound-worker` 修正，环集合与基线逐条一致 |
+| TC-5 模块冒烟 | ✅ | web/desktop `ontology-cross-package-runtime-wiring.test.ts` **2/2**；desktop `ontology-cross-package-ipc.test.ts` **23/23**；web build 静态导出完整跑完。真实 LLM 执行不在本 task 自动化范围（组合根装配以 wiring 测试覆盖） |
+| TC-6 行数达标 | ✅ | 主文件 **141**（≤ 250）；types 83 / artifact-runtime 351 / execution-adapters 316 / task-session-adapters 286 全部 ≤ 600，首部职责注释齐备（FR-3） |
+
+**拆分产物（1102 行 → 5 文件共 1177 行，含头注释/导入）：**
+
+- `features/project/contract-bound-runtime-composition.ts`（141）— 组合根：`createProjectContractRuntimeComposition` + `projectContractRuntimeHost` + 9 个公共符号 re-export
+- `features/project/composition/contract-runtime-types.ts`（83）— 协议常量 + `ContractArtifactEnvelope`/`ProjectContractSessionPort` + 3 个导出接口
+- `features/project/composition/contract-artifact-runtime.ts`（351）— 12 个纯 helper + `AgentManagerContractRuntime`（目标目录解析、worker prompt、AgentManager 派发落盘）
+- `features/project/composition/contract-execution-adapters.ts`（316）— `CanonicalReadiness`/`ArtifactVerifier`/`ArtifactOutcomeDrafts`/`ParentSessionHitl` + schema/解析函数
+- `features/project/composition/contract-task-session-adapters.ts`（286）— `RuntimeApprovedProjectTaskPort`/evidence sink/`ProjectContractTaskRuntimeRecovery`/`ProjectContractTaskPriorityMutation`
+
+**逐字一致性复核（集成时 token 级验证，超出 subagent 自查）：**
+
+- 组合根 2 个函数（`createProjectContractRuntimeComposition`、`projectContractRuntimeHost`）与原文件对应段 **token-identical**（括号配对提取 + 空白归一）。
+- 8 个类（`AgentManagerContractRuntime`/`CanonicalReadiness`/`ArtifactVerifier`/`ArtifactOutcomeDrafts`/`ParentSessionHitl`/`RuntimeApprovedProjectTaskPort`/`ProjectContractTaskRuntimeRecovery`/`ProjectContractTaskPriorityMutation`）+ 19 个纯函数 + 2 个常量逐一提取对比：**全部一致**。唯一差异形态为 eslint `curly` autofix 的单语句 if 花括号包裹（20 个新增花括号字符，逐位置核验全部为 `if(...)` 后加 `{`、`;}` 收尾，无逻辑改动；brace-stripped 对比 token-identical）。
+- subagent 独立以 TS-AST 语句级 multiset 对比：diff = 0（含错误消息字符串与装配顺序）。
+
+**实施偏差（6 处，均已在 tasks.md/design 预案内）：**
+
+1. `contract-artifact-runtime.ts` 对 agent/server 的 type import 用深路径 `../../agent/server/contract-bound-worker`（barrel 会多出 1 条 madge 环：13 > 门禁 12）——行为不变，切断回边。
+2. 10 处单语句 if 被 eslint `curly` autofix 加花括号（语句语义经 AST diff 确认零变化）。
+3. import 顺序按 eslint `import/order` autofix 重排（纯机械）。
+4. `ContractArtifactEnvelope`/`ProjectContractSessionPort` 在 types 文件加 `export`（features/project 内部消费，不经 index.ts 对外包出——design.md D3 预期内）。
+5. 12+ 个组合根消费的内部符号在拆分件中加 `export`（design.md D1/D3 预期内）。
+6. 主文件删除拆分后不再需要的纯 type import（tsc/eslint 零未用告警）。
+
+**人工验证步骤（TC-5 未自动化部分）:**
+
+1. `pnpm dev` 打开首页 → 对已发布 contract 的项目触发一次协作执行，确认 WorkItem 派发、artifact 落盘、Review 流程与拆分前一致。
+
+**剩余风险:**
+
+- `solution-design-source.test.ts` 存量 1 个失败与本次拆分无关（拆分前基线逐字复现），归属既有测试债。
+- composition 拆分件间存在 internal export（envelope/session port 类型）——均为 features/project 包内消费，无公共 API 扩散。

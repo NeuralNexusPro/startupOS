@@ -2,6 +2,14 @@
 
 ---
 
+## 2026-09-30 — refactor：AG.10-T4 contract-bound runtime composition 巨型文件拆分
+
+**类型**：refactor
+**影响模块**：`packages/core/src/lib/features/project/contract-bound-runtime-composition.ts`（1102 → 141 行）、`features/project/composition/`（新建 4 文件共 1036 行）、`docs/specs/epic-AG/story-AG.10/`
+**摘要**：AG.10-T4 以 Proposal `refactor-contract-runtime-composition` 实施 contract-bound-runtime-composition.ts 纯机械拆分（无 ctx 变换）：协议常量与类型 → composition/contract-runtime-types.ts、纯 helper + AgentManagerContractRuntime → contract-artifact-runtime.ts、Readiness/Verifier/Outcome/HITL 适配器 → contract-execution-adapters.ts、Task 会话适配器 → contract-task-session-adapters.ts；主文件收敛为组合根并 re-export 全部 9 个公共符号，`features/project/index.ts` 门面与 web/desktop 消费方 import 零改动。TC-1~TC-6 全过（web 425/425；desktop 182/182；3 个 project 测试 15/15；wiring 2/2；双端 build 0 error；madge 12 环=基线且 0 路径经过 composition/；主文件 141 ≤ 250）。集成复核 token 级一致：组合根 + 8 类 + 19 函数 + 2 常量全等（唯一变换为 eslint curly 花括号包裹）。偏差 6 处留痕（artifact-runtime 对 agent/server 改深路径 type import 断 madge 回边等）。solution-design-source 1 例失败为拆分前存量（git stash 验证）。Story AG.10 完成 4/7。
+
+---
+
 ## 2026-09-30 — refactor：AG.10-T3 task-runtime coordinator 巨型文件拆分
 
 **类型**：refactor
