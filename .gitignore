@@ -102,3 +102,4 @@ coverage
 
 # pnpm local package store
 .pnpm-store/
+.teamai/
