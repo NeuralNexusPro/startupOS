@@ -1,3 +1,0 @@
-# Knowledge Ontology
-
-## Entities
