@@ -2,6 +2,14 @@
 
 ---
 
+## 2026-09-30 — refactor：AG.10-T1 首页 page.tsx 巨型文件拆分（首个 task 完成）
+
+**类型**：refactor
+**影响模块**：`packages/web/src/app/page.tsx`（1609 → 108 行）、`packages/web/src/app/home/`（新增 5 文件）、`packages/desktop/src/main/services/perception-plugin-host/__tests__/email-provisioning.test.ts`（遗留 tsc 修复）
+**摘要**：Proposal `refactor-home-page-structure` 实施首页 page.tsx 纯机械拆分：page.tsx 收敛为布局门面，展示组件/状态/handler 逐字移入 `app/home/`；导出符号与调用方 import 零改动。TC-1~TC-6 全过（web 425/425；desktop 182/182；双端 build 0 error；madge 12 环=基线；首页冒烟 200/0 error）。Story AG.10 转 In Progress，T2–T7 待实施。
+
+---
+
 ## 2026-09-30 — refactor：AG.11 重复与死代码治理（Story AG.11 完成）
 
 **类型**：refactor

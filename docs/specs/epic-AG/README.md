@@ -100,7 +100,7 @@
 | **AG.5** | 自动化围栏（ESLint 边界 + dead-code 工具 + any 预算 + CI 接入） | 🟡 Medium | 2 天 | 🚧 In Progress（AG5-T1 完成） |
 | **AG.8** | 包边界治理 — 消灭跨包相对路径穿透（desktop/web → core src 共 125 处 + lint zones） | 🔴 Critical | 2–3 天 | ✅ Completed（2026-09-29：T1 lint 拦截 + spike + F1 staging；T2 存量 154 处迁移 + error 升级；lint:boundaries 0 诊断，规约 v2.6.4 强制执行） |
 | **AG.9** | core 包治理 — 公共 API 收缩与定位如实化（exports 收缩 + jsx 副本清理 + web 壳清理） | 🔴 Critical | 3–5 天 | ✅ Completed（2026-09-29：Proposal `govern-core-public-api` 已实施合并并归档；exports 74/52 → 132 显式 / 0 通配；jsx 11 + web 壳 4 清零；TC-1~TC-7 全过，见 story-AG.9/testing.md） |
-| **AG.10** | 巨型文件拆分 — 单一职责重构（7 个 1100–2600 行文件，按文件增量交付） | 🟠 High | 5–8 天 | 📋 Planning（2026-09-28 追加） |
+| **AG.10** | 巨型文件拆分 — 单一职责重构（7 个 1100–2600 行文件，按文件增量交付） | 🟠 High | 5–8 天 | 🚧 In Progress（T1 完成 2026-09-30：page.tsx 1609→108，Proposal `refactor-home-page-structure`，TC-1~TC-6 见 story-AG.10/testing.md；T2–T7 待实施） |
 | **AG.11** | 重复与死代码嗅探治理（knip 基线 + .teamai 双文档树 + 空壳包处置） | 🟡 Medium | 2–3 天 | ✅ Completed（2026-09-30，Proposal `clean-redundant-docs-and-dead-code`；TC-1~6 证据见 [story-AG.11/testing.md](story-AG.11/testing.md)） |
 
 ### 可选追加（用户后续决策）
