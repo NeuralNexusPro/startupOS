@@ -1,0 +1,33 @@
+{
+  "$schema": "./node_modules/knip/schema.json",
+  "workspaces": {
+    ".": {
+      "entry": ["scripts/*.cjs"],
+      "ignoreDependencies": ["knip"]
+    },
+    "packages/web": {
+      "entry": [
+        "src/app/**/{page,layout,route,not-found,error,loading}.tsx",
+        "next.config.mjs"
+      ]
+    },
+    "packages/desktop": {
+      "entry": ["src/main/main.ts", "src/main/preload.ts"]
+    },
+    "packages/core": {
+      "entry": ["src/**/index.ts"]
+    },
+    "packages/agent": {
+      "entry": ["src/*-entry.js"]
+    }
+  },
+  "ignore": [
+    "**/.next/**",
+    "**/dist/**",
+    "**/dist-electron/**",
+    "release/**",
+    "**/*.test.*",
+    "**/__tests__/**"
+  ],
+  "ignoreExportsUsedInFile": true
+}
