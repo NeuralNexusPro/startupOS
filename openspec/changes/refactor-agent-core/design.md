@@ -116,7 +116,9 @@ interface AgentCompletionContext {
 
 ## D4 循环依赖预防
 
-依赖方向单向：`agent.ts` → `agent-completion.ts` / `agent-factory.ts` / `agent-internals.ts`；`agent-completion.ts` → `agent-internals.ts` + 既有兄弟文件（completion-guard / completion-judge / skill-empty-stop-recovery）；`agent-factory.ts` → `agent-internals.ts` + `../server-config` + `./skill-empty-stop-recovery` + `../types`（类型）。**agent-factory.ts 与 agent-completion.ts 互不导入**；agent.ts 对 3 个新文件的 re-export 仅为公共符号（`SessionData`/`CreateOriginOSAgentParams`/`createOriginOSAgent`），不回流。`agent-factory.ts` 需要引用 `OriginOSAgent` 类型——经 `import type { OriginOSAgent } from "./agent"` **类型级反向引用**，TS 擦除后无运行时环，madge 配置不将 type-only import 计入循环（以实测为准；若 madge 报环，改为主文件传参注入或类型声明合并——实现时择一并在测试证据中记录）。移动完成后 `npx madge --circular packages/core/src --extensions ts,tsx` 验证 ≤ 基线 12，且 `core/` 新增 3 文件无环。
+依赖方向单向：`agent.ts` → `agent-completion.ts` / `agent-factory.ts` / `agent-internals.ts`；`agent-completion.ts` → `agent-internals.ts` + 既有兄弟文件（completion-guard / completion-judge / skill-empty-stop-recovery）；`agent-factory.ts` → `agent-internals.ts` + `../server-config` + `./skill-empty-stop-recovery` + `../types`（类型）。**agent-factory.ts 与 agent-completion.ts 互不导入**；agent.ts 对 3 个新文件的 re-export 仅为公共符号（`SessionData`/`CreateOriginOSAgentParams`/`createOriginOSAgent`），不回流。移动完成后 `npx madge --circular packages/core/src --extensions ts,tsx` 验证 ≤ 基线 12，且 `core/` 新增 3 文件无环。
+
+**实施修订（实测后落地为传参注入，非原案 type-only 反向引用）：** `agent-factory.ts` 对 `agent.ts` 的任何 import（含 `import type`）都会被 madge 8 计为依赖边（其 TypeScript 解析不跳过 type-only import），实测形成第 13 条环，触碰 TC-4 ≤ 12 硬门禁。最终方案：`createOriginOSAgent` 改为泛型签名 `<T>(params: CreateOriginOSAgentParams, ctor: new (config: OriginOSAgentConfig, healthMonitor?: HealthMonitor) => T): T`，构造器由调用方注入；agent.ts 尾部提供同名薄包装 `export function createOriginOSAgent(params) { return createOriginOSAgentBase(params, OriginOSAgent); }` 并 re-export `CreateOriginOSAgentParams`/`SessionData` 类型——对全部消费方（`./core/agent` 导入、vi.mock 锚、desktop side-effect 导入）符号与路径零变化。factory 对 agent.ts 零 import（含 type-only），madge 全仓环数回到基线 12。
 
 ## D5 实施边界（subagent work packages）
 
@@ -129,7 +131,7 @@ interface AgentCompletionContext {
 | 风险 | 缓解 |
 |------|------|
 | ctx 变换遗漏 `this.` → 编译失败或引用错对象 | TC-2 tsc 全量 + TC-3 88 用例 agent.test（含 judge spy / 直调 / 事件序断言）兜底；TC-1 token 级对比 |
-| 可变字段引用共享语义偏差（candidate/stop/deferred/lastToolFailure） | 4 字段均为原地读写，实例属性引用共享语义等价（无整体替换点）；TC-3 judge/guard/empty-stop 用例覆盖读写路径 |
+| ctx 变换后可变字段写回丢失（ctx 对象快照不回写主类） | 4 个可变字段（pendingCompletionCandidate/pendingPromiseStop/deferredAgentEndEvent/lastToolFailure）ctx 侧以 **getter/setter 闭包绑定 `self = this`（主类实例）** 实现——模块函数内赋值经 setter 直写主类字段（实测初版「对象属性快照」曾致 judge 写回丢失、3 个用例新增失败，改闭包后失败集回到基线） |
 | 薄委托后 `vi.spyOn(agent, "judgePendingCompletion")` 失效 | spy 命中主类原型方法（薄委托），模块函数经 ctx 回调调用委托链路不变；agent.test.ts:181 spy 断言 `toHaveBeenCalledTimes(1)` 直接验证 |
 | `Synthetic*Message` 类型外移后主类 2 处构造点缺 import | TC-2 tsc 编译兜底（1310/1499 两处显式核对） |
 | agent-factory type-only 反向 import 成环 | D4 预案：madge 实测；type-only 擦除后无运行时环，必要时改传参注入；TC-4 环数 ≤ 12 硬门禁 |
