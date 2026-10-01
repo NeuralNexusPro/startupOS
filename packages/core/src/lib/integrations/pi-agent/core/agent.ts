@@ -1,6 +1,5 @@
 /**
- * OriginOS Agent 核心包装类
- * 包装 pi-agent-core 的 Agent，提供 OriginOS 特定的功能
+ * OriginOSAgent 主类——状态字段、initialize、事件路由与执行编排，completion 逻辑薄委托至 agent-completion.ts。
  */
 
 import type {
@@ -8,10 +7,9 @@ import type {
 	AgentMessage,
 	AgentTool,
 	StreamFn,
-	ThinkingLevel,
 } from "@originos/pi-agent-adapter";
 import { Agent } from "@originos/pi-agent-adapter";
-import type { AssistantMessage, AssistantMessageEvent, AssistantMessageEventStream, Message, Model } from "@originos/pi-agent-adapter/ai";
+import type { AssistantMessage, Message, Model } from "@originos/pi-agent-adapter/ai";
 import * as piAi from "@originos/pi-agent-adapter/ai";
 import type {
 	OriginOSAgentConfig,
@@ -21,11 +19,9 @@ import { AgentStatus } from "../../../../types/agent";
 import type {
 	ProjectContext,
 } from "../system/config";
-import type { SystemPromptVariables } from "../system/prompt";
 import type { HealthMonitor, AgentHealthStatus } from "../health";
 import { createHealthMonitor } from "../health";
-import { createAnthropicModel, createGoogleModel, createAutoModel, createRuntimeModel, getConfigStatus, sanitizeBaseUrlForLogging } from "../server-config";
-import type { RuntimeLLMConfig } from "../llm-config";
+import { sanitizeBaseUrlForLogging } from "../server-config";
 import { compressRecentTrace } from "../recent-trace-compression";
 import { getLoopDetector, removeLoopDetector } from "../tools/loop-detector";
 import { findSuitableShell } from "../tools/bash-tools";
@@ -36,23 +32,7 @@ import {
 	getRuntimeEnvironment,
 } from "../system/runtime-environment";
 import { createAgentPromptBoundary, injectSessionContext } from "../prompt-boundary";
-import {
-	buildEmptyStopRecoveryMessage,
-	resolveEmptyStopRecoveryEnabled,
-} from "./skill-empty-stop-recovery";
-import {
-	assessCompletion,
-	buildCompletionFailureReport,
-	buildCompletionRecoveryMessage,
-	DEFAULT_COMPLETION_RECOVERY_LIMIT,
-	type ToolFailureSummary,
-} from "./completion-guard";
-import {
-	buildCompletionJudgePrompt,
-	COMPLETION_JUDGE_SYSTEM_PROMPT,
-	parseCompletionJudgeDecision,
-	type SemanticCompletionDecision,
-} from "./completion-judge";
+import type { ToolFailureSummary } from "./completion-guard";
 import { getToolEventStatus } from "./tool-event-status";
 import {
 	mapPersistedMessagesForRuntime,
@@ -64,174 +44,30 @@ import {
 	estimateTokens,
 } from "../token-usage";
 import type { AgentContextTokenEstimate } from "../../../../types/agent";
-
-// ============================================================================
-// Event Emitter
-// ============================================================================
-
-/**
- * 简单的事件发射器
- */
-class EventEmitter<T> {
-	private listeners = new Set<(event: T) => void>();
-
-	subscribe(listener: (event: T) => void): () => void {
-		this.listeners.add(listener);
-		return () => this.listeners.delete(listener);
-	}
-
-	emit(event: T): void {
-		for (const listener of this.listeners) {
-			listener(event);
-		}
-	}
-
-	clear(): void {
-		this.listeners.clear();
-	}
-}
-
-function normalizeStreamProvider(
-	stream: AssistantMessageEventStream,
-	provider: string
-): AssistantMessageEventStream {
-	const rewriteMessage = (message: AssistantMessage): AssistantMessage => {
-		message.provider = provider;
-		return message;
-	};
-	const rewriteEvent = (event: AssistantMessageEvent): AssistantMessageEvent => {
-		if ("partial" in event) {
-			rewriteMessage(event.partial);
-		}
-		if ("message" in event) {
-			rewriteMessage(event.message);
-		}
-		return event;
-	};
-
-	return ({
-		[Symbol.asyncIterator]: async function* () {
-			for await (const event of stream) {
-				yield rewriteEvent(event);
-			}
-		},
-		result: async () => rewriteMessage(await stream.result()),
-	} as unknown) as AssistantMessageEventStream;
-}
-
-function hashText(text: string): string {
-	if (!text) {
-		return "empty";
-	}
-	let hash = 2166136261;
-	for (let i = 0; i < text.length; i += 1) {
-		hash ^= text.charCodeAt(i);
-		hash = Math.imul(hash, 16777619);
-	}
-	return (hash >>> 0).toString(16).padStart(8, "0");
-}
-
-function previewText(text: string, max = 80): string {
-	return text.replace(/\s+/g, " ").slice(0, max);
-}
-
-function previewToolResult(text: string, max = 1_000): string {
-	const normalized = text.replace(/\s+/g, " ").trim();
-	const preview = normalized.slice(0, max);
-	return `length=${text.length}, hash=${hashText(text)}, preview=${JSON.stringify(preview)}${normalized.length > max ? ", truncated=true" : ""}`;
-}
-
-function getMessageText(message: unknown): string {
-	if (typeof message === "string") {
-		return message;
-	}
-	if (!message || typeof message !== "object") {
-		return "";
-	}
-	const content = (message as { content?: unknown }).content;
-	if (typeof content === "string") {
-		return content;
-	}
-	if (!Array.isArray(content)) {
-		return "";
-	}
-	return content
-		.filter((block): block is { type: "text"; text: string } =>
-			typeof block === "object" &&
-			block !== null &&
-			(block as { type?: unknown }).type === "text" &&
-			typeof (block as { text?: unknown }).text === "string"
-		)
-		.map((block) => block.text)
-		.join("");
-}
-
-function getPromptText(message: string | AgentMessage | AgentMessage[]): string {
-	if (typeof message === "string") {
-		return message;
-	}
-	if (Array.isArray(message)) {
-		for (let index = message.length - 1; index >= 0; index -= 1) {
-			const candidate = message[index];
-			if (candidate?.role === "user") {
-				return getMessageText(candidate);
-			}
-		}
-		return "";
-	}
-	return getMessageText(message);
-}
-
-function redactErrorForLogging(message: string): string {
-	return message
-		.replace(/\bBearer\s+\S+/giu, "Bearer [REDACTED]")
-		.replace(/\b(?:sk|tp)-[A-Za-z0-9._-]{8,}\b/gu, "[REDACTED]");
-}
-
-function logInfo(...args: unknown[]): void {
-	if (process.env["ORIGINOS_WORKER_STDOUT_JSON_LINE"] === "1") {
-		return;
-	}
-	console.info(...args);
-}
-
-const COMPLETION_JUDGE_MAX_ATTEMPTS = 2;
-const COMPLETION_JUDGE_TIMEOUT_MS = 15_000;
-
-type CompletionJudgeFailureCategory =
-	| "aborted"
-	| "error"
-	| "invalid_response"
-	| "exception";
-
-class CompletionJudgeAttemptError extends Error {
-	constructor(
-		public readonly category: CompletionJudgeFailureCategory,
-		public readonly stopReason: string,
-		public readonly attempt: number,
-		public readonly elapsedMs: number,
-		message: string,
-	) {
-		super(message);
-		this.name = "CompletionJudgeAttemptError";
-	}
-}
-
-type SyntheticSystemMessage = {
-	role: "system";
-	content: Array<{
-		type: "text";
-		text: string;
-	}>;
-};
-
-type SyntheticUserMessage = {
-	role: "user";
-	content: Array<{
-		type: "text";
-		text: string;
-	}>;
-};
+import {
+	EventEmitter,
+	getMessageText,
+	getPromptText,
+	hashText,
+	logInfo,
+	normalizeStreamProvider,
+	previewText,
+	previewToolResult,
+	redactErrorForLogging,
+} from "./agent-internals";
+import {
+	emitCompletionFailureReport as runEmitCompletionFailureReport,
+	runJudgePendingCompletion,
+	runWithCompletionGuard,
+	runWithEmptyStopRecovery,
+	type SyntheticSystemMessage,
+	type SyntheticUserMessage,
+} from "./agent-completion";
+import type { AgentCompletionContext } from "./agent-completion";
+import {
+	setOriginOSAgentClass,
+	type SessionData,
+} from "./agent-factory";
 
 export type AgentCompletionPolicy = "chat_guard" | "task_runtime";
 
@@ -725,319 +561,81 @@ export class OriginOSAgent {
 		}
 	}
 
+	/**
+	 * 组装 completion 模块函数共用的调用上下文。
+	 * 可变状态字段以 getter/setter 闭包直接读写主类实例属性（模块函数内的赋值
+	 * 经闭包写回 this.xxx，不会停留在 ctx 对象上）；方法回调以实例闭包注入，
+	 * 与原 this 调用链行为一致。
+	 */
+	private createCompletionCtx(): AgentCompletionContext {
+		const self = this;
+		return {
+			get pendingCompletionCandidate() {
+				return self.pendingCompletionCandidate;
+			},
+			set pendingCompletionCandidate(value) {
+				self.pendingCompletionCandidate = value;
+			},
+			get pendingPromiseStop() {
+				return self.pendingPromiseStop;
+			},
+			set pendingPromiseStop(value) {
+				self.pendingPromiseStop = value;
+			},
+			get deferredAgentEndEvent() {
+				return self.deferredAgentEndEvent;
+			},
+			set deferredAgentEndEvent(value) {
+				self.deferredAgentEndEvent = value;
+			},
+			get lastToolFailure() {
+				return self.lastToolFailure;
+			},
+			set lastToolFailure(value) {
+				self.lastToolFailure = value;
+			},
+			hiddenMessages: this.hiddenMessages,
+			agent: this.agent,
+			eventEmitter: this.eventEmitter,
+			get activeUserRequest() {
+				return self.activeUserRequest;
+			},
+			get completionToolTrace() {
+				return self.completionToolTrace;
+			},
+			get successfulToolAfterFailure() {
+				return self.successfulToolAfterFailure;
+			},
+			throwIfModelStreamFailed: () => this.throwIfModelStreamFailed(),
+			emitUiEvent: (event) => this.emitUiEvent(event),
+			getVisibleMessages: () => this.getVisibleMessages(),
+			handleAgentEvent: (event) => this.handleAgentEvent(event),
+			isEmptyStopRecoveryEnabled: () => this.isEmptyStopRecoveryEnabled(),
+			isCompletionGuardEnabled: () => this.isCompletionGuardEnabled(),
+			emitCompletionFailureReport: () =>
+				this.emitCompletionFailureReport(),
+			judgePendingCompletion: () => this.judgePendingCompletion(),
+		};
+	}
+
 	protected async judgePendingCompletion(): Promise<void> {
-		const candidate = this.pendingCompletionCandidate;
-		if (!candidate || !this.agent) {
-			return;
-		}
-		this.pendingCompletionCandidate = null;
-
-		if (candidate.repeatedResponse) {
-			this.pendingPromiseStop = true;
-			this.hiddenMessages.add(candidate.message);
-			this.deferredAgentEndEvent = null;
-			console.warn(
-				`[LLM CompletionGuard] repeated completed assistant response — textHash=${hashText(candidate.text)}`,
-			);
-			return;
-		}
-
-		let decision: SemanticCompletionDecision | null = null;
-		let lastFailure: CompletionJudgeAttemptError | null = null;
-		try {
-			const runtimeModel = this.agent.state.model as Model<any> & {
-				apiKey?: string;
-				authToken?: string;
-				credentialAuthMode?: string;
-				headers?: Record<string, string>;
-			};
-			const baseOptions: Record<string, unknown> = {
-				temperature: 0,
-				maxTokens: 512,
-				reasoning: "minimal",
-				maxRetryDelayMs: 5_000,
-			};
-			let judgeModel = runtimeModel;
-			if (
-				(runtimeModel.credentialAuthMode === "bearer" ||
-					runtimeModel.credentialAuthMode === "oauth") &&
-				runtimeModel.authToken
-			) {
-				baseOptions["apiKey"] = runtimeModel.authToken;
-				baseOptions["headers"] = {
-					...(runtimeModel.headers ?? {}),
-					authorization: `Bearer ${runtimeModel.authToken}`,
-				};
-				judgeModel = {
-					...runtimeModel,
-					provider: "github-copilot",
-					apiKey: undefined,
-					authToken: undefined,
-				};
-			} else if (runtimeModel.apiKey) {
-				baseOptions["apiKey"] = runtimeModel.apiKey;
-			}
-
-			for (let attempt = 1; attempt <= COMPLETION_JUDGE_MAX_ATTEMPTS; attempt += 1) {
-				const startedAt = Date.now();
-				try {
-					const judgeMessage = await piAi.completeSimple(
-						judgeModel,
-						{
-							systemPrompt: COMPLETION_JUDGE_SYSTEM_PROMPT,
-							messages: [{
-								role: "user",
-								content: buildCompletionJudgePrompt({
-									userRequest: this.activeUserRequest,
-									assistantResponse: candidate.text,
-									toolTrace: this.completionToolTrace,
-								}),
-								timestamp: Date.now(),
-							}],
-						},
-						{
-							...baseOptions,
-							signal: AbortSignal.timeout(COMPLETION_JUDGE_TIMEOUT_MS),
-						},
-					);
-					const elapsedMs = Date.now() - startedAt;
-					if (
-						judgeMessage.stopReason === "error" ||
-						judgeMessage.stopReason === "aborted"
-					) {
-						throw new CompletionJudgeAttemptError(
-							judgeMessage.stopReason,
-							judgeMessage.stopReason,
-							attempt,
-							elapsedMs,
-							judgeMessage.errorMessage ||
-								`Completion judge ${judgeMessage.stopReason}`,
-						);
-					}
-					const judgeText = getMessageText(judgeMessage);
-					try {
-						decision = parseCompletionJudgeDecision(judgeText);
-					} catch (parseError) {
-						throw new CompletionJudgeAttemptError(
-							"invalid_response",
-							judgeMessage.stopReason || "unknown",
-							attempt,
-							elapsedMs,
-							`${parseError instanceof Error ? parseError.message : String(parseError)}; responseLen=${judgeText.length}; responseHash=${hashText(judgeText)}`,
-						);
-					}
-					logInfo(
-						`[LLM CompletionJudge] status=${decision.status}, reason="${previewText(decision.reason, 160)}", attempt=${attempt}/${COMPLETION_JUDGE_MAX_ATTEMPTS}, elapsedMs=${elapsedMs}`,
-					);
-					break;
-				} catch (error) {
-					const elapsedMs = Date.now() - startedAt;
-					lastFailure = error instanceof CompletionJudgeAttemptError
-						? error
-						: new CompletionJudgeAttemptError(
-							"exception",
-							"unknown",
-							attempt,
-							elapsedMs,
-							error instanceof Error ? error.message : String(error),
-						);
-					console.warn(
-						`[LLM CompletionJudge] attempt failed — attempt=${attempt}/${COMPLETION_JUDGE_MAX_ATTEMPTS}, category=${lastFailure.category}, stopReason=${lastFailure.stopReason}, elapsedMs=${lastFailure.elapsedMs}, retry=${attempt < COMPLETION_JUDGE_MAX_ATTEMPTS}, reason="${previewText(redactErrorForLogging(lastFailure.message), 300)}"`,
-					);
-				}
-			}
-			if (!decision) {
-				throw lastFailure ?? new CompletionJudgeAttemptError(
-					"exception",
-					"unknown",
-					COMPLETION_JUDGE_MAX_ATTEMPTS,
-					0,
-					"Completion judge failed without an error",
-				);
-			}
-		} catch (error) {
-			const fallback = assessCompletion({
-				role: "assistant",
-				stopReason: candidate.stopReason,
-				text: candidate.text,
-				toolCallCount: candidate.toolCallCount,
-				hasUnresolvedToolFailure: this.lastToolFailure !== null,
-				hasSuccessfulToolAfterFailure: this.successfulToolAfterFailure,
-			});
-			decision = {
-				status: fallback.shouldRecover ? "incomplete" : "complete",
-				reason: `fallback:${fallback.reason}`,
-			};
-			const failure = error instanceof CompletionJudgeAttemptError
-				? error
-				: new CompletionJudgeAttemptError(
-					"exception",
-					"unknown",
-					0,
-					0,
-					error instanceof Error ? error.message : String(error),
-				);
-			console.warn(
-				`[LLM CompletionJudge] failed, using fallback — decision=${decision.status}, reason="${previewText(decision.reason, 160)}", attempts=${failure.attempt}, lastFailure=${failure.category}, stopReason=${failure.stopReason}, elapsedMs=${failure.elapsedMs}`,
-			);
-		}
-
-		this.pendingPromiseStop = decision.status === "incomplete";
-		if (this.pendingPromiseStop) {
-			this.hiddenMessages.add(candidate.message);
-			this.deferredAgentEndEvent = null;
-			return;
-		}
-
-		this.eventEmitter.emit({
-			type: "completion_accepted",
-			message: candidate.message,
-			content: candidate.text,
-		} as unknown as AgentEvent);
-
-		if (this.deferredAgentEndEvent) {
-			const deferred = this.deferredAgentEndEvent;
-			this.deferredAgentEndEvent = null;
-			this.emitUiEvent(deferred);
-		}
+		return runJudgePendingCompletion(this.createCompletionCtx());
 	}
 
 	private async runWithEmptyStopRecovery(
 		start: () => Promise<void>,
 	): Promise<void> {
-		if (!this.agent) {
-			throw new Error("Agent 未初始化");
-		}
-
-		await start();
-		this.throwIfModelStreamFailed();
-		if (!this.isEmptyStopRecoveryEnabled()) {
-			return;
-		}
-		const candidate = this.pendingCompletionCandidate;
-		if (!candidate || candidate.text.trim().length > 0) {
-			return;
-		}
-		this.pendingCompletionCandidate = null;
-		this.deferredAgentEndEvent = null;
-		this.hiddenMessages.add(candidate.message);
-		const recoveryMessage: SyntheticUserMessage = {
-			role: "user",
-			content: [{ type: "text", text: buildEmptyStopRecoveryMessage(1) }],
-		};
-		this.hiddenMessages.add(recoveryMessage);
-		logInfo("[LLM EmptyStopRecovery] retrying empty terminal response — attempt=1/1");
-		try {
-			await this.agent.prompt(recoveryMessage as unknown as AgentMessage);
-			this.throwIfModelStreamFailed();
-			const recoveryCandidate = this.pendingCompletionCandidate as
-				| typeof candidate
-				| null;
-			if (recoveryCandidate?.text.trim().length === 0) {
-				this.pendingCompletionCandidate = null;
-				this.lastToolFailure = {
-					toolName: "empty-stop-recovery",
-					reason: "The skill returned an empty terminal response twice.",
-				};
-				this.emitCompletionFailureReport();
-			}
-		} catch (error) {
-			this.lastToolFailure = {
-				toolName: "empty-stop-recovery",
-				reason: error instanceof Error ? error.message : String(error),
-			};
-			this.emitCompletionFailureReport();
-		}
+		return runWithEmptyStopRecovery(this.createCompletionCtx(), start);
 	}
 
 	private async runWithCompletionGuard(
 		start: () => Promise<void>,
 	): Promise<void> {
-		if (!this.agent) {
-			throw new Error("Agent 未初始化");
-		}
-
-		await start();
-		this.throwIfModelStreamFailed();
-		if (!this.isCompletionGuardEnabled()) {
-			return;
-		}
-		await this.judgePendingCompletion();
-		let recoveryAttempt = 0;
-
-		while (
-			this.pendingPromiseStop &&
-			recoveryAttempt < DEFAULT_COMPLETION_RECOVERY_LIMIT
-		) {
-			recoveryAttempt += 1;
-			this.pendingPromiseStop = false;
-
-			const recoveryMessage: SyntheticUserMessage = {
-				role: "user",
-				content: [{
-					type: "text",
-					text: buildCompletionRecoveryMessage(
-						"",
-						this.lastToolFailure,
-						recoveryAttempt,
-					),
-				}],
-			};
-			this.hiddenMessages.add(recoveryMessage);
-			logInfo(
-				`[LLM CompletionGuard] recovering incomplete stop — attempt=${recoveryAttempt}/${DEFAULT_COMPLETION_RECOVERY_LIMIT}`,
-			);
-			try {
-				await this.agent.prompt(recoveryMessage as unknown as AgentMessage);
-				this.throwIfModelStreamFailed();
-				await this.judgePendingCompletion();
-			} catch (error) {
-				this.lastToolFailure = {
-					toolName: "agent-recovery",
-					reason: error instanceof Error ? error.message : String(error),
-				};
-				this.pendingPromiseStop = false;
-				this.emitCompletionFailureReport();
-				return;
-			}
-		}
-
-		if (!this.pendingPromiseStop) {
-			return;
-		}
-
-		this.pendingPromiseStop = false;
-		this.emitCompletionFailureReport();
+		return runWithCompletionGuard(this.createCompletionCtx(), start);
 	}
 
 	private emitCompletionFailureReport(): void {
-		if (!this.agent) {
-			return;
-		}
-
-		const report = buildCompletionFailureReport(this.lastToolFailure);
-		const message = {
-			role: "assistant",
-			content: [{ type: "text", text: report }],
-			stopReason: "stop",
-			completionFailure: true,
-		} as unknown as AgentMessage;
-		this.agent.state.messages = [...this.agent.state.messages, message];
-
-			const visibleMessages = this.getVisibleMessages();
-			const events = [
-				{ type: "message_start", message },
-				{ type: "message_end", message },
-				{ type: "turn_end", message, toolResults: [] },
-				{ type: "agent_end", messages: visibleMessages },
-		] as unknown as AgentEvent[];
-		events.forEach((event) => {
-			this.handleAgentEvent(event);
-			this.eventEmitter.emit(event);
-		});
-		console.error(
-			`[LLM EmptyStopRecovery] retry exhausted — tool=${this.lastToolFailure?.toolName ?? "unknown"}, exitCode=${this.lastToolFailure?.exitCode ?? "unknown"}, reason=${this.lastToolFailure?.reason ?? "empty terminal response"}`,
-		);
+		return runEmitCompletionFailureReport(this.createCompletionCtx());
 	}
 
 	/**
@@ -1735,178 +1333,12 @@ export class OriginOSAgent {
 	}
 }
 
-// ============================================================================
-// 辅助类型
-// ============================================================================
+// 注册类构造器到 agent-factory（消除 factory → agent 值级 import 环；
+// 类声明已完成，任何工厂调用前注册必然生效）。
+setOriginOSAgentClass(OriginOSAgent);
 
-/**
- * 会话数据
- */
-export interface SessionData {
-	sessionId: string;
-	messages: AgentMessage[];
-	systemPrompt: string;
-	model: {
-		provider: string;
-		id: string;
-	};
-	createdAt: number;
-	updatedAt: number;
-	projectContext?: ProjectContext;
-}
-
-/**
- * 创建 OriginOS Agent 的工厂函数
- */
-export interface CreateOriginOSAgentParams {
-	/**
-	 * 会话ID
-	 */
-	sessionId: string;
-
-	/**
-	 * 系统提示词
-	 */
-	systemPrompt?: string;
-
-	/** Frozen context injected only for model requests, never persisted as transcript. */
-	sessionContext?: string;
-
-	/**
-	 * 系统提示词变量
-	 */
-	variables?: SystemPromptVariables;
-
-	/**
-	 * 模型（可选）
-	 */
-	model?: Model<any>;
-
-	/**
-	 * 思考级别（可选）
-	 */
-	thinkingLevel?: ThinkingLevel;
-
-	/**
-	 * 是否使用基础模型（降级选项）
-	 */
-	useBaseModel?: boolean;
-
-	/**
-	 * 代理自带的健康监控器（可选）
-	 */
-	healthMonitor?: HealthMonitor;
-
-	/**
-	 * 运行时 LLM 配置（可选，覆盖环境变量）
-	 */
-	llmConfig?: RuntimeLLMConfig;
-
-	/**
-	 * Agent session type. Only skill sessions receive deterministic empty-stop
-	 * recovery by default.
-	 */
-	agentType?: string;
-
-	/** Explicit override for skill empty-stop recovery. */
-	emptyStopRecoveryEnabled?: boolean;
-}
-
-/**
- * 创建未初始化的 OriginOS Agent
- */
-export function createOriginOSAgent(
-	params: CreateOriginOSAgentParams
-): OriginOSAgent {
-	const { sessionId, variables, model, thinkingLevel, useBaseModel, healthMonitor, llmConfig, emptyStopRecoveryEnabled, agentType } =
-		params;
-
-	// 获取配置状态
-	const configStatus = getConfigStatus();
-
-	// 调试日志
-	logInfo('[createOriginOSAgent] Config status:', configStatus);
-	logInfo('[createOriginOSAgent] Environment:', {
-		hasAnthropicAuthToken: !!process.env['ANTHROPIC_AUTH_TOKEN'],
-			anthropicBaseUrl: sanitizeBaseUrlForLogging(process.env['ANTHROPIC_BASE_URL']),
-		anthropicModel: process.env['ANTHROPIC_MODEL'],
-	});
-
-	// 根据 provider 和配置选择模型
-	let agentModel: Model<any>;
-	const modelOptions = llmConfig?.maxTokens ? { maxTokens: llmConfig.maxTokens } : undefined;
-
-	if (model) {
-		// 用户明确指定了模型
-		agentModel = model;
-	} else if (llmConfig) {
-		// 用户运行时配置优先级最高，不通过 process.env 间接传递
-		agentModel = createRuntimeModel(llmConfig);
-	} else if (useBaseModel || configStatus.defaultProvider === "google") {
-		// 使用 Google 模型作为基础模型或备选
-		agentModel = createGoogleModel("gemini-2.5-flash-preview-05-20");
-	} else if (configStatus.llmProvider === "azure-openai" || configStatus.defaultProvider === "azure") {
-		// Azure OpenAI 直连（显式设置或检测到配置）
-		agentModel = createAutoModel(undefined, modelOptions);
-	} else if (configStatus.useOpenAICompatible) {
-		// 使用 OpenAI 兼容 API（自动检测或显式配置）
-		agentModel = createAutoModel(undefined, modelOptions);
-	} else if (configStatus.hasAnthropicKey) {
-		// 使用 Anthropic 模型，支持自定义 baseUrl 和模型 ID
-		agentModel = createAnthropicModel(); // 不传 modelId，让函数从环境变量获取
-	} else {
-		// 默认使用自动选择
-		agentModel = createAutoModel(undefined, modelOptions);
-	}
-
-	// 确保 maxTokens 被应用（兜底）
-	if (llmConfig?.maxTokens && agentModel) {
-		agentModel.maxTokens = llmConfig.maxTokens;
-	}
-
-	// 调试：查看创建的模型配置
-	const debugCredential = (agentModel as any).apiKey || (agentModel as any).authToken;
-	logInfo('[createOriginOSAgent] Created model:', {
-		id: agentModel.id,
-		api: agentModel.api,
-		provider: agentModel.provider,
-			baseUrl: sanitizeBaseUrlForLogging((agentModel as any).baseUrl),
-		hasCredential: !!debugCredential,
-		credentialSource: (agentModel as any).credentialSource || (llmConfig?.anthropicAuthToken || llmConfig?.authToken
-			? 'user.anthropicAuthToken'
-			: llmConfig?.anthropicApiKey || llmConfig?.apiKey
-				? 'user.anthropicApiKey'
-				: 'env/default'),
-			credentialAuthMode: (agentModel as any).credentialAuthMode || (debugCredential?.includes?.('sk-ant-oat') ? 'oauth' : 'api-key'),
-		});
-
-	const projectContext = variables
-		? {
-				projectId: variables.projectId || "default",
-				ontologyId: variables.ontologyId,
-				projectName: variables.projectName,
-				currentPath: variables.projectPath,
-				userId: variables.userId,
-			}
-		: { projectId: "default" };
-
-	const systemPrompt =
-		params.systemPrompt ||
-		(variables
-			? `You are OriginOS AI assistant. You are working on project: ${variables.projectName || "unnamed"}`
-			: "You are OriginOS AI assistant.");
-
-	const config: OriginOSAgentConfig = {
-		sessionId,
-		systemPrompt,
-		sessionContext: params.sessionContext,
-		model: agentModel,
-		projectContext,
-		thinkingLevel: (thinkingLevel || "low") as OriginOSAgentConfig['thinkingLevel'],
-		tools: [],
-		emptyStopRecoveryEnabled: resolveEmptyStopRecoveryEnabled(agentType, emptyStopRecoveryEnabled),
-	};
-
-	// 返回未初始化的 Agent，用户需要调用 start() 方法
-	return new OriginOSAgent(config, healthMonitor);
-}
+export { createOriginOSAgent } from "./agent-factory";
+export type {
+	CreateOriginOSAgentParams,
+	SessionData,
+} from "./agent-factory";
