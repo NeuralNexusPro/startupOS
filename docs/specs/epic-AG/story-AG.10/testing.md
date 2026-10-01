@@ -260,3 +260,49 @@ wc -l <每个新文件>
 
 - `solution-design-source.test.ts` 存量 1 个失败与本次拆分无关（拆分前基线逐字复现），归属既有测试债。
 - composition 拆分件间存在 internal export（envelope/session port 类型）——均为 features/project 包内消费，无公共 API 扩散。
+
+---
+
+## AG.10-T5（integrations/pi-agent/core/agent.ts）执行结果
+
+**Proposal:** `refactor-agent-core`（分支 `proposal/refactor-agent-core`，实施分支 `proposal-task/refactor-agent-core-1-agent-split`）
+**执行日期:** 2026-10-01
+**基线:** core `__tests__` 7 项既有失败（agent.test 6 + agent-token-estimate 1，合并 64 passed / 71）、store.test 20/20、madge core 12 环、agent.ts 1912 行
+**实施方式:** subagent 实施中途停滞 4 次（600s watchdog），文件产出完整但未验证；主会话接管完成全部验证与 2 处修正后提交
+
+| 用例 | 结果 | 证据 |
+|------|------|------|
+| TC-1 导出符号不变 | ✅ | 6 公共符号（`OriginOSAgent`/`SessionData`/`CreateOriginOSAgentParams`/`createOriginOSAgent`/`AgentCompletionPolicy`/`AgentExecutionOptions`）全部由 agent.ts 直接导出或 re-export，符号清单 diff 为空；5 处包内生产导入 + 15 处测试导入/vi.mock + 1 处 desktop side-effect 导入 specifier 零变化；token 级对比——4 个 completion 方法体在 `this.`→`ctx.` 规范化后逐字相同、agent-internals 8 个 helper 逐字相同、factory 仅 D4 尾行差异；`vi.spyOn(agent, "judgePendingCompletion")` 与 `(agent as any).emitCompletionFailureReport()` 直调锚命中薄委托（失败集未变化即证） |
+| TC-2 双端编译 | ✅ | web build exit 0、desktop build exit 0（ctx 修正与 D4 修订后均复跑）；`expand-core-exports.cjs --verify` exit 0；core tsc 0 error（除 client-hooks 5 条既有基线错误） |
+| TC-3 测试基线 | ✅ | core `__tests__` 失败集与拆分前基线**逐一相同**（7 项既有失败，名称级 diff 为空）；store.test **20/20**；completion-guard/completion-judge/runtime-history-restore 全绿；hooks 4 测试 90 failed/10 passed 为既有基线（URL 解析环境问题）。web/desktop 全量测试套未在本 task 重跑——build 即编译层验证 + core 侧基线对比构成组合证据 |
+| TC-4 循环检查 | ✅ | 终态 madge **12 环 = 基线**；`core/` 目录 4 环全部为基线既有路径（agent→health、task-runtime、token-usage），**新增 3 文件零环**。实施中途 13 环（factory type-only 反向 import 被 madge 8 计边）已按 design D4 传参注入预案修正 |
+| TC-5 模块冒烟 | ✅ | `pnpm lint:boundaries` 974 生产文件 **0 诊断**；`check-architecture-boundaries.cjs --self-test` exit 0；web build 静态导出完整跑完（覆盖 agent 工厂经 store 消费链） |
+| TC-6 行数达标 | ✅ | agent.ts **1348**（≤1500）；agent-internals **140** / agent-completion **432** / agent-factory **206**（全部 ≤600），首部职责注释齐备（FR-3） |
+
+**拆分产物（1912 行 → 4 文件共 2126 行，含头注释/导入）：**
+
+- `core/agent.ts`（1348）— OriginOSAgent 主类：状态字段、constructor/initialize、事件路由、执行编排、set-get API + 4 个 completion 薄委托 + 工厂薄包装
+- `core/agent-internals.ts`（140）— EventEmitter + normalizeStreamProvider/hashText/previewText/previewToolResult/getMessageText/getPromptText/redactErrorForLogging/logInfo（逐字）
+- `core/agent-completion.ts`（432）— runJudgePendingCompletion / runWithEmptyStopRecovery / runWithCompletionGuard / emitCompletionFailureReport（D3 ctx 变换，唯一非逐字）+ `AgentCompletionContext` 接口 + judge 常量/类型
+- `core/agent-factory.ts`（206）— createOriginOSAgent（泛型签名 `<T>(params, ctor)`）+ SessionData/CreateOriginOSAgentParams
+
+**逐字一致性复核（主会话独立验证，Python 花括号配对提取 + 空白归一）：**
+
+- 4 个 completion 方法：`this.`→`ctx.` 规范化后 token-identical；调用点仅 this.X → ctx.X。
+- agent-internals 8 helper：逐字相同（空白归一）。
+- agent-factory：仅尾部差异（`new OriginOSAgentClass(...)` → `new ctor(config, healthMonitor)`，D4 传参注入的既定偏差）。
+
+**实施修正（2 处，均记入 proposal design.md/tasks.md）：**
+
+1. **ctx 快照不回写**：初版 `createCompletionCtx()` 以对象属性拷贝组装 ctx，judge 写 `ctx.pendingPromiseStop = true` 落在临时对象、主类字段未变 → 3 用例新增失败（guard 循环条件恒假）。修正为 4 个可变字段（pendingCompletionCandidate/pendingPromiseStop/deferredAgentEndEvent/lastToolFailure）以 **getter/setter 闭包绑定 `self = this`**，赋值直写主类实例，失败集回到基线。
+2. **D4 传参注入落地**：madge 8 将 `import type` 计为依赖边（无 skip 选项），factory 持 type-only 反向引用实测 13 环 > 门禁 12。按 design.md D4 预案改 `createOriginOSAgent<T>(params, ctor)` 构造器参数注入 + agent.ts 尾部同名薄包装（消费方符号零变化），环数回到 12。替代方案 setter 注册（`setOriginOSAgentClass`）曾先实施，因 type-only 残环同样超门禁而替换。
+
+**人工验证步骤（TC-5 未自动化部分）:**
+
+1. `pnpm dev` 打开首页发起普通会话（空响应/不完整响应场景触发 empty-stop 恢复与 completion guard）与一次 RoleAgent 会话，确认 completion 判定、恢复循环与失败报告行为与拆分前一致。
+
+**剩余风险:**
+
+- core `__tests__` 7 项既有失败与本次拆分无关（拆分前基线逐字复现），归属既有测试债。
+- `AgentCompletionContext` 的 getter/setter 闭包绑定依赖 `self = this` 捕获——若未来在 completion 模块函数中新增对其他主类可变字段的直接赋值，必须同步扩展 ctx 接口（编译期会报错兜底）。
+- judge 路径的真实 LLM 时序（15s 超时、2 次重试）以单测 mock 覆盖，未做真实网络验证（与拆分前一致，无行为面变化）。

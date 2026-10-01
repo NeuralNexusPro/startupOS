@@ -1,7 +1,7 @@
 # Story AG.10: 巨型文件拆分 — 单一职责重构
 
 **Epic:** AG — 架构治理与围栏对齐
-**状态:** 🚧 In Progress（T1 完成 2026-09-30；T2–T7 待实施）
+**状态:** 🚧 In Progress（T1–T5 完成，T5 于 2026-10-01；T6–T7 待实施）
 **优先级:** 🟠 High
 **估计工时:** 5–8 天（可按文件拆分为多个 task 增量交付）
 **依赖:** 无硬依赖；建议在 AG.8/AG.9 之后实施（边界清晰后拆分的落点更明确）
@@ -41,5 +41,5 @@
 
 - [x] 需求确认
 - [x] 架构设计
-- [ ] 开发实施（T1 ✅ 2026-09-30：page.tsx 1609→108 行，Proposal `refactor-home-page-structure`；T2 ✅ 2026-09-30：client-hooks.ts 1317→7 文件，Proposal `refactor-client-hooks`；T3 ✅ 2026-09-30：coordinator.ts 1142→689 行 + 4 新文件，Proposal `refactor-task-coordinator`；T4 ✅ 2026-09-30：contract-bound-runtime-composition.ts 1102→141 行 + composition/ 4 新文件，Proposal `refactor-contract-runtime-composition`；T5–T7 待实施）
-- [ ] 测试验证（T1/T2/T3/T4 TC-1~TC-6 已过，见 [testing.md](./testing.md) 各 task 执行结果；Story 整体待 T5–T7）
+- [ ] 开发实施（T1 ✅ 2026-09-30：page.tsx 1609→108 行，Proposal `refactor-home-page-structure`；T2 ✅ 2026-09-30：client-hooks.ts 1317→7 文件，Proposal `refactor-client-hooks`；T3 ✅ 2026-09-30：coordinator.ts 1142→689 行 + 4 新文件，Proposal `refactor-task-coordinator`；T4 ✅ 2026-09-30：contract-bound-runtime-composition.ts 1102→141 行 + composition/ 4 新文件，Proposal `refactor-contract-runtime-composition`；T5 ✅ 2026-10-01：pi-agent/core/agent.ts 1912→1348 行 + 3 新文件（internals 140/completion 432/factory 206），Proposal `refactor-agent-core`；T6–T7 待实施）
+- [ ] 测试验证（T1/T2/T3/T4/T5 TC-1~TC-6 已过，见 [testing.md](./testing.md) 各 task 执行结果；Story 整体待 T6–T7）

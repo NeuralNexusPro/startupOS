@@ -2,6 +2,14 @@
 
 ---
 
+## 2026-10-01 — refactor：AG.10-T5 pi-agent core agent 巨型文件拆分
+
+**类型**：refactor
+**影响模块**：`packages/core/src/lib/integrations/pi-agent/core/agent.ts`（1912→1348）、`core/{agent-internals,agent-completion,agent-factory}.ts`（新建 3 文件）、`docs/specs/epic-AG/story-AG.10/`
+**摘要**：Proposal `refactor-agent-core` 实施 OriginOSAgent 主类拆分：EventEmitter + 8 个纯 helper 逐字移入 agent-internals.ts；judge/empty-stop/guard/失败报告 4 个 completion 方法按 D3 ctx 变换移入 agent-completion.ts（4 个可变字段以 getter/setter 闭包绑定主类实例保证写回）；工厂移入 agent-factory.ts 并落地 D4 传参注入（`<T>(params, ctor)` + agent.ts 尾部同名薄包装——madge 8 将 type-only import 计边，type-only 反向引用与 setter 注册两案均实测 13 环超门禁后弃用）。公共符号与消费方导入零变化。TC-1~TC-6 全过（core 失败集与基线逐一相同、store.test 20/20；双端 build 0 error；madge 12 环=基线、core/ 新文件零环；边界扫描 0 诊断；主文件 1348 ≤ 1500，新文件最大 432 ≤ 600）。token 级复核 4 方法/8 helper 逐字一致。subagent 停滞 4 次由主会话接管验证。Story AG.10 完成 5/7。
+
+---
+
 ## 2026-09-30 — refactor：AG.10-T4 contract-bound runtime composition 巨型文件拆分
 
 **类型**：refactor
