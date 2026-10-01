@@ -7,7 +7,9 @@ import type {
 	ThinkingLevel,
 } from "@originos/pi-agent-adapter";
 import type { Model } from "@originos/pi-agent-adapter/ai";
-import type { OriginOSAgentConfig } from "../types";
+import type {
+	OriginOSAgentConfig,
+} from "../types";
 import type { ProjectContext } from "../system/config";
 import type { SystemPromptVariables } from "../system/prompt";
 import type { HealthMonitor } from "../health";
@@ -22,25 +24,11 @@ import {
 import type { RuntimeLLMConfig } from "../llm-config";
 import { resolveEmptyStopRecoveryEnabled } from "./skill-empty-stop-recovery";
 import { logInfo } from "./agent-internals";
-import type { OriginOSAgent } from "./agent";
 
 /**
- * OriginOSAgent 类构造器在 agent.ts 侧启动时注册（消除 factory → agent 的
- * 值级 import 环；类型引用仍走 type-only import，编译期擦除）。
+ * Agent 类构造器由调用方（agent.ts）以参数注入（D4 传参注入预案），
+ * factory 不持有任何对 agent.ts 的 import（含 type-only），保证单向依赖与零 madge 环。
  */
-let OriginOSAgentCtor: (new (
-	config: import("../types").OriginOSAgentConfig,
-	healthMonitor?: HealthMonitor,
-) => OriginOSAgent) | null = null;
-
-export function setOriginOSAgentClass(
-	ctor: new (
-		config: import("../types").OriginOSAgentConfig,
-		healthMonitor?: HealthMonitor,
-	) => OriginOSAgent,
-): void {
-	OriginOSAgentCtor = ctor;
-}
 
 /**
  * 会话数据
@@ -116,11 +104,14 @@ export interface CreateOriginOSAgentParams {
 }
 
 /**
- * 创建未初始化的 OriginOS Agent
+ * 创建未初始化的 OriginOS Agent 实例（internal）。
+ * 构造器由调用方（agent.ts 包装函数）传参注入（D4 传参注入预案），
+ * factory 不持有任何对 agent.ts 的 import（含 type-only），保证单向依赖与零 madge 环。
  */
-export function createOriginOSAgent(
-	params: CreateOriginOSAgentParams
-): OriginOSAgent {
+export function createOriginOSAgent<T>(
+	params: CreateOriginOSAgentParams,
+	ctor: new (config: OriginOSAgentConfig, healthMonitor?: HealthMonitor) => T,
+): T {
 	const { sessionId, variables, model, thinkingLevel, useBaseModel, healthMonitor, llmConfig, emptyStopRecoveryEnabled, agentType } =
 		params;
 
@@ -210,11 +201,6 @@ export function createOriginOSAgent(
 		emptyStopRecoveryEnabled: resolveEmptyStopRecoveryEnabled(agentType, emptyStopRecoveryEnabled),
 	};
 
-	// 返回未初始化的 Agent，用户需要调用 start() 方法
-	if (!OriginOSAgentCtor) {
-		throw new Error(
-			"OriginOSAgent class not registered — agent.ts must call setOriginOSAgentClass() at module load",
-		);
-	}
-	return new OriginOSAgentCtor(config, healthMonitor);
+	// 返回未初始化的 Agent 实例，用户需要调用 start() 方法（构造器经参数注入）
+	return new ctor(config, healthMonitor);
 }

@@ -65,7 +65,8 @@ import {
 } from "./agent-completion";
 import type { AgentCompletionContext } from "./agent-completion";
 import {
-	setOriginOSAgentClass,
+	createOriginOSAgent as createOriginOSAgentBase,
+	type CreateOriginOSAgentParams,
 	type SessionData,
 } from "./agent-factory";
 
@@ -1333,11 +1334,14 @@ export class OriginOSAgent {
 	}
 }
 
-// 注册类构造器到 agent-factory（消除 factory → agent 值级 import 环；
-// 类声明已完成，任何工厂调用前注册必然生效）。
-setOriginOSAgentClass(OriginOSAgent);
+// 工厂包装：类构造器经参数注入 agent-factory（D4 传参注入预案，
+// factory 不持有对 agent.ts 的任何 import，保证单向依赖与零 madge 环）。
+export function createOriginOSAgent(
+	params: CreateOriginOSAgentParams,
+): OriginOSAgent {
+	return createOriginOSAgentBase(params, OriginOSAgent);
+}
 
-export { createOriginOSAgent } from "./agent-factory";
 export type {
 	CreateOriginOSAgentParams,
 	SessionData,
