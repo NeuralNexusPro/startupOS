@@ -1,616 +1,64 @@
-import { RunObserver } from "./run-observation";
+/**
+ * contract-execution — CollaborationExecutionStore 主类——公共执行 API、observers 桥接与模块组装（ctx 工厂）。
+ */
+
 import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs, type Dirent } from 'node:fs';
-import type { FileHandle } from 'node:fs/promises';
 import path from 'node:path';
 
+import { RunObserver } from "./run-observation";
 import { getDataRoot } from '../../../lib/paths';
+import type { SolutionExecutionContractPort } from '../../../lib/features/solution';
 import type {
-  ContractIntegrityResult,
-  HitlPolicy,
-  SolutionExecutionContract,
-  SolutionExecutionContractPort,
-  SolutionVersionRef,
-} from '../../../lib/features/solution';
-
-const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._@:-]*$/;
-const TERMINAL_ATTEMPT_STATUSES = new Set<AttemptStatus>([
-  'completed',
-  'revision',
-  'blocked',
-  'needs_review',
-  'failed',
-]);
-const DEFAULT_CLAIM_TTL_MS = 30_000;
-
-export type WorkItemStatus =
-  | 'pending'
-  | 'assigned'
-  | 'running'
-  | 'waiting_hitl'
-  | 'verifying'
-  | 'revision'
-  | 'completed'
-  | 'failed'
-  | 'blocked'
-  | 'reported'
-  | 'needs_review';
-
-export type AttemptStatus =
-  | 'intent'
-  | 'ready'
-  | 'worker_received'
-  | 'verifying'
-  | 'outcome_pending'
-  | 'evidence_pending'
-  | 'waiting_hitl'
-  | 'completed'
-  | 'revision'
-  | 'blocked'
-  | 'needs_review'
-  | 'failed';
-
-export type CollaborationRunStatus = 'running' | 'paused' | 'canceled';
-export type CollaborationRunTerminalStatus = 'completed' | 'failed' | 'canceled';
-
-export type WorkItemExecutionStage =
-  | 'readiness'
-  | 'worker'
-  | 'verifier'
-  | 'outcome'
-  | 'evidence';
-
-export interface SolutionTaskBinding {
-  readonly parentTaskId: string;
-  readonly parentStepId: string;
-  readonly runId: string;
-  readonly solutionId: string;
-  readonly solutionVersion: string;
-  readonly executionContractId: string;
-  readonly contractHash: string;
-  readonly taskRevision: number;
-  readonly parentSessionId?: string;
-}
-
-export interface WorkItemUsage {
-  readonly durationMs: number;
-  readonly tokens: number;
-}
-
-export interface WorkerReceipt {
-  readonly receiptId: string;
-  readonly outputRefs: readonly string[];
-  readonly outputHash: string;
-  readonly usage?: WorkItemUsage;
-  readonly checkpointRef?: string;
-}
-
-export interface VerifierResult {
-  readonly status: 'passed' | 'failed' | 'placeholder';
-  readonly verificationMethod?: string;
-  readonly artifactRefs?: readonly string[];
-  readonly resultRef?: string;
-  readonly contentHash?: string;
-  readonly contractHash?: string;
-  readonly reason?: string;
-}
-
-export interface OutcomeReceipt {
-  readonly receiptId: string;
-  readonly status: 'accepted' | 'rejected' | 'unknown';
-  readonly operationRef?: string;
-  readonly factRefs?: readonly string[];
-  readonly contentHash?: string;
-  readonly reason?: string;
-}
-
-export interface EvidenceReceipt {
-  readonly receiptId: string;
-  readonly status: 'accepted' | 'unknown';
-  readonly evidenceRef?: string;
-  readonly revision?: number;
-  readonly evidenceHash?: string;
-}
-
-export interface WorkItemReadinessReceipt {
-  readonly receiptId: string;
-  readonly status: 'ready' | 'blocked';
-  readonly checkedAt: string;
-  readonly inputRefs: readonly string[];
-  readonly grantedPermissions: readonly string[];
-  readonly targetAvailable: boolean;
-  readonly stateRef?: string;
-  readonly reason?: string;
-}
-
-export interface WorkItemStageClaim {
-  readonly stage: WorkItemExecutionStage;
-  readonly claimId: string;
-  readonly hostId: string;
-  readonly expectedWorkItemRevision: number;
-  readonly claimedAt: string;
-  readonly expiresAt: string;
-  readonly idempotencyKey: string;
-}
-
-export interface WorkItemHandoffCandidate {
-  readonly agentId: string;
-  readonly displayName: string;
-  readonly permissions: readonly string[];
-}
-
-export interface ListWorkItemHandoffCandidatesInput {
-  readonly projectId: string;
-  readonly runId: string;
-  readonly workItemId: string;
-}
-
-export interface WorkItemHandoffInput extends ListWorkItemHandoffCandidatesInput {
-  readonly targetAgentId: string;
-  readonly requestId: string;
-  readonly expectedRunRevision: number;
-  readonly expectedWorkItemRevision: number;
-  readonly expectedLeaseEpoch: number;
-}
-
-export interface WorkItemHandoffReceipt {
-  readonly version: 1;
-  readonly receiptId: string;
-  readonly requestId: string;
-  readonly projectId: string;
-  readonly runId: string;
-  readonly workItemId: string;
-  readonly previousAgentId: string;
-  readonly assignedAgentId: string;
-  readonly runRevisionBefore: number;
-  readonly runRevisionAfter: number;
-  readonly workItemRevisionBefore: number;
-  readonly workItemRevisionAfter: number;
-  readonly leaseEpochBefore: number;
-  readonly leaseEpochAfter: number;
-  readonly unknownExternalResults: 'manual_review';
-  readonly acceptedAt: string;
-}
-
-export interface WorkItemHandoffResult {
-  readonly receipt: WorkItemHandoffReceipt;
-  readonly snapshot: CollaborationRunSnapshot;
-}
-
-export type HitlTrigger = HitlPolicy['trigger'];
-export type HitlDecision = 'approve' | 'reject' | 'edit';
-
-export interface WorkItemHitlRequest {
-  readonly requestId: string;
-  readonly policyId: string;
-  readonly trigger: HitlTrigger;
-  readonly approverRole: string;
-  readonly parentTaskId: string;
-  readonly parentStepId: string;
-  readonly parentSessionId?: string;
-  readonly workItemId: string;
-  readonly attemptId: string;
-  readonly leaseEpoch: number;
-  readonly question: string;
-  readonly options: readonly HitlDecision[];
-  readonly createdAt: string;
-  status: 'pending' | 'resolved';
-  updatedAt: string;
-  decision?: HitlDecision;
-  decisionRef?: string;
-  editedPayloadHash?: string;
-}
-
-export interface AcceptedExternalOutputInput {
-  readonly projectId: string;
-  readonly runId: string;
-  readonly workItemId: string;
-  readonly attemptId: string;
-  readonly leaseEpoch: number;
-  readonly expectedWorkItemRevision: number;
-  readonly requestId: string;
-  readonly payloadHash: string;
-  readonly workerReceipt: WorkerReceipt;
-  readonly verifierResult: VerifierResult & {
-    readonly status: 'passed';
-    readonly verificationMethod: string;
-    readonly artifactRefs: readonly string[];
-    readonly resultRef: string;
-    readonly contentHash: string;
-    readonly contractHash: string;
-  };
-  readonly outcomeReceipt?: OutcomeReceipt & {
-    readonly status: 'accepted';
-  };
-}
-
-export interface AcceptedExternalOutputResult {
-  readonly status: 'accepted' | 'recovered';
-  readonly snapshot: CollaborationRunSnapshot;
-  readonly workItemRevision: number;
-  readonly evidenceRevision: number;
-}
-
-export class CollaborationReconciliationError extends Error {
-  constructor(
-    readonly code:
-      | 'WORK_ITEM_SCOPE_MISMATCH'
-      | 'WORK_ITEM_REVISION_CONFLICT'
-      | 'OLD_LEASE_EPOCH'
-      | 'UNKNOWN_EXTERNAL_RECEIPT',
-    message: string,
-  ) {
-    super(message);
-  }
-}
-
-export class CollaborationMutationConflictError extends Error {
-  readonly code = 'COLLABORATION_MUTATION_CONFLICT';
-
-  constructor(message: string) {
-    super(message);
-  }
-}
-
-export class CollaborationWorkItemHandoffError extends Error {
-  constructor(
-    readonly code:
-      | 'HANDOFF_SCOPE_MISMATCH'
-      | 'HANDOFF_REQUEST_ID_CONFLICT'
-      | 'HANDOFF_REVISION_CONFLICT'
-      | 'HANDOFF_LEASE_CONFLICT'
-      | 'HANDOFF_TARGET_UNAUTHORIZED'
-      | 'HANDOFF_TARGET_UNCHANGED'
-      | 'HANDOFF_TERMINAL'
-      | 'STALE_LEASE_EPOCH',
-    message: string,
-  ) {
-    super(message);
-  }
-}
-
-export interface WorkItemAttempt {
-  readonly attemptId: string;
-  readonly leaseEpoch: number;
-  readonly requestId: string;
-  readonly payloadHash: string;
-  status: AttemptStatus;
-  readonly createdAt: string;
-  updatedAt: string;
-  readinessReceipt?: WorkItemReadinessReceipt;
-  workerReceipt?: WorkerReceipt;
-  verifierResult?: VerifierResult;
-  outcomeReceipt?: OutcomeReceipt;
-  evidenceReceipt?: EvidenceReceipt;
-  stageClaim?: WorkItemStageClaim;
-  hitlRequests?: readonly WorkItemHitlRequest[];
-  reason?: string;
-}
-
-export interface CollaborationWorkItem {
-  readonly id: string;
-  readonly binding: SolutionTaskBinding;
-  readonly designNodeId: string;
-  readonly assignedAgentId: string;
-  readonly skillRefs: readonly string[];
-  readonly dependsOn: readonly string[];
-  readonly inputRefs: readonly string[];
-  readonly outputRefs: readonly string[];
-  status: WorkItemStatus;
-  revision: number;
-  leaseEpoch: number;
-  readonly attempts: readonly WorkItemAttempt[];
-  readonly handoffReceipts?: readonly WorkItemHandoffReceipt[];
-}
-
-export interface CollaborationRunSnapshot {
-  readonly runId: string;
-  readonly projectId: string;
-  readonly binding: SolutionTaskBinding;
-  readonly contract: SolutionExecutionContract;
-  readonly workItems: readonly CollaborationWorkItem[];
-  status: CollaborationRunStatus;
-  terminalStatus?: CollaborationRunTerminalStatus;
-  revision: number;
-  readonly createdAt: string;
-  updatedAt: string;
-  failureReason?: string;
-}
-
-export interface StartCollaborationRunInput extends SolutionVersionRef {
-  readonly parentTaskId: string;
-  readonly parentStepId: string;
-  readonly taskRevision: number;
-  readonly executionContractId: string;
-  readonly contractHash: string;
-  readonly inputRefs: readonly string[];
-  readonly parentSessionId?: string;
-}
-
-export interface WorkItemExecutionRequest {
-  readonly runId: string;
-  readonly workItemId: string;
-  readonly requestId: string;
-  readonly payloadHash: string;
-}
-
-export interface WorkerExecutionInput {
-  readonly run: CollaborationRunSnapshot;
-  readonly workItem: CollaborationWorkItem;
-  readonly attempt: WorkItemAttempt;
-  readonly executionKey: string;
-  readonly idempotencyKey: string;
-}
-
-export interface WorkItemReadinessInput {
-  readonly run: CollaborationRunSnapshot;
-  readonly workItem: CollaborationWorkItem;
-  readonly attempt: WorkItemAttempt;
-  readonly requiredInputRefs: readonly string[];
-  readonly requiredPermissions: readonly string[];
-}
-
-export type WorkItemReadinessResult =
-  | {
-      readonly status: 'ready';
-      readonly receiptId: string;
-      readonly inputRefs: readonly string[];
-      readonly grantedPermissions: readonly string[];
-      readonly targetAvailable: true;
-      readonly stateRef?: string;
-    }
-  | {
-      readonly status: 'blocked';
-      readonly receiptId: string;
-      readonly inputRefs?: readonly string[];
-      readonly grantedPermissions?: readonly string[];
-      readonly targetAvailable?: boolean;
-      readonly stateRef?: string;
-      readonly reason: string;
-    };
-
-export interface VerifierExecutionInput extends WorkerExecutionInput {
-  readonly workerReceipt: WorkerReceipt;
-}
-
-export interface OutcomeCommitInput extends VerifierExecutionInput {
-  readonly verifierResult: VerifierResult;
-  readonly idempotencyKey: string;
-}
-
-export interface EvidenceSubmissionInput extends OutcomeCommitInput {
-  readonly outcomeReceipt: OutcomeReceipt;
-  readonly evidenceHash: string;
-}
-
-export interface HitlOpenInput {
-  readonly run: CollaborationRunSnapshot;
-  readonly request: WorkItemHitlRequest;
-  readonly idempotencyKey: string;
-}
-
-export interface ResolveWorkItemHitlInput {
-  readonly runId: string;
-  readonly requestId: string;
-  readonly attemptId: string;
-  readonly leaseEpoch: number;
-  readonly decision: HitlDecision;
-  readonly decisionRef: string;
-  readonly editedPayloadHash?: string;
-}
-
-export interface WorkItemReadinessPort {
-  check(input: WorkItemReadinessInput): Promise<WorkItemReadinessResult>;
-}
-
-export interface WorkItemWorkerPort {
-  execute(input: WorkerExecutionInput): Promise<WorkerReceipt>;
-}
-
-export interface WorkItemVerifierPort {
-  verify(input: VerifierExecutionInput): Promise<VerifierResult>;
-}
-
-export interface WorkItemOutcomePort {
-  commit(input: OutcomeCommitInput): Promise<OutcomeReceipt>;
-}
-
-export interface WorkItemEvidenceSink {
-  record(input: EvidenceSubmissionInput): Promise<EvidenceReceipt>;
-}
-
-export interface WorkItemHitlPort {
-  open(input: HitlOpenInput): Promise<void>;
-}
-
-export interface CollaborationMutationLockPort {
-  withLock<T>(key: string, operation: () => Promise<T>): Promise<T>;
-}
-
-export interface CollaborationExecutionDependencies {
-  readonly readiness?: WorkItemReadinessPort;
-  readonly worker?: WorkItemWorkerPort;
-  readonly verifier?: WorkItemVerifierPort;
-  readonly outcome?: WorkItemOutcomePort;
-  readonly evidenceSink?: WorkItemEvidenceSink;
-  readonly hitl?: WorkItemHitlPort;
-  readonly mutationLock?: CollaborationMutationLockPort;
-  readonly hostId?: string;
-  readonly claimTtlMs?: number;
-  readonly clock?: () => Date;
-}
-
-export interface CollaborationExecutionPort {
-  start(input: StartCollaborationRunInput): Promise<CollaborationRunSnapshot>;
-  inspect(runId: string): Promise<CollaborationRunSnapshot>;
-  findByTask(
-    projectId: string,
-    parentTaskId: string,
-  ): Promise<CollaborationRunSnapshot | null>;
-  pause(runId: string): Promise<CollaborationRunSnapshot>;
-  resume(runId: string): Promise<CollaborationRunSnapshot>;
-  cancel(runId: string): Promise<CollaborationRunSnapshot>;
-  executeWorkItem(
-    input: WorkItemExecutionRequest,
-  ): Promise<CollaborationRunSnapshot>;
-  recover(runId: string): Promise<CollaborationRunSnapshot>;
-  resolveHitl(
-    input: ResolveWorkItemHitlInput,
-  ): Promise<CollaborationRunSnapshot>;
-  reconcileAcceptedOutput(
-    input: AcceptedExternalOutputInput,
-  ): Promise<AcceptedExternalOutputResult>;
-  listWorkItemHandoffCandidates(
-    input: ListWorkItemHandoffCandidatesInput,
-  ): Promise<readonly WorkItemHandoffCandidate[]>;
-  handoffWorkItem(input: WorkItemHandoffInput): Promise<WorkItemHandoffResult>;
-}
-
-function identifier(value: string, field: string): void {
-  if (!IDENTIFIER.test(value) || value.includes('..')) {
-    throw new TypeError(`Invalid ${field}: ${value}`);
-  }
-}
-
-function nonEmpty(value: string, field: string): void {
-  if (!value.trim()) throw new TypeError(`${field} must not be empty`);
-}
-
-function assertIntegrity(result: ContractIntegrityResult): void {
-  if (result.valid !== true) throw new Error(result.message);
-}
-
-function workItemId(runId: string, designNodeId: string): string {
-  return `${runId}:${designNodeId}`;
-}
-
-function clone<T>(value: T): T {
-  return structuredClone(value);
-}
-
-function updateItem(
-  snapshot: CollaborationRunSnapshot,
-  item: CollaborationWorkItem,
-  timestamp: string,
-): CollaborationRunSnapshot {
-  return aggregateRun({
-    ...snapshot,
-    workItems: snapshot.workItems.map((candidate) =>
-      candidate.id === item.id ? item : candidate
-    ),
-    revision: snapshot.revision + 1,
-    updatedAt: timestamp,
-  });
-}
-
-function aggregateRun(snapshot: CollaborationRunSnapshot): CollaborationRunSnapshot {
-  if (snapshot.status === 'canceled' || snapshot.status === 'paused') {
-    return snapshot;
-  }
-  if (
-    snapshot.workItems.length > 0
-    && snapshot.workItems.every((item) => item.status === 'completed')
-  ) {
-    return { ...snapshot, terminalStatus: 'completed' };
-  }
-  if (snapshot.workItems.some((item) => item.status === 'failed')) {
-    return { ...snapshot, terminalStatus: 'failed' };
-  }
-  return { ...snapshot, status: 'running' };
-}
-
-function createWorkItems(
-  contract: SolutionExecutionContract,
-  binding: SolutionTaskBinding,
-  inputRefs: readonly string[],
-): CollaborationWorkItem[] {
-  const agentById = new Map(contract.agents.map((agent) => [agent.agentId, agent]));
-  const skillById = new Map(contract.skills.map((skill) => [skill.skillId, skill]));
-  return contract.topology.nodes.map((node) => {
-    const incoming = contract.topology.edges
-      .filter((edge) => edge.toNodeId === node.id)
-      .map((edge) => edge.factType.factTypeId);
-    const outputs = node.kind === 'agent'
-      ? agentById.get(node.contractRef)?.outputs
-      : skillById.get(node.contractRef)?.outputs;
-    return {
-      id: workItemId(binding.runId, node.id),
-      binding,
-      designNodeId: node.id,
-      assignedAgentId: node.kind === 'agent' ? node.contractRef : '',
-      skillRefs: node.kind === 'skill' ? [node.contractRef] : [],
-      dependsOn: contract.topology.edges
-        .filter((edge) => edge.toNodeId === node.id)
-        .map((edge) => workItemId(binding.runId, edge.fromNodeId)),
-      inputRefs: incoming.length ? incoming : inputRefs,
-      outputRefs: (outputs ?? []).map(({ factType }) => factType.factTypeId),
-      status: 'pending',
-      revision: 0,
-      leaseEpoch: 0,
-      attempts: [],
-    };
-  });
-}
-
-export class FileCollaborationMutationLock
-implements CollaborationMutationLockPort {
-  constructor(
-    private readonly dataRoot: string,
-    private readonly timeoutMs = 5_000,
-    private readonly retryMs = 10,
-  ) {}
-
-  async withLock<T>(key: string, operation: () => Promise<T>): Promise<T> {
-    identifier(key, 'lock key');
-    const lockRoot = path.join(this.dataRoot, '.collaboration-locks');
-    await fs.mkdir(lockRoot, { recursive: true });
-    const lockPath = path.join(lockRoot, `${key}.lock`);
-    const startedAt = Date.now();
-    let handle: FileHandle | undefined;
-    while (!handle) {
-      try {
-        handle = await fs.open(lockPath, 'wx');
-        await handle.writeFile(JSON.stringify({
-          pid: process.pid,
-          createdAt: new Date().toISOString(),
-        }));
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-        if (Date.now() - startedAt >= this.timeoutMs) {
-          const stat = await fs.stat(lockPath).catch(() => undefined);
-          if (stat && Date.now() - stat.mtimeMs >= this.timeoutMs) {
-            await fs.unlink(lockPath).catch((unlinkError: unknown) => {
-              if ((unlinkError as NodeJS.ErrnoException).code !== 'ENOENT') {
-                throw unlinkError;
-              }
-            });
-            continue;
-          }
-          throw new CollaborationMutationConflictError(
-            `Timed out acquiring mutation lock for ${key}`,
-          );
-        }
-        await new Promise<void>((resolve) => {
-          setTimeout(resolve, this.retryMs);
-        });
-      }
-    }
-    try {
-      return await operation();
-    } finally {
-      await handle.close();
-      await fs.unlink(lockPath).catch((error: unknown) => {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-      });
-    }
-  }
-}
-
-interface StageClaimResult {
-  readonly state: 'claimed' | 'busy' | 'done';
-  readonly snapshot: CollaborationRunSnapshot;
-  readonly claim?: WorkItemStageClaim;
-}
+  AcceptedExternalOutputInput,
+  AcceptedExternalOutputResult,
+  AttemptStatus,
+  CollaborationExecutionDependencies,
+  CollaborationExecutionPort,
+  CollaborationMutationLockPort,
+  CollaborationRunSnapshot,
+  CollaborationRunStatus,
+  CollaborationWorkItem,
+  EvidenceReceipt,
+  ListWorkItemHandoffCandidatesInput,
+  ResolveWorkItemHitlInput,
+  SolutionTaskBinding,
+  StartCollaborationRunInput,
+  WorkItemAttempt,
+  WorkItemExecutionRequest,
+  WorkItemHandoffInput,
+  WorkItemHandoffReceipt,
+  WorkItemHandoffResult,
+  WorkItemHitlRequest,
+  WorkItemStatus,
+  WorkerReceipt,
+  WorkItemHandoffCandidate,
+} from './contract-execution-types';
+import {
+  DEFAULT_CLAIM_TTL_MS,
+  assertIntegrity,
+  clone,
+  createWorkItems,
+  identifier,
+  nonEmpty,
+  TERMINAL_ATTEMPT_STATUSES,
+  updateItem,
+  CollaborationMutationConflictError,
+  CollaborationReconciliationError,
+  CollaborationWorkItemHandoffError,
+} from './contract-execution-shared';
+import { FileCollaborationMutationLock } from './contract-execution-lock';
+import * as ops from './contract-execution-ops';
+import {
+  runClaimAttempt,
+  runMutate,
+  runPath,
+  runReadRun,
+  runTransition,
+  type ContractExecutionCtx,
+} from './contract-execution-ledger';
+import { runAdvanceLedger } from './contract-execution-advance';
+import { runCommitAttemptStage, runCommitEvidence } from './contract-execution-stages';
 
 export class CollaborationExecutionStore implements CollaborationExecutionPort {
   private readonly mutationLock: CollaborationMutationLockPort;
@@ -631,6 +79,39 @@ export class CollaborationExecutionStore implements CollaborationExecutionPort {
   }
 
   private readonly observers = new Map<string, { observer: RunObserver; users: number }>();
+
+  private createCtx(): ContractExecutionCtx {
+    const ctx: ContractExecutionCtx = {
+      contractPort: this.contractPort,
+      dataRoot: this.dataRoot,
+      dependencies: this.dependencies,
+      mutationLock: this.mutationLock,
+      hostId: this.hostId,
+      claimTtlMs: this.claimTtlMs,
+      clock: this.clock,
+      now: () => this.now(),
+      readRun: (runId) => runReadRun(ctx, runId),
+      observers: this.observers,
+    };
+    return ctx;
+  }
+
+  private mutate(
+    runId: string,
+    operation: (
+      snapshot: CollaborationRunSnapshot,
+    ) => CollaborationRunSnapshot | Promise<CollaborationRunSnapshot>,
+  ): Promise<CollaborationRunSnapshot> {
+    return runMutate(this.createCtx(), runId, operation);
+  }
+
+  private readRun(runId: string): Promise<CollaborationRunSnapshot> {
+    return runReadRun(this.createCtx(), runId);
+  }
+
+  private runPath(projectId: string, runId: string): string {
+    return runPath(this.createCtx(), projectId, runId);
+  }
 
   async start(input: StartCollaborationRunInput): Promise<CollaborationRunSnapshot> {
     for (const [field, value] of Object.entries(input)) {
@@ -722,7 +203,7 @@ export class CollaborationExecutionStore implements CollaborationExecutionPort {
     const matches = await Promise.all(files
       .filter((file) => file.isFile() && file.name.endsWith('.json'))
       .map(async (file) => {
-        const snapshot = this.normalizeSnapshot(JSON.parse(
+        const snapshot = ops.normalizeSnapshot(JSON.parse(
           await fs.readFile(path.join(
             this.dataRoot,
             'projects',
@@ -759,8 +240,8 @@ export class CollaborationExecutionStore implements CollaborationExecutionPort {
         'The run does not belong to the requested project',
       );
     }
-    const item = this.item(snapshot, input.workItemId);
-    return this.handoffCandidates(snapshot, item);
+    const item = ops.item(snapshot, input.workItemId);
+    return ops.handoffCandidates(snapshot, item);
   }
 
   async handoffWorkItem(input: WorkItemHandoffInput): Promise<WorkItemHandoffResult> {
@@ -808,7 +289,7 @@ export class CollaborationExecutionStore implements CollaborationExecutionPort {
           'A terminal collaboration run cannot be handed off',
         );
       }
-      const item = this.item(current, input.workItemId);
+      const item = ops.item(current, input.workItemId);
       if (current.revision !== input.expectedRunRevision
         || item.revision !== input.expectedWorkItemRevision) {
         throw new CollaborationWorkItemHandoffError(
@@ -834,7 +315,7 @@ export class CollaborationExecutionStore implements CollaborationExecutionPort {
           'The target Agent already owns this WorkItem',
         );
       }
-      const authorized = this.handoffCandidates(current, item)
+      const authorized = ops.handoffCandidates(current, item)
         .some(({ agentId }) => agentId === input.targetAgentId);
       if (!authorized) {
         throw new CollaborationWorkItemHandoffError(
@@ -928,7 +409,7 @@ export class CollaborationExecutionStore implements CollaborationExecutionPort {
     identifier(input.workItemId, 'workItemId');
     identifier(input.requestId, 'requestId');
     nonEmpty(input.payloadHash, 'payloadHash');
-    const attemptId = await this.claimAttempt(input);
+    const attemptId = await runClaimAttempt(this.createCtx(), input);
     return this.advance(input.runId, input.workItemId, attemptId);
   }
 
@@ -956,7 +437,7 @@ export class CollaborationExecutionStore implements CollaborationExecutionPort {
       nonEmpty(input.editedPayloadHash ?? '', 'editedPayloadHash');
     }
     const snapshot = await this.mutate(input.runId, (current) => {
-      const located = this.findHitl(current, input.requestId);
+      const located = ops.findHitl(current, input.requestId);
       const { item, attempt, request } = located;
       if (
         attempt.attemptId !== input.attemptId
@@ -975,7 +456,7 @@ export class CollaborationExecutionStore implements CollaborationExecutionPort {
         }
         return current;
       }
-      this.assertRunning(current);
+      ops.assertRunning(current);
       const timestamp = this.now();
       const resolved: WorkItemHitlRequest = {
         ...request,
@@ -1026,7 +507,7 @@ export class CollaborationExecutionStore implements CollaborationExecutionPort {
       return updateItem(current, nextItem, timestamp);
     });
     if (input.decision === 'approve') {
-      const located = this.findHitl(snapshot, input.requestId);
+      const located = ops.findHitl(snapshot, input.requestId);
       if (located.request.trigger !== 'on_failure') {
         return this.advance(input.runId, located.item.id, located.attempt.attemptId);
       }
@@ -1041,14 +522,15 @@ export class CollaborationExecutionStore implements CollaborationExecutionPort {
     leaseEpoch: number,
     receipt: WorkerReceipt,
   ): Promise<CollaborationRunSnapshot> {
-    return this.commitAttemptStage(
+    return runCommitAttemptStage(
+      this.createCtx(),
       runId,
       workItemId,
       attemptId,
       leaseEpoch,
       undefined,
       (attempt) => {
-        this.assertWorkerReceipt(receipt);
+        ops.assertWorkerReceipt(receipt);
         return {
           ...attempt,
           status: 'worker_received',
@@ -1071,8 +553,8 @@ export class CollaborationExecutionStore implements CollaborationExecutionPort {
           'The run does not belong to the requested project',
         );
       }
-      this.assertRunning(current);
-      const item = this.item(current, input.workItemId);
+      ops.assertRunning(current);
+      const item = ops.item(current, input.workItemId);
       let attempt = item.attempts.find(
         (candidate) => candidate.attemptId === input.attemptId,
       );
@@ -1176,8 +658,8 @@ export class CollaborationExecutionStore implements CollaborationExecutionPort {
       return updateItem(current, nextItem, timestamp);
     });
 
-    const item = this.item(snapshot, input.workItemId);
-    const attempt = this.attempt(item, input.attemptId);
+    const item = ops.item(snapshot, input.workItemId);
+    const attempt = ops.attempt(item, input.attemptId);
     if (!attempt.evidenceReceipt) {
       if (!this.dependencies.evidenceSink) {
         throw new CollaborationReconciliationError(
@@ -1185,14 +667,14 @@ export class CollaborationExecutionStore implements CollaborationExecutionPort {
           'The Evidence sink is unavailable for accepted output reconciliation',
         );
       }
-      const evidenceHash = this.evidenceHash(snapshot, item, attempt);
+      const evidenceHash = ops.evidenceHash(snapshot, item, attempt);
       let evidence: EvidenceReceipt;
       try {
         evidence = await this.dependencies.evidenceSink.record({
           run: snapshot,
           workItem: item,
           attempt,
-          executionKey: this.executionKey(snapshot, item, attempt),
+          executionKey: ops.executionKey(snapshot, item, attempt),
           idempotencyKey: `${input.requestId}:evidence`,
           workerReceipt: input.workerReceipt,
           verifierResult: input.verifierResult,
@@ -1211,7 +693,8 @@ export class CollaborationExecutionStore implements CollaborationExecutionPort {
           'The Evidence result is unknown; manual reconciliation is required',
         );
       }
-      snapshot = await this.commitEvidence(
+      snapshot = await runCommitEvidence(
+        this.createCtx(),
         snapshot.runId,
         item.id,
         attempt.attemptId,
@@ -1219,8 +702,8 @@ export class CollaborationExecutionStore implements CollaborationExecutionPort {
         evidence,
       );
     }
-    const completed = this.item(snapshot, input.workItemId);
-    const completedAttempt = this.attempt(completed, input.attemptId);
+    const completed = ops.item(snapshot, input.workItemId);
+    const completedAttempt = ops.attempt(completed, input.attemptId);
     return {
       status: recovered ? 'recovered' : 'accepted',
       snapshot,
@@ -1230,75 +713,12 @@ export class CollaborationExecutionStore implements CollaborationExecutionPort {
     };
   }
 
-  private async claimAttempt(input: WorkItemExecutionRequest): Promise<string> {
-    let attemptId = '';
-    await this.mutate(input.runId, (snapshot) => {
-      this.assertRunning(snapshot);
-      const item = this.item(snapshot, input.workItemId);
-      if (!item.dependsOn.every(
-        (id) => this.item(snapshot, id).status === 'completed',
-      )) {
-        throw new Error('WorkItem dependencies are not satisfied');
-      }
-      const matching = item.attempts.find(
-        (attempt) => attempt.requestId === input.requestId,
-      );
-      if (matching && matching.payloadHash !== input.payloadHash) {
-        throw new Error('Execution request ID conflicts with an existing payload');
-      }
-      if (matching) {
-        attemptId = matching.attemptId;
-        return snapshot;
-      }
-      if (item.status === 'completed') {
-        throw new Error('WorkItem is already completed');
-      }
-      const budgetReason = this.newAttemptBudgetFailure(snapshot, item);
-      if (budgetReason) {
-        const timestamp = this.now();
-        const nextItem: CollaborationWorkItem = {
-          ...item,
-          status: 'failed',
-          revision: item.revision + 1,
-        };
-        return {
-          ...updateItem(snapshot, nextItem, timestamp),
-          failureReason: budgetReason,
-        };
-      }
-      const leaseEpoch = item.leaseEpoch + 1;
-      const timestamp = this.now();
-      const attempt: WorkItemAttempt = {
-        attemptId: `${item.id}:attempt-${leaseEpoch}`,
-        leaseEpoch,
-        requestId: input.requestId,
-        payloadHash: input.payloadHash,
-        status: 'intent',
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      };
-      attemptId = attempt.attemptId;
-      const nextItem: CollaborationWorkItem = {
-        ...item,
-        status: 'running',
-        revision: item.revision + 1,
-        leaseEpoch,
-        attempts: [...item.attempts, attempt],
-      };
-      return updateItem(snapshot, nextItem, timestamp);
-    });
-    if (!attemptId) {
-      const current = await this.readRun(input.runId);
-      const item = this.item(current, input.workItemId);
-      const existing = item.attempts.find(
-        (attempt) => attempt.requestId === input.requestId,
-      );
-      if (!existing) {
-        throw new Error(current.failureReason ?? 'WorkItem budget exhausted');
-      }
-      attemptId = existing.attemptId;
-    }
-    return attemptId;
+  private transition(
+    runId: string,
+    status: CollaborationRunStatus,
+    allowed: readonly CollaborationRunStatus[],
+  ): Promise<CollaborationRunSnapshot> {
+    return runTransition(this.createCtx(), runId, status, allowed);
   }
 
   private async advance(runId: string, workItemId: string, attemptId: string): Promise<CollaborationRunSnapshot> {
@@ -1310,7 +730,7 @@ export class CollaborationExecutionStore implements CollaborationExecutionPort {
     }
     active.users += 1;
     try {
-      return await this.advanceLedger(runId, workItemId, attemptId);
+      return await runAdvanceLedger(this.createCtx(), runId, workItemId, attemptId);
     } finally {
       active.users -= 1;
       if (active.users === 0) {
@@ -1320,1292 +740,63 @@ export class CollaborationExecutionStore implements CollaborationExecutionPort {
     }
   }
 
-  private async advanceLedger(
-    runId: string,
-    workItemId: string,
-    attemptId: string,
-  ): Promise<CollaborationRunSnapshot> {
-    for (let guard = 0; guard < 12; guard += 1) {
-      let snapshot = await this.readRun(runId);
-      if (snapshot.status !== 'running') return snapshot;
-      let item = this.item(snapshot, workItemId);
-      let attempt = this.attempt(item, attemptId);
-      if (TERMINAL_ATTEMPT_STATUSES.has(attempt.status)) return snapshot;
-      if (attempt.status === 'waiting_hitl') {
-        await this.publishPendingHitl(snapshot, attempt);
-        return this.readRun(runId);
-      }
-      const runtimeBudget = this.runtimeBudgetFailure(snapshot);
-      if (runtimeBudget) {
-        return this.failBudget(snapshot, item, attempt, runtimeBudget);
-      }
-
-      if (!attempt.readinessReceipt) {
-        if (!this.dependencies.readiness) {
-          return this.recordUnavailable(
-            snapshot,
-            item,
-            attempt,
-            'READINESS_UNAVAILABLE',
-          );
-        }
-        const claim = await this.claimStage(
-          runId,
-          item.id,
-          attempt.attemptId,
-          'readiness',
-        );
-        if (claim.state !== 'claimed') return claim.snapshot;
-        const claimed = this.locate(claim.snapshot, item.id, attempt.attemptId);
-        let result: WorkItemReadinessResult;
-        try {
-          result = await this.dependencies.readiness.check({
-            run: claim.snapshot,
-            workItem: claimed.item,
-            attempt: claimed.attempt,
-            requiredInputRefs: claimed.item.inputRefs,
-            requiredPermissions: claim.snapshot.contract.permissions.allowed,
-          });
-        } catch (error) {
-          return this.stageFailure(
-            claim.snapshot,
-            claimed.item,
-            claimed.attempt,
-            claim.claim!,
-            `READINESS_FAILED:${this.errorCode(error)}`,
-          );
-        }
-        snapshot = await this.commitReadiness(
-          runId,
-          claimed.item.id,
-          claimed.attempt.attemptId,
-          claimed.attempt.leaseEpoch,
-          claim.claim!,
-          result,
-        );
-        item = this.item(snapshot, workItemId);
-        attempt = this.attempt(item, attemptId);
-        if (attempt.readinessReceipt?.status !== 'ready') return snapshot;
-        continue;
-      }
-
-      const beforePolicy = this.hitlPolicy(snapshot, item, 'before_execution');
-      if (
-        beforePolicy
-        && !this.resolvedHitl(attempt, beforePolicy.id, 'approve')
-      ) {
-        snapshot = await this.ensureHitl(snapshot, item, attempt, beforePolicy);
-        await this.publishPendingHitl(
-          snapshot,
-          this.attempt(this.item(snapshot, item.id), attempt.attemptId),
-        );
-        return snapshot;
-      }
-
-      if (!attempt.workerReceipt) {
-        if (!this.dependencies.worker) {
-          return this.recordUnavailable(
-            snapshot,
-            item,
-            attempt,
-            'WORKER_UNAVAILABLE',
-          );
-        }
-        const claim = await this.claimStage(runId, item.id, attempt.attemptId, 'worker');
-        if (claim.state !== 'claimed') return claim.snapshot;
-        const claimed = this.locate(claim.snapshot, item.id, attempt.attemptId);
-        let receipt: WorkerReceipt;
-        try {
-          receipt = await this.dependencies.worker.execute({
-            run: claim.snapshot,
-            workItem: claimed.item,
-            attempt: claimed.attempt,
-            executionKey: this.executionKey(
-              claim.snapshot,
-              claimed.item,
-              claimed.attempt,
-            ),
-            idempotencyKey: claim.claim!.idempotencyKey,
-          });
-          this.assertWorkerReceipt(receipt);
-        } catch (error) {
-          return this.stageFailure(
-            claim.snapshot,
-            claimed.item,
-            claimed.attempt,
-            claim.claim!,
-            `WORKER_RECEIPT_UNKNOWN:${this.errorCode(error)}`,
-          );
-        }
-        snapshot = await this.commitWorker(
-          runId,
-          claimed.item.id,
-          claimed.attempt.attemptId,
-          claimed.attempt.leaseEpoch,
-          claim.claim!,
-          receipt,
-        );
-        continue;
-      }
-
-      if (!attempt.verifierResult) {
-        if (!this.dependencies.verifier) {
-          return this.recordUnavailable(
-            snapshot,
-            item,
-            attempt,
-            'VERIFIER_UNAVAILABLE',
-          );
-        }
-        const claim = await this.claimStage(
-          runId,
-          item.id,
-          attempt.attemptId,
-          'verifier',
-        );
-        if (claim.state !== 'claimed') return claim.snapshot;
-        const claimed = this.locate(claim.snapshot, item.id, attempt.attemptId);
-        let result: VerifierResult;
-        try {
-          result = await this.dependencies.verifier.verify({
-            run: claim.snapshot,
-            workItem: claimed.item,
-            attempt: claimed.attempt,
-            executionKey: this.executionKey(
-              claim.snapshot,
-              claimed.item,
-              claimed.attempt,
-            ),
-            idempotencyKey: claim.claim!.idempotencyKey,
-            workerReceipt: claimed.attempt.workerReceipt!,
-          });
-        } catch (error) {
-          return this.stageFailure(
-            claim.snapshot,
-            claimed.item,
-            claimed.attempt,
-            claim.claim!,
-            `VERIFIER_FAILED:${this.errorCode(error)}`,
-          );
-        }
-        snapshot = await this.commitVerification(
-          runId,
-          claimed.item.id,
-          claimed.attempt.attemptId,
-          claimed.attempt.leaseEpoch,
-          claim.claim!,
-          result,
-        );
-        item = this.item(snapshot, workItemId);
-        attempt = this.attempt(item, attemptId);
-        if (attempt.verifierResult?.status !== 'passed') {
-          return this.ensureFailureHitlIfConfigured(snapshot, item, attempt);
-        }
-        continue;
-      }
-
-      if (
-        !this.validPassedVerification(
-          attempt.verifierResult,
-          snapshot.contract.contractHash,
-        )
-      ) {
-        return this.recordFailure(
-          snapshot,
-          item,
-          attempt,
-          'blocked',
-          'VERIFIER_RESULT_INCOMPLETE',
-        );
-      }
-
-      const afterPolicy = this.hitlPolicy(snapshot, item, 'after_verification');
-      if (
-        afterPolicy
-        && !this.resolvedHitl(attempt, afterPolicy.id, 'approve')
-      ) {
-        snapshot = await this.ensureHitl(snapshot, item, attempt, afterPolicy);
-        await this.publishPendingHitl(
-          snapshot,
-          this.attempt(this.item(snapshot, item.id), attempt.attemptId),
-        );
-        return snapshot;
-      }
-
-      if (!attempt.outcomeReceipt) {
-        if (!this.dependencies.outcome) {
-          return this.recordUnavailable(
-            snapshot,
-            item,
-            attempt,
-            'OUTCOME_COMMIT_UNAVAILABLE',
-          );
-        }
-        const claim = await this.claimStage(runId, item.id, attempt.attemptId, 'outcome');
-        if (claim.state !== 'claimed') return claim.snapshot;
-        const claimed = this.locate(claim.snapshot, item.id, attempt.attemptId);
-        let receipt: OutcomeReceipt;
-        try {
-          receipt = await this.dependencies.outcome.commit({
-            run: claim.snapshot,
-            workItem: claimed.item,
-            attempt: claimed.attempt,
-            executionKey: this.executionKey(
-              claim.snapshot,
-              claimed.item,
-              claimed.attempt,
-            ),
-            workerReceipt: claimed.attempt.workerReceipt!,
-            verifierResult: claimed.attempt.verifierResult!,
-            idempotencyKey: claim.claim!.idempotencyKey,
-          });
-        } catch (error) {
-          return this.stageFailure(
-            claim.snapshot,
-            claimed.item,
-            claimed.attempt,
-            claim.claim!,
-            `OUTCOME_RECEIPT_UNKNOWN:${this.errorCode(error)}`,
-          );
-        }
-        snapshot = await this.commitOutcome(
-          runId,
-          claimed.item.id,
-          claimed.attempt.attemptId,
-          claimed.attempt.leaseEpoch,
-          claim.claim!,
-          receipt,
-        );
-        item = this.item(snapshot, workItemId);
-        attempt = this.attempt(item, attemptId);
-        if (attempt.outcomeReceipt?.status !== 'accepted') {
-          return this.ensureFailureHitlIfConfigured(snapshot, item, attempt);
-        }
-        continue;
-      }
-
-      if (!attempt.evidenceReceipt) {
-        if (!this.dependencies.evidenceSink) {
-          return this.recordUnavailable(
-            snapshot,
-            item,
-            attempt,
-            'EVIDENCE_SINK_UNAVAILABLE',
-          );
-        }
-        const claim = await this.claimStage(runId, item.id, attempt.attemptId, 'evidence');
-        if (claim.state !== 'claimed') return claim.snapshot;
-        const claimed = this.locate(claim.snapshot, item.id, attempt.attemptId);
-        const evidenceHash = this.evidenceHash(
-          claim.snapshot,
-          claimed.item,
-          claimed.attempt,
-        );
-        let receipt: EvidenceReceipt;
-        try {
-          receipt = await this.dependencies.evidenceSink.record({
-            run: claim.snapshot,
-            workItem: claimed.item,
-            attempt: claimed.attempt,
-            executionKey: this.executionKey(
-              claim.snapshot,
-              claimed.item,
-              claimed.attempt,
-            ),
-            workerReceipt: claimed.attempt.workerReceipt!,
-            verifierResult: claimed.attempt.verifierResult!,
-            outcomeReceipt: claimed.attempt.outcomeReceipt!,
-            evidenceHash,
-            idempotencyKey: claim.claim!.idempotencyKey,
-          });
-        } catch (error) {
-          return this.stageFailure(
-            claim.snapshot,
-            claimed.item,
-            claimed.attempt,
-            claim.claim!,
-            `EVIDENCE_RECEIPT_UNKNOWN:${this.errorCode(error)}`,
-          );
-        }
-        if (!receipt.receiptId || receipt.status !== 'accepted') {
-          return this.stageFailure(
-            claim.snapshot,
-            claimed.item,
-            claimed.attempt,
-            claim.claim!,
-            'EVIDENCE_RECEIPT_UNKNOWN',
-          );
-        }
-        snapshot = await this.commitEvidence(
-          runId,
-          claimed.item.id,
-          claimed.attempt.attemptId,
-          claimed.attempt.leaseEpoch,
-          receipt,
-          claim.claim!,
-        );
-        continue;
-      }
-      return snapshot;
-    }
-    throw new Error('WorkItem stage guard exhausted');
-  }
-
-  private async claimStage(
-    runId: string,
-    workItemIdValue: string,
-    attemptId: string,
-    stage: WorkItemExecutionStage,
-  ): Promise<StageClaimResult> {
-    let result: StageClaimResult | undefined;
-    await this.mutate(runId, (snapshot) => {
-      this.assertRunning(snapshot);
-      const item = this.item(snapshot, workItemIdValue);
-      const attempt = this.attempt(item, attemptId);
-      this.assertCurrentLease(item, attempt);
-      if (this.stageDone(attempt, stage)) {
-        result = { state: 'done', snapshot };
-        return snapshot;
-      }
-      const timestamp = this.now();
-      if (
-        attempt.stageClaim
-        && new Date(attempt.stageClaim.expiresAt).getTime()
-          > new Date(timestamp).getTime()
-      ) {
-        result = { state: 'busy', snapshot };
-        return snapshot;
-      }
-      const claim: WorkItemStageClaim = {
-        stage,
-        claimId: `claim-${randomUUID()}`,
-        hostId: this.hostId,
-        expectedWorkItemRevision: item.revision + 1,
-        claimedAt: timestamp,
-        expiresAt: new Date(
-          new Date(timestamp).getTime() + this.claimTtlMs,
-        ).toISOString(),
-        idempotencyKey:
-          `${snapshot.runId}:${item.id}:${attempt.attemptId}:${stage}`,
-      };
-      const nextAttempt: WorkItemAttempt = {
-        ...attempt,
-        stageClaim: claim,
-        updatedAt: timestamp,
-      };
-      const nextItem: CollaborationWorkItem = {
-        ...item,
-        revision: item.revision + 1,
-        attempts: item.attempts.map((candidate) =>
-          candidate.attemptId === attemptId ? nextAttempt : candidate
-        ),
-      };
-      const next = updateItem(snapshot, nextItem, timestamp);
-      result = { state: 'claimed', snapshot: next, claim };
-      return next;
-    });
-    return result ?? {
-      state: 'busy',
-      snapshot: await this.readRun(runId),
-    };
-  }
-
-  private async commitReadiness(
-    runId: string,
-    workItemIdValue: string,
-    attemptId: string,
-    leaseEpoch: number,
-    claim: WorkItemStageClaim,
-    result: WorkItemReadinessResult,
-  ): Promise<CollaborationRunSnapshot> {
-    const timestamp = this.now();
-    const inputRefs = result.inputRefs ?? [];
-    const grantedPermissions = result.grantedPermissions ?? [];
-    return this.commitAttemptStage(
-      runId,
-      workItemIdValue,
-      attemptId,
-      leaseEpoch,
-      claim,
-      (attempt, snapshot, item) => {
-        const permissionsReady = this.allIncluded(
-          snapshot.contract.permissions.allowed,
-          grantedPermissions,
-        );
-        const inputsReady = this.allIncluded(item.inputRefs, inputRefs);
-        const accepted =
-          result.status === 'ready'
-          && result.targetAvailable
-          && permissionsReady
-          && inputsReady;
-        return {
-          ...attempt,
-          status: accepted ? 'ready' : 'blocked',
-          readinessReceipt: {
-            receiptId: result.receiptId,
-            status: accepted ? 'ready' : 'blocked',
-            checkedAt: timestamp,
-            inputRefs,
-            grantedPermissions,
-            targetAvailable: result.targetAvailable ?? false,
-            stateRef: result.stateRef,
-            reason: accepted
-              ? undefined
-              : (result.status === 'blocked' ? result.reason : undefined)
-                ?? 'READINESS_REQUIREMENTS_NOT_SATISFIED',
-          },
-          stageClaim: undefined,
-          reason: accepted
-            ? undefined
-            : (result.status === 'blocked' ? result.reason : undefined)
-              ?? 'READINESS_REQUIREMENTS_NOT_SATISFIED',
-        };
-      },
-      result.status === 'ready' ? 'running' : 'blocked',
-    );
-  }
-
-  private async commitWorker(
-    runId: string,
-    workItemIdValue: string,
-    attemptId: string,
-    leaseEpoch: number,
-    claim: WorkItemStageClaim,
-    receipt: WorkerReceipt,
-  ): Promise<CollaborationRunSnapshot> {
-    try {
-      return await this.commitAttemptStage(
-        runId,
-        workItemIdValue,
-        attemptId,
-        leaseEpoch,
-        claim,
-        (attempt, snapshot, item) => {
-          const budgetReason = this.receiptBudgetFailure(snapshot, item, receipt);
-          return {
-            ...attempt,
-            status: budgetReason ? 'failed' : 'worker_received',
-            workerReceipt: receipt,
-            stageClaim: undefined,
-            reason: budgetReason,
-          };
-        },
-        'running',
-      );
-    } catch (error) {
-      if (!(error instanceof CollaborationMutationConflictError)) throw error;
-      const current = await this.readRun(runId);
-      const recorded = this.attempt(
-        this.item(current, workItemIdValue),
-        attemptId,
-      ).workerReceipt;
-      if (recorded?.receiptId === receipt.receiptId) return current;
-      throw error;
-    }
-  }
-
-  private async commitVerification(
-    runId: string,
-    workItemIdValue: string,
-    attemptId: string,
-    leaseEpoch: number,
-    claim: WorkItemStageClaim,
-    result: VerifierResult,
-  ): Promise<CollaborationRunSnapshot> {
-    let status: AttemptStatus;
-    let itemStatus: WorkItemStatus;
-    let reason = result.reason;
-    if (!result || result.status === 'placeholder') {
-      status = 'blocked';
-      itemStatus = 'blocked';
-      reason = 'VERIFIER_PLACEHOLDER';
-    } else if (result.status === 'failed') {
-      status = 'revision';
-      itemStatus = 'revision';
-    } else {
-      status = 'outcome_pending';
-      itemStatus = 'verifying';
-    }
-    return this.commitAttemptStage(
-      runId,
-      workItemIdValue,
-      attemptId,
-      leaseEpoch,
-      claim,
-      (attempt) => ({
-        ...attempt,
-        status,
-        verifierResult: result,
-        stageClaim: undefined,
-        reason,
-      }),
-      itemStatus,
-    );
-  }
-
-  private async commitOutcome(
-    runId: string,
-    workItemIdValue: string,
-    attemptId: string,
-    leaseEpoch: number,
-    claim: WorkItemStageClaim,
-    receipt: OutcomeReceipt,
-  ): Promise<CollaborationRunSnapshot> {
-    const accepted = Boolean(
-      receipt
-      && receipt.receiptId
-      && receipt.status === 'accepted'
-      && receipt.operationRef,
-    );
-    return this.commitAttemptStage(
-      runId,
-      workItemIdValue,
-      attemptId,
-      leaseEpoch,
-      claim,
-      (attempt) => ({
-        ...attempt,
-        status: accepted ? 'evidence_pending' : 'needs_review',
-        outcomeReceipt: receipt,
-        stageClaim: undefined,
-        reason: accepted
-          ? undefined
-          : receipt.reason ?? 'OUTCOME_RECEIPT_UNKNOWN',
-      }),
-      accepted ? 'verifying' : 'needs_review',
-    );
-  }
-
-  private async commitEvidence(
-    runId: string,
-    workItemIdValue: string,
-    attemptId: string,
-    leaseEpoch: number,
-    receipt: EvidenceReceipt,
-    claim?: WorkItemStageClaim,
-  ): Promise<CollaborationRunSnapshot> {
-    return this.commitAttemptStage(
-      runId,
-      workItemIdValue,
-      attemptId,
-      leaseEpoch,
-      claim,
-      (attempt) => ({
-        ...attempt,
-        status: 'completed',
-        evidenceReceipt: receipt,
-        stageClaim: undefined,
-      }),
-      'completed',
-    );
-  }
-
-  private async commitAttemptStage(
-    runId: string,
-    workItemIdValue: string,
-    attemptId: string,
-    leaseEpoch: number,
-    claim: WorkItemStageClaim | undefined,
-    change: (
-      attempt: WorkItemAttempt,
-      snapshot: CollaborationRunSnapshot,
-      item: CollaborationWorkItem,
-    ) => WorkItemAttempt,
-    requestedItemStatus: WorkItemStatus,
-  ): Promise<CollaborationRunSnapshot> {
-    return this.mutate(runId, (snapshot) => {
-      this.assertRunning(snapshot);
-      const item = this.item(snapshot, workItemIdValue);
-      const attempt = this.attempt(item, attemptId);
-      if (attempt.leaseEpoch !== leaseEpoch || item.leaseEpoch !== leaseEpoch) {
-        throw new CollaborationWorkItemHandoffError(
-          'STALE_LEASE_EPOCH',
-          'Stale WorkItem lease epoch',
-        );
-      }
-      if (claim) this.assertClaim(item, attempt, claim);
-      const timestamp = this.now();
-      const nextAttempt = { ...change(attempt, snapshot, item), updatedAt: timestamp };
-      const itemStatus = this.itemStatusForAttempt(
-        nextAttempt.status,
-        requestedItemStatus,
-      );
-      const nextItem: CollaborationWorkItem = {
-        ...item,
-        status: itemStatus,
-        revision: item.revision + 1,
-        attempts: item.attempts.map((candidate) =>
-          candidate.attemptId === attemptId ? nextAttempt : candidate
-        ),
-      };
-      return updateItem(snapshot, nextItem, timestamp);
-    });
-  }
-
-  private async stageFailure(
-    snapshot: CollaborationRunSnapshot,
-    item: CollaborationWorkItem,
-    attempt: WorkItemAttempt,
-    claim: WorkItemStageClaim,
-    reason: string,
-  ): Promise<CollaborationRunSnapshot> {
-    const policy = this.hitlPolicy(snapshot, item, 'on_failure');
-    const failed = await this.commitAttemptStage(
-      snapshot.runId,
-      item.id,
-      attempt.attemptId,
-      attempt.leaseEpoch,
-      claim,
-      (current) => ({
-        ...current,
-        status: policy ? 'waiting_hitl' : 'needs_review',
-        stageClaim: undefined,
-        reason,
-      }),
-      policy ? 'waiting_hitl' : 'needs_review',
-    );
-    if (!policy) return failed;
-    const currentItem = this.item(failed, item.id);
-    const waiting = await this.ensureHitl(
-      failed,
-      currentItem,
-      this.attempt(currentItem, attempt.attemptId),
-      policy,
-    );
-    await this.publishPendingHitl(
-      waiting,
-      this.attempt(this.item(waiting, item.id), attempt.attemptId),
-    );
-    return waiting;
-  }
-
-  private async ensureFailureHitlIfConfigured(
-    snapshot: CollaborationRunSnapshot,
-    item: CollaborationWorkItem,
-    attempt: WorkItemAttempt,
-  ): Promise<CollaborationRunSnapshot> {
-    const policy = this.hitlPolicy(snapshot, item, 'on_failure');
-    if (!policy) return snapshot;
-    const waiting = await this.ensureHitl(snapshot, item, attempt, policy);
-    await this.publishPendingHitl(
-      waiting,
-      this.attempt(this.item(waiting, item.id), attempt.attemptId),
-    );
-    return waiting;
-  }
-
-  private async ensureHitl(
-    snapshot: CollaborationRunSnapshot,
-    item: CollaborationWorkItem,
-    attempt: WorkItemAttempt,
-    policy: HitlPolicy,
-  ): Promise<CollaborationRunSnapshot> {
-    const existing = (attempt.hitlRequests ?? []).find(
-      (request) => request.policyId === policy.id
-        && request.trigger === policy.trigger,
-    );
-    if (existing) return snapshot;
-    if (!this.dependencies.hitl) {
-      return this.recordUnavailable(
-        snapshot,
-        item,
-        attempt,
-        'HITL_PORT_UNAVAILABLE',
-      );
-    }
-    return this.mutate(snapshot.runId, (current) => {
-      this.assertRunning(current);
-      const currentItem = this.item(current, item.id);
-      const currentAttempt = this.attempt(currentItem, attempt.attemptId);
-      this.assertCurrentLease(currentItem, currentAttempt);
-      const duplicate = (currentAttempt.hitlRequests ?? []).find(
-        (request) => request.policyId === policy.id
-          && request.trigger === policy.trigger,
-      );
-      if (duplicate) return current;
-      const timestamp = this.now();
-      const request: WorkItemHitlRequest = {
-        requestId:
-          `${current.runId}:${currentItem.id}:${currentAttempt.attemptId}:hitl:${policy.id}`,
-        policyId: policy.id,
-        trigger: policy.trigger,
-        approverRole: policy.approverRole,
-        parentTaskId: current.binding.parentTaskId,
-        parentStepId: current.binding.parentStepId,
-        parentSessionId: current.binding.parentSessionId,
-        workItemId: currentItem.id,
-        attemptId: currentAttempt.attemptId,
-        leaseEpoch: currentAttempt.leaseEpoch,
-        question: this.hitlQuestion(policy.trigger, currentItem),
-        options: ['approve', 'reject', 'edit'],
-        createdAt: timestamp,
-        updatedAt: timestamp,
-        status: 'pending',
-      };
-      const nextAttempt: WorkItemAttempt = {
-        ...currentAttempt,
-        status: 'waiting_hitl',
-        hitlRequests: [...(currentAttempt.hitlRequests ?? []), request],
-        updatedAt: timestamp,
-      };
-      const nextItem: CollaborationWorkItem = {
-        ...currentItem,
-        status: 'waiting_hitl',
-        revision: currentItem.revision + 1,
-        attempts: currentItem.attempts.map((candidate) =>
-          candidate.attemptId === currentAttempt.attemptId
-            ? nextAttempt
-            : candidate
-        ),
-      };
-      return updateItem(current, nextItem, timestamp);
-    });
-  }
-
-  private async publishPendingHitl(
-    snapshot: CollaborationRunSnapshot,
-    attempt: WorkItemAttempt,
-  ): Promise<void> {
-    if (!this.dependencies.hitl) return;
-    const pending = (attempt.hitlRequests ?? []).filter(
-      (request) => request.status === 'pending',
-    );
-    await Promise.all(pending.map((request) =>
-      this.dependencies.hitl!.open({
-        run: snapshot,
-        request,
-        idempotencyKey: request.requestId,
-      })
-    ));
-  }
-
-  private async recordUnavailable(
-    snapshot: CollaborationRunSnapshot,
-    item: CollaborationWorkItem,
-    attempt: WorkItemAttempt,
-    reason: string,
-  ): Promise<CollaborationRunSnapshot> {
-    return this.commitAttemptStage(
-      snapshot.runId,
-      item.id,
-      attempt.attemptId,
-      attempt.leaseEpoch,
-      undefined,
-      (current) => ({ ...current, reason, stageClaim: undefined }),
-      'blocked',
-    );
-  }
-
-  private async recordFailure(
-    snapshot: CollaborationRunSnapshot,
-    item: CollaborationWorkItem,
-    attempt: WorkItemAttempt,
-    status: Extract<AttemptStatus, 'blocked' | 'needs_review'>,
-    reason: string,
-  ): Promise<CollaborationRunSnapshot> {
-    return this.commitAttemptStage(
-      snapshot.runId,
-      item.id,
-      attempt.attemptId,
-      attempt.leaseEpoch,
-      undefined,
-      (current) => ({ ...current, status, reason, stageClaim: undefined }),
-      status,
-    );
-  }
-
-  private async failBudget(
-    snapshot: CollaborationRunSnapshot,
-    item: CollaborationWorkItem,
-    attempt: WorkItemAttempt,
-    reason: string,
-  ): Promise<CollaborationRunSnapshot> {
-    return this.commitAttemptStage(
-      snapshot.runId,
-      item.id,
-      attempt.attemptId,
-      attempt.leaseEpoch,
-      undefined,
-      (current) => ({
-        ...current,
-        status: 'failed',
-        reason,
-        stageClaim: undefined,
-      }),
-      'failed',
-    );
-  }
-
-  private async transition(
-    runId: string,
-    status: CollaborationRunStatus,
-    allowed: readonly CollaborationRunStatus[],
-  ): Promise<CollaborationRunSnapshot> {
-    identifier(runId, 'runId');
-    return this.mutate(runId, (snapshot) => {
-      if (snapshot.terminalStatus || !allowed.includes(snapshot.status)) {
-        throw new Error(
-          `Cannot transition ${snapshot.terminalStatus ?? snapshot.status} run to ${status}`,
-        );
-      }
-      const timestamp = this.now();
-      const fencedItems = status === 'paused' || status === 'canceled'
-        ? snapshot.workItems.map((item) => this.fenceActiveAttempt(
-          item,
-          status === 'paused' ? 'RUN_PAUSED' : 'RUN_CANCELED',
-          timestamp,
-        ))
-        : snapshot.workItems;
-      return {
-        ...snapshot,
-        workItems: fencedItems,
-        status,
-        terminalStatus: status === 'canceled' ? 'canceled' : snapshot.terminalStatus,
-        revision: snapshot.revision + 1,
-        updatedAt: timestamp,
-      };
-    });
-  }
-
-  private async mutate(
-    runId: string,
-    operation: (
-      snapshot: CollaborationRunSnapshot,
-    ) => CollaborationRunSnapshot | Promise<CollaborationRunSnapshot>,
-  ): Promise<CollaborationRunSnapshot> {
-    return this.mutationLock.withLock(runId, async () => {
-      const snapshot = await this.readRun(runId);
-      const next = await operation(clone(snapshot));
-      if (next === snapshot || JSON.stringify(next) === JSON.stringify(snapshot)) {
-        return snapshot;
-      }
-      if (next.revision !== snapshot.revision + 1) {
-        throw new CollaborationMutationConflictError(
-          `Expected revision ${snapshot.revision + 1}, received ${next.revision}`,
-        );
-      }
-      await this.writeRunCas(next, snapshot.revision);
-      return next;
-    });
-  }
-
-  private async readRun(runId: string): Promise<CollaborationRunSnapshot> {
-    let directories: Dirent[];
-    try {
-      directories = await fs.readdir(path.join(this.dataRoot, 'projects'), {
-        withFileTypes: true,
-      });
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        throw new Error(`Collaboration run not found: ${runId}`);
-      }
-      throw error;
-    }
-    for (const directory of directories) {
-      if (!directory.isDirectory()) continue;
-      const filePath = this.runPath(directory.name, runId);
-      try {
-        const snapshot = JSON.parse(
-          await fs.readFile(filePath, 'utf8'),
-        ) as CollaborationRunSnapshot;
-        if (snapshot.runId !== runId) {
-          throw new Error('Run ID does not match its ledger');
-        }
-        assertIntegrity(await this.contractPort.verifyIntegrity(snapshot.contract));
-        return this.normalizeSnapshot(snapshot);
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-      }
-    }
-    throw new Error(`Collaboration run not found: ${runId}`);
-  }
-
-  private normalizeSnapshot(
-    snapshot: CollaborationRunSnapshot,
-  ): CollaborationRunSnapshot {
-    return {
-      ...snapshot,
-      workItems: snapshot.workItems.map((item) => ({
-        ...item,
-        leaseEpoch: item.leaseEpoch ?? 0,
-        attempts: (item.attempts ?? []).map((attempt) => ({
-          ...attempt,
-          hitlRequests: attempt.hitlRequests ?? [],
-        })),
-      })),
-    };
-  }
-
-  private async writeRunCas(
-    snapshot: CollaborationRunSnapshot,
-    expectedRevision: number,
-  ): Promise<void> {
-    const filePath = this.runPath(snapshot.projectId, snapshot.runId);
-    const current = JSON.parse(
-      await fs.readFile(filePath, 'utf8'),
-    ) as CollaborationRunSnapshot;
-    if (current.revision !== expectedRevision) {
-      throw new CollaborationMutationConflictError(
-        `Run revision changed from ${expectedRevision} to ${current.revision}`,
-      );
-    }
-    const temporary = `${filePath}.${randomUUID()}.tmp`;
-    await fs.writeFile(temporary, JSON.stringify(snapshot, null, 2), 'utf8');
-    try {
-      await fs.rename(temporary, filePath);
-      this.observers.get(snapshot.runId)?.observer.checkpoint();
-    } finally {
-      await fs.unlink(temporary).catch((error: unknown) => {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-      });
-    }
-  }
-
-  private runPath(projectId: string, runId: string): string {
-    identifier(projectId, 'projectId');
-    identifier(runId, 'runId');
-    return path.join(
-      this.dataRoot,
-      'projects',
-      projectId,
-      'collaboration-runs',
-      `${runId}.json`,
-    );
-  }
-
-  private item(
-    snapshot: CollaborationRunSnapshot,
-    workItemIdValue: string,
-  ): CollaborationWorkItem {
-    const item = snapshot.workItems.find(
-      (candidate) => candidate.id === workItemIdValue,
-    );
-    if (!item) throw new Error(`WorkItem not found: ${workItemIdValue}`);
-    return item;
-  }
-
-  private handoffCandidates(
-    snapshot: CollaborationRunSnapshot,
-    item: CollaborationWorkItem,
-  ): readonly WorkItemHandoffCandidate[] {
-    const template = snapshot.contract.semanticContext.taskTemplates.find(
-      (candidate) => candidate.designNodeId === item.designNodeId,
-    );
-    if (!template) return [];
-    const allowedPermissions = new Set(snapshot.contract.permissions.allowed);
-    const allowedAgentIds = new Set(template.candidateAgentIds);
-    return snapshot.contract.agents.flatMap((agent) => {
-      if (!allowedAgentIds.has(agent.agentId)
-        || !agent.permissions.every((permission) => allowedPermissions.has(permission))) {
-        return [];
-      }
-      return [{
-        agentId: agent.agentId,
-        displayName: agent.agentId,
-        permissions: [...agent.permissions],
-      }];
-    });
-  }
-
-  private attempt(
-    item: CollaborationWorkItem,
-    attemptId: string,
-  ): WorkItemAttempt {
-    const attempt = item.attempts.find(
-      (candidate) => candidate.attemptId === attemptId,
-    );
-    if (!attempt) throw new Error(`WorkItem attempt not found: ${attemptId}`);
-    return attempt;
-  }
-
-  private locate(
-    snapshot: CollaborationRunSnapshot,
-    workItemIdValue: string,
-    attemptId: string,
-  ): { item: CollaborationWorkItem; attempt: WorkItemAttempt } {
-    const item = this.item(snapshot, workItemIdValue);
-    return { item, attempt: this.attempt(item, attemptId) };
-  }
-
-  private findHitl(
-    snapshot: CollaborationRunSnapshot,
-    requestId: string,
-  ): {
-    item: CollaborationWorkItem;
-    attempt: WorkItemAttempt;
-    request: WorkItemHitlRequest;
-  } {
-    for (const item of snapshot.workItems) {
-      for (const attempt of item.attempts) {
-        const request = (attempt.hitlRequests ?? []).find(
-          (candidate) => candidate.requestId === requestId,
-        );
-        if (request) return { item, attempt, request };
-      }
-    }
-    throw new Error(`HITL request not found: ${requestId}`);
-  }
-
-  private assertRunning(snapshot: CollaborationRunSnapshot): void {
-    if (snapshot.status !== 'running' || snapshot.terminalStatus) {
-      throw new Error(
-        `Cannot execute ${snapshot.terminalStatus ?? snapshot.status} run`,
-      );
-    }
-  }
-
-  private fenceActiveAttempt(
-    item: CollaborationWorkItem,
-    reason: string,
-    timestamp: string,
-  ): CollaborationWorkItem {
-    const current = item.attempts.at(-1);
-    if (!current || TERMINAL_ATTEMPT_STATUSES.has(current.status)) return item;
-    const fenced: WorkItemAttempt = {
-      ...current,
-      status: 'blocked',
-      stageClaim: undefined,
-      reason,
-      updatedAt: timestamp,
-    };
-    return {
-      ...item,
-      status: 'blocked',
-      revision: item.revision + 1,
-      leaseEpoch: item.leaseEpoch + 1,
-      attempts: item.attempts.map((candidate) =>
-        candidate.attemptId === current.attemptId ? fenced : candidate
-      ),
-    };
-  }
-
-  private assertCurrentLease(
-    item: CollaborationWorkItem,
-    attempt: WorkItemAttempt,
-  ): void {
-    if (attempt.leaseEpoch !== item.leaseEpoch) {
-      throw new CollaborationWorkItemHandoffError(
-        'STALE_LEASE_EPOCH',
-        'Stale WorkItem lease epoch',
-      );
-    }
-  }
-
-  private assertClaim(
-    item: CollaborationWorkItem,
-    attempt: WorkItemAttempt,
-    claim: WorkItemStageClaim,
-  ): void {
-    this.assertCurrentLease(item, attempt);
-    if (
-      item.revision !== claim.expectedWorkItemRevision
-      || attempt.stageClaim?.claimId !== claim.claimId
-      || attempt.stageClaim.stage !== claim.stage
-    ) {
-      throw new CollaborationMutationConflictError(
-        `Stage ${claim.stage} no longer owns WorkItem revision ${claim.expectedWorkItemRevision}`,
-      );
-    }
-  }
-
-  private stageDone(
-    attempt: WorkItemAttempt,
-    stage: WorkItemExecutionStage,
-  ): boolean {
-    if (stage === 'readiness') return Boolean(attempt.readinessReceipt);
-    if (stage === 'worker') return Boolean(attempt.workerReceipt);
-    if (stage === 'verifier') return Boolean(attempt.verifierResult);
-    if (stage === 'outcome') return Boolean(attempt.outcomeReceipt);
-    return Boolean(attempt.evidenceReceipt);
-  }
-
-  private hitlPolicy(
-    snapshot: CollaborationRunSnapshot,
-    item: CollaborationWorkItem,
-    trigger: HitlTrigger,
-  ): HitlPolicy | undefined {
-    return snapshot.contract.hitl.find(
-      (policy) =>
-        policy.nodeId === item.designNodeId && policy.trigger === trigger,
-    );
-  }
-
-  private resolvedHitl(
-    attempt: WorkItemAttempt,
-    policyId: string,
-    decision: HitlDecision,
-  ): boolean {
-    return Boolean((attempt.hitlRequests ?? []).find(
-      (request) =>
-        request.policyId === policyId
-        && request.status === 'resolved'
-        && request.decision === decision,
-    ));
-  }
-
-  private hitlQuestion(
-    trigger: HitlTrigger,
-    item: CollaborationWorkItem,
-  ): string {
-    if (trigger === 'before_execution') {
-      return `是否允许开始执行 ${item.designNodeId}？`;
-    }
-    if (trigger === 'after_verification') {
-      return `${item.designNodeId} 已通过验证，是否接受结果并提交？`;
-    }
-    return `${item.designNodeId} 执行失败，是否调整后重试？`;
-  }
-
-  private executionKey(
-    snapshot: CollaborationRunSnapshot,
-    item: CollaborationWorkItem,
-    attempt: WorkItemAttempt,
-  ): string {
-    return `${snapshot.runId}:${item.id}:${attempt.attemptId}`;
-  }
-
-  private evidenceHash(
-    snapshot: CollaborationRunSnapshot,
-    item: CollaborationWorkItem,
-    attempt: WorkItemAttempt,
-  ): string {
-    const source = JSON.stringify({
-      runId: snapshot.runId,
-      workItemId: item.id,
-      contractHash: snapshot.contract.contractHash,
-      verifierHash: attempt.verifierResult?.contentHash ?? '',
-      outcomeHash:
-        attempt.outcomeReceipt?.contentHash
-        ?? attempt.outcomeReceipt?.receiptId
-        ?? '',
-    });
-    return `sha256:${createHash('sha256').update(source).digest('hex')}`;
-  }
-
-  private itemStatusForAttempt(
-    attemptStatus: AttemptStatus,
-    fallback: WorkItemStatus,
-  ): WorkItemStatus {
-    if (attemptStatus === 'completed') return 'completed';
-    if (attemptStatus === 'failed') return 'failed';
-    if (attemptStatus === 'revision') return 'revision';
-    if (attemptStatus === 'blocked') return 'blocked';
-    if (attemptStatus === 'needs_review') return 'needs_review';
-    if (attemptStatus === 'waiting_hitl') return 'waiting_hitl';
-    return fallback;
-  }
-
-  private assertWorkerReceipt(receipt: WorkerReceipt): void {
-    if (
-      !receipt
-      || !receipt.receiptId
-      || !receipt.outputHash
-      || !receipt.outputRefs?.length
-      || !receipt.usage
-      || !Number.isFinite(receipt.usage.durationMs)
-      || receipt.usage.durationMs < 0
-      || !Number.isFinite(receipt.usage.tokens)
-      || receipt.usage.tokens < 0
-    ) {
-      throw new Error('Worker receipt is incomplete');
-    }
-  }
-
-  private validPassedVerification(
-    result: VerifierResult,
-    contractHash: string,
-  ): boolean {
-    return (
-      result.status === 'passed'
-      && Boolean(
-        result.verificationMethod
-        && result.artifactRefs?.length
-        && result.resultRef
-        && result.contentHash
-        && result.contractHash === contractHash
-      )
-    );
-  }
-
-  private newAttemptBudgetFailure(
-    snapshot: CollaborationRunSnapshot,
-    item: CollaborationWorkItem,
-  ): string | undefined {
-    if (item.attempts.length >= snapshot.contract.budget.maxAttempts) {
-      return 'MAX_ATTEMPTS_EXCEEDED';
-    }
-    return this.runtimeBudgetFailure(snapshot);
-  }
-
-  private runtimeBudgetFailure(
-    snapshot: CollaborationRunSnapshot,
-  ): string | undefined {
-    const elapsed = this.clock().getTime() - new Date(snapshot.createdAt).getTime();
-    if (elapsed > snapshot.contract.budget.maxDurationMs) {
-      return 'MAX_DURATION_EXCEEDED';
-    }
-    const tokens = snapshot.workItems.reduce(
-      (total, item) => total + item.attempts.reduce(
-        (attemptTotal, attempt) =>
-          attemptTotal + (attempt.workerReceipt?.usage?.tokens ?? 0),
-        0,
-      ),
-      0,
-    );
-    if (tokens >= snapshot.contract.budget.maxTokens) {
-      return 'MAX_TOKENS_EXCEEDED';
-    }
-    return undefined;
-  }
-
-  private receiptBudgetFailure(
-    snapshot: CollaborationRunSnapshot,
-    item: CollaborationWorkItem,
-    receipt: WorkerReceipt,
-  ): string | undefined {
-    if (!receipt.usage) return 'WORKER_USAGE_MISSING';
-    const previousTokens = snapshot.workItems.reduce(
-      (total, candidate) => total + candidate.attempts.reduce(
-        (attemptTotal, attempt) =>
-          attemptTotal + (attempt.workerReceipt?.usage?.tokens ?? 0),
-        0,
-      ),
-      0,
-    );
-    if (
-      previousTokens + receipt.usage.tokens > snapshot.contract.budget.maxTokens
-    ) {
-      return 'MAX_TOKENS_EXCEEDED';
-    }
-    const elapsed =
-      this.clock().getTime() - new Date(snapshot.createdAt).getTime();
-    if (
-      elapsed > snapshot.contract.budget.maxDurationMs
-      || receipt.usage.durationMs > snapshot.contract.budget.maxDurationMs
-    ) {
-      return 'MAX_DURATION_EXCEEDED';
-    }
-    if (item.attempts.length > snapshot.contract.budget.maxAttempts) {
-      return 'MAX_ATTEMPTS_EXCEEDED';
-    }
-    return undefined;
-  }
-
-  private allIncluded(
-    required: readonly string[],
-    available: readonly string[],
-  ): boolean {
-    const values = new Set(available);
-    return required.every((value) => values.has(value));
-  }
-
-  private errorCode(error: unknown): string {
-    return error instanceof Error
-      ? error.message.replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 120)
-      : 'UNKNOWN';
-  }
-
   private now(): string {
     return this.clock().toISOString();
   }
 }
+
+export {
+  FileCollaborationMutationLock,
+} from './contract-execution-lock';
+export {
+  CollaborationReconciliationError,
+  CollaborationMutationConflictError,
+  CollaborationWorkItemHandoffError,
+} from './contract-execution-shared';
+export type {
+  AcceptedExternalOutputInput,
+  AcceptedExternalOutputResult,
+  AttemptStatus,
+  CollaborationExecutionDependencies,
+  CollaborationExecutionPort,
+  CollaborationMutationLockPort,
+  CollaborationRunSnapshot,
+  CollaborationRunStatus,
+  CollaborationRunTerminalStatus,
+  CollaborationWorkItem,
+  EvidenceReceipt,
+  EvidenceSubmissionInput,
+  HitlDecision,
+  HitlOpenInput,
+  HitlTrigger,
+  ListWorkItemHandoffCandidatesInput,
+  OutcomeCommitInput,
+  OutcomeReceipt,
+  ResolveWorkItemHitlInput,
+  SolutionTaskBinding,
+  StartCollaborationRunInput,
+  VerifierExecutionInput,
+  VerifierResult,
+  WorkItemAttempt,
+  WorkItemExecutionRequest,
+  WorkItemExecutionStage,
+  WorkItemHandoffCandidate,
+  WorkItemHandoffInput,
+  WorkItemHandoffReceipt,
+  WorkItemHandoffResult,
+  WorkItemHitlPort,
+  WorkItemHitlRequest,
+  WorkItemOutcomePort,
+  WorkItemReadinessInput,
+  WorkItemReadinessPort,
+  WorkItemReadinessReceipt,
+  WorkItemReadinessResult,
+  WorkItemStageClaim,
+  WorkItemStatus,
+  WorkItemUsage,
+  WorkItemVerifierPort,
+  WorkItemWorkerPort,
+  WorkerExecutionInput,
+  WorkerReceipt,
+  WorkItemEvidenceSink,
+} from './contract-execution-types';
