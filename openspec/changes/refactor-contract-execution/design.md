@@ -114,6 +114,8 @@ export interface ContractExecutionCtx {
 | 移动时顺手改逻辑 | 「逐字移动 + 仅 D3 变换」指令；token 级对比 + 测试基线兜底 |
 | 新文件超 600 行 | D1 预估最大 stages ~500；TC-6 wc -l 验证 |
 
+**D6 复验结论（2026-10-04，独立验证）**：上表全部缓解项生效——token 级对比 60/60 方法体相同（canon 规则：`this.X(` → `ops.X(` / `runXxx(createCtx(),` / `itemOf`/`attemptOf` 别名 / 预算函数 clock 首参注入）；TC-3 30 个直接覆盖用例 + 兄弟套件共 48 用例全绿。
+
 ## D7 偏差记录（与 Story architecture.md T6 方案的对照）
 
 Story T6 方案列「拆出：合同校验、执行编排、消息分发、状态落盘、错误恢复」五项，对照如下：
@@ -125,4 +127,9 @@ Story T6 方案列「拆出：合同校验、执行编排、消息分发、状�
 - **错误恢复** → stageFailure/recordUnavailable/recordFailure/failBudget（stages.ts）+ 3 错误类（shared.ts）✅
 - **「facade/index.ts 承接导出」** → 实施为 contract-execution.ts 承接导出（facade/index.ts re-export 清单零改动）——保持主文件作为唯一导入锚点，消费方 import 零变化，优于改 index.ts 导入源（会牵动 5 个消费方路径）。
 
-全部方案项覆盖，无偏差。
+### 实施期偏差（subagent 实施 + 独立验证确认，均不改变行为）
+
+1. **主文件 800 行 > 预期 700**（备用上限 800 内）：主类 13 个公共 API 方法体逐字保留（约 684 行）+ 62 行 imports + 54 行 re-export 块构成下限；进一步压缩（如 re-export 合并为 `export *`、方法体改写）会破坏「公共符号集合不变 + 方法体逐字」硬约束或扩大公共面（`export *` 会把本应私有的常量/helper 暴露出去）。TC-6 按「800 备用上限」判定通过。
+2. **ops `locate` 局部变量遮蔽**：原方法体局部 `const item` / `attempt` 与模块函数名冲突 → 文件内以 `itemOf`/`attemptOf` 别名调用（token 级等价：`this.item(` → `itemOf(`，行为逐字）。
+3. **ledger `claimAttempt`/`transition` 局部变量遮蔽**：同上，以 `ops.item(...)` 命名空间形式调用。
+4. **ctx 增加 `observers` 字段**：`writeRunCas` 的 checkpoint 钩子（`this.observers.get(...)?.observer.checkpoint()`）外移后需访问 observers Map → ctx 持有该字段，类型为结构化 `{ checkpoint(): void }` 的 Map 包装，避免 ledger 直接 import `RunObserver`（防新环）。observers Map 引用自 constructor 起稳定（D3 前提），无生命周期偏差。
