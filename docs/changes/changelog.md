@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-10-04 — refactor：AG.10-T6 collaboration-runtime contract-execution 巨型文件拆分
+
+**类型**：refactor
+**影响模块**：`packages/core/src/modules/collaboration-runtime/facade/contract-execution.ts`（2611 → 800 行）、`facade/contract-execution-{types,shared,lock,ops,ledger,stages,advance}.ts`（新建 7 文件共 2196 行）、`docs/specs/epic-AG/story-AG.10/`、`openspec/changes/refactor-contract-execution/`
+**摘要**：AG.10-T6 落地。facade/contract-execution.ts 按单一职责拆为类型面/共享常量与错误/文件锁/无状态运算/账本持久化/阶段提交/五阶段推进 7 个模块文件，主文件保留 `CollaborationExecutionStore` 公共 API、observers 桥接与 ctx 组装。公共导出符号集合不变（50/50）、消费方 import 零改动、facade 测试 48/48 全绿、madge 12 环 = 基线、token 级对比 60/60 方法体一致（纯机械移动）；主文件 800 行为备用上限内（偏差见 proposal design.md D7）。
+
+---
+
+
 ---
 
 ## 2026-10-01 — refactor：AG.10-T5 pi-agent core agent 巨型文件拆分

@@ -2,7 +2,7 @@
 
 **Story:** 巨型文件拆分 — 单一职责重构
 **Epic:** AG — 架构治理与围栏对齐
-**最后更新:** 2026-09-28
+**最后更新:** 2026-10-04
 
 ---
 
@@ -306,3 +306,52 @@ wc -l <每个新文件>
 - core `__tests__` 7 项既有失败与本次拆分无关（拆分前基线逐字复现），归属既有测试债。
 - `AgentCompletionContext` 的 getter/setter 闭包绑定依赖 `self = this` 捕获——若未来在 completion 模块函数中新增对其他主类可变字段的直接赋值，必须同步扩展 ctx 接口（编译期会报错兜底）。
 - judge 路径的真实 LLM 时序（15s 超时、2 次重试）以单测 mock 覆盖，未做真实网络验证（与拆分前一致，无行为面变化）。
+
+---
+
+## AG.10-T6（modules/collaboration-runtime/facade/contract-execution.ts）执行结果
+
+**Proposal:** `refactor-contract-execution`（分支 `proposal/refactor-contract-execution`，实施分支 `proposal-task/refactor-contract-execution-1-split`）
+**执行日期:** 2026-10-04
+**基线:** facade `__tests__` 4 直接覆盖套件 30 用例全绿、collaboration-runtime 全目录 14 项既有失败（capability-matcher 10 + dag-executor 3 + agent-spawner 1）、madge core 12 环、contract-execution.ts 2611 行
+**实施方式:** subagent 一次通过（commit `a8a95c8`，7 新文件 + 主文件重写）；主会话独立复验全部 TC 门禁 + token 级对比，追加 1 处 re-export 单行化修正（`fdd940b`，802 → 800 行）
+
+| 用例 | 结果 | 证据 |
+|------|------|------|
+| TC-1 导出符号不变 | ✅ | 脚本比对 `git show 57ad147:.../contract-execution.ts` 与新主文件 exported symbol 集合——orig 50 / new 50，missing/added 均为 NONE；`git diff 57ad147 HEAD --name-only` 仅含 8 个 contract-execution 文件，facade/index.ts、composition 根、integrations 2+1、facade 兄弟 3、facade 测试 4 全部 import specifier 零变化 |
+| TC-2 双端编译 | ✅ | web build exit 0、desktop build exit 0；core tsc 5 errors 全为 client-hooks 既有基线（TS2307 types/agent），0 新增；`expand-core-exports.cjs --verify` exit 0（exports 零增删） |
+| TC-3 测试基线 | ✅ | facade `__tests__` 全目录 7 文件 **48/48 全绿**（contract-execution 16 + stage-machine 9 + handoff 4 + protocol-observation 1 直接覆盖，另 18 为 session-store/hitl-dispatcher/protocol-snapshot 兄弟套件）；collaboration-runtime 全目录失败集与基线逐一相同（capability-matcher 10 + dag-executor 3）；integrations 套件与基线相同。**token 级对比（超出 TC-3 的行为一致性证据）：60 个方法/函数体（15 主类方法 + 24 ops + 6 ledger + 14 stages + 1 advance）经 D3 变换规范化后逐一 token-identical** |
+| TC-4 循环检查 | ✅ | madge **12 环 = 基线**；facade/ 仅基线环 7 `contract-execution.ts > run-observation.ts`（既有 type-only 反向引用，D4 声明不动）；7 个新文件 0 环路径 |
+| TC-5 模块冒烟 | ✅ | `pnpm lint:boundaries` 981 生产文件 **0 诊断**；`check-architecture-boundaries.cjs --self-test` exit 0；`expand-core-exports.cjs --verify` exit 0 |
+| TC-6 行数达标 | ✅（备用上限） | 7 新文件全部 ≤ 600：types 414 / shared 148 / lock 67 / ops 389 / ledger 252 / stages 543 / advance 383；主文件 **800 = 备用上限内**（预期 700 未达，见偏差 1） |
+
+**拆分产物（2611 行 → 8 文件共 2996 行，含头注释/导入/re-export）：**
+
+- `contract-execution.ts`（800）— `CollaborationExecutionStore` 主类：9 字段 + constructor、13 个公共 API 方法（逐字）、`advance` observers 桥接（逐字）、`now`、`createCtx()` 工厂 + 全部公共符号 re-export
+- `contract-execution-types.ts`（414）— ~50 公共类型 + 7 端口 + Dependencies/ExecutionPort（逐字）
+- `contract-execution-shared.ts`（148）— 3 常量 + 3 错误类 + 8 helper（逐字）
+- `contract-execution-lock.ts`（67）— `FileCollaborationMutationLock`（逐字）
+- `contract-execution-ops.ts`（389）— 24 个无状态运算模块函数（21 直移 + 3 预算加 clock 首参）
+- `contract-execution-ledger.ts`（252）— `ContractExecutionCtx` 唯一定义 + runMutate/runReadRun/runWriteRunCas/runPath/runClaimAttempt/runTransition
+- `contract-execution-stages.ts`（543）— 14 个阶段提交/HITL 模块函数
+- `contract-execution-advance.ts`（383）— `runAdvanceLedger` 五阶段循环
+
+**实施偏差（4 项，记入 proposal design.md D7，均不改变行为）：**
+
+1. **主文件 800 行 > 预期 700**（备用上限 800 内）：13 个公共 API 方法体逐字（约 684 行）+ 62 行 imports + 54 行 re-export 为压缩下限；`export *` 等手段会扩大公共面或破坏「方法体逐字」硬约束，按备用上限判定通过。
+2. **ops `locate` 局部变量遮蔽**：原方法体局部 `item`/`attempt` 与模块函数名冲突 → `itemOf`/`attemptOf` 别名（token 等价）。
+3. **ledger `claimAttempt`/`transition` 同类遮蔽** → `ops.item(...)` 命名空间调用。
+4. **ctx 增加 `observers` 字段**：`writeRunCas` checkpoint 钩子外移后需访问 observers Map → ctx 持结构化类型 `{ checkpoint(): void }` 字段，避免 ledger import `RunObserver` 成新环（observers Map 引用自 constructor 起稳定）。
+
+**主会话修正（1 处）：**
+
+- 单符号 re-export 块（`export { FileCollaborationMutationLock, } from ...` 3 行）收敛为单行（802 → 800 行）；re-export 语义与公共符号集合零变化，修正后重跑 tsc / facade 48 用例 / madge / exports verify 全绿。
+
+**人工验证步骤（未自动化部分）:**
+
+1. `pnpm dev` 触发一次协作运行（或走 integrations 消费链的项目执行流），确认 run 启动/阶段推进/HITL 交互与拆分前一致（CAS/lease/预算路径已由 48 用例覆盖，此为端到端补充）。
+
+**剩余风险:**
+
+- collaboration-runtime 既有 13 项失败（capability-matcher 10 + dag-executor 3）与本次拆分无关（基线逐一复现），归属既有测试债；agent-spawner 基线失败 1 项为时间敏感 flaky（完整套件运行中可通过），与拆分无关。
+- `ContractExecutionCtx.observers` 为结构化类型（非 `RunObserver` 泛型）——若未来 observer 接口新增方法且被 ledger 路径消费，需同步扩展该结构（编译期兜底）。
