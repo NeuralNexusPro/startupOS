@@ -745,9 +745,7 @@ export class CollaborationExecutionStore implements CollaborationExecutionPort {
   }
 }
 
-export {
-  FileCollaborationMutationLock,
-} from './contract-execution-lock';
+export { FileCollaborationMutationLock } from './contract-execution-lock';
 export {
   CollaborationReconciliationError,
   CollaborationMutationConflictError,
