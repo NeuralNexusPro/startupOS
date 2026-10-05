@@ -1,5 +1,14 @@
 # Changelog - v0.4.0
 
+
+## 2026-10-05 — refactor：AG.10-T7 collaboration-runtime supervisor-dag 巨型文件拆分（Story AG.10 完成）
+
+**类型**：refactor
+**影响模块**：`packages/core/src/modules/collaboration-runtime/engine/supervisor-dag.ts`（2166 → 522 行）、`engine/supervisor-dag-{types,manifest,verifier,hitl,workflow,dispatch,tools}.ts`（新建 7 文件共 1828 行）、`docs/specs/epic-AG/story-AG.10/`、`openspec/changes/refactor-supervisor-dag/`
+**摘要**：AG.10-T7 落地，Story AG.10（7/7 巨型文件）至此完成。engine/supervisor-dag.ts 按单一职责拆为共享类型/manifest 与拓扑构建/LLM 任务验收/HITL 路由/静态 DAG 路径/dispatch_worker 派发/协调工具分派 7 个模块文件，主文件保留 `executeSupervisorDag` 编排主体与 `executeCollaborationRuntime` 统一入口。全部 11 个公共导出符号经 re-export 原样保留、消费方 import 零改动、supervisor-dag-hitl 7 + supervisor-protocol.integration 4 全绿、collaboration-runtime 失败集与基线逐一相同（13 项既有债）、madge 12 环 = 基线且新文件零环、token 级对比 1708 条可执行行未解释 0 条（闭包状态经 SupervisorDagCtx 显式传递，纯机械变换）；主文件 522 行达标（偏差见 proposal design.md D6/D7）。
+
+---
+
 ## 2026-10-04 — refactor：AG.10-T6 collaboration-runtime contract-execution 巨型文件拆分
 
 **类型**：refactor
