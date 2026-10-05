@@ -355,3 +355,53 @@ wc -l <每个新文件>
 
 - collaboration-runtime 既有 13 项失败（capability-matcher 10 + dag-executor 3）与本次拆分无关（基线逐一复现），归属既有测试债；agent-spawner 基线失败 1 项为时间敏感 flaky（完整套件运行中可通过），与拆分无关。
 - `ContractExecutionCtx.observers` 为结构化类型（非 `RunObserver` 泛型）——若未来 observer 接口新增方法且被 ledger 路径消费，需同步扩展该结构（编译期兜底）。
+
+---
+
+## AG.10-T7（modules/collaboration-runtime/engine/supervisor-dag.ts）执行结果
+
+**Proposal:** `refactor-supervisor-dag`（分支 `proposal/refactor-supervisor-dag`，实施分支 `proposal-task/refactor-supervisor-dag-1-split`）
+**执行日期:** 2026-10-05
+**基线:** engine `__tests__` 13 项既有失败（capability-matcher 10 + dag-executor 3）、collaboration-runtime 全目录失败集与 engine 一致（supervisor-dag-hitl 7 + supervisor-protocol.integration 4 全绿）、madge core 12 环、supervisor-dag.ts 2166 行
+**实施方式:** 实施 subagent 4 次停滞（87 次工具调用、0 次写入，与 T5 同一故障模式）→ 按 T5 先例由主会话接管，基于 subagent 已验证的 /tmp 分段快照程序化生成 8 文件（commit `175a088`）；主会话独立复验全部 TC 门禁 + token 级对比
+
+| 用例 | 结果 | 证据 |
+|------|------|------|
+| TC-1 导出符号不变 | ✅ | tsx 导入验证：8 个运行时函数（`wrapWorkerHumanReviewRequest`/`executeMultiAgentDag`/`loadProjectTopology`/`computeTaskLevels`/`verifierFallbackResult`/`resumeSupervisorHitl`/`executeSupervisorDag`/`executeCollaborationRuntime`）全部在位、3 个类型符号（`MultiAgentExecutionResult`/`MultiAgentExecutorConfig`/`VerificationResult`）可导入；消费方（engine/index.ts、facade/dag-runner.ts、2 个 engine 测试文件、public-api-boundary.test.ts）import specifier 零改动；public-api-boundary 39/39 绿 |
+| TC-2 双端编译 | ✅ | web build ✅、desktop build ✅；core tsc 仅 client-hooks 既有基线 5 条 TS2307（types/agent），0 新增；`expand-core-exports.cjs --verify` exit 0（exports 零增删） |
+| TC-3 测试基线 | ✅ | supervisor-dag-hitl 7/7 绿、supervisor-protocol.integration 4/4 绿；engine `__tests__` 失败集与主 worktree 基线 **diff 为空（13 项逐一相同）**；collaboration-runtime 全目录 13 failed/331 passed 与基线一致；**token 级对比（超出 TC-3 的行为一致性证据）：1708 条原始可执行行 = 1423 逐字命中 + 235 经 D3-ctx 变换命中 + 50 有已记录变换对应物（export 关键字、WorkerStatus/WorkerResultEntry 类型提升、ctx 首参、pendingHitlResolve setter 形式），未解释 0 条** |
+| TC-4 循环检查 | ✅ | madge **12 环 = 基线**；supervisor-dag 新文件在环路径中出现 **0 次** |
+| TC-5 模块冒烟 | ✅ | `pnpm lint:boundaries` 988 生产文件 **0 诊断**；`check-architecture-boundaries.cjs --self-test` 51 用例通过；`expand-core-exports.cjs --verify` exit 0 |
+| TC-6 行数达标 | ✅ | 主文件 **522 行**（≤700 预期）；7 新文件全部 ≤ 600：types 95 / manifest 195 / verifier 176 / hitl 86 / workflow 412 / dispatch 467 / tools 397 |
+
+**拆分产物（2166 行 → 8 文件共 2348 行，含头注释/导入/re-export）：**
+
+- `supervisor-dag.ts`（522）— `executeSupervisorDag` 编排主体（manifest 加载、Blackboard + ProtocolObserver、状态声明 + ctx 组装、collab-context/Agent.md 写入、`onSupervisorEvent` 接线、Supervisor spawn/prompt/等待/SUPERVISOR_AGGREGATE、finally stopProtocolObserver，逐字）+ `executeCollaborationRuntime`（逐字）+ 全部 11 个公共符号 re-export
+- `supervisor-dag-types.ts`（95）— manifest 适配类型（AgentsJsonAgent 等 3 接口）、执行配置（MultiAgentExecutionResult/ExecutorConfig）、UpstreamArtifactRef/UpstreamOutput、summarizeRuntimeConfig/logRuntime helper
+- `supervisor-dag-manifest.ts`（195）— agents.json 加载、协作边提取（含 back-edge notify 降级）、拓扑查看规范化、CollaborationTopology 构建、统一 manifest 写入
+- `supervisor-dag-verifier.ts`（176）— LLM 任务验收 `verifyTaskCompletion` + 规则回退 `verifierFallbackResult`（SUP-09）+ 消息块类型
+- `supervisor-dag-hitl.ts`（86）— `wrapWorkerHumanReviewRequest`、hitlResumerRegistry/__hitlChannelByWorker 全局注册表（HMR 安全）、`resumeSupervisorHitl` 路由（行为逐字）
+- `supervisor-dag-workflow.ts`（412）— 静态 DAG 路径 `executeMultiAgentDag`（DagExecutor + Lightweight Supervisor 懒加载）+ 独立拓扑加载 `loadProjectTopology` + `computeTaskLevels`
+- `supervisor-dag-dispatch.ts`（467）— dispatch_worker case 主体（`runDispatchWorker(ctx, args)`）+ `buildWorkerPrompt` + `extractAgentOutputFromEvents`
+- `supervisor-dag-tools.ts`（397）— `SupervisorDagCtx` 唯一定义（新，见偏差）+ 分派骨架 `handleSupervisorToolCall`（try/switch/catch + sendToolResult 尾部逐字）+ 其余 8 个 case 函数
+
+**实施偏差（3 项，记入 proposal design.md D6/D7，均不改变行为）：**
+
+1. **SupervisorDagCtx 为新参数传递结构**：原 `executeSupervisorDag` 无 class/this，全部共享状态为闭包捕获 → ctx 首参显式化（Map/数组字段持同一引用，原地变更语义不变）；非公共 API，不进 exports 白名单。
+2. **`pendingHitlResolve` 重绑定 → setter**：仅 2 处赋值后写入 hitlResumerRegistry、此后无本地读取 → `ctx.setPendingHitlResolve(fn)` 包装，语义无损。
+3. **主文件新增 `void pendingHitlResolve;` 1 行**：desktop build TS6133（noUnusedLocals）下原闭包变量声明必须被"读取"一次；`void` 直通不改语义。
+
+**实施过程备注:**
+
+- 对象 key 误替换（`ctx.agents:` 等 2 处）、属性 shorthand（`ctx.blackboardDir,` 2 处）、manifest 重复接口声明 3 类机械替换事故在 tsc 阶段全部暴露并修复；最终 tsc 0 新增 error。
+- dispatch 内 2 处 `protocol.isClosed` 裸 `break` 转换为 `return JSON.stringify({ status: "ok" });`（与原行为逐字等价：此刻 resultJson 仍为函数头初始值）。
+
+**人工验证步骤（未自动化部分）:**
+
+1. `pnpm dev` 触发一次 Supervisor 模式协作运行（含 dispatch_worker/wait_workers/HITL escalate 或 ask_user 路径），确认任务分解、Worker 派发、HITL 交互与汇总报告行为与拆分前一致（glue 层已由 supervisor-protocol.integration 4 用例 + hitl 7 用例覆盖，此为端到端补充）。
+
+**剩余风险:**
+
+- collaboration-runtime 既有 13 项失败（capability-matcher 10 + dag-executor 3）与本次拆分无关（基线逐一复现），归属既有测试债。
+- `SupervisorDagCtx` 字段为实施时逐字核对清单——若未来 case 函数新增对其他闭包变量的引用，必须同步扩展 ctx 接口（编译期报错兜底）。
+- `wait_for_human` 返回裸字符串 `"HITL_PAUSE"`（非 JSON）为既有行为，逐字保留未"修正"。

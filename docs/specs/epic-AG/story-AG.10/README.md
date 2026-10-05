@@ -1,7 +1,7 @@
 # Story AG.10: 巨型文件拆分 — 单一职责重构
 
 **Epic:** AG — 架构治理与围栏对齐
-**状态:** 🚧 In Progress（T1–T6 完成，T6 于 2026-10-04；T7 待实施）
+**状态:** ✅ Complete（T1–T7 全部完成，T7 于 2026-10-05）
 **优先级:** 🟠 High
 **估计工时:** 5–8 天（可按文件拆分为多个 task 增量交付）
 **依赖:** 无硬依赖；建议在 AG.8/AG.9 之后实施（边界清晰后拆分的落点更明确）
@@ -41,5 +41,5 @@
 
 - [x] 需求确认
 - [x] 架构设计
-- [x] 开发实施（T1 ✅ 2026-09-30：page.tsx 1609→108 行，Proposal `refactor-home-page-structure`；T2 ✅ 2026-09-30：client-hooks.ts 1317→7 文件，Proposal `refactor-client-hooks`；T3 ✅ 2026-09-30：coordinator.ts 1142→689 行 + 4 新文件，Proposal `refactor-task-coordinator`；T4 ✅ 2026-09-30：contract-bound-runtime-composition.ts 1102→141 行 + composition/ 4 新文件，Proposal `refactor-contract-runtime-composition`；T5 ✅ 2026-10-01：pi-agent/core/agent.ts 1912→1348 行 + 3 新文件（internals 140/completion 432/factory 206），Proposal `refactor-agent-core`；T6 ✅ 2026-10-04：collaboration-runtime/facade/contract-execution.ts 2611→800 行 + 7 新文件（types 414/shared 148/lock 67/ops 389/ledger 252/stages 543/advance 383），Proposal `refactor-contract-execution`；T7（supervisor-dag.ts）待实施）
-- [ ] 测试验证（T1/T2/T3/T4/T5/T6 TC-1~TC-6 已过，见 [testing.md](./testing.md) 各 task 执行结果；Story 整体待 T7）
+- [x] 开发实施（T1 ✅ 2026-09-30：page.tsx 1609→108 行，Proposal `refactor-home-page-structure`；T2 ✅ 2026-09-30：client-hooks.ts 1317→7 文件，Proposal `refactor-client-hooks`；T3 ✅ 2026-09-30：coordinator.ts 1142→689 行 + 4 新文件，Proposal `refactor-task-coordinator`；T4 ✅ 2026-09-30：contract-bound-runtime-composition.ts 1102→141 行 + composition/ 4 新文件，Proposal `refactor-contract-runtime-composition`；T5 ✅ 2026-10-01：pi-agent/core/agent.ts 1912→1348 行 + 3 新文件（internals 140/completion 432/factory 206），Proposal `refactor-agent-core`；T6 ✅ 2026-10-04：collaboration-runtime/facade/contract-execution.ts 2611→800 行 + 7 新文件（types 414/shared 148/lock 67/ops 389/ledger 252/stages 543/advance 383），Proposal `refactor-contract-execution`；T7 ✅ 2026-10-05：collaboration-runtime/engine/supervisor-dag.ts 2166→522 行 + 7 新文件（types 95/manifest 195/verifier 176/hitl 86/workflow 412/dispatch 467/tools 397），Proposal `refactor-supervisor-dag`）
+- [x] 测试验证（T1–T7 TC-1~TC-6 全部通过，见 [testing.md](./testing.md) 各 task 执行结果；Story 完成）
