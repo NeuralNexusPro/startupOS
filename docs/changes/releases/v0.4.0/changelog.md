@@ -1,6 +1,14 @@
 # Changelog - v0.4.0
 
 
+## 2026-10-05 — fix：electron 门面剔除 workspace-paths，修复浏览器端 `require is not defined`
+
+**类型**：fix
+**影响模块**：`packages/core/src/lib/integrations/electron/index.ts`
+**摘要**：AG.9 引入的 electron 门面（barrel index.ts）re-export 了 workspace-paths 的 6 个运行时符号，而该文件顶层导入 `node:path`/`node:fs`；Web 客户端组件经门面引入 `isElectron` 等符号时，webpack 将 workspace-paths 一并打进浏览器 bundle，dev electron 混合渲染下以 `Uncaught ReferenceError: require is not defined (node:path)` 崩溃并触发 hydration 报错。修复：从门面移除 workspace-paths re-export（全仓 0 个消费方经门面使用这 6 个符号，web/desktop 均走深路径条目 `./lib/integrations/electron/workspace-paths`），门面头部注明原因。core/desktop/web tsc 0 error、exports verify、`lint:boundaries` 0 诊断通过。
+
+---
+
 ## 2026-10-05 — refactor：AG.10-T7 collaboration-runtime supervisor-dag 巨型文件拆分（Story AG.10 完成）
 
 **类型**：refactor

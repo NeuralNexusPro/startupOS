@@ -3,8 +3,13 @@
  *
  * Public API for the Electron integration surface. Aggregates the most
  * consumed symbols from env / ipc-protocol / window / local-fs /
- * local-agent / workspace-paths. Explicit re-exports only (no `export *`
+ * local-agent. Explicit re-exports only (no `export *`
  * of whole directories); implementation files stay the source of truth.
+ *
+ * workspace-paths 不进入本门面：其顶层 `node:path` / `node:fs` 导入一旦被
+ * 门面连带打包进浏览器 bundle，会在客户端以 `require is not defined` 崩溃
+ * （dev electron 混合渲染场景）。消费方一律走深路径
+ * `@originos/core/lib/integrations/electron/workspace-paths`。
  *
  * Consumers may still use deep-path entries (e.g.
  * `@originos/core/lib/integrations/electron/ipc-protocol`) — those remain
@@ -106,12 +111,3 @@ export {
   subscribeToLocalAgentEvents,
 } from './local-agent';
 export type { LocalAgentConfig, LocalAgentEventEnvelope } from './local-agent';
-
-export {
-  resolveWorkspaceBasePath,
-  isPathWithin,
-  assertSafeWorkspaceFileName,
-  assertRealPathWithin,
-  assertWorkspacePathCanBeCreated,
-  writeWorkspaceUploadFile,
-} from './workspace-paths';
