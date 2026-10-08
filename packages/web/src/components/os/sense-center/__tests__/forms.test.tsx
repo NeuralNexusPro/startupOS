@@ -167,9 +167,11 @@ describe('RuleWizard', () => {
     render(<RuleWizard connectors={[connector]} grants={grants} loadAssets={loadAssets} jevProvider={{ enabled: true, baseUrl: 'https://api.typesafe.ai', model: 'jev-latest', credentialConfigured: true }} onSave={onSave} onCancel={vi.fn()} />);
     fireEvent.click(screen.getByLabelText('智能决策模式'));
     await waitFor(() => expect(screen.getByRole('checkbox', { name: '招聘项目' })).toBeInTheDocument());
+    // 智能决策模式也需要选择感知源（connector 绑定），默认不预选
+    expect(screen.getByLabelText('email-main (email)')).not.toBeChecked();
     expect(screen.queryByLabelText('来源')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('白名单字段')).not.toBeInTheDocument();
     expect(screen.getByText('无需 HITL 时，首二目标候选的概率差值严格大于 0.5 才自动执行；否则由用户选择。')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'email-main (email)' }));
     fireEvent.click(screen.getByRole('checkbox', { name: '招聘项目' }));
     fireEvent.click(screen.getByRole('checkbox', { name: '鹰眼 · 角色能力' }));
     fireEvent.change(screen.getByLabelText('决策规则'), { target: { value: '简历相关问题优先交给鹰眼。' } });
@@ -180,7 +182,7 @@ describe('RuleWizard', () => {
       { key: 'ignore', action: 'ignore' }, { key: 'notify_user', action: 'notify_user' },
       { key: 'ask_user_to_choose_target', action: 'ask_user_to_choose_target' },
       { key: 'project:project-1', action: 'dispatch' }, { key: 'role-agent:assistant', action: 'dispatch' },
-    ], cognitiveGuidance: '简历相关问题优先交给鹰眼。' }, conditions: [], sources: ['email'] });
+    ], cognitiveGuidance: '简历相关问题优先交给鹰眼。' }, conditions: [{ path: 'connectorId', operator: 'equals', value: 'email-main' }], sources: ['email'] });
   });
 
   it('blocks enabled Jev rules without a configured provider but allows a disabled draft', async () => {
@@ -189,6 +191,7 @@ describe('RuleWizard', () => {
     render(<RuleWizard connectors={[connector]} grants={grants} loadAssets={async () => [{ id: 'project-1', name: '招聘项目' }]} jevProvider={{ enabled: false, baseUrl: 'https://api.typesafe.ai', model: 'jev-latest', credentialConfigured: false }} onSave={onSave} onCancel={vi.fn()} />);
     fireEvent.click(screen.getByLabelText('智能决策模式'));
     await waitFor(() => expect(screen.getByRole('checkbox', { name: '招聘项目' })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('checkbox', { name: 'email-main (email)' }));
     fireEvent.click(screen.getByRole('checkbox', { name: '招聘项目' }));
     fireEvent.click(screen.getByLabelText('创建后立即启用'));
     expect(screen.getByRole('alert')).toHaveTextContent('智能决策模型未配置或未启用');

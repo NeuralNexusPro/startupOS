@@ -93,10 +93,10 @@ describe('SenseCenter drafts during live refresh', () => {
     await act(async () => { render(<SenseCenter />); }); await click('触发规则'); await click('创建规则');
     fireEvent.change(screen.getByLabelText('规则 ID'), { target: { value: 'draft-rule' } });
     fireEvent.change(screen.getByLabelText('白名单字段'), { target: { value: 'content.subject' } });
-    fireEvent.click(screen.getByLabelText('智能决策模式')); fireEvent.click(screen.getByLabelText('未命名项目'));
+    fireEvent.click(screen.getByLabelText('智能决策模式')); fireEvent.click(screen.getByLabelText('email-main (email)')); fireEvent.click(screen.getByLabelText('未命名项目'));
     fireEvent.click(screen.getByLabelText('高风险动作要求人工确认（HITL）'));
     const form = screen.getByRole('form', { name: '创建触发规则' }); await act(async () => { await usePerceptionStore.getState().load({ silent: true }); });
-    expect(screen.getByRole('form', { name: '创建触发规则' })).toBe(form); expect(screen.getByLabelText('规则 ID')).toHaveValue('draft-rule'); expect(screen.queryByLabelText('白名单字段')).not.toBeInTheDocument(); expect(screen.getByLabelText('高风险动作要求人工确认（HITL）')).not.toBeChecked();
+    expect(screen.getByRole('form', { name: '创建触发规则' })).toBe(form); expect(screen.getByLabelText('规则 ID')).toHaveValue('draft-rule'); expect(screen.getByLabelText('email-main (email)')).toBeChecked(); expect(screen.getByLabelText('高风险动作要求人工确认（HITL）')).not.toBeChecked();
     expect(screen.getByLabelText('智能决策模式')).toBeChecked(); expect(screen.getByLabelText('未命名项目')).toBeChecked(); expect(services.provider).toHaveBeenCalledTimes(1);
     await tick(); expect(services.provider).toHaveBeenCalledTimes(1);
   });
