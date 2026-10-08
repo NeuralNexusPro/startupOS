@@ -1,6 +1,14 @@
 # Changelog - v0.4.0
 
 
+## 2026-10-08 — perf：会话列表索引 sidecar 消除打开窗口时的主进程同步阻塞
+
+**类型**：perf
+**影响模块**：`packages/core/src/lib/features/agent/session-service.ts`、`packages/core/src/lib/storage/json-store.ts`
+**摘要**：Windows 用户反馈角色窗口打开时「未响应」。根因链：listSessions 打开窗口时对每个会话文件全量读+JSON.parse（同步 CPU，总量=全部历史 MB 数），且缺 llmConfig 的会话逐个 `readUserConfigWithProductDefaults()` 同步读 user-config.json（Windows Defender 实时扫描下每文件 +10~50ms，N 个老会话即主进程秒级阻塞）；这些全部跑在 Electron 主进程（AGENT_SESSION_LIST 为 ipcMain.handle），同步阻塞直接停掉窗口消息泵。修复：①会话元数据索引 sidecar（`{sessionsDir}/.sessions-index.json`，saveSession 唯一写入口顺手维护），listSessions 优先读索引，mtime+size 校验失配/文件增删时回退全量扫描并重建，实测 57 会话 26ms→1.3ms 且不随历史增长；②fallback 扫描的 user-config 回填提出循环（N 次同步读→1 次）；③listTaskRuntimeSessions 关闭逐会话 llmConfig 兜底；④删除 getSession 2 条 [DEBUG] console.error（即此前日志污染主源之一，57 文件×2 条/次）。session 测试 25/25（含新增 session-index 5 例）、desktop 130/130、core/desktop tsc 0 新增、web tsc 与基线相同、lint:boundaries 0 诊断、exports verify 通过。
+
+---
+
 ## 2026-10-08 — feat：原生通知点击支持打开 http/https 链接
 
 **类型**：feat

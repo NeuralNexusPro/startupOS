@@ -167,6 +167,18 @@ export class JsonStore {
   }
 
   /**
+   * Stat a file (metadata only, no content read) — null when missing
+   */
+  async stat(filePath: string): Promise<{ mtimeMs: number; size: number } | null> {
+    try {
+      const stats = await fs.stat(path.join(dataRoot(), filePath));
+      return { mtimeMs: stats.mtimeMs, size: stats.size };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * List all files in a directory
    */
   async listFiles(dirPath: string, extension = '.json'): Promise<string[]> {
