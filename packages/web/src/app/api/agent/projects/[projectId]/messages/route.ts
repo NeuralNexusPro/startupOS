@@ -88,7 +88,7 @@ function stripToolCodeBlocks(content: string): string {
  * 系统触发问候消息 —— 替换为隐藏的系统指令
  */
 const SYSTEM_TRIGGER_GREETING = '__SYSTEM_TRIGGER_GREETING__';
-const SYSTEM_GREETING_PROMPT = `系统启动触发：依据已注入的只读项目本体上下文判断当前访谈阶段。若概念与关系已确认而业务行为尚未建模，直接用自然、简短的业务语言说明接下来要确认处理动作、状态变化和规则，并只问一个最关键的问题；否则按当前阶段生成相应问候语。不要读取或提及 business-model.json、输出目录、内部阶段判断、工具调用或推理过程。`;
+const SYSTEM_GREETING_PROMPT = `系统启动触发：先检查已恢复的对话历史，判断访谈进行到哪个阶段（尚未开始、领域发现中、业务精炼中、行为确认中或模型审阅中），再依据已注入的只读项目本体上下文判断当前访谈阶段。若访谈已在进行，从历史中断处自然继续，不要重复已确认的内容，更不要从头开始访谈；若概念与关系已确认而业务行为尚未建模，直接用自然、简短的业务语言说明接下来要确认处理动作、状态变化和规则，并只问一个最关键的问题；否则按当前阶段生成相应问候语。不要读取或提及 business-model.json、输出目录、内部阶段判断、工具调用或推理过程。`;
 
 export async function POST(
   request: NextRequest,
