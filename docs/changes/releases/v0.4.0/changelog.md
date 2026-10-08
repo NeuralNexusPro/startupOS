@@ -1,6 +1,14 @@
 # Changelog - v0.4.0
 
 
+## 2026-10-08 — feat：原生通知点击支持打开 http/https 链接
+
+**类型**：feat
+**影响模块**：`packages/desktop/src/main/services/native-notification-service.ts`、`packages/desktop/src/main/services/misc-service.ts`、`packages/desktop/src/main/services/desktop-scheduler-service.ts`、`packages/core/src/lib/integrations/electron/services/misc.ts`
+**摘要**：原生通知点击支持打开外部链接。`NativeNotificationRequest.url` 经严格协议白名单（仅 http/https，`new URL()` 解析校验）后 `shell.openExternal` 打开系统浏览器；非法/非白名单 URL 拒绝并回退既有激活目标行为。入口覆盖：NOTIFICATION_SHOW IPC、定时任务 notify 动作 `payload.url`。新增 openNotificationUrl 测试 2/2、scheduler 回归 4/4、lint:boundaries 0 诊断。
+
+---
+
 ## 2026-10-08 — feat：大模型配置支持思考模式开关与思考强度配置
 
 **类型**：feat

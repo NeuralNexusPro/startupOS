@@ -1,6 +1,14 @@
 # Changelog
 
 
+## 2026-10-08 — feat：原生通知点击支持打开 http/https 链接
+
+**类型**：feat
+**影响模块**：`packages/desktop/src/main/services/native-notification-service.ts`、`packages/desktop/src/main/services/misc-service.ts`、`packages/desktop/src/main/services/desktop-scheduler-service.ts`、`packages/core/src/lib/integrations/electron/services/misc.ts`
+**摘要**：Electron 原生通知点击此前只会聚焦窗口/广播激活目标，无法打开链接（整个 desktop 主进程未引用 shell.openExternal）。`NativeNotificationRequest` 新增 `url` 字段，click 处理经 `openNotificationUrl` 白名单校验（`new URL()` 解析后仅放行 http:/https:，拒绝 file:、javascript:、自定义 scheme，防 LLM/感知插件生成内容的命令注入）后 `shell.openExternal` 打开系统浏览器，否则回退既有激活目标广播。三个入口透传：NOTIFICATION_SHOW IPC（渲染端 showSystemNotification）、定时任务 notify 动作（`payload.url`）、core SystemNotificationRequest 类型（web 预览降级暂不支持 url）。desktop tsc 0 error、新增 openNotificationUrl 测试 2/2、scheduler 回归 4/4、core/web tsc 0 新增、lint:boundaries 0 诊断、exports verify 通过。
+
+---
+
 ## 2026-10-08 — feat：大模型配置支持思考模式开关与思考强度配置
 
 **类型**：feat

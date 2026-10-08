@@ -145,7 +145,7 @@ export class MiscService {
 
     ipcMain.handle(
       IPC_CHANNELS.NOTIFICATION_SHOW,
-      async (_event, request: { title?: string; body?: string; silent?: boolean; activationTarget?: unknown }): Promise<IpcResponse<unknown>> => {
+      async (_event, request: { title?: string; body?: string; silent?: boolean; activationTarget?: unknown; url?: string }): Promise<IpcResponse<unknown>> => {
         try {
           const title = typeof request.title === 'string' ? request.title.trim() : '';
           const body = typeof request.body === 'string' ? request.body.trim() : '';
@@ -162,6 +162,7 @@ export class MiscService {
             body,
             silent: request.silent,
             activationTarget: request.activationTarget,
+            ...(typeof request.url === 'string' && request.url.trim() ? { url: request.url.trim() } : {}),
           });
 
           return {

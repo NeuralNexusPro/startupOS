@@ -1,4 +1,4 @@
-import { BrowserWindow, Notification, app } from 'electron';
+import { BrowserWindow, Notification, app, shell } from 'electron';
 import { IPC_CHANNELS } from '../ipc-protocol';
 
 export interface NativeNotificationRequest {
@@ -6,6 +6,8 @@ export interface NativeNotificationRequest {
   body?: string;
   silent?: boolean;
   activationTarget?: unknown;
+  /** 点击通知时用系统浏览器打开的外部链接（仅 http/https）。 */
+  url?: string;
 }
 
 export interface NativeNotificationResult {
@@ -51,6 +53,7 @@ export async function showNativeSystemNotification(request: NativeNotificationRe
     title,
     hasBody: Boolean(body),
     hasActivationTarget: Boolean(request.activationTarget),
+    hasUrl: Boolean(request.url),
     appName: app.getName(),
     platform: process.platform,
     focused,
@@ -100,6 +103,10 @@ export async function showNativeSystemNotification(request: NativeNotificationRe
     });
     notification.once('click', () => {
       console.log('[notification] Electron native notification clicked');
+      if (request.url && openNotificationUrl(request.url)) {
+        emitNotificationClick(request.activationTarget);
+        return;
+      }
       emitNotificationClick(request.activationTarget);
     });
     notification.show();
@@ -152,4 +159,28 @@ function emitNotificationClick(activationTarget: unknown): void {
     window.show();
     window.focus();
   }
+}
+
+/**
+ * 通知内容可能来自 LLM/感知插件生成的 payload，openExternal 前必须白名单协议：
+ * 只放行 http/https，拒绝 file:、自定义 scheme 及注入形态。
+ */
+export function openNotificationUrl(rawUrl: string): boolean {
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    console.warn('[notification] Ignoring invalid notification url');
+    return false;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    console.warn('[notification] Blocked non-http(s) notification url');
+    return false;
+  }
+  void shell.openExternal(parsed.toString()).catch((error: unknown) => {
+    console.error('[notification] Failed to open notification url', error);
+  });
+  return true;
 }

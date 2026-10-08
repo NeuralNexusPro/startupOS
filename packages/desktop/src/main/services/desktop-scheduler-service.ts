@@ -117,6 +117,7 @@ export function getNativeNotificationRequest(task: ScheduledTask): NativeNotific
       title: task.title,
       body: typeof payload['message'] === 'string' ? payload['message'] : task.title,
       activationTarget: payload['activationTarget'],
+      ...(typeof payload['url'] === 'string' && payload['url'].trim() ? { url: payload['url'].trim() } : {}),
     };
   }
   if (task.action.type === 'agent') {
