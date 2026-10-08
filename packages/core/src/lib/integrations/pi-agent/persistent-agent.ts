@@ -17,6 +17,7 @@ import { getChannelMessageSource } from './channel-message-source';
 import { SleepComputeScheduler } from './cognitive/sleep-compute';
 import { createRuntimeModel } from './server-config';
 import type { RuntimeLLMConfig } from './llm-config';
+import { normalizeRuntimeThinkingLevel } from './llm-config';
 import { normalizeAgentTokenUsage } from './token-usage';
 import { extractDisplayContent } from './display-content';
 import type { AgentTool } from '@originos/pi-agent-adapter';
@@ -458,6 +459,9 @@ export class PersistentAgent {
 		const model = createRuntimeModel(llmConfig);
 		console.log(`[PersistentAgent] Applying llmConfig for project ${this.projectId}: ${model.id}`);
 		this.agent.setModel(model);
+		// 思考强度属于 agent 状态而非模型选项，热更新配置时需要同步。
+		const thinkingLevel = normalizeRuntimeThinkingLevel(llmConfig.thinkingLevel);
+		if (thinkingLevel) this.agent.setThinkingLevel(thinkingLevel);
 	}
 
 	/**

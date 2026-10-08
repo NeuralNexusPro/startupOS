@@ -220,6 +220,7 @@ export interface UserLLMConfig {
   baseUrl?: string | null;
   model?: string;
   maxTokens?: number;
+  thinkingLevel?: RuntimeLLMConfig["thinkingLevel"];
   mapping?: Record<string, string>;
 }
 

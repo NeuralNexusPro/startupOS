@@ -196,7 +196,9 @@ export function createOriginOSAgent<T>(
 		sessionContext: params.sessionContext,
 		model: agentModel,
 		projectContext,
-		thinkingLevel: (thinkingLevel || "low") as OriginOSAgentConfig['thinkingLevel'],
+		// 思考强度优先级：显式参数 > 用户运行时 LLM 配置 > 默认 "low"。
+		// 非推理模型在 agent 初始化时由 model.reasoning === false 强制降为 "off"。
+		thinkingLevel: (thinkingLevel || llmConfig?.thinkingLevel || "low") as OriginOSAgentConfig['thinkingLevel'],
 		tools: [],
 		emptyStopRecoveryEnabled: resolveEmptyStopRecoveryEnabled(agentType, emptyStopRecoveryEnabled),
 	};

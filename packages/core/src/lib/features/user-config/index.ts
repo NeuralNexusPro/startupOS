@@ -65,6 +65,7 @@ export function runtimeLLMConfigToUserLLMConfig(config?: RuntimeLLMConfig | null
     baseUrl: isOpenAICompatible ? normalized.baseUrl ?? null : null,
     ...(normalized.model ? { model: normalized.model } : {}),
     ...(normalized.maxTokens ? { maxTokens: normalized.maxTokens } : {}),
+    ...(normalized.thinkingLevel ? { thinkingLevel: normalized.thinkingLevel } : {}),
     ...(normalized.mapping ? { mapping: normalized.mapping } : {}),
   };
 }
@@ -86,6 +87,7 @@ export function userLLMConfigToRuntimeLLMConfig(config?: UserLLMConfig | null): 
     baseUrl: config.baseUrl ?? undefined,
     model: config.model,
     maxTokens: config.maxTokens,
+    thinkingLevel: config.thinkingLevel,
     mapping: config.mapping,
   });
 }

@@ -1,6 +1,7 @@
 import path from 'path';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { getDataRoot } from '../paths';
+import type { RuntimeThinkingLevel } from '../integrations/pi-agent/llm-config';
 
 export interface UserLLMConfig {
   enabled?: boolean;
@@ -14,6 +15,7 @@ export interface UserLLMConfig {
   baseUrl?: string | null;
   model?: string;
   maxTokens?: number;
+  thinkingLevel?: RuntimeThinkingLevel;
   mapping?: Record<string, string>;
 }
 

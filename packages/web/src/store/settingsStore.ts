@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { getUserConfig, setUserConfig } from '@originos/core/lib/integrations/electron/services/misc';
 import type { AnthropicCredentialSource } from '@originos/core/lib/integrations/pi-agent/client';
+import { normalizeRuntimeThinkingLevel, type RuntimeThinkingLevel } from '@originos/core/lib/integrations/pi-agent/llm-config';
 
 export type LLMProviderType = 'anthropic' | 'openai';
 export type UserLanguagePreference = 'zh-CN' | 'en-US' | 'ja-JP';
@@ -13,6 +14,7 @@ export interface ProviderConfig {
   anthropicCredentialSource?: AnthropicCredentialSource;
   model: string;
   maxTokens: number;
+  thinkingLevel: RuntimeThinkingLevel;
   mapping: Record<string, string>;
 }
 
@@ -65,8 +67,8 @@ function loadFromStorage(): LLMSettings {
 function getDefaultSettings(): LLMSettings {
   return {
     provider: 'anthropic',
-    anthropic: { enabled: false, baseUrl: '', authToken: '', apiKey: '', model: '', maxTokens: 16384, mapping: {} },
-    openai: { enabled: false, baseUrl: '', authToken: '', apiKey: '', model: '', maxTokens: 16384, mapping: {} },
+    anthropic: { enabled: false, baseUrl: '', authToken: '', apiKey: '', model: '', maxTokens: 16384, thinkingLevel: 'low', mapping: {} },
+    openai: { enabled: false, baseUrl: '', authToken: '', apiKey: '', model: '', maxTokens: 16384, thinkingLevel: 'low', mapping: {} },
   };
 }
 
@@ -100,6 +102,7 @@ function normalizeProviderConfig(config: ProviderConfig): ProviderConfig {
     ...config,
     authToken: normalizeCredentialString(config.authToken) ?? '',
     apiKey: normalizeCredentialString(config.apiKey) ?? '',
+    thinkingLevel: normalizeRuntimeThinkingLevel(config.thinkingLevel) ?? 'low',
     mapping: config.mapping && typeof config.mapping === 'object' ? config.mapping : {},
   };
 }
@@ -201,6 +204,7 @@ function persistToServer(settings: LLMSettings): void {
       baseUrl: provider === 'openai' ? effective.baseUrl || null : null,
       model: effective.model || undefined,
       maxTokens: effective.maxTokens || undefined,
+      thinkingLevel: normalizeRuntimeThinkingLevel(effective.thinkingLevel),
       mapping: Object.keys(effective.mapping).length > 0 ? effective.mapping : undefined,
     },
   }).catch(() => {});
@@ -290,6 +294,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
             ...(provider === 'openai' && typeof llm.baseUrl === 'string' ? { baseUrl: llm.baseUrl } : {}),
             ...(llm.model ? { model: llm.model } : {}),
             ...(llm.maxTokens ? { maxTokens: llm.maxTokens } : {}),
+            ...(llm.thinkingLevel ? { thinkingLevel: llm.thinkingLevel } : {}),
             ...(llm.mapping && typeof llm.mapping === 'object' ? { mapping: llm.mapping } : {}),
           },
         };

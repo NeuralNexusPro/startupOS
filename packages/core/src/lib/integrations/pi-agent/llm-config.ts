@@ -1,5 +1,19 @@
 export type RuntimeLLMFieldMapping = Record<string, string>;
 
+/**
+ * 思考强度配置。与 adapter 的 ThinkingLevel 对齐（此处收窄到 5 档，
+ * xhigh/max 为极端档位，不对用户开放）。"off" 表示关闭思考模式。
+ */
+export type RuntimeThinkingLevel = "off" | "minimal" | "low" | "medium" | "high";
+
+const RUNTIME_THINKING_LEVELS: readonly RuntimeThinkingLevel[] = ["off", "minimal", "low", "medium", "high"];
+
+export function normalizeRuntimeThinkingLevel(value?: unknown): RuntimeThinkingLevel | undefined {
+  return typeof value === "string" && (RUNTIME_THINKING_LEVELS as readonly string[]).includes(value)
+    ? (value as RuntimeThinkingLevel)
+    : undefined;
+}
+
 export interface RuntimeLLMConfig {
   enabled?: boolean;
   provider?: string;
@@ -12,6 +26,7 @@ export interface RuntimeLLMConfig {
   apiKey?: string;
   model?: string;
   maxTokens?: number;
+  thinkingLevel?: RuntimeThinkingLevel;
   mapping?: RuntimeLLMFieldMapping;
 }
 
@@ -52,9 +67,10 @@ export function normalizeRuntimeLLMConfig(
   const maxTokens = config.maxTokens && Number.isFinite(config.maxTokens)
     ? config.maxTokens
     : undefined;
+  const thinkingLevel = normalizeRuntimeThinkingLevel(config.thinkingLevel);
   const mapping = normalizeRuntimeLLMFieldMapping(config.mapping);
 
-  if (!provider && !baseUrl && !authToken && !apiKey && !model && !maxTokens && !mapping) {
+  if (!provider && !baseUrl && !authToken && !apiKey && !model && !maxTokens && !thinkingLevel && !mapping) {
     return undefined;
   }
 
@@ -87,6 +103,7 @@ export function normalizeRuntimeLLMConfig(
       : {}),
     ...(model ? { model } : {}),
     ...(maxTokens ? { maxTokens } : {}),
+    ...(thinkingLevel ? { thinkingLevel } : {}),
     ...(mapping ? { mapping } : {}),
   };
 }

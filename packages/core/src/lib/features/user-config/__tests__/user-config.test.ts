@@ -85,6 +85,7 @@ describe('user-config LLM backfill', () => {
       anthropicBaseUrl: ' https://token-plan-cn.xiaomimimo.com/anthropic ',
       model: 'mimo-v2.5-pro',
       maxTokens: 16384,
+      thinkingLevel: 'off',
       anthropicCredentialSource: 'anthropicAuthToken',
     });
 
@@ -97,8 +98,31 @@ describe('user-config LLM backfill', () => {
       authToken: 'tp-test-token',
       model: 'mimo-v2.5-pro',
       maxTokens: 16384,
+      thinkingLevel: 'off',
     });
     expect(readFileSync(path.join(dataRoot, 'user-config.json'), 'utf-8')).toContain('mimo-v2.5-pro');
+  });
+
+  it('round-trips thinkingLevel and drops invalid values', () => {
+    persistRuntimeLLMConfig({
+      provider: 'anthropic',
+      anthropicApiKey: 'sk-ant',
+      anthropicCredentialSource: 'anthropicApiKey',
+      model: 'claude-test',
+      thinkingLevel: 'high' as never,
+    });
+    expect(readUserConfig().llm).toMatchObject({ thinkingLevel: 'high' });
+
+    // 非法值在 normalize 阶段被丢弃，不会写入配置。
+    writeUserConfig({});
+    persistRuntimeLLMConfig({
+      provider: 'anthropic',
+      anthropicApiKey: 'sk-ant',
+      anthropicCredentialSource: 'anthropicApiKey',
+      model: 'claude-test',
+      thinkingLevel: 'ultra' as never,
+    });
+    expect(readUserConfig().llm?.thinkingLevel).toBeUndefined();
   });
 
   it('replaces stale Anthropic fields when OpenAI-compatible config is persisted', () => {

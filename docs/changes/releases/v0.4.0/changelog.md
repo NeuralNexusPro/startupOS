@@ -1,6 +1,14 @@
 # Changelog - v0.4.0
 
 
+## 2026-10-08 — feat：大模型配置支持思考模式开关与思考强度配置
+
+**类型**：feat
+**影响模块**：`packages/core/src/lib/integrations/pi-agent/llm-config.ts`、`packages/core/src/lib/integrations/pi-agent/core/agent-factory.ts`、`packages/core/src/lib/integrations/pi-agent/persistent-agent.ts`、`packages/core/src/lib/storage/user-config.ts`、`packages/core/src/lib/features/user-config/index.ts`、`packages/core/src/lib/integrations/electron/services/misc.ts`、`packages/web/src/store/settingsStore.ts`、`packages/web/src/components/os/settings/SettingsDialog.tsx`
+**摘要**：大模型设置新增「思考模式」配置（关闭/最小/低/中/高）。`RuntimeLLMConfig.thinkingLevel` 贯通 RuntimeLLMConfig → UserLLMConfig 持久化 → settingsStore 往返 → 设置弹窗五档选择器 → createOriginOSAgent（显式参数 > llmConfig > 默认 low）→ PersistentAgent.applyLLMConfig 热更新同步 setThinkingLevel；非法值在 normalize 阶段丢弃；非推理模型仍由 model.reasoning === false 强制降为 off。user-config 测试 12/12、回归 9/9、lint:boundaries 0 诊断、exports verify 通过。
+
+---
+
 ## 2026-10-08 — fix：访谈行为草稿对可信 UI 不可见 + Working Summary 自我放大污染
 
 **类型**：fix

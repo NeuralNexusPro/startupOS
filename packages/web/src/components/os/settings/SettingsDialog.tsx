@@ -284,6 +284,32 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
             <p className="text-[10px] text-white/30">单次响应最大 Token 数，不同模型上限不同（如 Azure GPT-4o 最大 16384）</p>
           </div>
           <div className="flex flex-col gap-1.5">
+            <label className="text-xs text-white/50">思考模式</label>
+            <div className="flex gap-2">
+              {([
+                ['off', '关闭'],
+                ['minimal', '最小'],
+                ['low', '低'],
+                ['medium', '中'],
+                ['high', '高'],
+              ] as Array<[ProviderConfig['thinkingLevel'], string]>).map(([level, label]) => (
+                <button
+                  key={level}
+                  type="button"
+                  onClick={() => updateDraft(activeTab, 'thinkingLevel', level)}
+                  className={`flex-1 rounded-lg border px-3 py-2 text-xs transition-colors ${
+                    providerDraft.thinkingLevel === level
+                      ? 'border-sky-300/50 bg-sky-400/15 text-sky-100'
+                      : 'border-white/10 bg-white/5 text-white/60 hover:text-white'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-white/30">控制模型的思考强度；不支持思考的模型会忽略此配置（自动关闭）</p>
+          </div>
+          <div className="flex flex-col gap-1.5">
             <label className="text-xs text-white/50">字段映射</label>
             <textarea
               value={mappingText[activeTab]}
