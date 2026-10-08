@@ -8,6 +8,7 @@ const Module = require('node:module');
 const desktopDir = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(desktopDir, '..', '..');
 const compiledRoot = path.join(repoRoot, 'dist-electron');
+const stagedCoreRoot = path.join(desktopDir, '.packaging', 'core-runtime');
 const workspaceServicePath = path.join(
   compiledRoot,
   'desktop',
@@ -34,6 +35,11 @@ async function main() {
   if (!fs.existsSync(workspaceServicePath) || !fs.existsSync(ipcProtocolPath)) {
     fail('compiled WorkspaceService or IPC protocol is missing; run desktop build first');
   }
+  const stagedCoreManifestPath = path.join(stagedCoreRoot, 'package.json');
+  if (!fs.existsSync(stagedCoreManifestPath)) {
+    fail('staged core runtime is missing; run prepare-core-runtime first');
+  }
+  const stagedCoreExports = JSON.parse(fs.readFileSync(stagedCoreManifestPath, 'utf8')).exports;
 
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'originos-workspace-ipc-'));
   const dataRoot = path.join(tempRoot, 'data');
@@ -50,9 +56,25 @@ async function main() {
     },
   };
   const originalLoad = Module._load;
+  const resolvedCoreExports = new Set();
   Module._load = function loadWithElectronMock(request, parent, isMain) {
     if (request === 'electron') {
       return electronMock;
+    }
+    if (request === '@originos/core' || request.startsWith('@originos/core/')) {
+      const exportKey = request === '@originos/core'
+        ? '.'
+        : `./${request.slice('@originos/core/'.length)}`;
+      const exportPath = stagedCoreExports?.[exportKey];
+      if (typeof exportPath !== 'string') {
+        fail(`staged core runtime does not export ${request}`);
+      }
+      const resolvedPath = path.resolve(stagedCoreRoot, exportPath);
+      if (!resolvedPath.startsWith(`${stagedCoreRoot}${path.sep}`) || !fs.existsSync(resolvedPath)) {
+        fail(`staged core runtime export is missing: ${request}`);
+      }
+      resolvedCoreExports.add(request);
+      return originalLoad.call(this, resolvedPath, parent, isMain);
     }
     return originalLoad.call(this, request, parent, isMain);
   };
@@ -60,6 +82,9 @@ async function main() {
   try {
     const { IPC_CHANNELS } = require(ipcProtocolPath);
     const { WorkspaceService } = require(workspaceServicePath);
+    if (!resolvedCoreExports.has('@originos/core/lib/paths')) {
+      fail('WorkspaceService did not resolve paths through the staged core runtime');
+    }
     new WorkspaceService();
 
     const upload = handlers.get(IPC_CHANNELS.WORKSPACE_FILE_UPLOAD);
