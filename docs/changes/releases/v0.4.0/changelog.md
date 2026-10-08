@@ -1,6 +1,14 @@
 # Changelog - v0.4.0
 
 
+## 2026-10-08 — fix：访谈恢复时前端出现两个 loading 指示器
+
+**类型**：fix
+**影响模块**：`packages/web/src/components/interview/InterviewWindow.tsx`、`packages/web/src/components/ui/chat/ChatMessageList.tsx`
+**摘要**：访谈恢复（needsBehaviorModeling 路径触发 greeting）时同时渲染两个 loading：InterviewWindow 的 messages useMemo 未透传 isStreaming，triggerGreeting 占位消息丢失流式标记，ChatMessageList 的 hasStreamingMsg 判定失效，StreamingDots 与「正在处理...」占位气泡同时命中；且 ChatMessageList 内两个指示器条件本身不互斥（isThinking && !hasStreamingMsg 与 isThinking && 空 content 非流式 assistant 末尾消息可同时为真）。修复：透传 isStreaming（对齐 SkillDialog/AgentDialogContent），提取 showProcessingPlaceholder 使两个指示器互斥。web tsc 无新增错误、eslint 0 error。
+
+---
+
 ## 2026-10-05 — fix：electron 门面剔除 workspace-paths，修复浏览器端 `require is not defined`
 
 **类型**：fix
