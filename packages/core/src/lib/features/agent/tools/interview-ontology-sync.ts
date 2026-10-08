@@ -2,6 +2,7 @@ import { Type, type Static } from '@sinclair/typebox';
 import type { AgentToolResult } from '@originos/pi-agent-adapter';
 
 import type { ToolRegistration } from '../../../integrations/pi-agent/types';
+import { getToolContext } from '../../../integrations/pi-agent/tools/context';
 import { InterviewOntologySyncService } from '../../project';
 
 const ConceptSchema = Type.Object({
@@ -51,6 +52,12 @@ const Params = Type.Object({
 
 const service = new InterviewOntologySyncService();
 
+/** sourceId 由工具上下文（会话启动时注入）决定，模型传参仅作无上下文时回退。 */
+function trustedSourceId(paramSourceId: string): string {
+  const sessionId = getToolContext().sessionId?.trim();
+  return sessionId ?? paramSourceId;
+}
+
 export const interviewOntologySyncTool: ToolRegistration = {
   name: 'record_project_interview_observation',
   label: '记录访谈业务概念',
@@ -61,7 +68,10 @@ export const interviewOntologySyncTool: ToolRegistration = {
   scopes: ['project', 'persistent'],
   async execute(_toolCallId, params: Static<typeof Params>): Promise<AgentToolResult<unknown>> {
     try {
-      const result = await service.record(params);
+      const result = await service.record({
+        ...params,
+        sourceId: trustedSourceId(params.sourceId),
+      });
       return {
         content: [{ type: 'text', text: JSON.stringify({
           success: result.results.every((item) => item.status !== 'rejected'), ontologyId: result.ontology.id, ontologyVersion: result.ontology.version,

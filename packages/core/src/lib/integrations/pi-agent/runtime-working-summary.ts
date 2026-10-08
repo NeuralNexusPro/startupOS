@@ -27,6 +27,19 @@ function getTextContent(message: AgentMessage): string {
     .trim();
 }
 
+/**
+ * 合成注入的消息不得反哺下一轮 summary，否则会逐轮自我放大：
+ * - system 角色消息只可能是运行时合成注入（Working Summary、loop 告警）；
+ * - 访谈问候触发指令由 Web API 以 user 角色注入，前缀须与该指令保持一致
+ *   （见 web `api/agent/projects/[projectId]/messages` 的 SYSTEM_GREETING_PROMPT），
+ *   其中的“不要重复已确认的内容”是给 Agent 的指令，不是用户纠错。
+ */
+function isSyntheticInjection(message: AgentMessage): boolean {
+  if (String((message as { role?: string }).role ?? '') === 'system') return true;
+  const text = getTextContent(message);
+  return text.includes('[Working Summary]') || text.startsWith('系统启动触发');
+}
+
 function normalizeLine(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
 }
@@ -66,13 +79,14 @@ function extractDoNotRepeat(text: string): string | undefined {
 export function buildRuntimeWorkingSummary(messages: AgentMessage[]): RuntimeWorkingSummary {
   const currentTask = [...messages]
     .reverse()
-    .find((message) => message.role === 'user');
+    .find((message) => message.role === 'user' && !isSyntheticInjection(message));
   const currentTaskText = currentTask ? normalizeLine(getTextContent(currentTask)).slice(0, 200) : undefined;
 
   let failureReason: string | undefined;
   let doNotRepeat: string | undefined;
 
   for (const message of [...messages].reverse()) {
+    if (isSyntheticInjection(message)) continue;
     const text = getTextContent(message);
     if (!text) continue;
 

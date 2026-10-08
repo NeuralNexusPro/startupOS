@@ -117,4 +117,22 @@ describe('InterviewBehaviorDraftService', () => {
     const failed = await service.publish(projectId, 'session-a', saved.draft.id, saved.draft.draftRevision, saved.draft.candidateHash, 'publish-1');
     expect(failed).toMatchObject({ ok: false, code: 'ONTOLOGY_REVISION_CONFLICT', draft: { status: 'needs_review' } });
   });
+
+  it('reviewLatest prefers the exact source and falls back to the latest legacy draft', async () => {
+    const { service, projectId } = await setup();
+    // UI queries with its own session id; the draft was saved by the model with a stale id.
+    expect(await service.reviewLatest(projectId, 'project-initialization-1')).toMatchObject({ ok: false, code: 'DRAFT_NOT_FOUND' });
+
+    const saved = await saveReady(service, projectId); if (!saved.ok) throw new Error('save failed');
+    expect(await service.reviewLatest(projectId, 'session-a')).toMatchObject({ ok: true, draft: { id: saved.draft.id } });
+    expect(await service.reviewLatest(projectId, 'project-initialization-1')).toMatchObject({ ok: true, draft: { id: saved.draft.id } });
+
+    const second = await service.save({
+      projectId, sourceId: 'project-initialization-1', ontologyId: `ontology-${projectId}`, ontologyVersion: '1.0.0', baseRevision: 0,
+      sourceMessageRefs: [{ messageId: 'message-2' }], candidates: candidates(), knownPermissionIds: ['quality:inspect'],
+    });
+    if (!second.ok) throw new Error('second save failed');
+    expect(await service.reviewLatest(projectId, 'session-a')).toMatchObject({ ok: true, draft: { id: saved.draft.id } });
+    expect(await service.reviewLatest(projectId, 'project-initialization-1')).toMatchObject({ ok: true, draft: { id: second.draft.id } });
+  });
 });

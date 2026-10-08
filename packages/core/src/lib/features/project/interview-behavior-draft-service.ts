@@ -208,6 +208,11 @@ export class InterviewBehaviorDraftService {
    * Returns the most recently updated draft owned by this interview source.
    * Draft contents only contain canonical candidates and message identifiers;
    * original interview messages are never read or returned here.
+   *
+   * Legacy drafts saved before tool-context sourceId injection may carry a
+   * stale sourceId (e.g. a model-guessed session id). When the exact source
+   * has no draft, fall back to the project's latest non-discarded draft so the
+   * trusted UI can still review it; an exact-source draft always wins.
    */
   async reviewLatest(projectId: string, sourceId: string): Promise<InterviewBehaviorDraftResult> {
     let entries: string[];
@@ -219,9 +224,9 @@ export class InterviewBehaviorDraftService {
     const drafts = (await Promise.all(entries
       .filter((entry) => entry.endsWith('.json'))
       .map(async (entry) => this.read(projectId, entry.slice(0, -'.json'.length)))))
-      .filter((draft): draft is InterviewBehaviorDraft => draft !== undefined && draft.sourceId === sourceId)
+      .filter((draft): draft is InterviewBehaviorDraft => draft !== undefined && draft.status !== 'discarded')
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
-    const draft = drafts[0];
+    const draft = drafts.find((item) => item.sourceId === sourceId) ?? drafts[0];
     if (!draft) return this.failure('DRAFT_NOT_FOUND', [issue('DRAFT_NOT_FOUND', 'sourceId', 'No behavior draft exists for this interview')]);
     return { ok: true, draft };
   }

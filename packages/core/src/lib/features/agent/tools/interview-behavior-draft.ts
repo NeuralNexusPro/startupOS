@@ -2,6 +2,7 @@ import { Type, type Static } from '@sinclair/typebox';
 import type { AgentToolResult } from '@originos/pi-agent-adapter';
 
 import type { ToolRegistration } from '../../../integrations/pi-agent/types';
+import { getToolContext } from '../../../integrations/pi-agent/tools/context';
 import {
   InterviewBehaviorDraftService,
   type InterviewBehaviorCandidates,
@@ -37,6 +38,16 @@ const ReviewParams = Type.Object({
 const service = new InterviewBehaviorDraftService();
 const content = (value: unknown): AgentToolResult<unknown> => ({ content: [{ type: 'text', text: JSON.stringify(value) }], details: undefined });
 
+/**
+ * sourceId 是访谈草稿的归属标识：UI 用会话 ID 查询草稿，模型不可信。
+ * 工具上下文中的 sessionId 由 PersistentAgent/AgentManager 在会话启动时注入，
+ * 模型传参只作无上下文时（测试、直连）的回退。
+ */
+function trustedSourceId(paramSourceId: string): string {
+  const sessionId = getToolContext().sessionId?.trim();
+  return sessionId ?? paramSourceId;
+}
+
 /** Model tools may collect/review drafts. Trusted UI is the only publisher. */
 export const interviewBehaviorDraftTools: ToolRegistration[] = [
   {
@@ -48,6 +59,7 @@ export const interviewBehaviorDraftTools: ToolRegistration[] = [
     async execute(_toolCallId, params: Static<typeof SaveParams>): Promise<AgentToolResult<unknown>> {
       const result = await service.save({
         ...params,
+        sourceId: trustedSourceId(params.sourceId),
         sourceMessageRefs: params.sourceMessageRefs as InterviewBehaviorMessageRef[],
         candidates: params.candidates,
         clarifications: params.clarifications,
@@ -62,7 +74,7 @@ export const interviewBehaviorDraftTools: ToolRegistration[] = [
     parameters: ReviewParams,
     category: 'ontology', enabled: true, scopes: ['project', 'persistent'],
     async execute(_toolCallId, params: Static<typeof ReviewParams>): Promise<AgentToolResult<unknown>> {
-      return content(await service.review(params.projectId, params.sourceId, params.draftId));
+      return content(await service.review(params.projectId, trustedSourceId(params.sourceId), params.draftId));
     },
   },
 ];

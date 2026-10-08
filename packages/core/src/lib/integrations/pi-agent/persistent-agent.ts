@@ -356,16 +356,19 @@ export class PersistentAgent {
 
 			if (event.type === 'agent_end' && event.messages?.length > 0) {
 				try {
-					const lastAssistantIndex = event.messages.map((message: { role?: string }) => message.role).lastIndexOf('assistant');
 					const contextTokenEstimate = this.agent?.getContextTokenEstimate();
-					const messages = event.messages.map((message: { role?: string; usage?: unknown; content?: unknown }, index: number) => {
+					// 合成的 [Working Summary] system 消息只在当轮 prompt 前注入，
+					// 持久化会跨轮累积（下一轮 summary 会把它当作历史再放大），不能落盘。
+					const persistable = event.messages.filter((message: { role?: string }) => message.role !== 'system');
+					const lastPersistedAssistantIndex = persistable.map((message: { role?: string }) => message.role).lastIndexOf('assistant');
+					const messages = persistable.map((message: { role?: string; usage?: unknown; content?: unknown }, index: number) => {
 						const { usage: rawUsage, content: rawContent, ...rest } = message;
 						const usage = message.role === 'assistant' ? normalizeAgentTokenUsage(rawUsage) : undefined;
 						return {
 							...rest,
 							content: typeof rawContent === 'string' ? rawContent : extractDisplayContent(rawContent),
 							...(usage ? { usage } : {}),
-							...(index === lastAssistantIndex && contextTokenEstimate ? { contextTokenEstimate } : {}),
+							...(index === lastPersistedAssistantIndex && contextTokenEstimate ? { contextTokenEstimate } : {}),
 						};
 					});
 					await this.config.sessionPersistence.updateSession(persistentSessionId, {
