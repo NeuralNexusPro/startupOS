@@ -33,10 +33,12 @@ const perceptionRuntimeDependencies = [
   'mailparser',
 ];
 const verifyOntologyRuntimeScript = path.join(__dirname, 'verify-ontology-runtime.js');
-const candidateAppPaths = [
-  path.join(releaseDir, 'mac-arm64', productName),
-  path.join(releaseDir, 'mac', productName),
-];
+const candidateAppPaths = process.env.ORIGINOS_VERIFY_APP_PATH
+  ? [path.resolve(process.env.ORIGINOS_VERIFY_APP_PATH)]
+  : [
+    path.join(releaseDir, 'mac-arm64', productName),
+    path.join(releaseDir, 'mac', productName),
+  ];
 
 function fail(message) {
   console.error(`[verify-mac-package] ${message}`);
@@ -101,6 +103,12 @@ async function verifyApp(appPath) {
   try {
     asar.extractAll(asarPath, smokeDir);
     const smokeRequire = createRequire(path.join(smokeDir, 'package.json'));
+    const cultureSession = smokeRequire('@originos/core/lib/features/culture/services/CultureSessionService');
+    const cultureDetection = smokeRequire('@originos/core/lib/features/culture/services/CultureDetectionService');
+    if (typeof cultureSession.getSessionService !== 'function'
+      || typeof cultureDetection.getDetectionService !== 'function') {
+      fail('Culture services are not resolvable without React from app.asar');
+    }
     const piAgentRuntime = smokeRequire('@originos/pi-agent-adapter');
     const piAiRuntime = smokeRequire('@originos/pi-agent-adapter/ai');
     const goalExtension = smokeRequire('@originos/pi-agent-adapter/goal');

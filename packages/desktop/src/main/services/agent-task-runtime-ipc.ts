@@ -18,7 +18,7 @@ import {
   type ControlAgentTaskRequestV1,
   type CreateAgentTaskRequestV1,
   type GetAgentTaskRequestV1,
-} from '@originos/core/lib/integrations/pi-agent';
+} from '@originos/core/lib/integrations/pi-agent/task-runtime/types';
 import { IPC_CHANNELS } from '../ipc-protocol';
 import { routeTaskAwareChannelMessage } from '@originos/core/modules/channel-runtime/task-aware-execution';
 

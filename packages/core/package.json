@@ -117,6 +117,7 @@
     "./lib/integrations/pi-agent/session-restore": "./src/lib/integrations/pi-agent/session-restore.ts",
     "./lib/integrations/pi-agent/stream-dedupe": "./src/lib/integrations/pi-agent/stream-dedupe.ts",
     "./lib/integrations/pi-agent/task-runtime/coordinator": "./src/lib/integrations/pi-agent/task-runtime/coordinator.ts",
+    "./lib/integrations/pi-agent/task-runtime/types": "./src/lib/integrations/pi-agent/task-runtime/types.ts",
     "./lib/integrations/pi-agent/token-usage": "./src/lib/integrations/pi-agent/token-usage.ts",
     "./lib/integrations/pi-agent/tools": "./src/lib/integrations/pi-agent/tools/index.ts",
     "./lib/integrations/pi-agent/tools/context": "./src/lib/integrations/pi-agent/tools/context.ts",

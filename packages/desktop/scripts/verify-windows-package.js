@@ -175,6 +175,12 @@ async function verifyAsar() {
   asar.extractAll(asarPath, smokeDir);
 
   const smokeRequire = createRequire(path.join(smokeDir, 'package.json'));
+  const cultureSession = smokeRequire('@originos/core/lib/features/culture/services/CultureSessionService');
+  const cultureDetection = smokeRequire('@originos/core/lib/features/culture/services/CultureDetectionService');
+  if (typeof cultureSession.getSessionService !== 'function'
+    || typeof cultureDetection.getDetectionService !== 'function') {
+    fail('Culture services are not resolvable without React from app.asar');
+  }
   for (const modulePath of modules) {
     smokeRequire.resolve(path.join(smokeDir, modulePath));
   }

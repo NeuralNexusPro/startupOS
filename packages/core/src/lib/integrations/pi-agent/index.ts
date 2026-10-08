@@ -2,8 +2,8 @@
  * Pi Agent 集成模块入口
  * 导出所有 pi-agent 集成相关的 API
  *
- * 注意：此模块导出的是客户端安全的 API
- * 服务端专用功能请从 './server-config' 或 './server-hooks' 导入
+ * 保持此入口不加载 React Hook：Electron 主进程也会消费其中的运行时 API。
+ * 客户端 Hook 从 './client' 显式导入。
  */
 
 // ============================================================================
@@ -98,6 +98,5 @@ export * from "./core/skills.types";
 export * from "./core/skills.middleware";
 export * from "./stream-render-scheduler";
 export * from "./session-restore";
-export * from "./use-persistent-agent";
 export * from "./task-runtime";
 export * from "./token-usage";
