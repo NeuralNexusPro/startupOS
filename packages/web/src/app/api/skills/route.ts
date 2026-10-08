@@ -10,6 +10,8 @@ import type {
 } from '@originos/core/types';
 import type { SkillListResponse, SkillSource } from '@originos/core/lib/features/skills';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/skills
  *

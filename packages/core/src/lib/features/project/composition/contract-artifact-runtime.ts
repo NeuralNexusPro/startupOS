@@ -59,15 +59,27 @@ function artifactPath(
   for (const [field, value] of Object.entries({ projectId, runId, workItemId, attemptId })) {
     assertIdentifier(value, field);
   }
-  return path.join(
+  // WorkItem IDs include ':' (for example, "run-id:node-id"). Keep the
+  // persisted layout unchanged on Unix while escaping the Windows-forbidden
+  // character in filesystem segments. Artifact refs continue to carry the
+  // original logical IDs and resolve through this same mapping.
+  const segment = (value: string): string => process.platform === 'win32'
+    ? value.replace(/:/g, '%3A')
+    : value;
+  const pathApi = process.platform === 'win32' ? path.win32 : path;
+  const filePath = pathApi.join(
     dataRoot,
     'projects',
-    projectId,
+    segment(projectId),
     'collaboration-artifacts',
-    runId,
-    workItemId,
-    `${attemptId}.json`,
+    segment(runId),
+    segment(workItemId),
+    `${segment(attemptId)}.json`,
   );
+  // A temporary artifact adds a UUID suffix and can exceed MAX_PATH even
+  // after escaping ':'. Use Windows' extended-length path for every read and
+  // write, including paths reconstructed from an artifact ref.
+  return process.platform === 'win32' ? pathApi.toNamespacedPath(filePath) : filePath;
 }
 
 function artifactRef(

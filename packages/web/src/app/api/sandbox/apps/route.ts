@@ -18,11 +18,13 @@ interface SandboxAppInfo {
   updatedAt: number;
 }
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(_request: NextRequest) {
   try {
     const dataDir = getDataRoot();
 
-    if (!readdirSync(dataDir)) {
+    if (!existsSync(dataDir)) {
       return NextResponse.json<ApiResponse<{ apps: SandboxAppInfo[] }>>({
         success: true,
         data: { apps: [] },

@@ -10,6 +10,8 @@ import { listSkillSessions, SkillServiceError } from '@originos/core/lib/feature
 import type { ApiResponse } from '@originos/core/types';
 import type { SkillSessionsResponse } from '@originos/core/lib/features/skills';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
