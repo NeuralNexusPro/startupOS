@@ -163,7 +163,12 @@ export function ChatMessageList({
   // Determine if we should show thinking/loading indicators
   const lastMsg = messages[messages.length - 1];
   const hasStreamingMsg = lastMsg?.role === 'assistant' && lastMsg?.isStreaming;
-  const showThinkingIndicator = isThinking && (!hasStreamingMsg);
+  // 末尾消息为空且非流式的 assistant 占位时，只显示「正在处理...」气泡（两个指示器互斥）
+  const showProcessingPlaceholder = isThinking
+    && lastMsg?.role === 'assistant'
+    && !lastMsg?.isStreaming
+    && !lastMsg?.content;
+  const showThinkingIndicator = isThinking && !hasStreamingMsg && !showProcessingPlaceholder;
 
   return (
     <div className={cn('flex min-h-0 flex-1 flex-col', className)}>
@@ -267,7 +272,7 @@ export function ChatMessageList({
       )}
 
       {/* Processing indicator (thinking with placeholder assistant message) */}
-      {isThinking && lastMsg?.role === 'assistant' && !lastMsg?.isStreaming && !lastMsg?.content && (
+      {showProcessingPlaceholder && (
         <div className="flex justify-start gap-2 items-start">
           <div className="w-2 h-2 rounded-full bg-primary mt-3 shrink-0" />
           <div className="rounded-2xl rounded-tl-sm px-4 py-3 text-sm bg-white/60 border border-white/40 text-gray-500">

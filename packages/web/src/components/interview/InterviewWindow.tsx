@@ -542,6 +542,7 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
         role: m.role as 'user' | 'assistant',
         content: m.content,
         timestamp: m.timestamp || Date.now(),
+        isStreaming: m.isStreaming,
         usage: m.usage,
         contextTokenEstimate: m.contextTokenEstimate,
       }));
