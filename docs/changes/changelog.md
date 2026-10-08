@@ -1,6 +1,14 @@
 # Changelog
 
 
+## 2026-10-08 — fix：访谈行为草稿对可信 UI 不可见 + Working Summary 自我放大污染
+
+**类型**：fix
+**影响模块**：`packages/core/src/lib/features/agent/tools/interview-behavior-draft.ts`、`packages/core/src/lib/features/agent/tools/interview-ontology-sync.ts`、`packages/core/src/lib/features/project/interview-behavior-draft-service.ts`、`packages/core/src/lib/integrations/pi-agent/persistent-agent.ts`、`packages/core/src/lib/integrations/pi-agent/runtime-working-summary.ts`
+**摘要**：两个根因。其一，三个访谈工具的 sourceId 由模型传参决定，模型猜测 `persistent-proj-…` 而 UI 查询 `project-initialization-…`/`project-…`，reviewLatest 严格匹配永远 DRAFT_NOT_FOUND，「行动草稿审阅」卡片从未渲染（实测 SQE 项目已生成 5 Action/2 FactType/2 State/6 Transition/3 Rule 的草稿但用户不可见）；修复为工具上下文注入可信 sourceId + reviewLatest 回退项目最新非 discarded 草稿。其二，合成 [Working Summary] system 消息被 agent_end 全量持久化，下一轮 summary 倒序扫描先命中它再次包裹「禁止重复动作：」前缀逐轮累积（实测 ×7）；greeting 触发指令的「不要重复已确认的内容」也被误捕；修复为 summary 跳过 system 角色与「系统启动触发」前缀消息、持久化过滤 system 合成消息。core tsc 0 新增错误、受影响测试 17/17 通过、pi-agent 12 个失败与 solution-design-source 1 失败经 stash 对照确认为存量基线、lint:boundaries 0 诊断。
+
+---
+
 ## 2026-10-08 — fix：访谈恢复时前端出现两个 loading 指示器
 
 **类型**：fix
