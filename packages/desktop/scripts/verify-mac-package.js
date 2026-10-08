@@ -214,7 +214,14 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error('[verify-mac-package] failed:', error instanceof Error ? error.message : error);
-  process.exitCode = 1;
-});
+main().then(
+  () => {
+    // Smoke-required runtime modules may leave active handles after validation.
+    // Exit only after verifyApp has removed its extracted app.asar directory.
+    process.exit(process.exitCode || 0);
+  },
+  (error) => {
+    console.error('[verify-mac-package] failed:', error instanceof Error ? error.message : error);
+    process.exit(1);
+  },
+);

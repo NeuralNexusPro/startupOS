@@ -413,12 +413,18 @@ async function main() {
   }
 }
 
-if (require.main === module) main().catch((error) => {
-  console.error(
-    '[verify-windows-package] failed:',
-    error instanceof Error ? error.message : error,
-  );
-  process.exitCode = 1;
-});
+if (require.main === module) main().then(
+  () => {
+    // Smoke-required runtime modules may leave active handles after validation.
+    process.exit(process.exitCode || 0);
+  },
+  (error) => {
+    console.error(
+      '[verify-windows-package] failed:',
+      error instanceof Error ? error.message : error,
+    );
+    process.exit(1);
+  },
+);
 
 module.exports = { verifyAsar, verifyResources, verifyWindowsZip };

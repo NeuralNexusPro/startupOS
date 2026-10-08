@@ -437,7 +437,18 @@ async function verifyFrozenWorkItem() {
       payloadHash: contractHash,
     });
     if (completed.terminalStatus !== 'completed') {
-      throw new Error(`Packaged frozen WorkItem did not complete: ${completed.terminalStatus ?? completed.status}`);
+      const item = completed.workItems.find(({ id }) => id === run.workItems[0].id);
+      const attempt = item?.attempts.at(-1);
+      throw new Error(`Packaged frozen WorkItem did not complete: ${JSON.stringify({
+        runStatus: completed.terminalStatus ?? completed.status,
+        workItemStatus: item?.status,
+        attemptStatus: attempt?.status,
+        stage: attempt?.stageClaim?.stage,
+        reason: attempt?.reason,
+        readinessReason: attempt?.readinessReceipt?.reason,
+        verifierReason: attempt?.verifierResult?.reason,
+        outcomeStatus: attempt?.outcomeReceipt?.status,
+      })}`);
     }
     const restarted = composition.createProjectContractRuntimeComposition({
       dataRoot,
@@ -456,21 +467,26 @@ async function verifyFrozenWorkItem() {
   }
 }
 
-Promise.all([
-  verifyRecoveryLedger(),
-  verifyFrozenWorkItem(),
-  verifyProjectTaskRuntimeRecovery(),
-])
-  .then(() => {
+async function main() {
+  try {
+    await Promise.all([
+      verifyRecoveryLedger(),
+      verifyFrozenWorkItem(),
+      verifyProjectTaskRuntimeRecovery(),
+    ]);
     console.log(`[verify-ontology-runtime] ${packagedAsar ? 'packaged' : 'development'} module resolution, IPC wiring, process recovery, and frozen WorkItem execution ok`);
-    // Required runtime modules keep live handles (spawner watch, agent pool);
-    // exit explicitly so the build chain does not hang on an idle event loop.
-    process.exit(0);
-  })
-  .finally(() => {
+  } finally {
     if (extracted) fs.rmSync(extracted, { recursive: true, force: true });
-  })
-  .catch((error) => {
+  }
+}
+
+main().then(
+  () => {
+    // Required runtime modules keep live handles (spawner watch, agent pool).
+    process.exit(0);
+  },
+  (error) => {
     console.error('[verify-ontology-runtime] failed:', error instanceof Error ? error.message : error);
-    process.exitCode = 1;
-  });
+    process.exit(1);
+  },
+);
