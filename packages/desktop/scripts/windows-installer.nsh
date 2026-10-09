@@ -2,6 +2,7 @@
 ; every file out of INSTDIR. If that path fails with exit code 2, retry the
 ; installed uninstaller in its ordinary silent mode. Never skip uninstallation
 ; or remove registry entries to make an upgrade appear successful.
+!ifndef BUILD_UNINSTALLER
 !macro originosHandleUninstallResult
   ${if} $R0 == 2
     ${andIf} $uninstallerFileName != ""
@@ -40,3 +41,4 @@
 !macro customUnInstallCheckCurrentUser
   !insertmacro originosHandleUninstallResult
 !macroend
+!endif
