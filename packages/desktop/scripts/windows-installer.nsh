@@ -5,21 +5,10 @@
 !ifndef BUILD_UNINSTALLER
 !macro originosHandleUninstallResult
   ${if} $R0 == 2
-    ${andIf} $uninstallerFileName != ""
-    ${andIf} ${FileExists} "$uninstallerFileNameTemp"
-      ${if} $rootKey_uninstallResult == "HKEY_CURRENT_USER"
-      ${orIf} $installMode == "CurrentUser"
-        StrCpy $1 "/currentuser"
-      ${else}
-        StrCpy $1 "/allusers"
-      ${endif}
+    ${andIf} ${FileExists} "$INSTDIR\Uninstall ${PRODUCT_FILENAME}.exe"
       DetailPrint "OriginOS CE: retrying old uninstaller without --updated"
       ClearErrors
-      ExecWait '"$uninstallerFileNameTemp" /S /KEEP_APP_DATA $1 _?=$installationDir' $R0
-      ; Ordinary uninstall removes shortcuts; the new installer must recreate them.
-      ${if} $R0 == 0
-        StrCpy $keepShortcuts "false"
-      ${endif}
+      ExecWait '"$INSTDIR\Uninstall ${PRODUCT_FILENAME}.exe" /S /KEEP_APP_DATA _?=$INSTDIR' $R0
   ${endif}
 
   IfErrors 0 +3
