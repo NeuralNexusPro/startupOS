@@ -99,29 +99,29 @@ export class HNSWIndex {
     let currentIdx = Math.floor(Math.random() * this.nodes.length);
 
     for (let layer = this.getMaxLayer(); layer >= 0; layer--) {
-      let improved = true;
-      while (improved) {
-        improved = false;
+      while (true) {
         const currentNode = this.nodes[currentIdx];
         const currentLayer = currentNode?.layers[layer];
-        if (!currentLayer) continue;
+        if (!currentNode || !currentLayer) break;
 
-        let bestDist = -Infinity;
+        let bestIdx = currentIdx;
+        let bestScore = cosineSimilarity(query, currentNode.embedding);
         for (const neighborIdx of currentLayer) {
           const neighbor = this.nodes[neighborIdx];
           if (!neighbor) continue;
           const score = cosineSimilarity(query, neighbor.embedding);
-          if (score > bestDist) {
-            bestDist = score;
-            currentIdx = neighborIdx;
-            improved = true;
+          if (score > bestScore) {
+            bestScore = score;
+            bestIdx = neighborIdx;
           }
         }
+        if (bestIdx === currentIdx) break;
+        currentIdx = bestIdx;
       }
     }
 
     // 从最终位置进行 efSearch 扩展
-    return this.expandSearch(currentIdx, k);
+    return this.expandSearch(currentIdx, query, k);
   }
 
   /** 删除条目 */
@@ -136,6 +136,20 @@ export class HNSWIndex {
   /** 获取节点数量 */
   count(): number {
     return this.nodes.filter((node) => node !== null).length;
+  }
+
+  /**
+   * 读取持久索引中的向量。
+   *
+   * ArchivalMemory 的 JSONL 只保存业务内容，向量由 HNSW 索引持久化。
+   * 恢复进程时需要用这里的向量补齐内存条目，避免首次检索再次为全部
+   * 历史记录计算 embedding 并重建索引。
+   */
+  getEmbedding(id: string): Float32Array | undefined {
+    const index = this.idToIndex.get(id);
+    if (index === undefined) return undefined;
+    const embedding = this.nodes[index]?.embedding;
+    return embedding ? new Float32Array(embedding) : undefined;
   }
 
   /** 序列化到 JSON（用于持久化） */
@@ -205,54 +219,51 @@ export class HNSWIndex {
 
   private expandSearch(
     entryIdx: number,
+    query: Float32Array,
     k: number,
   ): Array<{ id: string; score: number }> {
     const visited = new Set<number>();
-    const candidates = new Map<number, number>(); // idx -> score
+    const queued = new Set<number>();
+    const candidates: Array<{ idx: number; score: number }> = [];
+    const results: Array<{ id: string; score: number }> = [];
     const entry = this.nodes[entryIdx];
     if (!entry) return [];
-    candidates.set(entryIdx, -Infinity);
+    candidates.push({ idx: entryIdx, score: cosineSimilarity(query, entry.embedding) });
+    queued.add(entryIdx);
 
-    for (let i = 0; i < this.efSearch; i++) {
-      let bestIdx = -1;
-      let bestScore = -Infinity;
-      for (const [idx, score] of candidates) {
-        if (visited.has(idx)) continue;
-        if (score > bestScore) {
-          bestScore = score;
-          bestIdx = idx;
-        }
-      }
-      if (bestIdx === -1) break;
-      visited.add(bestIdx);
-      candidates.delete(bestIdx);
+    // Explore a bounded best-first neighborhood. The old implementation put
+    // visited nodes back into the candidate map and compared neighbors against
+    // the entry vector instead of the query, which could both loop and return
+    // unrelated results.
+    const visitBudget = Math.max(this.efSearch, k * 4);
+    while (candidates.length > 0 && visited.size < visitBudget) {
+      candidates.sort((a, b) => b.score - a.score);
+      const candidate = candidates.shift();
+      if (!candidate || visited.has(candidate.idx)) continue;
+      visited.add(candidate.idx);
 
       // 扩展邻居
-      const node = this.nodes[bestIdx];
+      const node = this.nodes[candidate.idx];
       if (!node) continue;
-      const entryNode = this.nodes[entryIdx];
-      if (!entryNode) continue;
-      const score = cosineSimilarity(entryNode.embedding, node.embedding);
-      candidates.set(bestIdx, score);
+      results.push({ id: node.id, score: candidate.score });
 
       for (let layer = 0; layer < node.layers.length; layer++) {
         for (const neighborIdx of node.layers[layer]!) {
-          if (!visited.has(neighborIdx) && !candidates.has(neighborIdx)) {
-            const neighbor = this.nodes[neighborIdx];
-            if (!neighbor) continue;
-            const s = cosineSimilarity(entryNode.embedding, neighbor.embedding);
-            candidates.set(neighborIdx, s);
-          }
+          if (visited.has(neighborIdx) || queued.has(neighborIdx)) continue;
+          const neighbor = this.nodes[neighborIdx];
+          if (!neighbor) continue;
+          queued.add(neighborIdx);
+          candidates.push({
+            idx: neighborIdx,
+            score: cosineSimilarity(query, neighbor.embedding),
+          });
         }
       }
     }
 
-    const results = Array.from(candidates.entries())
-      .map(([idx, score]) => ({ id: this.nodes[idx]?.id ?? '', score }))
+    return results
       .sort((a, b) => b.score - a.score)
       .slice(0, k);
-
-    return results;
   }
 }
 

@@ -208,9 +208,42 @@ export class ArchivalMemory {
       // file doesn't exist or is corrupt
     }
 
-    // Do not rebuild embeddings during Agent startup. Rebuild lazily on the
-    // first semantic search so opening a window does not fan out CPU-heavy
-    // embedding jobs for every persisted archival entry.
+    // Restore the persisted HNSW graph and hydrate each entry's vector from it.
+    // entries.jsonl intentionally contains only business data; without loading
+    // hnsw-index.bin every process restart would rebuild the entire index on the
+    // first query. Large long-lived agents can contain thousands of entries, so
+    // that rebuild blocks Electron's main process and makes the role window look
+    // frozen.
+    if (this.loadPersistedIndex()) {
+      this.indexReady = true;
+    }
+  }
+
+  private loadPersistedIndex(): boolean {
+    if (!fs.existsSync(this.indexFile)) return false;
+
+    try {
+      const serialized = JSON.parse(fs.readFileSync(this.indexFile, 'utf-8')) as unknown;
+      const restored = new HNSWIndex({ m: 16, efConstruction: 200 });
+      restored.fromJSON(serialized);
+
+      // A partially written or stale index must never be accepted. Falling back
+      // to the existing lazy rebuild keeps old/corrupt installations recoverable.
+      if (restored.count() !== this.entries.length) return false;
+
+      const hydrated = this.entries.map((entry) => {
+        const embedding = restored.getEmbedding(entry.id);
+        if (!embedding) return false;
+        entry.embedding = this.quantize(embedding);
+        return true;
+      });
+      if (hydrated.some((ready) => !ready)) return false;
+
+      this.hnswIndex = restored;
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private async ensureIndexReady(): Promise<void> {
@@ -241,12 +274,7 @@ export class ArchivalMemory {
       }
 
       const emb = await embeddingEngine.encode(entry.text);
-      const quantized = new Int8Array(emb.length);
-      for (let i = 0; i < emb.length; i++) {
-        const v = emb[i] ?? 0;
-        quantized[i] = v > 0 ? Math.min(127, Math.round(v * 127)) : Math.max(-128, Math.round(v * 127));
-      }
-      entry.embedding = quantized;
+      entry.embedding = this.quantize(emb);
       this.hnswIndex.insert(entry.id, emb);
       changed = true;
     }
@@ -260,6 +288,17 @@ export class ArchivalMemory {
     const result = new Float32Array(vector.length);
     for (let i = 0; i < vector.length; i++) {
       result[i] = (vector[i] ?? 0) / 127;
+    }
+    return result;
+  }
+
+  private quantize(vector: Float32Array): Int8Array {
+    const result = new Int8Array(vector.length);
+    for (let i = 0; i < vector.length; i++) {
+      const value = vector[i] ?? 0;
+      result[i] = value > 0
+        ? Math.min(127, Math.round(value * 127))
+        : Math.max(-128, Math.round(value * 127));
     }
     return result;
   }

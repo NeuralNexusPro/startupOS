@@ -37,7 +37,10 @@ import { usePerceptionStore } from '@/store/perceptionStore';
 // ============================================================================
 
 function TopMenuBar({ onOpenGuide, onOpenSettings }: { onOpenGuide: () => void; onOpenSettings: () => void }) {
-  const [currentTime, setCurrentTime] = React.useState(new Date());
+  // Keep the server render and the first client render identical. Reading the
+  // wall clock in the state initializer can cross a minute boundary during
+  // hydration and make React replace the whole desktop document.
+  const [currentTime, setCurrentTime] = React.useState<Date | null>(null);
   const connectors = usePerceptionStore((state) => state.connectors);
   const health = usePerceptionStore((state) => state.health);
   const eventTraces = usePerceptionStore((state) => state.eventTraces);
@@ -46,6 +49,7 @@ function TopMenuBar({ onOpenGuide, onOpenSettings }: { onOpenGuide: () => void; 
   const loadPerception = usePerceptionStore((state) => state.load);
 
   React.useEffect(() => {
+    setCurrentTime(new Date());
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
@@ -83,8 +87,8 @@ function TopMenuBar({ onOpenGuide, onOpenSettings }: { onOpenGuide: () => void; 
         {/* Time */}
         <div className="flex items-center gap-2 text-xs text-white/80">
           <Clock3 className="h-3.5 w-3.5" />
-          <span>{currentTime.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' })}</span>
-          <span>{currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
+          <span>{currentTime ? currentTime.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' }) : '--/--'}</span>
+          <span>{currentTime ? currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '--:--'}</span>
         </div>
 
         {/* Notifications */}

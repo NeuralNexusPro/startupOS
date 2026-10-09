@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { ArchivalMemory } from '../archival/archival-memory';
 import { cosineSimilarity, zeros } from '../archival/embedding';
+import { HNSWIndex } from '../archival/hnsw-index';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -111,6 +112,22 @@ describe('ArchivalMemory', () => {
       expect(archival2.count()).toBe(2);
     });
 
+    it('reuses the persisted vector index on the first search after restart', async () => {
+      await archival.insert('entry one about project delivery');
+      await archival.insert('entry two about supplier quality');
+      const indexPath = path.join(dir, 'archival', 'hnsw-index.bin');
+      const before = fs.statSync(indexPath).mtimeMs;
+
+      // A fresh process-equivalent instance must load hnsw-index.bin. Searching
+      // must not rebuild and rewrite the whole index.
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      const archival2 = new ArchivalMemory(dir);
+      const results = await archival2.search('project delivery');
+
+      expect(results.length).toBeGreaterThan(0);
+      expect(fs.statSync(indexPath).mtimeMs).toBe(before);
+    });
+
     it('loads legacy unwrapped entries', () => {
       const file = path.join(dir, 'archival', 'entries.jsonl');
       fs.writeFileSync(file, `${JSON.stringify({ id: 'legacy', text: 'old entry', tags: [], createdAt: 1 })}\n`, 'utf8');
@@ -142,5 +159,27 @@ describe('cosineSimilarity', () => {
     const a = zeros(0);
     const b = zeros(0);
     expect(cosineSimilarity(a, b)).toBe(0);
+  });
+});
+
+describe('HNSWIndex', () => {
+  it('terminates for persisted indexes with more than 1000 nodes', () => {
+    const nodeCount = 1001;
+    const nodes = Array.from({ length: nodeCount }, (_, index) => ({
+      id: `node-${index}`,
+      embedding: index === nodeCount - 1 ? [1, 0, 0] : [0, 1, 0],
+      // A bidirectional ring reproduces the former neighbor-to-neighbor cycle.
+      layers: [[
+        (index + nodeCount - 1) % nodeCount,
+        (index + 1) % nodeCount,
+      ]],
+    }));
+    const index = new HNSWIndex();
+    index.fromJSON({ m: 16, efConstruction: 200, nodes });
+
+    const results = index.search(new Float32Array([1, 0, 0]), 5);
+
+    expect(results.length).toBeGreaterThan(0);
+    expect(results.length).toBeLessThanOrEqual(5);
   });
 });
