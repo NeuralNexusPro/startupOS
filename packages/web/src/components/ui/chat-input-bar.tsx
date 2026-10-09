@@ -19,7 +19,7 @@ interface ChatInputBarProps {
   /** Optional stop button — rendered above the send button during generation */
   onStop?: () => void;
   isGenerating?: boolean;
-  /** @deprecated Input colors always inherit the active application theme. */
+  /** Use a light input surface in windows with a light visual design. */
   lightBg?: boolean;
   /** Files that have been uploaded and should be shown as chips */
   uploadedFiles?: UploadedFileDisplay[];
@@ -87,7 +87,7 @@ export function ChatInputBar({
   className,
   onStop,
   isGenerating,
-  lightBg: _lightBg = false,
+  lightBg = false,
   uploadedFiles,
   onRemoveFile,
   uploadError,
@@ -115,15 +115,16 @@ export function ChatInputBar({
     [handleSubmit],
   );
 
-  // `inputDark` is the Tailwind token backed by --input-bg.  The prior
-  // kebab-case class was not a configured token, so the browser fell back to
-  // its white native input background while retaining the dark-theme text.
-  const inputBgClass = 'bg-inputDark border border-border text-text-primary placeholder:text-text-secondary focus:ring-1 focus:ring-primary';
+  const inputBgClass = lightBg
+    ? 'bg-slate-50 border border-slate-200 text-slate-900 placeholder:text-slate-500 focus:ring-1 focus:ring-blue-500'
+    : 'bg-inputDark border border-border text-text-primary placeholder:text-text-secondary focus:ring-1 focus:ring-primary';
 
-  const uploadBtnClass = 'bg-muted border border-border text-muted-foreground hover:text-foreground hover:bg-accent';
+  const uploadBtnClass = lightBg
+    ? 'bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+    : 'bg-muted border border-border text-muted-foreground hover:text-foreground hover:bg-accent';
 
   return (
-    <div className={cn('border-t border-border bg-background px-4 py-3', className)}>
+    <div className={cn('border-t px-4 py-3', lightBg ? 'border-slate-200 bg-transparent' : 'border-border bg-background', className)}>
       {/* Upload progress / error indicators */}
       {(uploading || uploadError) && (
         <div className="mb-2 px-3">

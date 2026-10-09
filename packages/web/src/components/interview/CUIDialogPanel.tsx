@@ -175,6 +175,7 @@ export function CUIDialogPanel({
 
       <ChatInputBar
         onSubmit={wrappedSendMessage}
+        lightBg
         disabled={isLoading}
         placeholder="输入你的回答..."
         onUpload={uploadBasePath ? handleUpload : undefined}

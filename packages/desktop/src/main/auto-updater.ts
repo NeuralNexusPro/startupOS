@@ -83,9 +83,15 @@ function fail<T>(code: string, message: string): IpcResponse<T> {
 }
 
 export class AutoUpdaterManager {
+  constructor(
+    private readonly prepareForInstall: () => Promise<void> = async () => {},
+    private readonly platform: NodeJS.Platform = process.platform,
+  ) {}
+
   private mainWindow: BrowserWindow | null = null;
   private updater: UpdaterModule['autoUpdater'] | null = null;
   private isChecking = false;
+  private installInProgress = false;
   private handlersRegistered = false;
   private lastCheckWasManual = false;
   private lastDownloadWasManual = false;
@@ -119,7 +125,9 @@ export class AutoUpdaterManager {
 
     this.updater = updaterModule.autoUpdater;
     this.updater.autoDownload = false;
-    this.updater.autoInstallOnAppQuit = true;
+    // Windows NSIS starts before Electron exits. A normal quit can still be
+    // stopping child processes when the old uninstaller tries to remove files.
+    this.updater.autoInstallOnAppQuit = this.platform !== 'win32';
 
     const loggerModule = await this.loadOptionalModule<LoggerModule>('electron-log');
     if (loggerModule?.default) {
@@ -240,8 +248,18 @@ export class AutoUpdaterManager {
       });
     }
 
+    if (this.installInProgress) return this.getState();
+    this.installInProgress = true;
+
     setImmediate(() => {
-      this.updater?.quitAndInstall(false, true);
+      void (async () => {
+        if (this.platform === 'win32') await this.prepareForInstall();
+        this.updater?.quitAndInstall(false, true);
+      })().catch((error: unknown) => {
+        this.installInProgress = false;
+        console.error('[auto-updater] Failed to prepare Windows update install', error);
+        this.setState({ status: 'error', error: '更新安装前未能安全停止应用，请退出 OriginOS CE 后重试安装。' });
+      });
     });
 
     return this.getState();
@@ -336,6 +354,7 @@ export class AutoUpdaterManager {
     });
 
     this.updater.on('error', (error: unknown) => {
+      this.installInProgress = false;
       console.error('[auto-updater] Runtime error:', error);
       this.setState({
         status: 'error',

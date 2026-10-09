@@ -715,6 +715,7 @@ export default function AgentDialogContent({ agentId, agentName, agentType: prop
 
       <ChatInputBar
         onSubmit={wrappedSendMessage}
+        lightBg
         disabled={!isInitialized || isRunning || isRestoring || Boolean(switchingSessionId) || taskRuntime.blocksChat}
         placeholder={`向 ${displayName} 发送消息...`}
         onUpload={handleUpload}

@@ -157,6 +157,7 @@ win:
         - x64
 
 nsis:
+  include: scripts/windows-installer.nsh
   useZip: false
   oneClick: false
   perMachine: false

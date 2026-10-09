@@ -73,6 +73,7 @@ let dailyLogWriter: BufferedDailyLogWriter | null = null;
 let pluginLogWriter: BufferedDailyLogWriter | null = null;
 let shutdownInProgress = false;
 let allowQuitAfterShutdown = false;
+let shutdownPromise: Promise<void> | null = null;
 
 const llmLogPrefixes = [
   '[LLM',
@@ -432,7 +433,10 @@ app.whenReady().then(() => {
   localAgentBridge = new LocalAgentBridge();
   trayManager = new TrayManager();
   shortcutManager = new ShortcutManager();
-  autoUpdaterManager = new AutoUpdaterManager();
+  autoUpdaterManager = new AutoUpdaterManager(async () => {
+    await prepareForExit();
+    allowQuitAfterShutdown = true;
+  });
   desktopSchedulerService = new DesktopSchedulerService();
   ipcServices.push(new SkillService());
   ipcServices.push(new ProjectService());
@@ -520,14 +524,37 @@ app.on('window-all-closed', () => {
   }
 });
 
-app.on('before-quit', (event) => {
-  if (allowQuitAfterShutdown) {
-    return;
-  }
-  event.preventDefault();
-  if (shutdownInProgress) {
-    return;
-  }
+function stopRendererServer(): Promise<void> {
+  const child = rendererServerProcess;
+  if (!child || child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
+  return new Promise((resolve) => {
+    let gracefulTimer: ReturnType<typeof setTimeout> | undefined;
+    let forceTimer: ReturnType<typeof setTimeout> | undefined;
+    const finish = () => {
+      clearTimeout(gracefulTimer);
+      clearTimeout(forceTimer);
+      child.off('exit', finish);
+      child.off('error', finish);
+      resolve();
+    };
+    child.once('exit', finish);
+    child.once('error', finish);
+    gracefulTimer = setTimeout(() => {
+      console.warn('[renderer] graceful shutdown timed out; terminating renderer server');
+      child.kill('SIGKILL');
+      forceTimer = setTimeout(finish, 2_000);
+    }, 3_000);
+    try {
+      child.kill();
+    } catch (error) {
+      console.warn('[renderer] failed to stop renderer server', error);
+      finish();
+    }
+  });
+}
+
+function prepareForExit(): Promise<void> {
+  if (shutdownPromise) return shutdownPromise;
   shutdownInProgress = true;
   processHealthMonitor.stop();
   windowManager?.closeAllWindows();
@@ -535,24 +562,36 @@ app.on('before-quit', (event) => {
   trayManager?.destroy();
   shortcutManager?.destroy();
   desktopSchedulerService?.pause();
-  const pluginShutdown = perceptionPluginHost?.stop();
-  rendererServerProcess?.kill();
-  rendererServerProcess = null;
-  void (async () => {
-    try {
-      await pluginShutdown;
-      await desktopSchedulerService?.stop();
-      await pluginLogWriter?.dispose();
-      await dailyLogWriter?.flush();
-      await localAgentBridge?.shutdown();
-      await agentManager.shutdown();
-      await persistentAgentManager.stopAllAgents();
-      await shutdownGlobalSpawner();
-    } catch (error) {
-      console.error('[electron] Agent shutdown failed; continuing quit', error);
-    } finally {
-      allowQuitAfterShutdown = true;
-      app.quit();
+  const rendererShutdown = stopRendererServer();
+  shutdownPromise = (async () => {
+    const steps: Array<[string, () => Promise<unknown> | undefined]> = [
+      ['renderer server', () => rendererShutdown],
+      ['perception plugins', () => perceptionPluginHost?.stop()],
+      ['desktop scheduler', () => desktopSchedulerService?.stop()],
+      ['plugin log', () => pluginLogWriter?.dispose()],
+      ['daily log', () => dailyLogWriter?.flush()],
+      ['local agent bridge', () => localAgentBridge?.shutdown()],
+      ['agent manager', () => agentManager.shutdown()],
+      ['persistent agents', () => persistentAgentManager.stopAllAgents()],
+      ['global spawner', () => shutdownGlobalSpawner()],
+    ];
+    for (const [name, stop] of steps) {
+      try {
+        await stop();
+      } catch (error) {
+        console.error(`[electron] Failed to stop ${name}; continuing shutdown`, error);
+      }
     }
   })();
+  return shutdownPromise;
+}
+
+app.on('before-quit', (event) => {
+  if (allowQuitAfterShutdown) return;
+  event.preventDefault();
+  if (shutdownInProgress) return;
+  void prepareForExit().finally(() => {
+    allowQuitAfterShutdown = true;
+    app.quit();
+  });
 });

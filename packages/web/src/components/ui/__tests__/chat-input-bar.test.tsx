@@ -67,6 +67,14 @@ describe('ChatInputBar', () => {
     expect(input).not.toHaveClass('bg-input-dark');
   });
 
+  it('uses a readable light input surface when requested by a light window', () => {
+    render(<ChatInputBar onSubmit={vi.fn()} lightBg />);
+
+    const input = screen.getByPlaceholderText('输入消息...');
+    expect(input).toHaveClass('bg-slate-50', 'text-slate-900', 'placeholder:text-slate-500');
+    expect(input).not.toHaveClass('bg-inputDark');
+  });
+
   it('keeps task creation disabled while the conversation input is locked', () => {
     const onCreateTask = vi.fn();
     render(
