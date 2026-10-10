@@ -8,7 +8,11 @@
     ${andIf} ${FileExists} "$INSTDIR\Uninstall ${PRODUCT_FILENAME}.exe"
       DetailPrint "OriginOS CE: retrying old uninstaller without --updated"
       ClearErrors
-      ExecWait '"$INSTDIR\Uninstall ${PRODUCT_FILENAME}.exe" /S /KEEP_APP_DATA _?=$INSTDIR' $R0
+      ; The normal electron-builder update flow passes --keep-shortcuts. Keep
+      ; that contract in the exit-code-2 fallback, otherwise the old
+      ; uninstaller removes the desktop and Start Menu links before the new
+      ; version is installed.
+      ExecWait '"$INSTDIR\Uninstall ${PRODUCT_FILENAME}.exe" /S /KEEP_APP_DATA --keep-shortcuts _?=$INSTDIR' $R0
   ${endif}
 
   IfErrors 0 +3

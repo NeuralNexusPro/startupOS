@@ -163,7 +163,9 @@ nsis:
   perMachine: false
   allowToChangeInstallationDirectory: true
   runAfterFinish: false
-  createDesktopShortcut: true
+  # Recreate the shortcut during upgrades as well. The Windows 0.4.5 recovery
+  # path may upgrade an installation whose previous shortcut was already lost.
+  createDesktopShortcut: always
   createStartMenuShortcut: true
 
 linux:
