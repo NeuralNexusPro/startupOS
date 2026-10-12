@@ -2296,3 +2296,9 @@ SENSE12-T3：首次启用后台本可启动，但UI快照不自动刷新；增�
 **类型**：fix
 **影响模块**：`packages/core/src/modules/collaboration-runtime/sandbox/agent-spawner.ts`
 **摘要**：Supervisor/Worker 子进程命令与就绪等待超时原为硬编码 300s；glm 等慢 LLM 端点的 Supervisor 单轮实测可达 895s，超时导致 DAG 在子进程仍在推进时被判定失败。新增 `COLLAB_COMMAND_TIMEOUT_MS` 环境变量覆盖四处等待，默认 300s 不变。经用户批准作为 Story 9.44 E2E 期间紧急修复（AGENTS.md 紧急变更），随 `proposal/add-collaboration-task-board` 落地（commit 3bbb2c1）。详见 [v0.4.7](releases/v0.4.7/changelog.md)。
+
+## 2026-10-12 — fix：协作会话 DAG 结束后销毁 supervisor 子进程（紧急修复）
+
+**类型**：fix
+**影响模块**：`packages/core/src/modules/collaboration-runtime/engine/supervisor-dag.ts`
+**摘要**：DAG 结束后协议观察器关闭但 supervisor 进程存活，用户续发消息被存活进程吞掉（回复不落库、UI 冻结）。修复为 dag.done 后销毁 supervisor，让后续消息按设计触发新 DAG。经用户批准作为紧急修复，commit 06648f6。详见 [v0.4.7](releases/v0.4.7/changelog.md)。
