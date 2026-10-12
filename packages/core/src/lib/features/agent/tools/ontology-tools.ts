@@ -105,20 +105,20 @@ function errorResult(ctx: ToolExecutionContext, error: unknown): AgentToolResult
 // Canonical authoring 辅助（结构层写工具专用）
 // ============================================================================
 
-interface StructuredToolError {
+export interface StructuredToolError {
 	code: string;
 	message: string;
 	details?: unknown;
 }
 
-class AuthoringToolError extends Error {
+export class AuthoringToolError extends Error {
 	constructor(readonly structured: StructuredToolError) {
 		super(structured.message);
 		this.name = 'AuthoringToolError';
 	}
 }
 
-function structuredErrorResult(ctx: ToolExecutionContext, error: StructuredToolError): AgentToolResult<unknown> {
+export function structuredErrorResult(ctx: ToolExecutionContext, error: StructuredToolError): AgentToolResult<unknown> {
 	logToolError(ctx, error);
 	return {
 		content: [{ type: "text" as const, text: JSON.stringify({
@@ -129,7 +129,7 @@ function structuredErrorResult(ctx: ToolExecutionContext, error: StructuredToolE
 	};
 }
 
-interface AuthoringContext {
+export interface AuthoringContext {
 	projectId: string;
 	ontologyId: string;
 	ontologyVersion: string;
@@ -142,7 +142,7 @@ interface AuthoringContext {
  * revision 在提交前即时读取（读-算-提交窗口内的冲突由 CAS 兜底，工具层重试一次）。
  * 项目尚无 canonical 快照时抛结构化 MIGRATION_REQUIRED（不触发自动迁移、不写 legacy）。
  */
-async function resolveAuthoringContext(ontologyId: string): Promise<AuthoringContext> {
+export async function resolveAuthoringContext(ontologyId: string): Promise<AuthoringContext> {
 	const projectId = projectIdFromOntologyId(ontologyId);
 	const store = new CanonicalOntologyStore();
 	const stored = await store.readOntology(projectId);
@@ -189,7 +189,7 @@ interface AuthoringSubmitOptions {
  * permissions 固定携带 `ontology:author`，audit.source 标注 `agent-tool`；
  * REVISION_CONFLICT 自动重试一次（重新 resolveAuthoringContext），仍冲突则结构化返回。
  */
-async function submitAuthoringCommand(
+export async function submitAuthoringCommand(
 	options: AuthoringSubmitOptions & { toolCallId: string }
 ): Promise<{ receipt: CanonicalOntologyAuthoringReceipt; ontology: CanonicalOntology }> {
 	const service = new CanonicalOntologyAuthoringService();
@@ -498,7 +498,7 @@ const SearchOntologyTool: ToolRegistration = {
  * `{ success:false, error:{ code, message, details? } }`；其他异常保持既有
  * `{ success:false, error: string }` 形状不变。
  */
-function toToolResultError(ctx: ToolExecutionContext, error: unknown): AgentToolResult<unknown> {
+export function toToolResultError(ctx: ToolExecutionContext, error: unknown): AgentToolResult<unknown> {
 	if (error instanceof AuthoringToolError) {
 		return structuredErrorResult(ctx, error.structured);
 	}
