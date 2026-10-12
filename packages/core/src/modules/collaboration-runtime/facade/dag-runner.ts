@@ -24,6 +24,7 @@ import {
 } from "./session-store";
 import { eventEmitter } from "./event-bus";
 import { setStartDag, setResumeSupervisorHitl } from "./hitl-dispatcher";
+import { registerHitlNotificationForwarder } from "./hitl-notify";
 import { getDataRoot } from "../../../lib/paths";
 
 import { executeSupervisorDag, resumeSupervisorHitl } from "../../../modules/collaboration-runtime/engine/supervisor-dag";
@@ -31,6 +32,8 @@ import { executeSupervisorDag, resumeSupervisorHitl } from "../../../modules/col
 // 注入 hitl-dispatcher 需要的函数引用（避免循环依赖）
 setStartDag(startDag);
 setResumeSupervisorHitl(resumeSupervisorHitl);
+// Story 9.44 模块 5：注册 HITL → 通知中心 转发（模块加载组装点，Web 与 Electron 共用事件总线）
+registerHitlNotificationForwarder();
 
 export async function executeSession(id: string): Promise<{ status: string; result: unknown }> {
   await loadPersistedSessions();
