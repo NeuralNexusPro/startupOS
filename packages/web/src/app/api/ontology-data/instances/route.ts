@@ -1,6 +1,18 @@
+/**
+ * Instances API
+ * GET  /api/ontology-data/instances?ontologyId=xxx&conceptId=xxx — 查询
+ * POST /api/ontology-data/instances — 创建
+ *
+ * ONT9-T1-D: legacy 写通道已停用，POST 统一结构化拒绝（GET 只读行为保持）。
+ */
+
 import { NextRequest, NextResponse } from 'next/server';
-import type { ApiResponse } from '@originos/core/types';
+
 import * as queryEngine from '@originos/core/lib/features/ontology-data-store/query-engine';
+
+import { canonicalEditUnavailable } from '../_shared';
+
+import type { ApiResponse } from '@originos/core/types';
 
 export async function GET(request: NextRequest): Promise<NextResponse<ApiResponse<unknown>>> {
   try {
@@ -38,31 +50,6 @@ export async function GET(request: NextRequest): Promise<NextResponse<ApiRespons
   }
 }
 
-export async function POST(request: NextRequest): Promise<NextResponse<ApiResponse<unknown>>> {
-  try {
-    const body = await request.json();
-    const { ontologyId, conceptId, fields, createdBy } = body;
-
-    if (!ontologyId || !conceptId || !fields) {
-      return NextResponse.json<ApiResponse<unknown>>(
-        { success: false, error: { code: 'INVALID_REQUEST', message: 'ontologyId, conceptId, and fields are required' }, timestamp: new Date().toISOString() },
-        { status: 400 }
-      );
-    }
-
-    const instance = await (await import('@originos/core/lib/features/ontology-data-store/store')).createInstance(
-      ontologyId, conceptId, fields, createdBy ?? 'user'
-    );
-
-    return NextResponse.json<ApiResponse<typeof instance>>({
-      success: true,
-      data: instance,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    return NextResponse.json<ApiResponse<unknown>>(
-      { success: false, error: { code: 'INTERNAL_ERROR', message: error instanceof Error ? error.message : 'Failed to create instance' }, timestamp: new Date().toISOString() },
-      { status: 500 }
-    );
-  }
+export async function POST(): Promise<ReturnType<typeof canonicalEditUnavailable>> {
+  return canonicalEditUnavailable();
 }
