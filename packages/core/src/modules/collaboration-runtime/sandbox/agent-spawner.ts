@@ -32,6 +32,27 @@ type AgentCommandState = "ready" | "waiting";
 // Env helpers
 // ============================================================================
 
+/**
+ * Agent 子进程命令确认/等待超时（毫秒）。
+ *
+ * 默认 300s 假设 LLM 单轮 5 分钟内返回；glm 等慢端点的 Supervisor 轮次
+ * （dispatch 后 wait_workers 回传 + 下一轮推理）实测可达 15 分钟，
+ * 硬编码 300s 会导致 DAG 必然失败。可通过环境变量覆盖：
+ *
+ * - `COLLAB_COMMAND_TIMEOUT_MS`：覆盖全部 4 处（prompt / resume / waitForReady / sendCommand）
+ *
+ * 紧急修复（Story 9.44 E2E 期间授权，见 docs/changes/）。
+ */
+function getAgentCommandTimeoutMs(): number {
+  const raw = process.env["COLLAB_COMMAND_TIMEOUT_MS"];
+  if (raw) {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    console.error(`[AgentSpawner] Invalid COLLAB_COMMAND_TIMEOUT_MS="${raw}", falling back to default`);
+  }
+  return 300_000;
+}
+
 function summarizeModel(model?: (RuntimeLLMConfig & { id?: string }) | null): Record<string, unknown> {
   if (!model) return { provided: false };
   const credentialSource = model.anthropicCredentialSource
@@ -390,7 +411,7 @@ export class AgentProcess {
         this.pendingCommand = null;
         reject(new Error("Prompt timed out waiting for agent response"));
         this._drainPromptQueue();
-      }, 300_000);
+      }, getAgentCommandTimeoutMs());
 
       this.pendingCommand = {
         resolve: (s) => {
@@ -454,7 +475,7 @@ export class AgentProcess {
     const readyPromise = new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         reject(new Error("resume timed out waiting for agent response"));
-      }, 300_000); // 5 分钟超时
+      }, getAgentCommandTimeoutMs()); // 默认 5 分钟，env 可覆盖
       this.pendingCommand = { resolve: () => { /* noop */ }, reject, timer };
       this.pendingCommand.resolve = () => { clearTimeout(timer); resolve(); };
     });
@@ -485,7 +506,7 @@ export class AgentProcess {
     return new Promise<AgentCommandState>((resolve, reject) => {
       const timer = setTimeout(() => {
         reject(new Error("waitForReady timed out waiting for agent response"));
-      }, 300_000);
+      }, getAgentCommandTimeoutMs());
       this.pendingCommand = { resolve, reject, timer };
     });
   }
@@ -534,9 +555,9 @@ export class AgentProcess {
       }
 
       const timer = setTimeout(() => {
-        console.error(`[AgentProcess:${this.id}] Command timed out after 300s waiting for child acknowledgment`);
+        console.error(`[AgentProcess:${this.id}] Command timed out after ${getAgentCommandTimeoutMs() / 1000}s waiting for child acknowledgment`);
         reject(new Error("Command timed out waiting for child acknowledgment"));
-      }, 300_000); // 5 分钟 — 首次初始化需要动态加载大量模块
+      }, getAgentCommandTimeoutMs()); // 默认 5 分钟 — 首次初始化需要动态加载大量模块
 
       this.pendingCommand = { resolve, reject, timer };
       this.child.stdin!.write(JSON.stringify(cmd) + "\n");

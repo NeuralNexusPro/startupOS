@@ -4,10 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, createContext, useCo
 import { Loader2, Network, X, ChevronRight } from "lucide-react";
 
 import { TopologyGraph } from "./TopologyGraph";
+import { TaskBoard } from "./TaskBoard";
 import { useCollaborationUi, type AgentActivity, type ForegroundMessage, type CoordinationGroup } from "./store";
 import { useSSEConnection, preconnect } from "./use-sse";
 import type { CollaborationRuntimeUiDeps, UploadedFileDisplay, UploadedFile } from "./ui-deps";
-import { getCollaborationTopology, createCollaborationSession, executeCollaborationSession, sendCollaborationMessage } from "../../../lib/integrations/electron/services/collaboration";
+import { getCollaborationTopology, createCollaborationSession, executeCollaborationSession, sendCollaborationMessage, getCollaborationTaskSnapshot } from "../../../lib/integrations/electron/services/collaboration";
 import type { RuntimeLLMConfig } from "../../../lib/integrations/pi-agent/llm-config";
 
 import type {
@@ -264,6 +265,43 @@ const COORDINATION_STYLE: Record<string, string> = {
   general: "text-gray-400",
 };
 
+/**
+ * 快照任务键归一化：WorkspaceTaskSnapshot 的 agents[].activeTask / recentTerminalTask
+ * 以 `taskId` 为键（agent-task-snapshot.ts 序列化形态），而 TaskItem 以 `id` 为键。
+ * 在调用 mergeSnapshotTasks 前统一映射为 TaskItem 形态（只读转换，不改写快照字段语义）；
+ * 畸形条目由 store 的 mergeSnapshotTasks 防御性跳过。
+ */
+function normalizeSnapshotTaskKeys(data: unknown): unknown {
+  if (typeof data !== "object" || data === null) return data;
+  const snapshot = data as {
+    activeTasks?: unknown;
+    agents?: unknown;
+    [key: string]: unknown;
+  };
+  const toTaskItem = (value: unknown): unknown => {
+    if (typeof value !== "object" || value === null) return value;
+    const t = value as Record<string, unknown>;
+    if (typeof t["id"] === "string") return t;
+    if (typeof t["taskId"] !== "string") return t;
+    return { ...t, id: t["taskId"] };
+  };
+  const agents = Array.isArray(snapshot.agents)
+    ? snapshot.agents.map((agent) => {
+        if (typeof agent !== "object" || agent === null) return agent;
+        const a = agent as Record<string, unknown>;
+        return {
+          ...a,
+          activeTask: a["activeTask"] !== undefined ? toTaskItem(a["activeTask"]) : undefined,
+          recentTerminalTask: a["recentTerminalTask"] !== undefined ? toTaskItem(a["recentTerminalTask"]) : undefined,
+        };
+      })
+    : snapshot.agents;
+  const activeTasks = Array.isArray(snapshot.activeTasks)
+    ? snapshot.activeTasks.map(toTaskItem)
+    : snapshot.activeTasks;
+  return { ...snapshot, activeTasks, agents };
+}
+
 export const MultiAgentLauncher: React.FC<MultiAgentLauncherProps> = ({
   projectId,
   projectName,
@@ -288,9 +326,29 @@ export const MultiAgentLauncher: React.FC<MultiAgentLauncherProps> = ({
   const activities = useCollaborationUi((state) => state.activities);
   const events = useCollaborationUi((state) => state.events);
   const recentlyActiveAgents = useCollaborationUi((state) => state.recentlyActiveAgents);
+  const boardCollapsed = useCollaborationUi((state) => state.boardCollapsed);
   // displayMessages is maintained incrementally in the store — no useMemo needed.
   const displayMessages = useCollaborationUi((state) => state.displayMessages);
   const [pendingUserMessage, setPendingUserMessage] = useState<ForegroundMessage | null>(null);
+
+  // 会话恢复：sessionId 就绪后拉取一次快照对账（运行中靠事件流，不轮询）。
+  // 快照恢复范围按用户决策收窄：活跃任务 + 各 Agent 最近终端任务（mergeSnapshotTasks 内部实现）。
+  useEffect(() => {
+    if (sessionId === null) return;
+    void getCollaborationTaskSnapshot(sessionId)
+      .then((result) => {
+        if (!result.success) {
+          console.error("[MultiAgentLauncher] Get task snapshot failed:", result.error);
+          return; // 降级：仅事件驱动
+        }
+        // 快照 agents[].activeTask/recentTerminalTask 以 taskId 为键（agent-task-snapshot.ts），
+        // 归一化为 TaskItem.id 后再合并；畸形字段由 mergeSnapshotTasks 防御性跳过。
+        useCollaborationUi.getState().mergeSnapshotTasks(normalizeSnapshotTaskKeys(result.data));
+      })
+      .catch((error) => {
+        console.error("[MultiAgentLauncher] Get task snapshot request failed:", error);
+      });
+  }, [sessionId]);
 
   // Single interval to prune recentlyActiveAgents — replaces per-event setTimeout.
   useEffect(() => {
@@ -574,6 +632,16 @@ export const MultiAgentLauncher: React.FC<MultiAgentLauncherProps> = ({
           activities={activities}
           recentlyActiveAgents={recentlyActiveAgents}
           onNodeClick={(id) => setSelectedAgentId((prev) => prev === id ? null : id)}
+        />
+      )}
+
+      {/* Task board (Story 9.44) — only when session exists */}
+      {sessionId !== null && (
+        <TaskBoard
+          collapsed={boardCollapsed}
+          onToggleCollapsed={() => useCollaborationUi.getState().setBoardCollapsed(!boardCollapsed)}
+          onTaskClick={(agentId) => setSelectedAgentId((prev) => prev === agentId ? null : agentId)}
+          agentNames={agentNames}
         />
       )}
 

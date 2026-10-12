@@ -144,6 +144,24 @@ export async function getCollaborationBlackboard(sessionId: string): Promise<Ipc
   return readJsonResponse<IpcResponse<unknown>>(response);
 }
 
+// ── Task Snapshot (Story 9.44) ────────────────────────────────
+
+/**
+ * 获取协作会话任务快照（Multica 式 WorkspaceTaskSnapshot + memoryIndex + runs）。
+ * Electron 模式走 COLLAB_SNAPSHOT_GET IPC；Web 模式走既有 GET /snapshot route。
+ */
+export async function getCollaborationTaskSnapshot(sessionId: string): Promise<IpcResponse<unknown>> {
+  if (isElectron()) {
+    return getIpcRenderer().invoke<IpcResponse<unknown>>(
+      IPC_CHANNELS.COLLAB_SNAPSHOT_GET,
+      { sessionId }
+    );
+  }
+
+  const response = await fetch(`/api/collaboration/sessions/${encodeURIComponent(sessionId)}/snapshot`);
+  return readJsonResponse<IpcResponse<unknown>>(response);
+}
+
 // ── Human Review (deprecated) ─────────────────────────────────
 
 export async function respondToHumanReview(
