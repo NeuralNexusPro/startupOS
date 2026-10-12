@@ -4,15 +4,17 @@
  * Story 9.12: UI 协作查看器
  */
 
+import type { TaskItem } from "../session/types";
+
 interface BlackboardViewerProps {
   data: Record<string, unknown>;
-  tasks: Array<{ id: string; state: string; assignee?: string }>;
+  tasks: TaskItem[];
 }
 
 export function BlackboardViewer({ data, tasks }: BlackboardViewerProps) {
-  const pendingCount = tasks.filter((t) => t.state === "pending").length;
-  const completedCount = tasks.filter((t) => t.state === "completed").length;
-  const runningCount = tasks.filter((t) => t.state === "running").length;
+  const pendingCount = tasks.filter((t) => t.status === "pending").length;
+  const completedCount = tasks.filter((t) => t.status === "completed").length;
+  const runningCount = tasks.filter((t) => t.status === "running").length;
 
   return (
     <div className="space-y-4">
@@ -37,10 +39,10 @@ export function BlackboardViewer({ data, tasks }: BlackboardViewerProps) {
               key={task.id}
               className="flex items-center gap-2 text-sm px-2 py-1 rounded bg-gray-50"
             >
-              <TaskStateBadge state={task.state} />
+              <TaskStateBadge state={task.status} />
               <span className="font-mono text-gray-700 truncate">{task.id}</span>
-              {task.assignee && (
-                <span className="text-gray-400 ml-auto">{task.assignee}</span>
+              {task.assignedTo && (
+                <span className="text-gray-400 ml-auto">{task.assignedTo}</span>
               )}
             </div>
           ))}
