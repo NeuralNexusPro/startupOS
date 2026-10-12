@@ -249,7 +249,7 @@ export const mockSnapshot = {
 1. 运行 store 集成测试（事件序列 → tasks 更新）
 2. 手动 E2E 场景 1
 
-**测试结果:** ⏳ 待实施
+**测试结果:** ✅ 自动化通过（2026-10-12）——store-tasks 事件序列端到端用例通过（集成分支 ui+facade 107/107）；手动 E2E 待桌面环境验证（见「测试执行记录」）
 
 ### AC2: 状态实时流转
 
@@ -257,7 +257,7 @@ export const mockSnapshot = {
 1. 单测：六类事件映射（用例 1）
 2. 手动：观察 running → completed 转变
 
-**测试结果:** ⏳ 待实施
+**测试结果:** ✅ 自动化通过（2026-10-12）——store-tasks 27 用例全绿（六类映射 + 幂等 + 缺 payload 防御）
 
 ### AC3: 汇总统计与联动
 
@@ -265,7 +265,7 @@ export const mockSnapshot = {
 1. 组件测试：汇总条计数 + 点击回调
 2. 手动：点击任务行打开抽屉
 
-**测试结果:** ⏳ 待实施
+**测试结果:** ✅ 自动化通过（2026-10-12）——task-board.test.tsx 9 用例（计数 + onTaskClick + 空态）；MultiAgentLauncher.logic 14 用例无回归。手动抽屉联动待桌面验证
 
 ### AC4: 双通道与降级
 
@@ -274,7 +274,7 @@ export const mockSnapshot = {
 2. Electron 模式手动场景 1（IPC 快照 + COLLAB_EVENT）
 3. 断网/停会话条件下验证降级不白屏
 
-**测试结果:** ⏳ 待实施
+**测试结果:** ⏳ 待手动验证（2026-10-12）——IPC 通道 + 双通道客户端已实现并通过 typecheck/边界扫描；desktop tsc 前需构建感知插件 dist（环境前置，已记录）。手动双通道验证待桌面环境
 
 ### AC5: 项目工作区「任务」页签不呈现协作任务（范围排除回归）
 
@@ -282,7 +282,7 @@ export const mockSnapshot = {
 1. 手动场景 4
 2. 确认 ProjectTaskBoard 相关文件零改动（`git diff` 核对）
 
-**测试结果:** ⏳ 待实施
+**测试结果:** ✅ 通过（2026-10-12）——`git diff 0.4.x --name-only -- packages/` 核对：13 个变更文件全部位于 collaboration-runtime / lib integrations / desktop main；project-task-board 相关文件零改动
 
 ### AC6: 会话恢复（活跃任务 + 最近终端任务）
 
@@ -290,7 +290,7 @@ export const mockSnapshot = {
 1. 单测：mergeSnapshotTasks 合成范围（用例 2）
 2. 手动场景 2（确认非全量属预期）
 
-**测试结果:** ⏳ 待实施
+**测试结果:** ✅ 自动化通过（2026-10-12）——mergeSnapshotTasks 合成/去重/畸形跳过用例通过；快照 `taskId→id` 键归一化已在 MultiAgentLauncher.normalizeSnapshotTaskKeys 落地（依据 agent-task-snapshot.ts 真实形态）。手动重开窗口验证待桌面环境
 
 ### AC7: HITL 触发发送系统通知
 
@@ -298,7 +298,7 @@ export const mockSnapshot = {
 1. 单测：hitl-notify 转发（用例 3，六项用例表）
 2. 手动场景 5（通知中心可见 + 幂等 + 降级）
 
-**测试结果:** ⏳ 待实施
+**测试结果:** ✅ 自动化通过（2026-10-12）——hitl-notify 9/9（经真实 eventEmitter 冒烟）；createNotification 实际签名含第 5 参 `options?: { sessionId?, projectId? }`，已适配并断言完整调用形状。手动通知中心验证待桌面环境
 
 ---
 
@@ -306,27 +306,56 @@ export const mockSnapshot = {
 
 _实施后填写_
 
+**2026-10-12 补充（非缺陷，基线记录）：**
+- 全量 collaboration-runtime 套件 375/389：14 失败均为基线存量（capability-matcher 10、dag-executor 3 已在 0.4.x / 主 worktree 复现确认非本 Story 引入；agent-spawner 1 为环境性 `tsx: command not found`（exit 127））。
+- desktop tsc 前置：需先 `pnpm -r --filter './packages/perception-plugins/*' build`（插件 dist 未随 worktree 提交，属环境前置）。
+
 ---
 
 ## 🔄 回归测试
 
 ### 回归测试清单
 
-- [ ] collaboration-runtime 既有测试套件通过（已知存量失败：capability-matcher / dag-executor 部分，基线在 HEAD 已确认非本 Story 引入则忽略）
-- [ ] solution feature 测试通过（含本次拓扑别名修复的回归）
-- [ ] `pnpm lint` / `pnpm lint:boundaries` 通过
-- [ ] core exports 门禁通过（若涉及）
-- [ ] 手动 E2E 4 个场景全部通过
+- [x] collaboration-runtime 既有测试套件通过（已知存量失败：capability-matcher 10 / dag-executor 3 / agent-spawner 1，基线在 0.4.x 已确认非本 Story 引入）
+- [x] solution feature 测试通过（含本次拓扑别名修复的回归）——28/28
+- [x] `pnpm lint`（0 errors / 3215 基线 warnings）/ `pnpm lint:boundaries`（990 文件 0 诊断）通过
+- [x] core exports 门禁通过（`node scripts/expand-core-exports.cjs --verify` → VERIFY PASSED）
+- [x] `node scripts/check-architecture-boundaries.cjs --self-test` 通过
+- [ ] 手动 E2E 4 个场景全部通过（待桌面环境）
 
 ### 回归测试结果
 
-_实施后填写_
+**2026-10-12（Proposal 集成分支 `proposal/add-collaboration-task-board`，merge `7b825c9` 后）：**
+- ui `__tests__` + facade（含 hitl-notify）：**107/107 通过**
+- solution feature：**28/28 通过**
+- collaboration-runtime 全量：375/389（14 失败全部为基线存量，见缺陷记录）
+- core tsc：仅 client-hooks 5 项基线错误；desktop tsc：0 错误（构建插件 dist 后）
+- `openspec validate add-collaboration-task-board --strict`：**valid**
 
 ---
 
 ## 📝 测试执行记录
 
-_实施后填写_
+### 2026-10-12 — 自动化测试（Proposal 集成分支）
+
+| 命令 | 结果 |
+|------|------|
+| `pnpm --filter @originos/core exec vitest run src/modules/collaboration-runtime/ui/__tests__/ src/modules/collaboration-runtime/facade/__tests__/` | 107/107 ✅ |
+| `pnpm --filter @originos/core exec vitest run src/lib/features/solution/` | 28/28 ✅ |
+| `pnpm --filter @originos/core exec vitest run src/modules/collaboration-runtime/` | 375/389（14 基线存量失败） |
+| `cd packages/core && npx tsc --noEmit -p .` | 仅 5 项 client-hooks 基线错误 |
+| `cd packages/desktop && npx tsc --noEmit -p .`（前置：构建感知插件 dist） | 0 错误 ✅ |
+| `pnpm lint` | 0 errors / 3215 基线 warnings ✅ |
+| `pnpm lint:boundaries` | 990 文件 0 诊断 ✅ |
+| `node scripts/expand-core-exports.cjs --verify` | VERIFY PASSED ✅ |
+| `node scripts/check-architecture-boundaries.cjs --self-test` | 通过 ✅ |
+| `openspec validate add-collaboration-task-board --strict` | valid ✅ |
+
+**无法自动化项：** 手动 E2E 场景 1–5（真实协作会话、重开窗口恢复、Web 双通道、项目工作区回归、通知中心可见性）待桌面/Web 环境人工验证；步骤见上文「E2E 测试（手动）」。
+
+**剩余风险：**
+- 引擎真实会话的 `TASK_*` 事件样本仍依赖新发起一次完整协作会话（问题 1）。
+- agent-spawner 基线失败（`tsx: command not found`）与本 Story 无关，但会污染全量套件结果解读。
 
 ---
 

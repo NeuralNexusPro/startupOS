@@ -323,6 +323,23 @@ const restored = [
 
 ---
 
+### 2026-10-12（实施完成 — Proposal add-collaboration-task-board）
+
+**完成（三个工作包全部合入集成分支 `proposal/add-collaboration-task-board`）：**
+- 944-T1-A（commit `207e5a5`）：store 六类事件派生（`applyTaskEventToTasks`）+ `mergeSnapshotTasks` + `boardCollapsed`；`TaskBoard.tsx` 纯展示组件；测试 50/50
+- 944-T1-B（commit `1d0fa63`）：`COLLAB_SNAPSHOT_GET` 双通道（core+desktop 常量、client 函数、desktop handler 转发 facade）；`MultiAgentLauncher` 挂载 TaskBoard + 快照恢复（`normalizeSnapshotTaskKeys` 将 agents[].activeTask/recentTerminalTask 的 `taskId` 键归一化为 `TaskItem.id`——实测 agent-task-snapshot.ts 序列化形态为 `{ taskId, ... }`，替代了本文件「陷阱 1」中防御性跳过方案）
+- 944-T1-C（commit `f0a1614`）：`facade/hitl-notify.ts` + dag-runner 组装点注册；hitl-notify 测试 9/9
+
+**实施偏离（对照本文件既有记录）：**
+1. BlackboardViewer.tsx 死代码（9.12 遗留，零消费者）随 store 改形做最小类型修复（`state→status`、`assignee→assignedTo`），CollaborationViewer 零改动——保持 core tsc 绿
+2. `createNotification` 实际签名含第 5 参 `options?: { sessionId?, projectId? }`（通知面板按顶层字段过滤），hitl-notify 已传入 `{ sessionId }`
+3. TaskBoard 行列表用 `max-h-40`（160px）替代任意值 `max-h-[168px]`——web Tailwind content glob 不扫描 core，任意值类不会被编译进应用 CSS
+4. core tsconfig `jsx: preserve` 要求显式 `import React`（与既有 system.test.tsx 同模式）
+
+**验证结果：** 见 testing.md 2026-10-12 执行记录（ui+facade 107/107、solution 28/28、lint/boundaries/exports 门禁/架构自测全过；14 项 collaboration-runtime 失败均为基线存量）。
+
+---
+
 ## 🚀 部署说明
 
 ### 本地开发

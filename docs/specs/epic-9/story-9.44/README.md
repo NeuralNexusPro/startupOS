@@ -95,7 +95,7 @@
 
 ### 当前状态
 
-🟢 **Approved** - 文档已评审，Proposal add-collaboration-task-board 已获批（2026-10-12），待实施
+🔨 **Implementation Complete** - Proposal add-collaboration-task-board 三个工作包已实施并合入集成分支（2026-10-12）；自动化测试通过，手动 E2E（场景 1–5）待桌面环境验证
 
 ### 完成情况
 
