@@ -365,3 +365,13 @@ pnpm --filter @originos/desktop dev
 - [架构设计](./architecture.md)
 - [测试文档](./testing.md)
 - [AGENTS.md](../../../AGENTS.md)
+
+---
+
+## E2E 遗留决策：Multica 视觉形态另立 Story（2026-10-12）
+
+手动 E2E 中用户确认：看板数据链路验证通过（真实会话 cs-1791794804221-v26s03 派发 2 任务，事件重放看板行全部正确），但当前「横向条状任务列表（汇总条 + 任务行）」形态与用户期望的 Multica 式 agent 卡片网格（每 Agent 一张卡片显示当前任务与进度，按协作拓扑排列）不符。
+
+**用户决策：9.44 保持现有形态收尾合并；Multica agent 卡片式视觉重构另立 Story（数据层 `applyTaskEventToTasks` / `mergeSnapshotTasksPure` / 快照通道全部复用，仅重构 TaskBoard 展示层）。**
+
+另需注意（关联发现）：协作窗口每次打开 `autoStart` 都新建会话，不做既有会话恢复（快照恢复路径因此实际只对「新建后立刻重开」生效）——「重开窗口恢复上一个会话的看板」应纳入上述视觉重构 Story 一并设计。
