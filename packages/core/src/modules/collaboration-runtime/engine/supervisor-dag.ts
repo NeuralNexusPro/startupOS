@@ -475,6 +475,19 @@ ${topologySummary}
     elapsedMs: Date.now() - dagStartedAt,
   });
 
+  // DAG 结束后销毁 supervisor 子进程：协议观察器已 close（onSupervisorEvent 不再转发事件），
+  // 存活的进程会吞掉用户后续消息（prompt() 正常返回但回复永不落库）。
+  // 销毁后 hitl-dispatcher 的 "supervisor no longer alive" 分支才能触发新 DAG。
+  // 紧急修复（Story 9.44 E2E 期间授权，见 docs/changes/）。
+  if (config.sessionId) {
+    try {
+      await spawner.destroy(supervisorAgentId);
+      logRuntime("dag.supervisor.destroyed", { projectId: config.projectId, sessionId: config.sessionId, agentId: supervisorAgentId });
+    } catch {
+      /* already gone */
+    }
+  }
+
   return {
     status: fullyAccepted ? "completed" : "failed",
     completedAgents: finalResult.completedAgents,
