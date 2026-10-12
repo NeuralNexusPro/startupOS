@@ -2302,3 +2302,9 @@ SENSE12-T3：首次启用后台本可启动，但UI快照不自动刷新；增�
 **类型**：fix
 **影响模块**：`packages/core/src/modules/collaboration-runtime/engine/supervisor-dag.ts`
 **摘要**：DAG 结束后协议观察器关闭但 supervisor 进程存活，用户续发消息被存活进程吞掉（回复不落库、UI 冻结）。修复为 dag.done 后销毁 supervisor，让后续消息按设计触发新 DAG。经用户批准作为紧急修复，commit 06648f6。详见 [v0.4.7](releases/v0.4.7/changelog.md)。
+
+## 2026-10-12 — feat：Story 9.44 多Agent协作统一任务看板合并（Proposal add-collaboration-task-board）
+
+**类型**：feat
+**影响模块**：`packages/core/src/modules/collaboration-runtime/ui/`、`packages/core/src/modules/collaboration-runtime/facade/`、`packages/core/src/lib/integrations/electron/`、`packages/desktop/src/main/services/`
+**摘要**：Story 9.44 收尾合并（merge `d83d66b`）：协作窗口新增统一任务看板（`TaskBoard`，六类 `TASK_*` 事件实时派生 + 折叠汇总条），新增 `COLLAB_SNAPSHOT_GET` IPC 双通道快照恢复（活跃任务 + 各 Agent 最近终端任务），HITL 请求转发系统通知（幂等、失败不冒泡）。随 Proposal 落地两项紧急修复：`COLLAB_COMMAND_TIMEOUT_MS` 超时可配置、DAG 结束后销毁 supervisor 子进程。手动 E2E 场景 1 已验证，Multica 卡片式视觉重构另立 Story。

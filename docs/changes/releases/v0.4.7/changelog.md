@@ -25,3 +25,9 @@
 **影响模块**：packages/core/src/modules/collaboration-runtime/engine/supervisor-dag.ts
 
 **摘要**：DAG 结束（完成/失败/超时）后 ProtocolObserver 已 close，onSupervisorEvent 丢弃全部后续事件，但 supervisor 子进程仍存活——用户续发消息被 hitl-dispatcher 转发给这个「失聪」进程，回复不落库、UI 停更、会话记录冻结在 running，重启新 DAG 的设计分支永远不可达（用户会话 cs-1791793795138-ekgj6u 复现）。修复：dag.done 后立即销毁 supervisor 子进程，使后续消息按既有设计落入「supervisor 不存活 → 启动新 DAG」分支。abort 路径原本即销毁，不受影响。经用户批准作为 Story 9.44 E2E 期间紧急修复（AGENTS.md 紧急变更），commit 06648f6。
+
+## 2026-10-12 — feat：Story 9.44 多Agent协作统一任务看板合并（Proposal add-collaboration-task-board）
+
+**类型**：feat
+**影响模块**：`packages/core/src/modules/collaboration-runtime/ui/`、`packages/core/src/modules/collaboration-runtime/facade/`、`packages/core/src/lib/integrations/electron/`、`packages/desktop/src/main/services/`
+**摘要**：Story 9.44 收尾合并（merge `d83d66b`）：协作窗口新增统一任务看板（`TaskBoard`，六类 `TASK_*` 事件实时派生 + 折叠汇总条），新增 `COLLAB_SNAPSHOT_GET` IPC 双通道快照恢复（活跃任务 + 各 Agent 最近终端任务），HITL 请求转发系统通知（幂等、失败不冒泡）。随 Proposal 落地两项紧急修复（见上）。手动 E2E 场景 1 已验证，Multica 卡片式视觉重构另立 Story。

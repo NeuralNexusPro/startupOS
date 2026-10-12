@@ -120,7 +120,7 @@
 | **9.41** | Agent/RoleAgent 任务入口与 pi-tasks 直接执行 | High | Phase 3 | 📋 Ready（A-02 边界已通过） |
 | **9.42** | 多 Agent 任务与解决方案执行契约对齐 | High | Phase 3 | 📋 Planning |
 | **9.43** | 项目任务看板与协同图联动 | High | Phase 3 | 📋 Planning |
-| **9.44** | 多Agent协作统一任务看板（Multica模式） | High | Phase 3 | 🔨 实施完成，待手动 E2E（Proposal add-collaboration-task-board：看板/快照恢复/HITL 通知自动化测试通过；project-task-board 零改动已核对；合并 dev 待批准） |
+| **9.44** | 多Agent协作统一任务看板（Multica模式） | High | Phase 3 | ✅ 已完成（Proposal add-collaboration-task-board 合并 `0.4.x`/`dev`，merge `d83d66b` 2026-10-12；自动化测试 ui+facade 107/107、solution 30/30；手动 E2E 场景 1 API 驱动验证通过，场景 2/3/5 视觉验证待桌面环境；Multica 卡片式视觉重构另立 Story） |
 
 > **当前进度（2026-08-01）：** Epic 9 主运行时已具备 Workflow、Supervisor、黑板、协议和基础 UI；Story 9.41 的 A-02 受控 `pi-tasks` 公共边界已通过，但任务入口、Task 卡片、completion policy、lease、续跑与恢复尚未实施。Phase 3 的 HITL 收敛、链路治理及高级协作能力也未完成，因此 Epic 保持 In Progress，不能按整体 Complete 归档。
 

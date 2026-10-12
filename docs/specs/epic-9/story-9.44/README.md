@@ -95,7 +95,7 @@
 
 ### 当前状态
 
-🔨 **Implementation Complete** - Proposal add-collaboration-task-board 三个工作包已实施并合入集成分支（2026-10-12）；自动化测试通过，手动 E2E（场景 1–5）待桌面环境验证
+✅ **Completed** - Proposal add-collaboration-task-board 已合并 `0.4.x` 与 `dev`（merge commit `d83d66b`，2026-10-12，944-T1-E）；自动化测试全部通过（ui+facade 107/107、solution 30/30），手动 E2E 场景 1 经 API 驱动真实会话验证（TASK_* 全链路），场景 2/3/5 的视觉确认待桌面环境（遗留风险见 testing.md）；Multica 卡片式视觉重构与协作会话恢复设计另立 Story（用户决策 2026-10-12，见 implementation.md 遗留决策节）
 
 ### 完成情况
 
