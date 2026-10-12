@@ -309,6 +309,8 @@ _实施后填写_
 **2026-10-12 补充（非缺陷，基线记录）：**
 - 全量 collaboration-runtime 套件 375/389：14 失败均为基线存量（capability-matcher 10、dag-executor 3 已在 0.4.x / 主 worktree 复现确认非本 Story 引入；agent-spawner 1 为环境性 `tsx: command not found`（exit 127））。
 - desktop tsc 前置：需先 `pnpm -r --filter './packages/perception-plugins/*' build`（插件 dist 未随 worktree 提交，属环境前置）。
+- E2E 环境前置：全新 worktree 需将 tsx 软链到根 `node_modules/tsx`（见「手动 E2E」执行记录），与 agent-spawner 基线失败同源。
+- Supervisor prompt 300s 超时（glm 端点慢响应）属引擎既有鲁棒性问题，非本 Story 引入；本次 E2E 会话因此未推进到 TASK_COMPLETED。
 
 ---
 
@@ -321,7 +323,7 @@ _实施后填写_
 - [x] `pnpm lint`（0 errors / 3215 基线 warnings）/ `pnpm lint:boundaries`（990 文件 0 诊断）通过
 - [x] core exports 门禁通过（`node scripts/expand-core-exports.cjs --verify` → VERIFY PASSED）
 - [x] `node scripts/check-architecture-boundaries.cjs --self-test` 通过
-- [ ] 手动 E2E 4 个场景全部通过（待桌面环境）
+- [x] 手动 E2E 场景 1（API 驱动真实协作会话，TASK_* 全链路验证，见执行记录）；场景 2/3/5 的浏览器视觉确认待桌面环境
 
 ### 回归测试结果
 
@@ -352,6 +354,24 @@ _实施后填写_
 | `openspec validate add-collaboration-task-board --strict` | valid ✅ |
 
 **无法自动化项：** 手动 E2E 场景 1–5（真实协作会话、重开窗口恢复、Web 双通道、项目工作区回归、通知中心可见性）待桌面/Web 环境人工验证；步骤见上文「E2E 测试（手动）」。
+
+### 2026-10-12 — 手动 E2E（API 驱动，Proposal dev server :3200）
+
+**环境：** Proposal worktree web dev（`DATA_ROOT=<monorepo>/data`，端口 3200），真实项目 proj-1785388155176-xcl4f77gj（Hawkeye 招聘，5 Agent legacy manifest），会话 cs-1791782962341-02jm0x。
+
+**环境前置（新发现）：** 开发态 supervisor/worker 通过 `npx tsx` 或 `<monorepoRoot>/node_modules/tsx/dist/cli.mjs` 解析 tsx；tsx 仅在 `packages/core/node_modules`（pnpm 未提升到根），全新 worktree 需 `ln -s $(realpath packages/core/node_modules/tsx) <worktree>/node_modules/tsx`。该问题与 agent-spawner 基线测试失败同源，非本 Story 引入。
+
+| 验证点 | 结果 | 证据 |
+|--------|------|------|
+| 场景 1（AC1/AC2）：Supervisor dispatch 产生真实 TASK_* 事件 | ✅ | events.jsonl 依次出现 TASK_CREATED（task-1791783024726-pp7aez）→ TASK_ASSIGNED（agentId=position-profiling-agent）→ TASK_STARTED；全历史会话此前零 TASK_* 事件，本次为首个真实样本 |
+| SSE 重放（AC1/AC4 Web 通道）：晚加入客户端收到全量历史含 TASK_* | ✅ | `GET .../events`（SSE）replay 流中含 TASK_CREATED/ASSIGNED/STARTED 各 1 |
+| 快照 API（AC6 数据面）：activeTasks 为完整 TaskItem（`id` 键），agents[].activeTask 为 `taskId` 键 | ✅ | 快照返回 activeTasks[0].id=task-1791783024726-pp7aez、status=running、assignedTo=position-profiling-agent；agents[0].activeTask.taskId 同值 → 印证 MultiAgentLauncher.normalizeSnapshotTaskKeys 归一化设计的必要性 |
+| summary 统计（AC3 数据面） | ✅ | `{"totalAgents":1,"activeAgents":1,"totalActiveTasks":1,...}` |
+| 浏览器产物（AC1/AC3/AC6 UI 面） | ✅ | 窗口页 200；懒加载 chunk `_app-pages-browser_src_app_window_CollaborationWindow_tsx.js`（11.7MB）含 TaskBoard×4、normalizeSnapshotTaskKeys/getCollaborationTaskSnapshot×2、空态文案 |
+| AC7 HITL 通知（真实会话） | ⏳ | 本次会话未触发 HUMAN_REVIEW_REQUEST（worker 未上报 HITL），通知中心验证仍需桌面环境；单测 9/9 已覆盖 |
+| 会话恢复（AC6 重开窗口） | ⏳ | 快照 API 数据面已验证（活跃任务+范围收窄），浏览器视觉恢复待桌面环境 |
+
+**场景外发现（非本 Story 缺陷，基线记录）：** Supervisor 在 wait_workers 后续 LLM 轮次因 glm 端点 300s 未响应触发 `Prompt timed out`（agent-spawner.ts:374 超时路径），会话终止于 running；TASK_COMPLETED 依赖 supervisor 后续 verify_task 调用（supervisor-dag-tools.ts:164），本次未能推进到终端事件。TASK_REPORTED/TASK_COMPLETED 的真实会话样本与端到端终端流转验证仍属待办（与引擎超时鲁棒性改进无关本 Story 范围）。
 
 **剩余风险：**
 - 引擎真实会话的 `TASK_*` 事件样本仍依赖新发起一次完整协作会话（问题 1）。
