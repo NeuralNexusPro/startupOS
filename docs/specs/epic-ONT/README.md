@@ -222,6 +222,7 @@ Skill/Agent contract 是 ONT 暴露给 P2 和 collaboration-runtime 的协议。
 | ONT.6 | Skill / Agent Contract Validation API | Done | High | 已提供 contract 引用、Action 权限与 SOP required facts 连通性校验 |
 | ONT.7 | Context Projection Protocol | Done | High | 已定义最小 runtime projection DTO、JSONL append/read、公共 query/resolver 与确定性 latest 语义 |
 | ONT.8 | Cross-package Adapters 与端到端验证 | In Progress（canonical authoring 闭环完成；平台矩阵待验收） | High | Web API adapter、Desktop IPC adapter、P2/runtime integration tests |
+| ONT.9 | Agent 工具与遗留写入口的本体治理 | 📝 Planning | High | Agent ontology 工具迁 canonical authoring（补 instance.* 命令）、Web legacy 写路由只读、已 canonical 项目 legacy 残留并入 canonical |
 
 ### 实施顺序
 
