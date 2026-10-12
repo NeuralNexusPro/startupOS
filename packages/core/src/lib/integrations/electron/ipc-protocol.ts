@@ -141,6 +141,7 @@ export const IPC_CHANNELS = {
   COLLAB_SESSION_EXECUTE: 'collaboration:session:execute',
   COLLAB_SESSION_MESSAGE_POST: 'collaboration:session:message:post',
   COLLAB_BLACKBOARD_GET: 'collaboration:blackboard:get',
+  COLLAB_SNAPSHOT_GET: 'collaboration:snapshot:get',
   COLLAB_HUMAN_REVIEW: 'collaboration:human-review',
   COLLAB_EVENT: 'collaboration:event',
   TASTE_DETECTION_START: 'taste:detection:start',

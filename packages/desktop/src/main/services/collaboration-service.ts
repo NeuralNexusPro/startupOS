@@ -299,6 +299,39 @@ export class CollaborationService {
       }
     );
 
+    // ── Task Snapshot (Story 9.44) ────────────────────────────
+
+    ipcMain.handle(
+      IPC_CHANNELS.COLLAB_SNAPSHOT_GET,
+      async (_event, request: { sessionId: string }): Promise<IpcResponse<unknown>> => {
+        try {
+          if (!request.sessionId) {
+            return {
+              success: false,
+              error: { code: 'INVALID_REQUEST', message: 'sessionId is required' },
+              timestamp: new Date().toISOString(),
+            };
+          }
+          const f = await getFacade();
+          const snapshot = await f.getSessionTaskSnapshot(request.sessionId);
+          if (!snapshot) {
+            return {
+              success: false,
+              error: { code: 'NOT_FOUND', message: 'Session not found' },
+              timestamp: new Date().toISOString(),
+            };
+          }
+          return {
+            success: true,
+            data: snapshot,
+            timestamp: new Date().toISOString(),
+          };
+        } catch (error) {
+          return this.toErrorResponse(error, '[CollaborationService] Get task snapshot failed');
+        }
+      }
+    );
+
     // ── Human Review (deprecated) ─────────────────────────────
 
     ipcMain.handle(
