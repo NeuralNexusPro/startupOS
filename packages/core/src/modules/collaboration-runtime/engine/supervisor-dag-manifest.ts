@@ -40,7 +40,22 @@ export async function loadAgentsJson(manifestDir: string): Promise<AgentsJsonAge
   const agentsPath = path.join(manifestDir, "agents.json");
   const content = await readFile(agentsPath, "utf-8");
   const data = JSON.parse(content) as AgentsJson;
-  return data.agents;
+  return normalizeAgentsJsonAgents(data.agents);
+}
+
+/**
+ * 归一 agents.json 字段命名：canonical solution-design 模板用 target/domain，
+ * 运行时类型统一为 targetAgentId/businessDomain。旧 schema 原样保留。
+ */
+export function normalizeAgentsJsonAgents(agents: AgentsJsonAgent[]): AgentsJsonAgent[] {
+  return agents.map((agent) => ({
+    ...agent,
+    businessDomain: agent.businessDomain ?? agent.domain ?? "",
+    collaborations: agent.collaborations?.map((collab) => ({
+      ...collab,
+      targetAgentId: collab.targetAgentId ?? collab.target ?? "",
+    })),
+  }));
 }
 
 /**
@@ -59,15 +74,16 @@ export function extractEdges(agents: AgentsJsonAgent[]): Array<{ from: string; t
   for (const agent of agents) {
     if (agent.collaborations) {
       for (const collab of agent.collaborations) {
-        if (!agentIds.has(collab.targetAgentId)) {continue;}
-        const forwardKey = `${agent.id}->${collab.targetAgentId}`;
-        const reverseKey = `${collab.targetAgentId}->${agent.id}`;
+        const targetAgentId = collab.targetAgentId;
+        if (!targetAgentId || !agentIds.has(targetAgentId)) {continue;}
+        const forwardKey = `${agent.id}->${targetAgentId}`;
+        const reverseKey = `${targetAgentId}->${agent.id}`;
 
         if (seenEdges.has(reverseKey)) {
           // 反向边已存在，当前边标记为 notify（back-edge）
           seenEdges.set(forwardKey, {
             from: agent.id,
-            to: collab.targetAgentId,
+            to: targetAgentId,
             type: "notify",
             description: collab.description ?? "",
           });
@@ -75,7 +91,7 @@ export function extractEdges(agents: AgentsJsonAgent[]): Array<{ from: string; t
           // 正向边首次出现，保持原始类型
           seenEdges.set(forwardKey, {
             from: agent.id,
-            to: collab.targetAgentId,
+            to: targetAgentId,
             type: collab.type,
             description: collab.description ?? "",
           });
@@ -165,7 +181,7 @@ export function toManifestAgent(a: AgentsJsonAgent): ManifestAgent {
   return {
     id: a.id,
     name: a.name,
-    domain: a.businessDomain,
+    domain: a.businessDomain ?? "",
     responsibility: a.responsibility,
     dataOperations: a.dataOperations ?? {},
     skills: a.skills ?? [],

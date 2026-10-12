@@ -37,6 +37,8 @@ export interface LoadProjectSolutionTopologyProjectionInput {
 
 interface PersistedCollaboration {
   readonly targetAgentId?: unknown;
+  // canonical solution-design 模板用 target 命名（与 manifest topologyEdge 一致）
+  readonly target?: unknown;
   readonly type?: unknown;
   readonly description?: unknown;
 }
@@ -46,6 +48,8 @@ interface PersistedAgent {
   readonly name?: unknown;
   readonly responsibility?: unknown;
   readonly businessDomain?: unknown;
+  // canonical solution-design 模板用 domain 命名
+  readonly domain?: unknown;
   readonly skills?: unknown;
   readonly dataOperations?: unknown;
   readonly collaborations?: unknown;
@@ -145,7 +149,9 @@ function parseProjection(document: PersistedAgentsDocument): ProjectSolutionTopo
     agents[id] = {
       id,
       name: readString(item['name'], `agent.${id}.name`),
-      domain: typeof item['businessDomain'] === 'string' ? item['businessDomain'] : '',
+      domain: typeof item['businessDomain'] === 'string'
+        ? item['businessDomain']
+        : typeof item['domain'] === 'string' ? item['domain'] : '',
       responsibility,
       capabilities: extractCapabilities(responsibility),
       dataOperations: readDataOperations(item['dataOperations']),
@@ -164,7 +170,11 @@ function parseProjection(document: PersistedAgentsDocument): ProjectSolutionTopo
     }
     for (const rawCollaboration of item['collaborations'] as readonly PersistedCollaboration[]) {
       if (!isRecord(rawCollaboration)) throw new Error('INVALID_SOLUTION_TOPOLOGY:collaboration');
-      const to = readString(rawCollaboration['targetAgentId'], 'collaboration.targetAgentId');
+      // 兼容两种持久化命名：targetAgentId（旧 schema）与 target（canonical 模板）
+      const to = readString(
+        rawCollaboration['targetAgentId'] ?? rawCollaboration['target'],
+        'collaboration.targetAgentId'
+      );
       if (agents[to] === undefined || from === to) continue;
       const edgeKey = `${from}->${to}`;
       if (seen.has(edgeKey)) continue;

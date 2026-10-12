@@ -5,7 +5,9 @@ import type { RuntimeEvent } from '../../../modules/collaboration-runtime/sessio
 
 export interface AgentCollaboration {
   targetAgentId: string;
-  targetAgentName: string;
+  targetAgentName?: string;
+  // canonical solution-design 模板用 target 命名；加载时归一到 targetAgentId
+  target?: string;
   type: string;
   description: string;
 }
@@ -15,7 +17,9 @@ export interface AgentsJsonAgent {
   name: string;
   type: string;
   responsibility: string;
-  businessDomain: string;
+  // canonical solution-design 模板用 domain 命名
+  businessDomain?: string;
+  domain?: string;
   skills?: string[];
   dataOperations?: Record<string, string[]>;
   ontologyOperations?: Array<{ objectType: string; operations: string[] }>;
