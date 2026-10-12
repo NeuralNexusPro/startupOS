@@ -2290,3 +2290,9 @@ SENSE12-T3：首次启用后台本可启动，但UI快照不自动刷新；增�
 **类型**：feat
 **影响模块**：Core project、Project Agent、Web 项目本体界面、Desktop 项目/本体 IPC
 **摘要**：新项目访谈与初始化直接创建并绑定 canonical ontology 的精确 ID/version；项目 Agent、方案和 Web 项目本体入口不再自动读取或同步 `business-model.json`。未迁移旧项目只显示显式迁移状态；旧 ontology-data 写入入口明确拒绝，防止产生第二事实源。canonical 编辑 Action adapter 仍待后续实现。
+
+## 2026-10-12 — fix：协作 Agent 子进程命令超时可经环境变量配置（紧急修复）
+
+**类型**：fix
+**影响模块**：`packages/core/src/modules/collaboration-runtime/sandbox/agent-spawner.ts`
+**摘要**：Supervisor/Worker 子进程命令与就绪等待超时原为硬编码 300s；glm 等慢 LLM 端点的 Supervisor 单轮实测可达 895s，超时导致 DAG 在子进程仍在推进时被判定失败。新增 `COLLAB_COMMAND_TIMEOUT_MS` 环境变量覆盖四处等待，默认 300s 不变。经用户批准作为 Story 9.44 E2E 期间紧急修复（AGENTS.md 紧急变更），随 `proposal/add-collaboration-task-board` 落地（commit 3bbb2c1）。详见 [v0.4.7](releases/v0.4.7/changelog.md)。
