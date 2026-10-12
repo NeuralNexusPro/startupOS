@@ -8,7 +8,11 @@ import {
   type CanonicalOntologyAuthoringMutation,
   type CanonicalOntologyAuthoringResult,
 } from './authoring-types';
-import type { CanonicalOntology, CanonicalValidationIssue } from './types';
+import type {
+  CanonicalInstance,
+  CanonicalOntology,
+  CanonicalValidationIssue,
+} from './types';
 import { validateCanonicalOntology } from './validator';
 
 function issue(
@@ -107,6 +111,196 @@ function create<T extends { id: string }>(
     };
   }
   return { ok: true, items: [...items, value] };
+}
+
+const IMMUTABLE_INSTANCE_PATCH_KEYS = [
+  'conceptId',
+  'id',
+  'createdAt',
+  'updatedAt',
+] as const;
+
+/**
+ * D2: an instance update may only replace `data` wholesale or adjust the
+ * optional `stateId` / `sourceRefs`; structural identity keys are rejected.
+ */
+function patchInstance(
+  items: readonly CanonicalInstance[],
+  instanceId: string,
+  patch: Record<string, unknown>,
+  path: string
+): CollectionMutation<CanonicalInstance> {
+  const index = items.findIndex((item) => item.id === instanceId);
+  if (index < 0) {
+    return {
+      ok: false,
+      issues: [
+        issue(
+          'AUTHORING_TARGET_NOT_FOUND',
+          path,
+          `Unknown authoring target: ${instanceId}`
+        ),
+      ],
+    };
+  }
+  const immutableKey = IMMUTABLE_INSTANCE_PATCH_KEYS.find(
+    (key) => key in patch && patch[key] !== undefined
+  );
+  if (immutableKey) {
+    return {
+      ok: false,
+      issues: [
+        issue(
+          'IMMUTABLE_FIELD',
+          `${path}.${immutableKey}`,
+          `Instance ${immutableKey} is immutable and cannot be patched`
+        ),
+      ],
+    };
+  }
+  if ('data' in patch && patch['data'] !== undefined) {
+    const data = patch['data'];
+    if (
+      data === null ||
+      typeof data !== 'object' ||
+      Array.isArray(data)
+    ) {
+      return {
+        ok: false,
+        issues: [
+          issue(
+            'INVALID_INSTANCE_DATA',
+            `${path}.data`,
+            'Instance data must be an object'
+          ),
+        ],
+      };
+    }
+  }
+  return {
+    ok: true,
+    items: items.map((item, itemIndex) => {
+      if (itemIndex !== index) return item;
+      const { data, stateId, sourceRefs } = patch as {
+        data?: Record<string, unknown>;
+        stateId?: CanonicalInstance['stateId'];
+        sourceRefs?: CanonicalInstance['sourceRefs'];
+      };
+      return {
+        ...item,
+        ...(data !== undefined ? { data } : {}),
+        ...(stateId !== undefined ? { stateId } : {}),
+        ...(sourceRefs !== undefined ? { sourceRefs } : {}),
+      };
+    }),
+  };
+}
+
+/**
+ * Instance-level relation records. Canonical ontology does not yet carry a
+ * dedicated instance relation collection, so relations referenced by the
+ * authoring contract (`CanonicalInstanceRelation` in the ONT.9 spec) are read
+ * defensively from instance payloads; any record exposing `sourceInstanceId` /
+ * `targetInstanceId` participates in delete integrity checks.
+ */
+function instanceRelationRecords(ontology: CanonicalOntology): Array<{
+  sourceInstanceId: unknown;
+  targetInstanceId: unknown;
+}> {
+  const records: Array<{ sourceInstanceId: unknown; targetInstanceId: unknown }> =
+    [];
+  for (const instance of ontology.instances) {
+    const payload = instance.data as Record<string, unknown> | undefined;
+    const candidates: unknown[] = [
+      (instance as unknown as Record<string, unknown>)['relations'],
+      payload?.['relations'],
+    ];
+    for (const candidate of candidates) {
+      if (!Array.isArray(candidate)) continue;
+      for (const entry of candidate) {
+        if (entry && typeof entry === 'object') {
+          records.push(entry as { sourceInstanceId: unknown; targetInstanceId: unknown });
+        }
+      }
+    }
+  }
+  return records;
+}
+
+/** Instance deletion is blocked while any instance-level relation still references the instance. */
+function deleteInstance(
+  ontology: CanonicalOntology,
+  items: readonly CanonicalInstance[],
+  instanceId: string,
+  path: string
+): CollectionMutation<CanonicalInstance> {
+  if (!items.some((item) => item.id === instanceId)) {
+    return {
+      ok: false,
+      issues: [
+        issue(
+          'AUTHORING_TARGET_NOT_FOUND',
+          path,
+          `Unknown authoring target: ${instanceId}`
+        ),
+      ],
+    };
+  }
+  const referencedBy = instanceRelationRecords(ontology).filter(
+    (relation) =>
+      relation['sourceInstanceId'] === instanceId ||
+      relation['targetInstanceId'] === instanceId
+  );
+  if (referencedBy.length > 0) {
+    return {
+      ok: false,
+      issues: [
+        issue(
+          'INSTANCE_REFERENCED',
+          path,
+          `Instance ${instanceId} is still referenced by ${referencedBy.length} instance relation(s)`
+        ),
+      ],
+    };
+  }
+  return { ok: true, items: items.filter((item) => item.id !== instanceId) };
+}
+
+/** Instance creation payload must bind an existing concept and carry object data. */
+function createInstance(
+  ontology: CanonicalOntology,
+  value: CanonicalInstance,
+  path: string
+): CollectionMutation<CanonicalInstance> {
+  if (
+    value.data === null ||
+    typeof value.data !== 'object' ||
+    Array.isArray(value.data)
+  ) {
+    return {
+      ok: false,
+      issues: [
+        issue(
+          'INVALID_INSTANCE_DATA',
+          `${path}.data`,
+          'Instance data must be an object'
+        ),
+      ],
+    };
+  }
+  if (!ontology.concepts.some((concept) => concept.id === value.conceptId)) {
+    return {
+      ok: false,
+      issues: [
+        issue(
+          'MISSING_REFERENCE',
+          `${path}.conceptId`,
+          `Unknown concept: ${value.conceptId}`
+        ),
+      ],
+    };
+  }
+  return create(ontology.instances, value, `${path}.id`);
 }
 
 function mutateSingleOntology(
@@ -358,6 +552,52 @@ function mutateSingleOntology(
         deleteById(ontology.actions, command.actionId, 'actionId'),
         (items) => {
           next = { ...next, actions: items };
+        }
+      );
+      break;
+    case 'instance.create': {
+      const created = createInstance(ontology, command.value, 'value');
+      if (created.ok === false) {
+        mutationIssues = created.issues;
+        break;
+      }
+      next = {
+        ...next,
+        instances: created.items.map((item) =>
+          item.id === command.value.id ? { ...item, updatedAt: now } : item
+        ),
+      };
+      break;
+    }
+    case 'instance.update': {
+      const patched = patchInstance(
+        ontology.instances,
+        command.instanceId,
+        command.patch as Record<string, unknown>,
+        'instanceId'
+      );
+      if (patched.ok === false) {
+        mutationIssues = patched.issues;
+        break;
+      }
+      next = {
+        ...next,
+        instances: patched.items.map((item) =>
+          item.id === command.instanceId ? { ...item, updatedAt: now } : item
+        ),
+      };
+      break;
+    }
+    case 'instance.delete':
+      apply(
+        deleteInstance(
+          ontology,
+          ontology.instances,
+          command.instanceId,
+          'instanceId'
+        ),
+        (items) => {
+          next = { ...next, instances: items };
         }
       );
       break;
