@@ -19,10 +19,16 @@
  *    agentId → expireAt timestamps.  A single 500 ms interval (started by the
  *    component, see `pruneRecentlyActive`) sweeps expired entries and fires one
  *    setState per sweep instead of one per event.
+ *
+ * 4. **任务看板 (Story 9.44)** — `tasks` (TaskItem[]) is derived incrementally
+ *    from TASK_* events via `applyTaskEventToTasks` (semantics aligned with the
+ *    engine blackboard apply) and can be bulk-restored from a
+ *    WorkspaceTaskSnapshot via `mergeSnapshotTasks` (active tasks + each
+ *    agent's recent terminal task — non-full restore by design).
  */
 
 import { create } from "zustand";
-import type { RuntimeEvent } from "../session/types";
+import type { RuntimeEvent, TaskItem, TaskState } from "../session/types";
 
 // ============================================================================
 // Types
@@ -105,7 +111,10 @@ export interface CollaborationUiState {
 
   // Blackboard snapshot
   blackboardData: Record<string, unknown>;
-  tasks: Array<{ id: string; state: string; assignee?: string }>;
+  /** 任务看板数据（TaskItem[]）— 由 TASK_* 事件增量派生，快照恢复时整表覆盖。 */
+  tasks: TaskItem[];
+  /** 任务看板折叠态（默认展开）。 */
+  boardCollapsed: boolean;
 
   // Connection
   isConnected: boolean;
@@ -120,7 +129,14 @@ export interface CollaborationUiState {
   updateAgentActivity: (agentId: string, activity: Partial<AgentActivity>) => void;
   setSelectedAgent: (agentId: string | null) => void;
   setBlackboardData: (data: Record<string, unknown>) => void;
-  setTasks: (tasks: Array<{ id: string; state: string; assignee?: string }>) => void;
+  setTasks: (tasks: TaskItem[]) => void;
+  /**
+   * 会话恢复对账：用 WorkspaceTaskSnapshot 形态的数据整表覆盖 tasks。
+   * 恢复范围 = snapshot.activeTasks + 各 Agent recentTerminalTask（非全量，按用户决策收窄）。
+   * 防御式收窄（unknown → TaskItem），畸形字段跳过，绝不 throw。
+   */
+  mergeSnapshotTasks: (snapshot: unknown) => void;
+  setBoardCollapsed: (collapsed: boolean) => void;
   setConnected: (connected: boolean) => void;
   setConnecting: (connecting: boolean) => void;
   setError: (error: string | null) => void;
@@ -321,6 +337,144 @@ export function mapEventToForegroundMessages(event: RuntimeEvent): ForegroundMes
 }
 
 // ============================================================================
+// Task event mapping (Story 9.44 — pure functions, no state)
+// ============================================================================
+
+/** 事件驱动的六类 TASK_* 事件（与引擎 blackboard.ts apply 语义对齐）。 */
+const TASK_EVENT_TYPES = new Set<string>([
+  "TASK_CREATED",
+  "TASK_ASSIGNED",
+  "TASK_STARTED",
+  "TASK_REPORTED",
+  "TASK_COMPLETED",
+  "TASK_FAILED",
+]);
+
+/** 防御式收窄 unknown → TaskItem；id/description 必须是 string，status 非法时回退 pending。 */
+function asTaskItem(value: unknown): TaskItem | null {
+  if (typeof value !== "object" || value === null) return null;
+  const candidate = value as Partial<TaskItem>;
+  if (typeof candidate.id !== "string" || candidate.id.length === 0) return null;
+  if (typeof candidate.description !== "string") return null;
+  const status: TaskState = isTaskState(candidate.status) ? candidate.status : "pending";
+  const createdAt = typeof candidate.createdAt === "string" ? candidate.createdAt : "";
+  const completedAt =
+    typeof candidate.completedAt === "string" ? candidate.completedAt : undefined;
+  return {
+    ...candidate,
+    id: candidate.id,
+    description: candidate.description,
+    status,
+    createdAt,
+    completedAt,
+  };
+}
+
+function isTaskState(value: unknown): value is TaskState {
+  return (
+    value === "pending" ||
+    value === "assigned" ||
+    value === "running" ||
+    value === "reported" ||
+    value === "completed" ||
+    value === "failed" ||
+    value === "blocked"
+  );
+}
+
+/**
+ * Maps a single TASK_* RuntimeEvent onto the task list incrementally.
+ * Pure function — no side effects.  Semantics aligned with the engine
+ * blackboard.ts apply (session/blackboard.ts TASK_* cases):
+ *
+ * - TASK_CREATED: payload.task → append when id not present (idempotent)
+ * - TASK_ASSIGNED: assignedTo ← payload.agentId, status ← assigned
+ * - TASK_STARTED: status ← running
+ * - TASK_REPORTED: status ← reported, output ← payload.output
+ * - TASK_COMPLETED: status ← completed, output ← payload.output, completedAt ← event.timestamp
+ * - TASK_FAILED: status ← failed, completedAt ← event.timestamp
+ *
+ * Missing taskId/task payload or unknown event types → tasks returned unchanged.
+ */
+export function applyTaskEventToTasks(tasks: TaskItem[], event: RuntimeEvent): TaskItem[] {
+  if (!TASK_EVENT_TYPES.has(event.type)) return tasks;
+
+  const payload = (event.payload ?? {}) as Record<string, unknown>;
+
+  if (event.type === "TASK_CREATED") {
+    const task = asTaskItem(payload["task"]);
+    if (!task || tasks.some((t) => t.id === task.id)) return tasks;
+    return [...tasks, task];
+  }
+
+  const taskId = typeof payload["taskId"] === "string" ? payload["taskId"] : undefined;
+  if (!taskId) return tasks;
+
+  switch (event.type) {
+    case "TASK_ASSIGNED": {
+      const agentId = typeof payload["agentId"] === "string" ? payload["agentId"] : undefined;
+      return tasks.map((t) =>
+        t.id === taskId ? { ...t, assignedTo: agentId, status: "assigned" as const } : t,
+      );
+    }
+    case "TASK_STARTED":
+      return tasks.map((t) => (t.id === taskId ? { ...t, status: "running" as const } : t));
+    case "TASK_REPORTED":
+      return tasks.map((t) =>
+        t.id === taskId ? { ...t, status: "reported" as const, output: payload["output"] } : t,
+      );
+    case "TASK_COMPLETED":
+      return tasks.map((t) =>
+        t.id === taskId
+          ? { ...t, status: "completed" as const, output: payload["output"], completedAt: event.timestamp }
+          : t,
+      );
+    case "TASK_FAILED":
+      return tasks.map((t) =>
+        t.id === taskId ? { ...t, status: "failed" as const, completedAt: event.timestamp } : t,
+      );
+    default:
+      return tasks;
+  }
+}
+
+/**
+ * Restore tasks from a WorkspaceTaskSnapshot-shaped value (unknown).
+ *
+ * Restored list = snapshot.activeTasks + agents[].recentTerminalTask, each
+ * defensively narrowed via asTaskItem, deduped by id (first occurrence wins —
+ * active tasks win over terminal snapshots of the same id).  Malformed or
+ * empty snapshots clear/skip gracefully and never throw.
+ */
+export function mergeSnapshotTasksPure(snapshot: unknown): TaskItem[] {
+  const restored: TaskItem[] = [];
+  const seen = new Set<string>();
+
+  const pushUnique = (value: unknown): void => {
+    const task = asTaskItem(value);
+    if (!task || seen.has(task.id)) return;
+    seen.add(task.id);
+    restored.push(task);
+  };
+
+  if (typeof snapshot === "object" && snapshot !== null) {
+    const s = snapshot as { activeTasks?: unknown; agents?: unknown };
+    if (Array.isArray(s.activeTasks)) {
+      for (const item of s.activeTasks) pushUnique(item);
+    }
+    if (Array.isArray(s.agents)) {
+      for (const agent of s.agents) {
+        if (typeof agent === "object" && agent !== null) {
+          pushUnique((agent as { recentTerminalTask?: unknown }).recentTerminalTask);
+        }
+      }
+    }
+  }
+
+  return restored;
+}
+
+// ============================================================================
 // Incremental collapseCoordinationGroups
 // ============================================================================
 
@@ -415,7 +569,8 @@ const initialState = {
   recentlyActiveAgents: [] as string[],
   selectedAgentId: null as string | null,
   blackboardData: {} as Record<string, unknown>,
-  tasks: [] as Array<{ id: string; state: string; assignee?: string }>,
+  tasks: [] as TaskItem[],
+  boardCollapsed: false,
   isConnected: false,
   isConnecting: false,
   error: null as string | null,
@@ -482,12 +637,18 @@ export const useCollaborationUi = create<CollaborationUiState>((set, get) => ({
       }
     }
 
+    // ── Incremental task board update (Story 9.44) ───────────────────────────
+    const newTasks = TASK_EVENT_TYPES.has(event.type)
+      ? applyTaskEventToTasks(state.tasks, event)
+      : state.tasks;
+
     set({
       events: newEvents,
       lastEventId: event.id,
       foregroundMessages: newForegroundMessages,
       displayMessages: newDisplayMessages,
       recentlyActiveMap: newActiveMap,
+      tasks: newTasks,
     });
   },
 
@@ -522,6 +683,8 @@ export const useCollaborationUi = create<CollaborationUiState>((set, get) => ({
 
   setBlackboardData: (data) => set({ blackboardData: data }),
   setTasks: (tasks) => set({ tasks }),
+  mergeSnapshotTasks: (snapshot) => set({ tasks: mergeSnapshotTasksPure(snapshot) }),
+  setBoardCollapsed: (collapsed) => set({ boardCollapsed: collapsed }),
   setConnected: (connected) => set({ isConnected: connected }),
   setConnecting: (connecting) => set({ isConnecting: connecting }),
   setError: (error) => set({ error }),
