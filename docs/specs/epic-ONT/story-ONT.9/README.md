@@ -59,9 +59,9 @@
 | 阶段 | 状态 |
 |------|------|
 | 需求分析 | ✅ 2026-10-12 完成 |
-| 架构设计 | ⏳ Proposal 阶段 |
-| 开发实施 | ⏳ Pending |
-| 测试验证 | ⏳ Pending |
+| 架构设计 | ✅ 2026-10-12 Proposal 定稿（govern-ontology-write-entrypoints） |
+| 开发实施 | ✅ 2026-10-13 完成（T1-A/B/C/D/E） |
+| 测试验证 | ✅ 2026-10-13 完成（AC1-AC6 通过，详见 testing.md 实施记录） |
 
 ---
 
@@ -88,15 +88,15 @@
 
 ### 当前状态
 
-🟡 **Planning** - Story 文档完成，待 OpenSpec Proposal
+✅ **Done（2026-10-13）** - Proposal `govern-ontology-write-entrypoints` 实施与验证完成，待合并 `dev`
 
 ### 完成情况
 
 - [x] 需求文档完成
 - [x] 交互设计完成（只读拒绝提示，无新增交互面）
 - [x] 架构设计完成
-- [ ] 开发实施完成
-- [ ] 测试验证完成
+- [x] 开发实施完成（T1-A authoring instance.* / T1-B 结构层工具 / T1-C 实例层工具 / T1-D Web 只读化 / T1-E 残留并入）
+- [x] 测试验证完成（AC1-AC6，见 testing.md 实施记录）
 - [ ] 文档审查完成
 
 ### 阻塞问题

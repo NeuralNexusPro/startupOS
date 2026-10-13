@@ -109,14 +109,42 @@ grep -rn "writeFile" packages/web/src/app/api/ontology-data/ | grep -v test
 
 | AC | 覆盖 | 状态 |
 |----|------|------|
-| AC1 结构层工具写 canonical | ONT9-T1-B 单测 + 端到端视觉 | ⏳ 待实施 |
-| AC2 instance 命令与实例工具 | ONT9-T1-A/C 单测 | ⏳ 待实施 |
-| AC3 Web 拒绝 | ONT9-T1-D route 测试 + grep | ⏳ 待实施 |
-| AC4 残留并入 | 三步证据 | ⏳ 待实施 |
-| AC5 写路径清零 | AC5 grep 三命令零输出 | ⏳ 待实施 |
-| AC6 回归零破坏 | 定向套件（基线外零新增失败） | ⏳ 待实施 |
+| AC1 结构层工具写 canonical | ONT9-T1-B 单测（ontology-tools.test.ts 7 用例，含 legacy 零触碰、MIGRATION_REQUIRED、CAS 重试、audit.source=agent-tool） | ✅ 2026-10-13 |
+| AC2 instance 命令与实例工具 | ONT9-T1-A 单测（authoring-instance-commands.test.ts 13 用例）+ ONT9-T1-C 单测（ontology-data-tools.test.ts 8 用例） | ✅ 2026-10-13 |
+| AC3 Web 拒绝 | ONT9-T1-D route 测试（concepts/route.test.ts 16 用例）+ grep `writeFile\|mkdir` 零命中 | ✅ 2026-10-13 |
+| AC4 残留并入 | 三步证据（见下「实施记录」）；Web 页签视觉确认待桌面 dev 下人工复核（并入数据经同一 canonical 读路径渲染，风险低） | ✅ 2026-10-13（视觉项半自动） |
+| AC5 写路径清零 | AC5 grep 三命令零输出（exit=1 ×3，2026-10-13 于 proposal 集成分支复核） | ✅ 2026-10-13 |
+| AC6 回归零破坏 | ontology 73 + agent tools 15 + agent 全量 47 + web ontology-data 16 + workspace 32 全绿；lint 0 errors；lint:boundaries 990 文件 0 诊断；exports 门禁 PASS；架构自测 PASS | ✅ 2026-10-13 |
 
 **自动化 verification goal：** 全部 AC 经上述命令可自动化；AC4 的 Web 页签视觉确认与并入脚本真实数据执行为半自动（脚本输出留档），无法自动化的部分（页面视觉）在执行记录中说明并附终端证据。
+
+---
+
+## 📌 实施记录（2026-10-13，Proposal govern-ontology-write-entrypoints）
+
+**分支链：** `proposal-task/…-t1-a-authoring-instance`（T1-A `57e35a2` / T1-B `e0f0606` / T1-C `3d41406`）+ `proposal-task/…-t1-d-web-readonly`（T1-D `7138db3`）→ 合入 `proposal/govern-ontology-write-entrypoints`（merge `d4d1719`）→ 并入脚本 `41d2080`。
+
+**AC4 残留并入三步证据（行政办公项目 proj-1791616381403-flcx7qded）：**
+
+1. **dry-run**：补录概念 0（4 个 legacy 概念全部按 name+type 去重跳过，legacy entity 与 canonical class 语义对齐）；补录实例 6（员工×3：王磊/李娜/陈静 → canonical 概念 concept-a4cc2744；部门×3：技术部/市场部/行政部 → canonical 概念 concept-7828f311）
+2. **执行**：6 条 `instance.create` authoring 命令全部 accepted（revision 126→131），operationId 前缀 `residue-`，audit.source=`legacy-residue`，sourceRefs 指向 legacy 实例文件相对路径
+3. **幂等复跑**：accepted=0 failed=0，全部条目判重跳过
+4. **legacy 零触碰**：并入前后 9 个 legacy 文件 sha256 全部一致（ontology.json + data/ 下 8 文件）
+
+**AC5 grep 证据（2026-10-13，proposal 集成分支）：**
+
+```
+grep ontologyOps.createDomain|ontologyOps.createConcept（排除 store 内部与测试）→ 无输出
+grep store.createInstance|store.updateInstance|store.deleteInstance（同上）→ 无输出
+grep writeFile|mkdir packages/web/src/app/api/ontology-data/（排除测试）→ 无输出
+```
+
+**与设计的偏差：**
+
+- `CanonicalInstanceRelation` 类型在代码库中不存在（仅 spec 文档提及）；instance.delete 引用检查按 T1-A 防御性方案扫描实例 payload 中的关系记录
+- authoring-transport 的 zod schema 未随 instance.* 命令扩展（工具走直接 service.execute() 路径；Desktop/Web 若接入 transport 需补 schema，属 ONT.8 范围）
+- Web concepts GET 原内嵌的 business-model 自动回填（写副作用）随 T1-D 一并移除，GET 为纯读
+- 并入脚本以 `node --import tsx` 加载 core 源码运行（根目录脚本先例），不新增包依赖
 
 ---
 
