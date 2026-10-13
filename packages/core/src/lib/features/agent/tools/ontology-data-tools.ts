@@ -23,14 +23,11 @@ import {
 } from '../../ontology-data-store/config';
 import {
 	CANONICAL_ONTOLOGY_AUTHOR_PERMISSION,
-	CanonicalOntologyAuthoringService,
 	CanonicalOntologyStore,
-	getCanonicalOntologyAuthoringRevision,
 	type CanonicalInstance,
 	type CanonicalOntology,
 	type CanonicalOntologyAuthoringCommand,
 	type CanonicalOntologyAuthoringReceipt,
-	type CanonicalValidationIssue,
 } from '../../ontology';
 import {
 	AuthoringToolError,
@@ -163,12 +160,6 @@ async function submitInstanceCommand(options: {
 	command: (context: AuthoringContext, operationId: string) => CanonicalOntologyAuthoringCommand;
 }): Promise<{ receipt: CanonicalOntologyAuthoringReceipt; ontology: CanonicalOntology }> {
 	return submitAuthoringCommand(options);
-}
-
-function authoringIssueMessage(issues: readonly CanonicalValidationIssue[]): string {
-	return issues
-		.map((issueItem) => issueItem.path ? `${issueItem.code}（${issueItem.path}）：${issueItem.message}` : `${issueItem.code}：${issueItem.message}`)
-		.join('；');
 }
 
 // ============================================================================
