@@ -4,6 +4,7 @@ import type {
   CanonicalConcept,
   CanonicalDomain,
   CanonicalFactType,
+  CanonicalInstance,
   CanonicalOntology,
   CanonicalProperty,
   CanonicalRelation,
@@ -33,6 +34,16 @@ export interface CanonicalOntologyAuthoringBase {
 type TimedPatch<T extends { id: string; createdAt: Date; updatedAt: Date }> =
   Partial<Omit<T, 'id' | 'createdAt' | 'updatedAt'>>;
 type PlainPatch<T extends { id: string }> = Partial<Omit<T, 'id'>>;
+
+/**
+ * Instance update patch. D2: `data` is replaced wholesale (never merged) and
+ * the structural identity fields `conceptId` / `id` / `createdAt` are immutable.
+ */
+export interface CanonicalOntologyInstancePatch {
+  data?: Record<string, unknown>;
+  stateId?: CanonicalInstance['stateId'];
+  sourceRefs?: CanonicalInstance['sourceRefs'];
+}
 
 export type CanonicalOntologyAuthoringMutation =
   (
@@ -95,6 +106,13 @@ export type CanonicalOntologyAuthoringMutation =
         patch: PlainPatch<CanonicalStateTransition>;
       }
     | { type: 'transition.delete'; transitionId: string }
+    | { type: 'instance.create'; value: CanonicalInstance }
+    | {
+        type: 'instance.update';
+        instanceId: string;
+        patch: CanonicalOntologyInstancePatch;
+      }
+    | { type: 'instance.delete'; instanceId: string }
   );
 
 /**

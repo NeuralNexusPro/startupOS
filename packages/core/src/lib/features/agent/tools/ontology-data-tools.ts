@@ -1,8 +1,15 @@
 /**
  * Ontology Data Tools — Agent 数据操作工具
  * 7 个工具 + 批量删除确认机制
+ *
+ * 实例层写工具（create_instance / update_instance / delete_instance）经
+ * CanonicalOntologyAuthoringService 提交 instance.* 命令（permissions → CAS →
+ * operationId 幂等 → validator → 原子写 + JSONL 审计），不再写 legacy 本体文件；
+ * 项目尚无 canonical 快照时返回 MIGRATION_REQUIRED。
+ * 只读工具按 D4 最小扰动策略：有 canonical 读 canonical，无 canonical 维持 legacy 只读。
  */
 
+import { randomUUID } from "crypto";
 import type { Static } from "@sinclair/typebox";
 import { Type } from "@sinclair/typebox";
 import type { ToolRegistration } from "../../../integrations/pi-agent/types";
@@ -12,9 +19,26 @@ import * as store from '../../ontology-data-store';
 import * as queryEngine from '../../ontology-data-store';
 import * as schemaValidator from '../../ontology-data-store';
 import {
-	createInstanceRelation,
-	listInstanceRelations,
-} from '../../ontology-data-store';
+	projectIdFromOntologyId,
+} from '../../ontology-data-store/config';
+import {
+	CANONICAL_ONTOLOGY_AUTHOR_PERMISSION,
+	CanonicalOntologyAuthoringService,
+	CanonicalOntologyStore,
+	getCanonicalOntologyAuthoringRevision,
+	type CanonicalInstance,
+	type CanonicalOntology,
+	type CanonicalOntologyAuthoringCommand,
+	type CanonicalOntologyAuthoringReceipt,
+	type CanonicalValidationIssue,
+} from '../../ontology';
+import {
+	AuthoringToolError,
+	resolveAuthoringContext,
+	submitAuthoringCommand,
+	toToolResultError,
+	type AuthoringContext,
+} from './ontology-tools';
 
 // ============================================================================
 // 工具执行辅助（复用 ontology-tools.ts 模式）
@@ -71,8 +95,8 @@ function checkAbort(signal?: AbortSignal): void {
 	}
 }
 
-function successResult(data: Record<string, unknown>): AgentToolResult<unknown> {
-	logToolEnd({ toolCallId: "n/a", toolName: "n/a" } as ToolExecutionContext, data);
+function successResult(ctx: ToolExecutionContext, data: Record<string, unknown>): AgentToolResult<unknown> {
+	logToolEnd(ctx, data);
 	return {
 		content: [{ type: "text" as const, text: JSON.stringify(data) }],
 		details: undefined,
@@ -88,6 +112,63 @@ function errorResult(ctx: ToolExecutionContext, error: unknown): AgentToolResult
 		}) }],
 		details: undefined,
 	};
+}
+
+// ============================================================================
+// Canonical 实例读写辅助（D4：有 canonical 读 canonical，否则 legacy 只读）
+// ============================================================================
+
+/** 归一化 canonical 实例为既有工具响应形状（fields 命名，meta 数值时间戳）。 */
+function canonicalInstanceToLegacyShape(instance: CanonicalInstance, ontologyId: string): Record<string, unknown> {
+	return {
+		id: instance.id,
+		conceptId: instance.conceptId,
+		domainId: "",
+		ontologyId,
+		fields: instance.data,
+		meta: {
+			createdAt: instance.createdAt instanceof Date ? instance.createdAt.getTime() : Date.parse(String(instance.createdAt)),
+			updatedAt: instance.updatedAt instanceof Date ? instance.updatedAt.getTime() : Date.parse(String(instance.updatedAt)),
+			createdBy: "agent",
+			version: 1,
+		},
+		...(instance.stateId ? { stateId: instance.stateId } : {}),
+	};
+}
+
+/**
+ * D4 读源策略：项目存在 canonical 快照 → 返回 canonical（并把概念 domainId 反查出来）；
+ * 否则返回 null（调用方回落 legacy 只读路径）。
+ */
+async function tryReadCanonical(
+	ontologyId: string
+): Promise<{ projectId: string; ontology: CanonicalOntology } | null> {
+	const projectId = projectIdFromOntologyId(ontologyId);
+	const canonicalStore = new CanonicalOntologyStore();
+	const stored = await canonicalStore.readOntology(projectId).catch(() => null);
+	if (!stored) return null;
+	return { projectId, ontology: stored.data };
+}
+
+async function readCanonicalOntologyOrThrow(ontologyId: string): Promise<AuthoringContext> {
+	return resolveAuthoringContext(ontologyId);
+}
+
+/**
+ * 为 instance.* 命令提交 canonical authoring（与 T1-B 结构层工具同一范式）。
+ */
+async function submitInstanceCommand(options: {
+	toolCallId: string;
+	ontologyId: string;
+	command: (context: AuthoringContext, operationId: string) => CanonicalOntologyAuthoringCommand;
+}): Promise<{ receipt: CanonicalOntologyAuthoringReceipt; ontology: CanonicalOntology }> {
+	return submitAuthoringCommand(options);
+}
+
+function authoringIssueMessage(issues: readonly CanonicalValidationIssue[]): string {
+	return issues
+		.map((issueItem) => issueItem.path ? `${issueItem.code}（${issueItem.path}）：${issueItem.message}` : `${issueItem.code}：${issueItem.message}`)
+		.join('；');
 }
 
 // ============================================================================
@@ -140,47 +221,62 @@ const CreateInstanceTool: ToolRegistration = {
 				}
 			}
 
-			const instance = await store.createInstance(
-				params.ontologyId,
-				params.conceptId,
-				plainFields,
-				params.createdBy ?? "agent"
-			);
-
-			sendProgress(ctx, "实例创建完成，处理关系字段...", 0.7);
-
-			// 自动建立实例关系
-			const createdRelations: unknown[] = [];
-			if (relationFields.size > 0) {
-				for (const [fieldName, relDef] of relationFields) {
-					const rawValue = (params.fields as Record<string, unknown>)[fieldName];
-					const targetIds: string[] = Array.isArray(rawValue)
-						? rawValue.map(String)
-						: typeof rawValue === "string" && rawValue
-						? [rawValue]
-						: [];
-
-					for (const targetInstanceId of targetIds) {
-						try {
-							const relation = await createInstanceRelation(params.ontologyId, {
-								sourceInstanceId: instance.id,
-								targetInstanceId,
-								type: relDef.relationType,
-								sourceConceptId: params.conceptId,
-								targetConceptId: relDef.relatedConceptId,
-							});
-							createdRelations.push(relation);
-						} catch (relErr) {
-							createdRelations.push({ error: String(relErr), fieldName, targetInstanceId });
-						}
-					}
-				}
+			// legacy schema 是从概念 attributes 推导的；canonical 项目走 authoring 通道前，
+			// 仍用同一 schema 语义校验字段（严格模式 + 必填 + 类型），保持既有工具行为。
+			if (schema) {
+				const { validateInstance } = await import('../../ontology-data-store');
+				validateInstance(plainFields, schema);
 			}
 
+			const { receipt, ontology: nextOntology } = await submitInstanceCommand({
+				toolCallId,
+				ontologyId: params.ontologyId,
+				command: (context, operationId) => {
+					const now = new Date();
+					const value = {
+						id: `inst-${randomUUID()}`,
+						conceptId: params.conceptId,
+						data: plainFields,
+						createdAt: now,
+						updatedAt: now,
+					} satisfies CanonicalInstance;
+					return {
+						type: 'instance.create' as const,
+						projectId: context.projectId,
+						ontologyId: context.ontologyId,
+						ontologyVersion: context.ontologyVersion,
+						expectedRevision: context.expectedRevision,
+						operationId,
+						permissions: [CANONICAL_ONTOLOGY_AUTHOR_PERMISSION],
+						audit: { source: 'agent-tool' as const, toolCallId: toolCallId || null, tool: 'create_instance' },
+						value,
+					} satisfies CanonicalOntologyAuthoringCommand;
+				},
+			});
+
+			const created = [...nextOntology.instances]
+				.filter((item) => item.conceptId === params.conceptId)
+				.sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime())[0];
+
+			const instanceShape = created
+				? {
+					id: created.id,
+					conceptId: created.conceptId,
+					domainId: nextOntology.concepts.find((c) => c.id === created.conceptId)?.domainId ?? "",
+					fields: created.data,
+					createdAt: created.createdAt.toISOString(),
+				}
+				: { conceptId: params.conceptId, fields: plainFields };
+
 			sendProgress(ctx, "完成", 1);
-			return successResult({ success: true, instance, relations: createdRelations });
+			return successResult(ctx, {
+				success: true,
+				instance: instanceShape,
+				relations: [],
+				revision: receipt.summary.revision,
+			});
 		} catch (error) {
-			return errorResult(ctx, error);
+			return toToolResultError(ctx, error);
 		}
 	},
 };
@@ -213,8 +309,22 @@ const GetInstanceTool: ToolRegistration = {
 			logToolStart(ctx, params);
 			checkAbort(ctx.signal);
 
+			const canonical = await tryReadCanonical(params.ontologyId);
+			if (canonical) {
+				const instance = canonical.ontology.instances.find(
+					(item) => item.id === params.instanceId && item.conceptId === params.conceptId
+				);
+				if (!instance) {
+					throw new Error(`实例 "${params.instanceId}" 不存在`);
+				}
+				return successResult(ctx, {
+					success: true,
+					instance: canonicalInstanceToLegacyShape(instance, params.ontologyId),
+				});
+			}
+
 			const instance = await store.getInstance(params.ontologyId, params.conceptId, params.instanceId);
-			return successResult({ success: true, instance });
+			return successResult(ctx, { success: true, instance });
 		} catch (error) {
 			return errorResult(ctx, error);
 		}
@@ -251,6 +361,17 @@ const UpdateInstanceTool: ToolRegistration = {
 			checkAbort(ctx.signal);
 			sendProgress(ctx, `更新实例: ${params.instanceId}`, 0.3);
 
+			const canonical = await readCanonicalOntologyOrThrow(params.ontologyId);
+			const existing = canonical.ontology.instances.find(
+				(item) => item.id === params.instanceId && item.conceptId === params.conceptId
+			);
+			if (!existing) {
+				throw new AuthoringToolError({
+					code: 'AUTHORING_TARGET_NOT_FOUND',
+					message: `实例 "${params.instanceId}"（概念 ${params.conceptId}）在 canonical 本体中不存在。`,
+				});
+			}
+
 			// 分离 relation 字段与普通字段（与 create_instance 逻辑对齐）
 			const schema = await schemaValidator.loadConceptSchema(params.ontologyId, params.conceptId).catch(() => null);
 			const relationFields = new Map<string, { relatedConceptId: string; relationType: string; cardinality: string }>();
@@ -270,45 +391,47 @@ const UpdateInstanceTool: ToolRegistration = {
 				}
 			}
 
-			const updated = await store.updateInstance(
-				params.ontologyId,
-				params.conceptId,
-				params.instanceId,
-				plainFields
-			);
-
-			sendProgress(ctx, "字段更新完成，处理关系字段...", 0.7);
-
-			const updatedRelations: unknown[] = [];
-			if (relationFields.size > 0) {
-				for (const [fieldName, relDef] of relationFields) {
-					const rawValue = (params.fields as Record<string, unknown>)[fieldName];
-					const targetIds: string[] = Array.isArray(rawValue)
-						? rawValue.map(String)
-						: typeof rawValue === "string" && rawValue
-						? [rawValue]
-						: [];
-					for (const targetInstanceId of targetIds) {
-						try {
-							const relation = await createInstanceRelation(params.ontologyId, {
-								sourceInstanceId: params.instanceId,
-								targetInstanceId,
-								type: relDef.relationType,
-								sourceConceptId: params.conceptId,
-								targetConceptId: relDef.relatedConceptId,
-							});
-							updatedRelations.push(relation);
-						} catch (relErr) {
-							updatedRelations.push({ error: String(relErr), fieldName, targetInstanceId });
-						}
-					}
-				}
+			// canonical patch 语义：data 整体替换（D2）。工具入参是 partial update，
+			// 为保持既有工具语义（只更新传入的字段），先合并到现有 data 再整体替换。
+			const mergedData: Record<string, unknown> = { ...existing.data, ...plainFields };
+			if (schema) {
+				const { validateInstance } = await import('../../ontology-data-store');
+				validateInstance(mergedData, schema);
 			}
 
+			const { receipt, ontology: nextOntology } = await submitInstanceCommand({
+				toolCallId,
+				ontologyId: params.ontologyId,
+				command: (context, operationId) => ({
+					type: 'instance.update' as const,
+					projectId: context.projectId,
+					ontologyId: context.ontologyId,
+					ontologyVersion: context.ontologyVersion,
+					expectedRevision: context.expectedRevision,
+					operationId,
+					permissions: [CANONICAL_ONTOLOGY_AUTHOR_PERMISSION],
+					audit: { source: 'agent-tool' as const, toolCallId: toolCallId || null, tool: 'update_instance' },
+					instanceId: params.instanceId,
+					patch: { data: mergedData },
+				} satisfies CanonicalOntologyAuthoringCommand),
+			});
+
+			const updated = nextOntology.instances.find((item) => item.id === params.instanceId);
 			sendProgress(ctx, "完成", 1);
-			return successResult({ success: true, instance: updated, relations: updatedRelations });
+			return successResult(ctx, {
+				success: true,
+				instance: updated
+					? {
+						id: updated.id,
+						fields: updated.data,
+						updatedAt: updated.updatedAt.toISOString(),
+					}
+					: { id: params.instanceId, fields: mergedData },
+				relations: [],
+				revision: receipt.summary.revision,
+			});
 		} catch (error) {
-			return errorResult(ctx, error);
+			return toToolResultError(ctx, error);
 		}
 	},
 };
@@ -340,10 +463,30 @@ const DeleteInstanceTool: ToolRegistration = {
 		try {
 			logToolStart(ctx, params);
 			checkAbort(ctx.signal);
-			await store.deleteInstance(params.ontologyId, params.conceptId, params.instanceId);
-			return successResult({ success: true, message: `实例 ${params.instanceId} 已删除` });
+
+			const { receipt } = await submitInstanceCommand({
+				toolCallId,
+				ontologyId: params.ontologyId,
+				command: (context, operationId) => ({
+					type: 'instance.delete' as const,
+					projectId: context.projectId,
+					ontologyId: context.ontologyId,
+					ontologyVersion: context.ontologyVersion,
+					expectedRevision: context.expectedRevision,
+					operationId,
+					permissions: [CANONICAL_ONTOLOGY_AUTHOR_PERMISSION],
+					audit: { source: 'agent-tool' as const, toolCallId: toolCallId || null, tool: 'delete_instance' },
+					instanceId: params.instanceId,
+				} satisfies CanonicalOntologyAuthoringCommand),
+			});
+
+			return successResult(ctx, {
+				success: true,
+				message: `实例 ${params.instanceId} 已删除`,
+				revision: receipt.summary.revision,
+			});
 		} catch (error) {
-			return errorResult(ctx, error);
+			return toToolResultError(ctx, error);
 		}
 	},
 };
@@ -381,6 +524,47 @@ const QueryInstancesTool: ToolRegistration = {
 			checkAbort(ctx.signal);
 			sendProgress(ctx, `查询实例: ${params.conceptId}`, 0.4);
 
+			// D4：有 canonical 读 canonical（同语义过滤/排序/分页），否则 legacy 只读。
+			const canonical = await tryReadCanonical(params.ontologyId);
+			if (canonical) {
+				const domainIdOf = (conceptId: string) =>
+					canonical.ontology.concepts.find((c) => c.id === conceptId)?.domainId ?? "";
+				let items = canonical.ontology.instances.filter((item) => item.conceptId === params.conceptId);
+				if (params.filters) {
+					items = items.filter((item) =>
+						Object.entries(params.filters as Record<string, unknown>).every(
+							([field, value]) => (item.data as Record<string, unknown>)[field] === value
+						)
+					);
+				}
+				const total = items.length;
+				if (params.sortBy) {
+					const order = params.sortOrder === "desc" ? -1 : 1;
+					items = [...items].sort((left, right) => {
+						const leftVal = (left.data as Record<string, unknown>)[params.sortBy!] as string | number;
+						const rightVal = (right.data as Record<string, unknown>)[params.sortBy!] as string | number;
+						if (leftVal === rightVal) return 0;
+						if (leftVal === undefined || leftVal === null) return 1;
+						if (rightVal === undefined || rightVal === null) return -1;
+						return leftVal < rightVal ? -order : order;
+					});
+				}
+				const page = params.page ?? 1;
+				const limit = params.limit ?? 20;
+				const totalPages = Math.max(1, Math.ceil(total / limit));
+				const start = (page - 1) * limit;
+				const pageItems = items.slice(start, start + limit).map((item) => ({
+					...canonicalInstanceToLegacyShape({ ...item, domainId: undefined } as unknown as CanonicalInstance, params.ontologyId),
+					domainId: domainIdOf(item.conceptId),
+					relations: [],
+				}));
+				sendProgress(ctx, `查询完成: ${total} 条结果`, 1);
+				return successResult(ctx, {
+					success: true,
+					result: { items: pageItems, total, page, limit, totalPages },
+				});
+			}
+
 			const result = await queryEngine.queryInstances(
 				params.ontologyId,
 				params.conceptId,
@@ -398,6 +582,7 @@ const QueryInstancesTool: ToolRegistration = {
 			// 附带实例关系（批量一次性加载，避免 N+1）
 			let allRelations: Array<{ id: string; sourceInstanceId: string; targetInstanceId: string; type: string; sourceConceptId: string; targetConceptId: string }> = [];
 			try {
+				const { listInstanceRelations } = await import('../../ontology-data-store');
 				const relationData = await listInstanceRelations(params.ontologyId);
 				allRelations = relationData.relations;
 			} catch {
@@ -414,7 +599,7 @@ const QueryInstancesTool: ToolRegistration = {
 			}));
 
 			sendProgress(ctx, `查询完成: ${result.total} 条结果`, 1);
-			return successResult({ success: true, result: { ...result, items: itemsWithRelations } });
+			return successResult(ctx, { success: true, result: { ...result, items: itemsWithRelations } });
 		} catch (error) {
 			return errorResult(ctx, error);
 		}
@@ -449,7 +634,7 @@ const GetConceptSchemaTool: ToolRegistration = {
 			checkAbort(ctx.signal);
 
 			const schema = await schemaValidator.loadConceptSchema(params.ontologyId, params.conceptId);
-			return successResult({ success: true, schema });
+			return successResult(ctx, { success: true, schema });
 		} catch (error) {
 			return errorResult(ctx, error);
 		}
@@ -482,11 +667,24 @@ const ListConceptsTool: ToolRegistration = {
 			logToolStart(ctx, params);
 			checkAbort(ctx.signal);
 
+			// D4：有 canonical 读 canonical（同名概念，带 domainId），否则 legacy 只读。
+			const canonical = await tryReadCanonical(params.ontologyId);
+			if (canonical) {
+				const concepts = canonical.ontology.concepts.map((concept) => ({
+					id: concept.id,
+					domainId: concept.domainId,
+					name: concept.name,
+					type: concept.type,
+					description: concept.description,
+				}));
+				return successResult(ctx, { success: true, concepts, count: concepts.length });
+			}
+
 			const concepts = await import('../../ontology-data-store').then(
 				(m) => m.listConcepts(params.ontologyId)
 			);
 
-			return successResult({ success: true, concepts, count: concepts.length });
+			return successResult(ctx, { success: true, concepts, count: concepts.length });
 		} catch (error) {
 			return errorResult(ctx, error);
 		}
