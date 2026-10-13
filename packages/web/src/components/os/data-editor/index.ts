@@ -8,4 +8,3 @@ export { InstanceDetailPanel } from './InstanceDetailPanel';
 export { CreateRelationDialog } from './CreateRelationDialog';
 export { SchemaEditor } from './SchemaEditor';
 export { OntologyStructureEditor } from './OntologyStructureEditor';
-export { OntologyConceptGraphEditor } from './OntologyConceptGraphEditor';
