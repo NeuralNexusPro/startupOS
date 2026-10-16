@@ -335,6 +335,16 @@ export interface CollaborationSession {
   status: SessionStatus;
   createdAt: string; // ISO 8601
   updatedAt: string; // ISO 8601
+  /** Stable idempotency key for the current natural-language publish request. */
+  executionRequestId?: string;
+  /** Read-only session projection of the formal parent Task / Run binding. */
+  formalExecution?: {
+    readonly requestId: string;
+    readonly parentTaskId: string;
+    readonly parentStepId: string;
+    readonly parentSessionId?: string;
+    readonly runId: string;
+  };
   config: {
     maxIterations?: number;
     timeoutMs?: number;

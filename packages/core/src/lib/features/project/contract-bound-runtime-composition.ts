@@ -3,6 +3,7 @@
 import {
   CollaborationExecutionStore,
   FileCollaborationMutationLock,
+  registerSupervisorWorkItemRuntimePort,
 } from '../../../modules/collaboration-runtime/facade';
 import { CanonicalOntologyOutcomeAdapter, VersionedContractVerifierRegistry } from '../../../modules/collaboration-runtime/integrations';
 import {
@@ -37,6 +38,7 @@ import {
 import { ApprovedProjectTaskCreationService } from './project-task-creation';
 import { RuntimeProjectTaskSource } from './project-task-source';
 import { ProjectTaskBoardService } from './task-board';
+import { ProjectSupervisorWorkItemRuntime } from './supervisor-workitem-runtime';
 import { ContractBoundAgentSkillWorker } from '../agent/server';
 
 import type { AgentManager } from '../../integrations/pi-agent/agent-manager';
@@ -113,6 +115,13 @@ export function createProjectContractRuntimeComposition(
     taskPort: new RuntimeApprovedProjectTaskPort(options.host, taskBoard),
     executionPort,
   });
+  const supervisorWorkItems = new ProjectSupervisorWorkItemRuntime({
+    contractCatalog: contractStore,
+    contractPort,
+    taskCreation,
+    executionPort,
+  });
+  registerSupervisorWorkItemRuntimePort(supervisorWorkItems);
   const taskPriority = new ProjectContractTaskPriorityMutation(options.host);
   const taskSubscriptions = new AuthorizedProjectTaskSubscriptions(
     options.projectAccess,
@@ -130,7 +139,15 @@ export function createProjectContractRuntimeComposition(
     taskPriority,
     taskSubscriptions,
   });
-  return { service, executionPort, taskBoard, contractPort, taskCreation, taskSubscriptions };
+  return {
+    service,
+    executionPort,
+    taskBoard,
+    contractPort,
+    taskCreation,
+    taskSubscriptions,
+    supervisorWorkItems,
+  };
 }
 
 export function projectContractRuntimeHost(

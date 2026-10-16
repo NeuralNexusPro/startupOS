@@ -7,6 +7,8 @@ import { NextResponse } from "next/server";
  */
 export async function POST(_request: Request, { params }: { params: { id: string } }) {
   try {
+    const { getProjectContractRuntimeComposition } = await import('@/services/ontologyCrossPackageService');
+    getProjectContractRuntimeComposition();
     const { executeSession } = await import("@/modules/collaboration-runtime/facade");
     const result = await executeSession(params.id);
     return NextResponse.json({ success: true, data: result });

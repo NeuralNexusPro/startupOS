@@ -12,3 +12,4 @@ export * from './contract-bound-runtime-composition';
 
 export * from './project-task-creation';
 export * from './project-task-access-subscription';
+export * from './supervisor-workitem-runtime';

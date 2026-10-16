@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { createSession } from "@originos/core/modules/collaboration-runtime/facade";
+import { getProjectContractRuntimeComposition } from '@/services/ontologyCrossPackageService';
 
 export async function POST(request: Request) {
   try {
+    getProjectContractRuntimeComposition();
     const body = await request.json();
     const session = await createSession(body);
     return NextResponse.json({ success: true, data: session }, { status: 201 });

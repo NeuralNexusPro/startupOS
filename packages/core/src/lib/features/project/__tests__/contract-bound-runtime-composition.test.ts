@@ -250,6 +250,7 @@ describe('createProjectContractRuntimeComposition', () => {
       'contractPort',
       'executionPort',
       'service',
+      'supervisorWorkItems',
       'taskBoard',
       'taskCreation',
       'taskSubscriptions',

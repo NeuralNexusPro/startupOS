@@ -121,7 +121,17 @@ export interface ProjectTaskSummary {
 export interface ProjectTaskDetail extends ProjectTaskSummary {
   readonly task: AgentTaskProjectionV1;
   readonly workItems: readonly CollaborationWorkItem[];
+  readonly workItemFailures?: readonly ProjectWorkItemFailure[];
   readonly binding?: SolutionTaskBinding;
+}
+
+export interface ProjectWorkItemFailure {
+  readonly workItemId: string;
+  readonly agentId: string;
+  readonly stage: 'readiness' | 'worker' | 'verifier' | 'outcome' | 'evidence' | 'unknown';
+  readonly code: string;
+  readonly reason: string;
+  readonly recoveryAction: 'retry' | 'review' | 'resolve_hitl' | 'fix_input';
 }
 
 export interface ProjectTaskPage {
@@ -470,9 +480,46 @@ export class ProjectTaskBoardService {
       artifactRefs: uniqueArtifactRefs(run),
       task: record.task,
       workItems: run.workItems,
+      workItemFailures: projectWorkItemFailures(run),
       binding: run.binding,
     };
   }
+}
+
+export function projectWorkItemFailures(
+  run: CollaborationRunSnapshot,
+): readonly ProjectWorkItemFailure[] {
+  return run.workItems.flatMap((item) => {
+    const attempt = item.attempts.at(-1);
+    if (!attempt?.reason) return [];
+    const stage = !attempt.readinessReceipt
+      ? 'readiness'
+      : !attempt.workerReceipt
+        ? 'worker'
+        : !attempt.verifierResult
+          ? 'verifier'
+          : !attempt.outcomeReceipt
+            ? 'outcome'
+            : !attempt.evidenceReceipt
+              ? 'evidence'
+              : 'unknown';
+    const code = attempt.reason.split(':', 1)[0] || 'WORKITEM_FAILED';
+    const recoveryAction = item.status === 'waiting_hitl'
+      ? 'resolve_hitl'
+      : item.status === 'needs_review'
+        ? 'review'
+        : stage === 'readiness'
+          ? 'fix_input'
+          : 'retry';
+    return [{
+      workItemId: item.id,
+      agentId: item.assignedAgentId,
+      stage,
+      code,
+      reason: attempt.reason,
+      recoveryAction,
+    } satisfies ProjectWorkItemFailure];
+  });
 }
 
 

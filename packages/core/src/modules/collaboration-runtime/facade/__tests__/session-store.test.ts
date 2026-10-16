@@ -3,8 +3,17 @@
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { generateId, sessions, createSession } from "../session-store";
+import {
+  buildContinuationGoal,
+  createSession,
+  generateId,
+  queueSessionMessage,
+  sessions,
+  takeSessionMessages,
+  updateFormalObjective,
+} from "../session-store";
 import type { EventEmitter } from "../../../../modules/collaboration-runtime";
+import type { CollaborationSession } from "../../../../modules/collaboration-runtime/session/types";
 
 // Minimal stub emitter
 const stubEmitter: EventEmitter = {
@@ -66,5 +75,58 @@ describe("createSession", () => {
     expect(session.config?.maxIterations).toBe(5);
     expect(session.config?.timeoutMs).toBe(30000);
     expect(session.config?.mode).toBe("workflow");
+  });
+});
+
+describe("formal run continuation queue", () => {
+  beforeEach(() => {
+    takeSessionMessages("session-queue");
+  });
+
+  it("drains queued messages once in FIFO order", () => {
+    queueSessionMessage("session-queue", "先补充验收标准");
+    queueSessionMessage("session-queue", "再指定交付格式");
+
+    expect(takeSessionMessages("session-queue")).toEqual([
+      "先补充验收标准",
+      "再指定交付格式",
+    ]);
+    expect(takeSessionMessages("session-queue")).toEqual([]);
+  });
+
+  it("builds a bounded continuation objective with prior goal and updates", () => {
+    const goal = buildContinuationGoal("完成供应商准入", ["补充风险分级", "输出 Markdown"]);
+
+    expect(goal).toContain("上一轮目标：\n完成供应商准入");
+    expect(goal).toContain("用户最新补充：\n补充风险分级\n输出 Markdown");
+    expect(goal.length).toBeLessThanOrEqual(8_100);
+  });
+
+  it("keeps the binding for the same objective and clears it for a new objective", () => {
+    const session: CollaborationSession = {
+      id: "session-queue",
+      projectId: "proj-test",
+      globalGoal: "原始目标",
+      status: "completed" as const,
+      createdAt: "2026-10-16T00:00:00.000Z",
+      updatedAt: "2026-10-16T00:00:00.000Z",
+      config: {},
+    };
+    updateFormalObjective(session, "原始目标");
+    const requestId = session.executionRequestId;
+    session.formalExecution = {
+      requestId: requestId!,
+      parentTaskId: "task-1",
+      parentStepId: "step-1",
+      runId: "run-1",
+    };
+
+    updateFormalObjective(session, "原始目标");
+    expect(session.executionRequestId).toBe(requestId);
+    expect(session.formalExecution?.runId).toBe("run-1");
+
+    updateFormalObjective(session, "新的目标");
+    expect(session.executionRequestId).not.toBe(requestId);
+    expect(session.formalExecution).toBeUndefined();
   });
 });

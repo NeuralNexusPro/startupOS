@@ -21,13 +21,21 @@ import {
   blackboards,
   loadPersistedSessions,
   saveProjectSessions,
+  buildContinuationGoal,
+  takeSessionMessages,
+  updateFormalObjective,
 } from "./session-store";
 import { eventEmitter } from "./event-bus";
 import { setStartDag, setResumeSupervisorHitl } from "./hitl-dispatcher";
 import { registerHitlNotificationForwarder } from "./hitl-notify";
 import { getDataRoot } from "../../../lib/paths";
 
-import { executeSupervisorDag, resumeSupervisorHitl } from "../../../modules/collaboration-runtime/engine/supervisor-dag";
+import { resumeSupervisorHitl } from "../../../modules/collaboration-runtime/engine/supervisor-dag";
+import {
+  getSupervisorWorkItemRuntimePort,
+  type SupervisorWorkItemBindingReceipt,
+  type SupervisorWorkItemDesignGap,
+} from './supervisor-workitem-runtime';
 
 // 注入 hitl-dispatcher 需要的函数引用（避免循环依赖）
 setStartDag(startDag);
@@ -112,30 +120,200 @@ export async function startDag(
     } : { provided: false },
   })}`);
 
-  // Supervisor 在后台运行，不阻塞 HTTP 请求（支持 HITL 长时间暂停）
-  void executeSupervisorDag(
-    {
-      projectId: session.projectId,
-      globalGoal: session.globalGoal ?? "",
-      sessionId: id,
-      timeoutMs: session.config.timeoutMs,
-      maxIterations: session.config.maxIterations,
-      llmConfig: session.config.llmConfig,
+  const runtime = getSupervisorWorkItemRuntimePort();
+  if (!runtime) {
+    await reportDesignGaps(store, session, id, [{
+      code: 'SUPERVISOR_WORKITEM_RUNTIME_UNAVAILABLE',
+      message: '正式多 Agent 任务运行时尚未完成装配。',
+      remediation: '重新打开项目任务看板后重试；系统不会回退创建 Blackboard 任务。',
+    }]);
+    return { status: 'design_gap', result: null };
+  }
+
+  const requestId = session.executionRequestId ?? `request:${id}`;
+  session.executionRequestId = requestId;
+  const bound = await runtime.bind({
+    projectId: session.projectId,
+    collaborationSessionId: id,
+    requestId,
+    objective: session.globalGoal ?? '',
+  });
+  if (bound.ok === false) {
+    await reportDesignGaps(store, session, id, bound.gaps);
+    return { status: 'design_gap', result: { gaps: bound.gaps } };
+  }
+
+  await persistFormalBinding(session, bound.receipt);
+  await appendAndEmit(store, {
+    id: `formal-binding-${Date.now()}`,
+    sessionId: id,
+    seq: 0,
+    type: 'SUPERVISOR_DECOMPOSITION',
+    payload: {
+      authority: 'collaboration-workitem-ledger',
+      parentTaskId: bound.receipt.parentTaskId,
+      parentStepId: bound.receipt.parentStepId,
+      runId: bound.receipt.runId,
+      workItems: bound.receipt.snapshot.workItems.map((item) => ({
+        workItemId: item.id,
+        agentId: item.assignedAgentId,
+        inputRefs: item.inputRefs,
+        outputRefs: item.outputRefs,
+      })),
     },
-    store,
-    eventEmitter
-  ).then(async () => {
-    // DAG 完成后保持 "running" 状态 — supervisor 进程仍存活，用户可以继续发送消息触发新 DAG
+    source: 'supervisor',
+    timestamp: new Date().toISOString(),
+  });
+  await appendAndEmit(store, {
+    id: `formal-binding-message-${Date.now()}`,
+    sessionId: id,
+    seq: 0,
+    type: 'ASSISTANT_MESSAGE',
+    payload: {
+      content: `任务已绑定正式项目任务 ${bound.receipt.parentTaskId}，Run ${bound.receipt.runId} 正在按已发布契约执行。`,
+    },
+    source: 'supervisor',
+    timestamp: new Date().toISOString(),
+  });
+
+  // 正式 WorkItem runtime 自带五阶段确定性推进和进程恢复；HTTP 不等待长任务。
+  void runtime.advance({ binding: bound.receipt, requestId }).then(async (snapshot) => {
+    const terminal = snapshot.terminalStatus;
+    await appendAndEmit(store, {
+      id: `formal-run-${Date.now()}`,
+      sessionId: id,
+      seq: 0,
+      type: terminal === 'completed' ? 'DAG_COMPLETE' : terminal === 'failed' ? 'DAG_FAIL' : 'CHECKPOINT',
+      payload: {
+        authority: 'collaboration-workitem-ledger',
+        parentTaskId: bound.receipt.parentTaskId,
+        runId: snapshot.runId,
+        runStatus: snapshot.status,
+        terminalStatus: terminal,
+        failureReason: snapshot.failureReason,
+        workItems: snapshot.workItems.map((item) => ({
+          workItemId: item.id,
+          agentId: item.assignedAgentId,
+          status: item.status,
+          failureStage: workItemFailureStage(item),
+          failureReason: item.attempts.at(-1)?.reason,
+          outputRefs: item.attempts.at(-1)?.workerReceipt?.outputRefs ?? item.outputRefs,
+        })),
+      },
+      source: 'supervisor',
+      timestamp: new Date().toISOString(),
+    });
+    session.status = terminal === 'completed'
+      ? 'completed'
+      : terminal === 'failed' || terminal === 'canceled'
+        ? 'aborted'
+        : 'running';
     session.updatedAt = new Date().toISOString();
     await saveProjectSessions(session.projectId);
-  }).catch(async (err) => {
-    console.error(`[collaboration] executeSession ${id} failed:`, err);
-    session.status = "aborted";
+
+    if (terminal) {
+      const pendingMessages = takeSessionMessages(id);
+      if (pendingMessages.length > 0) {
+        updateFormalObjective(
+          session,
+          buildContinuationGoal(session.globalGoal, pendingMessages),
+        );
+        await startDag(session, store, id);
+      }
+    }
+  }).catch(async (error: unknown) => {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.error(`[collaboration] formal execution ${id} failed:`, error);
+    await appendAndEmit(store, {
+      id: `formal-run-failed-${Date.now()}`,
+      sessionId: id,
+      seq: 0,
+      type: 'DAG_FAIL',
+      payload: {
+        authority: 'collaboration-workitem-ledger',
+        parentTaskId: bound.receipt.parentTaskId,
+        runId: bound.receipt.runId,
+        failureStage: 'runtime',
+        failureReason: reason,
+      },
+      source: 'supervisor',
+      timestamp: new Date().toISOString(),
+    });
+    session.status = 'aborted';
     session.updatedAt = new Date().toISOString();
     await saveProjectSessions(session.projectId);
   });
 
-  return { status: "running", result: null };
+  return {
+    status: 'running',
+    result: {
+      parentTaskId: bound.receipt.parentTaskId,
+      parentStepId: bound.receipt.parentStepId,
+      runId: bound.receipt.runId,
+    },
+  };
+}
+
+async function appendAndEmit(store: FsEventStore, event: RuntimeEvent): Promise<void> {
+  await store.append(event);
+  eventEmitter.emit(event);
+}
+
+async function persistFormalBinding(
+  session: CollaborationSession,
+  receipt: SupervisorWorkItemBindingReceipt,
+): Promise<void> {
+  session.formalExecution = {
+    requestId: receipt.requestId,
+    parentTaskId: receipt.parentTaskId,
+    parentStepId: receipt.parentStepId,
+    ...(receipt.parentSessionId ? { parentSessionId: receipt.parentSessionId } : {}),
+    runId: receipt.runId,
+  };
+  session.updatedAt = new Date().toISOString();
+  await saveProjectSessions(session.projectId);
+}
+
+async function reportDesignGaps(
+  store: FsEventStore,
+  session: CollaborationSession,
+  sessionId: string,
+  gaps: readonly SupervisorWorkItemDesignGap[],
+): Promise<void> {
+  session.status = 'greeting';
+  session.updatedAt = new Date().toISOString();
+  await saveProjectSessions(session.projectId);
+  await appendAndEmit(store, {
+    id: `formal-design-gap-${Date.now()}`,
+    sessionId,
+    seq: 0,
+    type: 'SESSION_ERROR',
+    payload: { authority: 'collaboration-workitem-ledger', stage: 'binding', gaps },
+    source: 'supervisor',
+    timestamp: new Date().toISOString(),
+  });
+  await appendAndEmit(store, {
+    id: `formal-design-gap-message-${Date.now()}`,
+    sessionId,
+    seq: 0,
+    type: 'ASSISTANT_MESSAGE',
+    payload: {
+      content: `当前任务还不能安全执行：${gaps.map((item) => `${item.message} ${item.remediation}`).join('；')}`,
+    },
+    source: 'supervisor',
+    timestamp: new Date().toISOString(),
+  });
+}
+
+function workItemFailureStage(item: SupervisorWorkItemBindingReceipt['snapshot']['workItems'][number]): string | undefined {
+  const attempt = item.attempts.at(-1);
+  if (!attempt?.reason) return undefined;
+  if (!attempt.readinessReceipt) return 'readiness';
+  if (!attempt.workerReceipt) return 'worker';
+  if (!attempt.verifierResult) return 'verifier';
+  if (!attempt.outcomeReceipt) return 'outcome';
+  if (!attempt.evidenceReceipt) return 'evidence';
+  return undefined;
 }
 
 // abortSession 通过集成层取消正在运行的 DAG

@@ -8,6 +8,7 @@
  * getRuntime() 在 facade/index.ts 中初始化，此处通过 initRuntime() 注入。
  */
 
+import { createHash } from "node:crypto";
 import path from "path";
 
 import {
@@ -34,6 +35,7 @@ declare global {
   var __collaborationEventStores: Map<string, FsEventStore> | undefined;
   // eslint-disable-next-line no-var
   var __collaborationBlackboards: Map<string, Blackboard> | undefined;
+  var __collaborationPendingMessages: Map<string, string[]> | undefined;
 }
 
 if (!globalThis.__collaborationSessions) {
@@ -45,9 +47,54 @@ if (!globalThis.__collaborationEventStores) {
 if (!globalThis.__collaborationBlackboards) {
   globalThis.__collaborationBlackboards = new Map();
 }
+if (!globalThis.__collaborationPendingMessages) {
+  globalThis.__collaborationPendingMessages = new Map();
+}
 export const sessions = globalThis.__collaborationSessions;
 export const eventStores = globalThis.__collaborationEventStores;
 export const blackboards = globalThis.__collaborationBlackboards;
+const pendingMessages = globalThis.__collaborationPendingMessages;
+
+export function queueSessionMessage(sessionId: string, message: string): void {
+  const queued = pendingMessages.get(sessionId) ?? [];
+  queued.push(message);
+  pendingMessages.set(sessionId, queued);
+}
+
+export function takeSessionMessages(sessionId: string): string[] {
+  const queued = pendingMessages.get(sessionId) ?? [];
+  pendingMessages.delete(sessionId);
+  return queued;
+}
+
+export function buildContinuationGoal(previousGoal: string | undefined, messages: string[]): string {
+  const previous = (previousGoal ?? "").trim().slice(-4_000);
+  const updates = messages.map((message) => message.trim()).filter(Boolean).join("\n").slice(-4_000);
+  return [
+    "继续同一协作会话，请结合上一轮目标与用户最新补充直接推进，不要重新扫描完整事件日志。",
+    previous ? `上一轮目标：\n${previous}` : "",
+    updates ? `用户最新补充：\n${updates}` : "",
+  ].filter(Boolean).join("\n\n");
+}
+
+function formalExecutionRequestId(sessionId: string, objective: string): string {
+  const digest = createHash("sha256")
+    .update(`${sessionId}\u0000${objective.trim()}`)
+    .digest("hex");
+  return `request:${digest}`;
+}
+
+export function updateFormalObjective(
+  session: CollaborationSession,
+  objective: string,
+): void {
+  const requestId = formalExecutionRequestId(session.id, objective);
+  if (session.executionRequestId !== requestId) {
+    session.executionRequestId = requestId;
+    session.formalExecution = undefined;
+  }
+  session.globalGoal = objective;
+}
 
 import { getDataRoot } from '../../../lib/paths';
 
@@ -169,6 +216,7 @@ export async function loadPersistedSessions(): Promise<void> {
 export interface CreateSessionInput {
   projectId: string;
   globalGoal?: string;
+  requestId?: string;
   maxIterations?: number;
   timeoutMs?: number;
   mode?: "workflow" | "system";
@@ -221,6 +269,7 @@ export async function createSession(input: CreateSessionInput, emitter: EventEmi
     status: "created",
     createdAt: now,
     updatedAt: now,
+    executionRequestId: input.requestId ?? `request:${id}`,
     config: {
       maxIterations: input.maxIterations,
       timeoutMs: input.timeoutMs,
