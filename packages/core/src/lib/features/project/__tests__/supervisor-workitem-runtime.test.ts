@@ -183,7 +183,65 @@ describe('ProjectSupervisorWorkItemRuntime', () => {
     expect(result).toEqual({ ok: false, gaps: [expect.objectContaining({
       code: 'SUPERVISOR_TASK_TEMPLATE_AMBIGUOUS',
       refId: 'template-1,template-2',
+      remediation: expect.stringContaining('1. 目标 1'),
     })] });
+  });
+
+  it('routes a natural-language objective to the uniquely matching approved template', async () => {
+    const frozen = contract(['track-trends', 'deep-dive-analysis']);
+    frozen.semanticContext.taskTemplates[0]!.objective = '浏览 GitHub Trending 并记录值得关注的项目';
+    frozen.semanticContext.taskTemplates[1]!.objective = '深挖项目源码并梳理架构';
+    const create = vi.fn(async () => ({ ok: true as const, receipt: receipt(run(frozen)) }));
+    const runtime = new ProjectSupervisorWorkItemRuntime({
+      contractCatalog: { listProject: async () => [{ contract: frozen }] },
+      contractPort: { verifyIntegrity: async () => ({ valid: true }) },
+      taskCreation: { create },
+      executionPort: { executeWorkItem: vi.fn(), inspect: vi.fn(), recover: vi.fn() },
+    });
+
+    await runtime.bind(input('帮我浏览一下 GitHub Trending，记录今天值得关注的项目'));
+
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      taskTemplateId: 'track-trends',
+      semanticInputs: [],
+    }));
+  });
+
+  it.each([
+    ['帮我看一下今天 GitHub Trending 有哪些值得关注的新项目', 'track-trends'],
+    ['梳理待看清单，推荐几个值得深入研究的候选', 'triage-watchlist'],
+    ['深挖 xerj 的源码和整体架构', 'deep-dive-analysis'],
+    ['识别这个项目的技术理念并建立概念标签', 'tag-philosophy'],
+    ['把这次分析整理成一条实践体会', 'write-insight'],
+    ['按企业场景写一份最佳实践', 'write-practice'],
+    ['整理学习 Wiki，按技术理念聚合展示', 'organize-wiki'],
+  ])('routes project wording %s to %s', async (objective, expectedTemplateId) => {
+    const definitions = [
+      ['track-trends', '浏览 GitHub Trending，把值得关注的项目记为趋势项目记录快照，初始状态待看'],
+      ['triage-watchlist', '梳理待看清单，结合定位与热度推荐值得深挖的候选'],
+      ['deep-dive-analysis', '对用户确认深挖的项目读源码梳理架构，产出项目记录五要素，趋势记录状态转已提炼'],
+      ['tag-philosophy', '识别项目体现的技术理念，构建概念标签并挂靠理念条目，同名即同条目'],
+      ['write-insight', '在理念条目下写实践体会，挂靠理念条目并关联来源项目分析，不悬空'],
+      ['write-practice', '按使用场景写最佳实践，三要素齐备才记，场景不明先补场景档案'],
+      ['organize-wiki', '以技术理念为核心按三段结构聚合呈现学习 wiki，支持双视角，不另存内容'],
+    ] as const;
+    const frozen = contract(definitions.map(([id]) => id));
+    definitions.forEach(([, templateObjective], index) => {
+      frozen.semanticContext.taskTemplates[index]!.objective = templateObjective;
+    });
+    const create = vi.fn(async () => ({ ok: true as const, receipt: receipt(run(frozen)) }));
+    const runtime = new ProjectSupervisorWorkItemRuntime({
+      contractCatalog: { listProject: async () => [{ contract: frozen }] },
+      contractPort: { verifyIntegrity: async () => ({ valid: true }) },
+      taskCreation: { create },
+      executionPort: { executeWorkItem: vi.fn(), inspect: vi.fn(), recover: vi.fn() },
+    });
+
+    await runtime.bind(input(objective));
+
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      taskTemplateId: expectedTemplateId,
+    }));
   });
 
   it('delegates the stable requestId to idempotent parent Task and Run creation', async () => {

@@ -62,6 +62,64 @@ function normalizeObjective(value: string): string {
   return value.trim().replace(/\s+/g, '').toLocaleLowerCase('zh-CN');
 }
 
+function objectiveTerms(value: string): ReadonlySet<string> {
+  const normalized = value
+    .toLocaleLowerCase('zh-CN')
+    .replace(/[，。！？、；：,.!?;:()[\]{}<>“”'"`~@#$%^&*_+=|\\/-]+/g, ' ');
+  const terms = new Set<string>();
+  for (const token of normalized.match(/[a-z0-9]+|\p{Script=Han}+/gu) ?? []) {
+    if (/^[a-z0-9]+$/.test(token)) {
+      if (token.length >= 2) terms.add(token);
+      continue;
+    }
+    for (let size = 2; size <= Math.min(6, token.length); size += 1) {
+      for (let index = 0; index + size <= token.length; index += 1) {
+        terms.add(token.slice(index, index + size));
+      }
+    }
+  }
+  return terms;
+}
+
+function longestCommonRun(left: string, right: string): number {
+  if (!left || !right) return 0;
+  let previous = new Array<number>(right.length + 1).fill(0);
+  let longest = 0;
+  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+    const current = new Array<number>(right.length + 1).fill(0);
+    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+      if (left[leftIndex - 1] !== right[rightIndex - 1]) continue;
+      current[rightIndex] = previous[rightIndex - 1]! + 1;
+      longest = Math.max(longest, current[rightIndex]!);
+    }
+    previous = current;
+  }
+  return longest;
+}
+
+function candidateScore(candidate: Candidate, objective: string): number {
+  const normalizedObjective = normalizeObjective(objective);
+  const template = candidate.template;
+  const explicitIds = [template.id, template.designNodeId]
+    .map(normalizeObjective)
+    .filter(Boolean);
+  if (explicitIds.some((id) => normalizedObjective === id
+    || normalizedObjective.includes(`模板${id}`)
+    || normalizedObjective.includes(`template${id}`))) return 100_000;
+
+  const templateText = `${template.objective} ${template.id} ${template.designNodeId}`;
+  const templateTerms = objectiveTerms(templateText);
+  let overlap = 0;
+  for (const term of objectiveTerms(objective)) {
+    if (templateTerms.has(term)) overlap += term.length * term.length;
+  }
+  const commonRun = longestCommonRun(
+    normalizeObjective(template.objective),
+    normalizedObjective,
+  );
+  return overlap + commonRun * commonRun * 2;
+}
+
 function attemptPayloadHash(
   binding: SupervisorWorkItemBindingReceipt,
   workItemId: string,
@@ -117,16 +175,6 @@ export class ProjectSupervisorWorkItemRuntime implements SupervisorWorkItemRunti
     const selected = this.selectCandidate(candidates, objective);
     if (selected.ok === false) return selected;
     const { contract } = selected.candidate.published;
-    const requiredSlots = contract.semanticContext.objectSlots.filter(({ required }) => required);
-    if (requiredSlots.length > 0 || contract.topology.externalInputs.length > 0) {
-      return { ok: false, gaps: [gap(
-        'SUPERVISOR_SEMANTIC_INPUT_REQUIRED',
-        '这个任务模板需要绑定结构化业务事实，不能只凭对话文本安全执行。',
-        '先在项目任务入口绑定必填业务对象和 Fact，再使用同一 requestId 恢复执行。',
-        'semanticInputs',
-        selected.candidate.template.id,
-      )] };
-    }
 
     const created = await this.dependencies.taskCreation.create({
       projectId: input.projectId,
@@ -232,10 +280,23 @@ export class ProjectSupervisorWorkItemRuntime implements SupervisorWorkItemRunti
     const exact = candidates.filter(({ template }) =>
       normalizeObjective(template.objective) === normalized);
     if (exact.length === 1) return { ok: true, candidate: exact[0]! };
+    const ranked = candidates
+      .map((candidate) => ({ candidate, score: candidateScore(candidate, objective) }))
+      .sort((left, right) => right.score - left.score
+        || left.candidate.template.id.localeCompare(right.candidate.template.id));
+    const best = ranked[0]!;
+    const second = ranked[1];
+    if (best.score >= 12
+      && (!second || best.score >= Math.max(second.score + 8, second.score * 1.25))) {
+      return { ok: true, candidate: best.candidate };
+    }
+    const choices = candidates
+      .map(({ template }, index) => `${index + 1}. ${template.objective}`)
+      .join('；');
     return { ok: false, gaps: [gap(
       'SUPERVISOR_TASK_TEMPLATE_AMBIGUOUS',
-      '当前目标可以对应多个已批准任务模板，系统不会猜测执行拓扑。',
-      '明确选择任务模板，或让方案设计收敛为唯一匹配模板后重试。',
+      '我还不能确定你希望从哪项工作开始。',
+      `请直接补充更具体的目标，或回复候选工作内容：${choices}`,
       'taskTemplateId',
       candidates.map(({ template }) => template.id).sort().join(','),
     )] };

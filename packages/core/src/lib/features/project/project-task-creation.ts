@@ -327,6 +327,27 @@ function targetsForTemplate(
   }] : []);
 }
 
+function sameFactType(
+  left: { readonly ontologyId: string; readonly ontologyVersion: string; readonly conceptId: string; readonly factTypeId: string },
+  right: { readonly ontologyId: string; readonly ontologyVersion: string; readonly conceptId: string; readonly factTypeId: string },
+): boolean {
+  return left.ontologyId === right.ontologyId
+    && left.ontologyVersion === right.ontologyVersion
+    && left.conceptId === right.conceptId
+    && left.factTypeId === right.factTypeId;
+}
+
+function templateProducedFactTypes(
+  contract: SolutionExecutionContract,
+  template: SolutionTaskTemplate,
+) {
+  const agents = template.candidateAgentIds.flatMap((agentId) =>
+    contract.agents.find((candidate) => candidate.agentId === agentId)?.outputs ?? []);
+  const skills = template.candidateSkillIds.flatMap((skillId) =>
+    contract.skills.find((candidate) => candidate.skillId === skillId)?.outputs ?? []);
+  return [...agents, ...skills].map(({ factType }) => factType);
+}
+
 function factState(value: Readonly<Record<string, unknown>>): string | undefined {
   const stateId = value['stateId'];
   return typeof stateId === 'string' ? stateId : undefined;
@@ -556,6 +577,15 @@ export class ApprovedProjectTaskCreationService {
     ));
     if (gaps.length || !template) return { ok: false, gaps };
 
+    const producedFactTypes = templateProducedFactTypes(contract, template);
+    const requiredExternalInputs = contract.topology.externalInputs.filter((expected) =>
+      !producedFactTypes.some((produced) => sameFactType(produced, expected)));
+    const producedConcepts = new Set(producedFactTypes.map((factType) => [
+      factType.ontologyId,
+      factType.ontologyVersion,
+      factType.conceptId,
+    ].join('/')));
+
     const targets = targetsForTemplate(contract, template);
     if (targets.length !== template.candidateAgentIds.length
       + template.candidateSkillIds.length
@@ -612,7 +642,12 @@ export class ApprovedProjectTaskCreationService {
     ]));
     for (const slot of contract.semanticContext.objectSlots) {
       const ref = bySlot.get(slot.id);
-      if (slot.required && !ref) gaps.push(gap(
+      const producedByTemplate = producedConcepts.has([
+        slot.concept.ontologyId,
+        slot.concept.ontologyVersion,
+        slot.concept.conceptId,
+      ].join('/'));
+      if (slot.required && !producedByTemplate && !ref) gaps.push(gap(
         'REQUIRED_SEMANTIC_OBJECT_MISSING',
         `缺少必填语义对象 ${slot.id}。`,
         '绑定与该 slot 概念完全匹配的 canonical fact。',
@@ -642,7 +677,7 @@ export class ApprovedProjectTaskCreationService {
         ));
       }
     }
-    for (const expected of contract.topology.externalInputs) {
+    for (const expected of requiredExternalInputs) {
       if (!input.semanticInputs.some(({ factRef }) =>
         factRef.ontologyId === expected.ontologyId
         && factRef.ontologyVersion === expected.ontologyVersion

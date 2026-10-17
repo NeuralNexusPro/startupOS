@@ -340,6 +340,20 @@ describe('ApprovedProjectTaskCreationService', () => {
       .rejects.toMatchObject({ code: 'ENOENT' });
   });
 
+  it('does not require a semantic input that the selected template itself produces', async () => {
+    const source = contract();
+    const produced = source.topology.externalInputs[0]!;
+    source.agents[0]!.outputs = [{ factType: produced, required: true }];
+    const test = await harness({ published: { contract: source } });
+
+    const result = await test.service.create(input({ semanticInputs: [] }));
+
+    expect(result).toMatchObject({ ok: true });
+    expect(test.taskPort.create).toHaveBeenCalledTimes(1);
+    expect(test.start).toHaveBeenCalledTimes(1);
+    expect(test.queryFacts).not.toHaveBeenCalled();
+  });
+
   it('recovers a persisted Task and an unrecorded Run after interruption without duplication', async () => {
     let first = true;
     let persistedRun: CollaborationRunSnapshot | null = null;
