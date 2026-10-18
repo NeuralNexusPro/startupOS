@@ -2,16 +2,21 @@
  * Tests for facade/session-store — Session CRUD and ID generation
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { rm } from "node:fs/promises";
+
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   buildContinuationGoal,
   createSession,
   generateId,
+  getProjectStateDir,
   queueSessionMessage,
   sessions,
+  saveProjectSessions,
   takeSessionMessages,
   updateFormalObjective,
 } from "../session-store";
+import { OrphanReconciler } from "../../session/orphan-reconciler";
 import type { EventEmitter } from "../../../../modules/collaboration-runtime";
 import type { CollaborationSession } from "../../../../modules/collaboration-runtime/session/types";
 
@@ -35,8 +40,15 @@ describe("generateId", () => {
 });
 
 describe("createSession", () => {
+  const mergeProjectId = "proj-session-merge-test";
+
   beforeEach(() => {
     sessions.clear();
+  });
+
+  afterEach(async () => {
+    sessions.clear();
+    await rm(getProjectStateDir(mergeProjectId), { recursive: true, force: true });
   });
 
   it("stores session in memory map", async () => {
@@ -75,6 +87,33 @@ describe("createSession", () => {
     expect(session.config?.maxIterations).toBe(5);
     expect(session.config?.timeoutMs).toBe(30000);
     expect(session.config?.mode).toBe("workflow");
+  });
+
+  it("merges a new in-memory session without deleting persisted history", async () => {
+    const historical: CollaborationSession = {
+      id: "historical-session",
+      projectId: mergeProjectId,
+      globalGoal: "历史目标",
+      status: "completed",
+      createdAt: "2026-10-16T00:00:00.000Z",
+      updatedAt: "2026-10-16T00:01:00.000Z",
+      config: {},
+    };
+    const active: CollaborationSession = {
+      id: "active-session",
+      projectId: mergeProjectId,
+      status: "created",
+      createdAt: "2026-10-18T00:00:00.000Z",
+      updatedAt: "2026-10-18T00:00:00.000Z",
+      config: {},
+    };
+    const reconciler = new OrphanReconciler(getProjectStateDir(mergeProjectId));
+    await reconciler.saveSessions([historical]);
+    sessions.set(active.id, active);
+
+    await saveProjectSessions(mergeProjectId);
+
+    await expect(reconciler.loadSessions()).resolves.toEqual([historical, active]);
   });
 });
 

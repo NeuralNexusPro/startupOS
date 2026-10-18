@@ -105,8 +105,12 @@ export function getProjectStateDir(projectId: string): string {
 }
 
 export async function saveProjectSessions(projectId: string): Promise<void> {
+  const reconciler = new OrphanReconciler(getProjectStateDir(projectId));
+  const persisted = await reconciler.loadSessions();
   const projectSessions = Array.from(sessions.values()).filter((session) => session.projectId === projectId);
-  await new OrphanReconciler(getProjectStateDir(projectId)).saveSessions(projectSessions);
+  const merged = new Map(persisted.map((session) => [session.id, session]));
+  for (const session of projectSessions) merged.set(session.id, session);
+  await reconciler.saveSessions(Array.from(merged.values()));
 }
 
 /** 生成唯一 session ID */
@@ -246,6 +250,7 @@ function logRuntime(phase: string, data: Record<string, unknown>): void {
 }
 
 export async function createSession(input: CreateSessionInput, emitter: EventEmitter, agentDefinitionParser?: import("../../../modules/collaboration-runtime/config").AgentDefinitionParser): Promise<CollaborationSession> {
+  await loadPersistedSessions();
   const id = generateId();
   const now = new Date().toISOString();
   const llmConfig = normalizeRuntimeLLMConfig(input.llmConfig)
