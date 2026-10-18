@@ -428,9 +428,11 @@ export class ApprovedProjectTaskCreationService {
       await this.operationStore.append(operation);
     }
 
-    let taskReceipt = operation.taskReceipt;
+    let taskReceipt = operation.taskReceipt
+      ? this.normalizeTaskReceipt(operation.taskReceipt)
+      : undefined;
     if (!taskReceipt) {
-      taskReceipt = await this.dependencies.taskPort.findByRequest(
+      taskReceipt = this.normalizeTaskReceipt(await this.dependencies.taskPort.findByRequest(
         input.projectId,
         input.requestId,
       ) ?? await this.dependencies.taskPort.create({
@@ -448,7 +450,7 @@ export class ApprovedProjectTaskCreationService {
           contractHash: input.contractHash,
           taskTemplateId: input.taskTemplateId,
         },
-      });
+      }));
       this.assertTaskReceipt(input, taskReceipt);
       operation = await this.advance(operation, {
         stage: 'task_created',
@@ -456,6 +458,12 @@ export class ApprovedProjectTaskCreationService {
       });
     } else {
       this.assertTaskReceipt(input, taskReceipt);
+      if (taskReceipt.parentStepId !== operation.taskReceipt?.parentStepId) {
+        operation = await this.advance(operation, {
+          stage: 'task_created',
+          taskReceipt,
+        });
+      }
     }
 
     // The contract may be revoked between Task creation and Run creation.
@@ -779,12 +787,22 @@ export class ApprovedProjectTaskCreationService {
     if (receipt.task.projectId !== input.projectId
       || !receipt.task.taskId
       || receipt.task.revision < 0
-      || !receipt.parentStepId) {
+      || !IDENTIFIER.test(receipt.parentStepId)) {
       throw new ProjectTaskCreationError(
         'TASK_RECEIPT_INVALID',
         'Task creation receipt does not match the project scope',
       );
     }
+  }
+
+  private normalizeTaskReceipt(
+    receipt: ApprovedProjectTaskReceipt,
+  ): ApprovedProjectTaskReceipt {
+    if (IDENTIFIER.test(receipt.parentStepId)) return receipt;
+    const step = receipt.task.task.steps.find(({ id, text }) =>
+      id === receipt.parentStepId || text === receipt.parentStepId
+    );
+    return step ? { ...receipt, parentStepId: step.id } : receipt;
   }
 
   private assertRun(

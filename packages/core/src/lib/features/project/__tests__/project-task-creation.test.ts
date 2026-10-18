@@ -222,10 +222,13 @@ async function harness(options: {
   const published = options.published ?? { contract: contract() };
   const taskPort = new MemoryTaskPort();
   let existingRun: CollaborationRunSnapshot | null = null;
-  const start = vi.fn(async () => {
+  const start = vi.fn(async (request: {
+    parentStepId: string;
+  }) => {
     const task = await taskPort.findByRequest('project-1', 'request-1');
     if (!task) throw new Error('task missing');
-    const run = options.start ? await options.start(task) : runFor(task);
+    const normalizedTask = { ...task, parentStepId: request.parentStepId };
+    const run = options.start ? await options.start(normalizedTask) : runFor(normalizedTask);
     existingRun = run;
     return run;
   });
@@ -377,6 +380,33 @@ describe('ApprovedProjectTaskCreationService', () => {
     expect(recovered).toMatchObject({ ok: true, receipt: { run: { runId: 'run-1' } } });
     expect(test.taskPort.create).toHaveBeenCalledTimes(1);
     expect(test.start).toHaveBeenCalledTimes(1);
+  });
+
+  it('repairs a legacy receipt that persisted the step text as parentStepId', async () => {
+    const test = await harness();
+    const legacyTask = taskDetail();
+    legacyTask.task.currentStep = '执行任务目标并验证交付结果';
+    legacyTask.task.steps[0] = {
+      ...legacyTask.task.steps[0]!,
+      id: 'T1-S1',
+      text: '执行任务目标并验证交付结果',
+    };
+    test.taskPort.receipts.set('project-1:request-1', {
+      task: legacyTask,
+      parentStepId: '执行任务目标并验证交付结果',
+      parentSessionId: 'session-1',
+    });
+
+    const result = await test.service.create(input());
+
+    expect(result).toMatchObject({
+      ok: true,
+      receipt: { binding: { parentStepId: 'T1-S1' } },
+    });
+    expect(test.start).toHaveBeenCalledWith(expect.objectContaining({
+      parentStepId: 'T1-S1',
+    }));
+    expect(test.taskPort.create).not.toHaveBeenCalled();
   });
 
   it('revalidates revocation before Run recovery and never substitutes another contract', async () => {

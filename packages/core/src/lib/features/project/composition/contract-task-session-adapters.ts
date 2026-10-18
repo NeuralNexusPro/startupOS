@@ -12,6 +12,7 @@ import type {
 } from '../../../../modules/collaboration-runtime/facade';
 import type {
   AgentTaskProjectMetadataMutationReceiptV1,
+  AgentTaskProjectionV1,
   AgentTaskRuntimeSnapshotV1,
 } from '../../../integrations/pi-agent/task-runtime';
 import type {
@@ -38,6 +39,19 @@ export function taskCreationSessionId(projectId: string, requestId: string): str
     .slice(0, 32)}`;
 }
 
+function resolveParentStepId(projection: AgentTaskProjectionV1): string {
+  const current = projection.currentStep;
+  const selected = current
+    ? projection.steps.find((step) => step.id === current)
+      ?? projection.steps.find((step) => step.text === current)
+    : undefined;
+  const parentStepId = selected?.id
+    ?? projection.steps.find((step) => step.status === 'active')?.id
+    ?? projection.steps[0]?.id;
+  if (!parentStepId) {throw new Error('APPROVED_TASK_STEP_MISSING');}
+  return parentStepId;
+}
+
 export class RuntimeApprovedProjectTaskPort implements ApprovedProjectTaskPort {
   constructor(
     private readonly host: ProjectContractRuntimeHostCapabilities,
@@ -56,8 +70,7 @@ export class RuntimeApprovedProjectTaskPort implements ApprovedProjectTaskPort {
       return null;
     }
     const projection = session.taskRuntime.execution.projection;
-    const parentStepId = projection.currentStep ?? projection.steps[0]?.id;
-    if (!parentStepId) {throw new Error('APPROVED_TASK_STEP_MISSING');}
+    const parentStepId = resolveParentStepId(projection);
     return {
       task: await this.taskBoard.getProjectTask(projectId, projection.taskId),
       parentStepId,
@@ -103,8 +116,7 @@ export class RuntimeApprovedProjectTaskPort implements ApprovedProjectTaskPort {
     if (!snapshot.projection || snapshot.execution.status === 'failed') {
       throw new Error(snapshot.execution.lastError?.message ?? 'APPROVED_TASK_CREATION_FAILED');
     }
-    const parentStepId = snapshot.projection.currentStep ?? snapshot.projection.steps[0]?.id;
-    if (!parentStepId) {throw new Error('APPROVED_TASK_STEP_MISSING');}
+    const parentStepId = resolveParentStepId(snapshot.projection);
     return {
       task: await this.taskBoard.getProjectTask(input.projectId, snapshot.projection.taskId),
       parentStepId,
