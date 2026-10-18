@@ -219,13 +219,33 @@ function normalizeRuntimeSchema(value) {
   return normalized;
 }
 
-function mutationToolResult(result) {
+function canonicalEvidenceId(result) {
+  const tasks = result?.snapshot?.state?.tasks;
+  const task = tasks && typeof tasks === 'object' && !Array.isArray(tasks)
+    ? tasks[result.taskId]
+    : undefined;
+  const evidence = Array.isArray(task?.evidence) ? task.evidence.at(-1) : undefined;
+  return typeof evidence?.id === 'string' && evidence.id.length > 0
+    ? evidence.id
+    : undefined;
+}
+
+function mutationToolResult(result, toolName) {
+  const evidenceId = toolName === 'task_evidence'
+    ? canonicalEvidenceId(result)
+    : undefined;
   return {
     isError: false,
     content: [{
       type: 'text',
       text: [
         `${result.requestId} committed at task revision ${result.revisionAfter}.`,
+        ...(evidenceId
+          ? [
+              `Canonical evidence ID: ${evidenceId}.`,
+              `Use ${evidenceId} in task_complete.evidence_ids and criterion_results[].evidenceIds; never use the call_... request ID as evidence.`,
+            ]
+          : []),
         'Use task_focus or task_resume to inspect the canonical execution contract.',
       ].join('\n'),
     }],
@@ -563,7 +583,7 @@ async function createPiTaskSessionHost(options) {
                 bridgeEpoch: scope.bridgeEpoch,
               },
               input,
-            }, signal));
+            }, signal), registeredTool.name);
           }
           return await serialize(async () => {
             assertHostActive();
