@@ -158,6 +158,18 @@ describe('SupervisorTaskBoardWindow', () => {
     expect(screen.getByRole('complementary', { name: '任务详情' })).toHaveTextContent('MODEL_EMPTY');
   });
 
+  it('renders a fallback for invalid historical task timestamps', async (): Promise<void> => {
+    const invalidTimeProjection = JSON.parse(JSON.stringify(projection)) as typeof projection;
+    invalidTimeProjection.projects[0].tasks[0].createdAt = 'invalid-date';
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => invalidTimeProjection })));
+
+    render(<SupervisorTaskBoardWindow />);
+
+    const taskCard = (await screen.findByText('供应商材料核验')).closest('button');
+    expect(taskCard).not.toBeNull();
+    expect(taskCard).toHaveTextContent('时间未知');
+  });
+
   it('requests and locks the board to the current project when opened from collaboration', async (): Promise<void> => {
     const fetchMock = vi.fn(async (url: string) => ({
       ok: true,

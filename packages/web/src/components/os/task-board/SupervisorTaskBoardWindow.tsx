@@ -75,10 +75,13 @@ function taskValue(value: unknown, empty: string): string {
   return JSON.stringify(value, null, 2);
 }
 
-function formatTime(value: string): string {
+function formatTime(value?: string): string {
+  if (!value) return '时间未知';
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '时间未知';
   return new Intl.DateTimeFormat('zh-CN', {
     month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit',
-  }).format(new Date(value));
+  }).format(date);
 }
 
 export function resolveProjectArtifactPath(ref: string, projectId: string): string | null {
