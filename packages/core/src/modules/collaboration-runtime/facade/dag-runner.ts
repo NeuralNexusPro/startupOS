@@ -14,6 +14,7 @@ import { Blackboard } from "../../../modules/collaboration-runtime/session/black
 import { FsEventStore } from "../../../modules/collaboration-runtime/session/fs-event-store";
 import { getGlobalSpawner } from "../../../modules/collaboration-runtime/sandbox";
 import type { CollaborationSession, RuntimeEvent } from "../../../modules/collaboration-runtime/session/types";
+import type { CollaborationRunSnapshot } from './contract-execution-types';
 
 import {
   sessions,
@@ -206,6 +207,20 @@ export async function startDag(
       source: 'supervisor',
       timestamp: new Date().toISOString(),
     });
+    await appendAndEmit(store, {
+      id: `formal-run-message-${Date.now()}`,
+      sessionId: id,
+      seq: 0,
+      type: 'ASSISTANT_MESSAGE',
+      payload: {
+        content: formalRunStatusMessage(
+          bound.receipt.parentTaskId,
+          snapshot,
+        ),
+      },
+      source: 'supervisor',
+      timestamp: new Date().toISOString(),
+    });
     session.status = terminal === 'completed'
       ? 'completed'
       : terminal === 'failed' || terminal === 'canceled'
@@ -242,6 +257,17 @@ export async function startDag(
       source: 'supervisor',
       timestamp: new Date().toISOString(),
     });
+    await appendAndEmit(store, {
+      id: `formal-run-failed-message-${Date.now()}`,
+      sessionId: id,
+      seq: 0,
+      type: 'ASSISTANT_MESSAGE',
+      payload: {
+        content: `任务 ${bound.receipt.parentTaskId} 执行失败：${reason}。请根据失败原因修正后重试。`,
+      },
+      source: 'supervisor',
+      timestamp: new Date().toISOString(),
+    });
     session.status = 'aborted';
     session.updatedAt = new Date().toISOString();
     await saveProjectSessions(session.projectId);
@@ -255,6 +281,30 @@ export async function startDag(
       runId: bound.receipt.runId,
     },
   };
+}
+
+export function formalRunStatusMessage(
+  parentTaskId: string,
+  snapshot: Pick<CollaborationRunSnapshot, 'runId' | 'status' | 'terminalStatus' | 'failureReason' | 'workItems'>,
+): string {
+  if (snapshot.terminalStatus === 'completed') {
+    return `任务 ${parentTaskId} 已完成，Run ${snapshot.runId} 的产出与验收结果已写入任务看板。`;
+  }
+  if (snapshot.terminalStatus === 'canceled') {
+    return `任务 ${parentTaskId} 已取消（Run ${snapshot.runId}）。`;
+  }
+  if (snapshot.terminalStatus === 'failed') {
+    const failedItem = snapshot.workItems.find(({ status }) => status === 'failed');
+    const itemReason = failedItem?.attempts.at(-1)?.reason;
+    const reason = snapshot.failureReason ?? itemReason ?? '未提供失败原因';
+    return `任务 ${parentTaskId} 执行失败（Run ${snapshot.runId}）：${reason}。请重新发布任务以启动新的 Run。`;
+  }
+  const blockedItem = snapshot.workItems.find(({ status }) =>
+    status === 'blocked' || status === 'failed');
+  const reason = blockedItem?.attempts.at(-1)?.reason;
+  return reason
+    ? `任务 ${parentTaskId} 暂未继续推进（Run ${snapshot.runId}）：${reason}。`
+    : `任务 ${parentTaskId} 已更新（Run ${snapshot.runId}），当前状态：${snapshot.status}。`;
 }
 
 async function appendAndEmit(store: FsEventStore, event: RuntimeEvent): Promise<void> {

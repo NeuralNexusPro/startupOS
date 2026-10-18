@@ -475,6 +475,7 @@ export class ApprovedProjectTaskCreationService {
       const existing = await this.dependencies.executionPort.findByTask(
         input.projectId,
         taskReceipt.task.taskId,
+        taskReceipt.parentSessionId,
       );
       run = existing ?? await this.dependencies.executionPort.start({
         projectId: input.projectId,

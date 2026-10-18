@@ -393,6 +393,7 @@ export interface CollaborationExecutionPort {
   findByTask(
     projectId: string,
     parentTaskId: string,
+    parentSessionId?: string,
   ): Promise<CollaborationRunSnapshot | null>;
   pause(runId: string): Promise<CollaborationRunSnapshot>;
   resume(runId: string): Promise<CollaborationRunSnapshot>;

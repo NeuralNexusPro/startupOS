@@ -81,6 +81,29 @@ describe('contract-bound collaboration execution', () => {
     ).resolves.toBeNull();
   });
 
+  it('scopes session-local Task IDs by their parent session', async () => {
+    const { contract, execution } = await setup();
+    const first = await execution.start({
+      ...startInput(contract),
+      parentSessionId: 'task-session-1',
+    });
+    const second = await execution.start({
+      ...startInput(contract),
+      parentSessionId: 'task-session-2',
+    });
+
+    await expect(execution.findByTask(
+      contract.projectId,
+      'task-1',
+      'task-session-1',
+    )).resolves.toEqual(first);
+    await expect(execution.findByTask(
+      contract.projectId,
+      'task-1',
+      'task-session-2',
+    )).resolves.toEqual(second);
+  });
+
   it('rejects revoked and hash-mismatched contracts before creating a run', async () => {
     const { contract, contractStore, execution } = await setup();
     await contractStore.revoke(

@@ -187,9 +187,11 @@ export class CollaborationExecutionStore implements CollaborationExecutionPort {
   async findByTask(
     projectId: string,
     parentTaskId: string,
+    parentSessionId?: string,
   ): Promise<CollaborationRunSnapshot | null> {
     identifier(projectId, 'projectId');
     identifier(parentTaskId, 'parentTaskId');
+    if (parentSessionId) identifier(parentSessionId, 'parentSessionId');
     let files: Dirent[];
     try {
       files = await fs.readdir(
@@ -216,7 +218,10 @@ export class CollaborationExecutionStore implements CollaborationExecutionPort {
           throw new Error('Collaboration run crossed project scope');
         }
         assertIntegrity(await this.contractPort.verifyIntegrity(snapshot.contract));
-        return snapshot.binding.parentTaskId === parentTaskId ? snapshot : null;
+        return snapshot.binding.parentTaskId === parentTaskId
+          && (!parentSessionId || snapshot.binding.parentSessionId === parentSessionId)
+          ? snapshot
+          : null;
       }));
     const runs = matches.filter(
       (snapshot): snapshot is CollaborationRunSnapshot => Boolean(snapshot),

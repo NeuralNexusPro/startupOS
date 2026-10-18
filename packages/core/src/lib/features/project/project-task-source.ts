@@ -223,6 +223,7 @@ export class RuntimeProjectTaskSource implements ProjectTaskSource {
     }
     return this.record(
       input.projectId,
+      record.sessionId,
       Date.parse(record.record.updatedAt),
       updated.projection,
       updated.execution,
@@ -289,6 +290,7 @@ export class RuntimeProjectTaskSource implements ProjectTaskSource {
     }
     return this.record(
       input.projectId,
+      record.sessionId,
       Date.parse(updated.execution.updatedAt),
       updated.projection,
       updated.execution,
@@ -315,6 +317,7 @@ export class RuntimeProjectTaskSource implements ProjectTaskSource {
         session,
         record: await this.record(
           projectId,
+          session.sessionId,
           session.updatedAt,
           projection,
           runtimeExecution(session, liveSnapshot),
@@ -351,6 +354,7 @@ export class RuntimeProjectTaskSource implements ProjectTaskSource {
         record.record.runId,
         record.record.projectId,
         record.record.taskId,
+        record.sessionId,
       );
       const result = await this.recovery.recover({
         sessionId: record.sessionId,
@@ -366,6 +370,7 @@ export class RuntimeProjectTaskSource implements ProjectTaskSource {
         record.record.runId,
         record.record.projectId,
         record.record.taskId,
+        record.sessionId,
       );
       this.assertSameBinding(before, after, record.record.taskId);
 
@@ -438,9 +443,10 @@ export class RuntimeProjectTaskSource implements ProjectTaskSource {
     runId: string | undefined,
     projectId: string,
     taskId: string,
+    parentSessionId: string,
   ): Promise<SolutionTaskBinding | null> {
     if (!runId) {
-      const unexpected = await this.runs.findByTask(projectId, taskId);
+      const unexpected = await this.runs.findByTask(projectId, taskId, parentSessionId);
       return unexpected?.binding ?? null;
     }
     if (!this.runs.inspect) throw new ProjectTaskSourceUnavailableError();
@@ -472,6 +478,7 @@ export class RuntimeProjectTaskSource implements ProjectTaskSource {
 
   private async record(
     projectId: string,
+    parentSessionId: string,
     updatedAt: number,
     task: NonNullable<AgentTaskRuntimeSnapshotV1['projection']>,
     execution: AgentTaskExecutionStateV1,
@@ -479,7 +486,7 @@ export class RuntimeProjectTaskSource implements ProjectTaskSource {
   ): Promise<ProjectTaskRecord> {
     let run: CollaborationRunSnapshot | null;
     try {
-      run = await this.runs.findByTask(projectId, task.taskId);
+      run = await this.runs.findByTask(projectId, task.taskId, parentSessionId);
     } catch (error) {
       throw new ProjectTaskSourceUnavailableError(error);
     }
