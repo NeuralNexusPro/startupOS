@@ -236,6 +236,50 @@ describe('readSupervisorTaskBoard', () => {
     expect(projection.projects[0]?.tasks.find(({ id }) => id === 'downstream-work')?.status).toBe('planned');
   });
 
+  it('hides downstream WorkItems that never started after their Run terminates', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'originos-contract-board-terminal-'));
+    const project = path.join(root, 'projects', 'proj-a');
+    const runs = path.join(project, 'collaboration-runs');
+    await mkdir(runs, { recursive: true });
+    await writeFile(path.join(project, 'project.json'), JSON.stringify({ id: 'proj-a', name: '采购项目' }));
+    const contractBody = body();
+    const binding = {
+      parentTaskId: 'project-task-1', parentStepId: 'step-1', runId: 'run-1',
+      solutionId: contractBody.solutionId, solutionVersion: contractBody.solutionVersion,
+      executionContractId: contractBody.contractId, contractHash: contractBody.contractHash,
+      taskRevision: 1,
+    };
+    const failed: CollaborationRunSnapshot['workItems'][number] = {
+      id: 'failed-root', binding, designNodeId: contractBody.topology.nodes[0]!.id,
+      assignedAgentId: contractBody.agents[0]!.agentId, skillRefs: [], dependsOn: [],
+      inputRefs: [], outputRefs: [], status: 'failed', revision: 1, leaseEpoch: 1,
+      attempts: [{
+        attemptId: 'attempt-1', leaseEpoch: 1, requestId: 'request-1',
+        payloadHash: 'sha256:request-1', status: 'failed',
+        createdAt: '2026-10-13T00:00:00.000Z', updatedAt: '2026-10-13T00:01:00.000Z',
+        reason: 'MAX_DURATION_EXCEEDED',
+      }],
+    };
+    const downstream = {
+      ...failed,
+      id: 'never-started',
+      status: 'pending' as const,
+      dependsOn: ['failed-root'],
+      attempts: [],
+    };
+    const snapshot: CollaborationRunSnapshot = {
+      runId: binding.runId, projectId: 'proj-a', binding, contract: contractBody,
+      status: 'running', terminalStatus: 'failed', failureReason: 'MAX_DURATION_EXCEEDED',
+      revision: 2, createdAt: '2026-10-13T00:00:00.000Z', updatedAt: '2026-10-13T00:01:00.000Z',
+      workItems: [failed, downstream],
+    };
+    await writeFile(path.join(runs, 'run-1.json'), JSON.stringify(snapshot));
+
+    const projection = await readSupervisorTaskBoard(root, 'proj-a');
+
+    expect(projection.projects[0]?.tasks.map(({ id }) => id)).toEqual(['failed-root']);
+  });
+
   it('keeps historical tasks from the event stream when the latest observation only contains the current run', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'originos-task-board-history-'));
     const project = path.join(root, 'projects', 'proj-a');

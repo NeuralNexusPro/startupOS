@@ -63,6 +63,9 @@ export async function executeSession(id: string): Promise<{ status: string; resu
 
   // 无全局目标时进入欢迎模式：发出欢迎消息，等待用户输入目标
   if (!session.globalGoal) {
+    if (session.status === "greeting") {
+      return { status: "greeting", result: null };
+    }
     session.status = "greeting";
     session.updatedAt = new Date().toISOString();
     await saveProjectSessions(session.projectId);

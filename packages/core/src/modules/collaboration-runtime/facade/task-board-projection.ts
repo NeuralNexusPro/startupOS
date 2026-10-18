@@ -485,10 +485,13 @@ async function contractRunTasks(
     if (!run || run.projectId !== projectId || !Array.isArray(run.workItems)) {
       return [];
     }
+    const visibleItems = run.terminalStatus
+      ? run.workItems.filter((item) => item.attempts.length > 0 || item.status === "completed")
+      : run.workItems;
     const completedIds = new Set(
       run.workItems.filter(({ status }) => status === "completed").map(({ id }) => id),
     );
-    return run.workItems.map((item: CollaborationRunSnapshot["workItems"][number]): SupervisorTaskBoardTask => {
+    return visibleItems.map((item: CollaborationRunSnapshot["workItems"][number]): SupervisorTaskBoardTask => {
       const collaborationSession = collaborationSessionByRunId.get(run.runId);
       const attempt = item.attempts.at(-1);
       const description = contractTaskDescription(run, item.designNodeId);

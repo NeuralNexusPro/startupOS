@@ -89,6 +89,23 @@ describe("createSession", () => {
     expect(session.config?.mode).toBe("workflow");
   });
 
+  it("reuses the latest empty greeting session for the same project", async () => {
+    const existing: CollaborationSession = {
+      id: "existing-greeting",
+      projectId: "proj-reuse-session",
+      status: "greeting",
+      createdAt: "2026-10-18T00:00:00.000Z",
+      updatedAt: "2026-10-18T00:01:00.000Z",
+      config: {},
+    };
+    sessions.set(existing.id, existing);
+
+    const reused = await createSession({ projectId: "reuse-session" }, stubEmitter);
+
+    expect(reused.id).toBe(existing.id);
+    expect(Array.from(sessions.values()).filter(({ projectId }) => projectId === existing.projectId)).toHaveLength(1);
+  });
+
   it("merges a new in-memory session without deleting persisted history", async () => {
     const historical: CollaborationSession = {
       id: "historical-session",

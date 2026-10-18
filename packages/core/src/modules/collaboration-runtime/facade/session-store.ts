@@ -251,6 +251,22 @@ function logRuntime(phase: string, data: Record<string, unknown>): void {
 
 export async function createSession(input: CreateSessionInput, emitter: EventEmitter, agentDefinitionParser?: import("../../../modules/collaboration-runtime/config").AgentDefinitionParser): Promise<CollaborationSession> {
   await loadPersistedSessions();
+  const projectId = input.projectId.startsWith("proj-") ? input.projectId : `proj-${input.projectId}`;
+  if (!input.globalGoal?.trim()) {
+    const reusable = Array.from(sessions.values())
+      .filter((session) => session.projectId === projectId
+        && !session.globalGoal
+        && (session.status === "created" || session.status === "greeting"))
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+    if (reusable) {
+      logRuntime("facade.session.reuse", {
+        sessionId: reusable.id,
+        projectId,
+        status: reusable.status,
+      });
+      return reusable;
+    }
+  }
   const id = generateId();
   const now = new Date().toISOString();
   const llmConfig = normalizeRuntimeLLMConfig(input.llmConfig)
@@ -263,9 +279,6 @@ export async function createSession(input: CreateSessionInput, emitter: EventEmi
     llmConfig: summarizeRuntimeLLMConfig(llmConfig),
     llmConfigSource: normalizeRuntimeLLMConfig(input.llmConfig) ? "request" : llmConfig ? "persisted" : "missing",
   });
-
-  // 规范化 projectId：统一使用带 proj- 前缀的格式，确保与文件系统路径一致
-  const projectId = input.projectId.startsWith("proj-") ? input.projectId : `proj-${input.projectId}`;
 
   const session: CollaborationSession = {
     id,
