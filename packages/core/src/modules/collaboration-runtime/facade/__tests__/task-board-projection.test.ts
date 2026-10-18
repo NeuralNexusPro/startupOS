@@ -189,6 +189,53 @@ describe('readSupervisorTaskBoard', () => {
     expect(tasks.every((task) => task.source === 'contract')).toBe(true);
   });
 
+  it('projects dependency-blocked WorkItems as planned instead of actionable pending tasks', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'originos-contract-board-planned-'));
+    const project = path.join(root, 'projects', 'proj-a');
+    const runs = path.join(project, 'collaboration-runs');
+    await mkdir(runs, { recursive: true });
+    await writeFile(path.join(project, 'project.json'), JSON.stringify({ id: 'proj-a', name: '采购项目' }));
+
+    const contractBody = body();
+    const binding = {
+      parentTaskId: 'project-task-1', parentStepId: 'step-1', runId: 'run-1',
+      solutionId: contractBody.solutionId, solutionVersion: contractBody.solutionVersion,
+      executionContractId: contractBody.contractId, contractHash: contractBody.contractHash,
+      taskRevision: 1,
+    };
+    const workItem = (id: string, dependsOn: string[]) => ({
+      id,
+      binding,
+      designNodeId: contractBody.topology.nodes[0]!.id,
+      assignedAgentId: contractBody.agents[0]!.agentId,
+      skillRefs: [],
+      dependsOn,
+      inputRefs: [],
+      outputRefs: [],
+      status: 'pending' as const,
+      revision: 0,
+      leaseEpoch: 0,
+      attempts: [],
+    });
+    const snapshot: CollaborationRunSnapshot = {
+      runId: binding.runId,
+      projectId: 'proj-a',
+      binding,
+      contract: contractBody,
+      status: 'running',
+      revision: 1,
+      createdAt: '2026-10-13T00:00:00.000Z',
+      updatedAt: '2026-10-13T00:00:00.000Z',
+      workItems: [workItem('root-work', []), workItem('downstream-work', ['root-work'])],
+    };
+    await writeFile(path.join(runs, 'run-1.json'), JSON.stringify(snapshot));
+
+    const projection = await readSupervisorTaskBoard(root, 'proj-a');
+
+    expect(projection.projects[0]?.tasks.find(({ id }) => id === 'root-work')?.status).toBe('pending');
+    expect(projection.projects[0]?.tasks.find(({ id }) => id === 'downstream-work')?.status).toBe('planned');
+  });
+
   it('keeps historical tasks from the event stream when the latest observation only contains the current run', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'originos-task-board-history-'));
     const project = path.join(root, 'projects', 'proj-a');

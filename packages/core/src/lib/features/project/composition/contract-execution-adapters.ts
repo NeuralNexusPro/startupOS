@@ -66,6 +66,9 @@ export class CanonicalReadiness implements WorkItemReadinessPort {
         ({ id }) => id === input.workItem.designNodeId,
       );
       if (!node) {throw new Error('CONTRACT_NODE_NOT_FOUND');}
+      const taskTemplate = input.run.contract.semanticContext.taskTemplates.find(
+        ({ designNodeId }) => designNodeId === node.id,
+      );
       const target = node.kind === 'agent'
         ? input.run.contract.agents.find(({ agentId }) => agentId === node.contractRef)
         : input.run.contract.skills.find(({ skillId }) => skillId === node.contractRef);
@@ -83,6 +86,7 @@ export class CanonicalReadiness implements WorkItemReadinessPort {
         await resolveTargetDirectory(this.dataRoot, {
           projectId: input.run.projectId,
           target: { kind: 'agent', targetId: node.contractRef, contract: agent },
+          taskTemplate,
         });
       } else {
         const skill = input.run.contract.skills.find(
@@ -92,6 +96,7 @@ export class CanonicalReadiness implements WorkItemReadinessPort {
         await resolveTargetDirectory(this.dataRoot, {
           projectId: input.run.projectId,
           target: { kind: 'skill', targetId: node.contractRef, contract: skill },
+          taskTemplate,
         });
       }
 

@@ -207,7 +207,7 @@ async function loadTargetSystemPrompt(
 
 export async function resolveTargetDirectory(
   dataRoot: string,
-  request: Pick<ContractBoundRuntimeRequest, 'projectId' | 'target'>,
+  request: Pick<ContractBoundRuntimeRequest, 'projectId' | 'target' | 'taskTemplate'>,
 ): Promise<string> {
   const targetId = request.target.targetId;
   assertIdentifier(request.projectId, 'projectId');
@@ -220,6 +220,10 @@ export async function resolveTargetDirectory(
       ]
     : [
         path.join(projectRoot, 'skills', targetId),
+        ...(request.taskTemplate?.candidateAgentIds ?? []).map((agentId) => {
+          assertIdentifier(agentId, 'candidateAgentId');
+          return path.join(projectRoot, 'agents', agentId, 'skills', targetId);
+        }),
         path.join(dataRoot, 'skills', targetId),
       ];
   const resolved = await firstExisting(candidates);

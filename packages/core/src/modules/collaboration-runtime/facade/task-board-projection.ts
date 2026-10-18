@@ -12,7 +12,7 @@ import type {
   WorkItemStatus,
 } from "./contract-execution-types";
 
-export type SupervisorTaskBoardStatus = WorkItemStatus;
+export type SupervisorTaskBoardStatus = WorkItemStatus | "planned";
 
 export interface SupervisorTaskAcceptance {
   mode: "user" | "role";
@@ -485,6 +485,9 @@ async function contractRunTasks(
     if (!run || run.projectId !== projectId || !Array.isArray(run.workItems)) {
       return [];
     }
+    const completedIds = new Set(
+      run.workItems.filter(({ status }) => status === "completed").map(({ id }) => id),
+    );
     return run.workItems.map((item: CollaborationRunSnapshot["workItems"][number]): SupervisorTaskBoardTask => {
       const collaborationSession = collaborationSessionByRunId.get(run.runId);
       const attempt = item.attempts.at(-1);
@@ -503,7 +506,10 @@ async function contractRunTasks(
         id: item.id,
         title: deriveTaskTitle(description),
         description,
-        status: item.status,
+        status: item.status === "pending"
+          && item.dependsOn.some((dependencyId) => !completedIds.has(dependencyId))
+          ? "planned"
+          : item.status,
         assignedTo: item.assignedAgentId,
         dependsOn: [...item.dependsOn],
         input: { refs: [...item.inputRefs] },
