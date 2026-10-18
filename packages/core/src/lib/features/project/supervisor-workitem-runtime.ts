@@ -146,7 +146,11 @@ function runnableItems(snapshot: CollaborationRunSnapshot) {
     .filter(({ status }) => status === 'completed')
     .map(({ id }) => id));
   return snapshot.workItems.filter((item) =>
-    (item.status === 'pending' || item.status === 'assigned')
+    (
+      item.status === 'pending'
+      || item.status === 'assigned'
+      || (item.status === 'blocked' && item.attempts.length < snapshot.contract.budget.maxAttempts)
+    )
     && item.dependsOn.every((dependency) => completed.has(dependency)));
 }
 

@@ -362,4 +362,58 @@ describe('ProjectSupervisorWorkItemRuntime', () => {
     expect(result.terminalStatus).toBe('completed');
     expect(maxInFlight).toBe(2);
   });
+
+  it('retries a blocked WorkItem on the next advance while contract attempts remain', async () => {
+    const frozen = contract();
+    const initial = run(frozen);
+    const blockedItem: CollaborationWorkItem = {
+      ...initial.workItems[0]!,
+      status: 'blocked',
+      revision: 1,
+      leaseEpoch: 1,
+      attempts: [{
+        attemptId: 'attempt-1',
+        leaseEpoch: 1,
+        requestId: 'request-1:work-item:node-1:attempt:1',
+        payloadHash: HASH,
+        status: 'blocked',
+        createdAt: '2026-10-16T00:00:00.000Z',
+        updatedAt: '2026-10-16T00:00:01.000Z',
+        reason: 'CONTRACT_TARGET_UNAVAILABLE',
+      }],
+    };
+    const blocked = { ...initial, workItems: [blockedItem] };
+    const completed = {
+      ...blocked,
+      terminalStatus: 'completed' as const,
+      workItems: [{ ...blockedItem, status: 'completed' as const }],
+    };
+    const executeWorkItem = vi.fn(async () => completed);
+    const runtime = new ProjectSupervisorWorkItemRuntime({
+      contractCatalog: { listProject: async () => [] },
+      contractPort: { verifyIntegrity: async () => ({ valid: true }) },
+      taskCreation: { create: vi.fn() },
+      executionPort: {
+        recover: vi.fn(async () => blocked),
+        inspect: vi.fn(async () => completed),
+        executeWorkItem,
+      },
+    });
+    const creation = receipt(blocked);
+    const supervisorBinding = {
+      projectId: 'project-1', collaborationSessionId: 'cs-1', requestId: 'request-1',
+      parentTaskId: 'task-1', parentStepId: 'step-1', parentSessionId: 'session-1',
+      runId: 'run-1', solutionId: 'solution-1', solutionVersion: '1',
+      contractId: 'contract-1', contractHash: HASH, taskTemplateId: 'template-1',
+      snapshot: creation.run,
+    };
+
+    const result = await runtime.advance({ binding: supervisorBinding, requestId: 'request-1' });
+
+    expect(result.terminalStatus).toBe('completed');
+    expect(executeWorkItem).toHaveBeenCalledWith(expect.objectContaining({
+      workItemId: 'wi-1',
+      requestId: 'request-1:work-item:node-1:attempt:2',
+    }));
+  });
 });
