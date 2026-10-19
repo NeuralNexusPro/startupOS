@@ -205,6 +205,10 @@ export interface ProjectTaskCreationServiceDependencies {
   readonly factPort: ProjectTaskCreationFactPort;
   readonly taskPort: ApprovedProjectTaskPort;
   readonly executionPort: Pick<CollaborationExecutionPort, 'start' | 'findByTask'>;
+  /** Exact verifier implementations installed in this runtime composition. */
+  readonly supportedVerifierRefs: readonly string[];
+  /** Exact evidence schema implementations installed in this runtime composition. */
+  readonly supportedEvidenceSchemaRefs: readonly string[];
   readonly mutationLock?: CollaborationMutationLockPort;
   readonly clock?: () => Date;
   readonly operationStore?: ProjectTaskCreationOperationStore;
@@ -574,6 +578,26 @@ export class ApprovedProjectTaskCreationService {
       '返回方案设计并重新发布完整契约。',
       'contractHash',
     ));
+    const supportedVerifierRefs = new Set(this.dependencies.supportedVerifierRefs);
+    const supportedEvidenceSchemaRefs = new Set(
+      this.dependencies.supportedEvidenceSchemaRefs,
+    );
+    for (const policy of contract.verification) {
+      if (!supportedVerifierRefs.has(policy.verifierRef)) gaps.push(gap(
+        'EXECUTION_VERIFIER_UNAVAILABLE',
+        `执行环境未安装验证器 ${policy.verifierRef}。`,
+        '在方案中绑定已安装的版本化验证器后发布新版本。',
+        'verification.verifierRef',
+        policy.verifierRef,
+      ));
+      if (!supportedEvidenceSchemaRefs.has(policy.evidenceSchemaRef)) gaps.push(gap(
+        'EXECUTION_EVIDENCE_SCHEMA_UNAVAILABLE',
+        `执行环境未安装证据结构 ${policy.evidenceSchemaRef}。`,
+        '在方案中绑定已安装的版本化证据结构后发布新版本。',
+        'verification.evidenceSchemaRef',
+        policy.evidenceSchemaRef,
+      ));
+    }
     const template = contract.semanticContext.taskTemplates.find(
       ({ id }) => id === input.taskTemplateId,
     );

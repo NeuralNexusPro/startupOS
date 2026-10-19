@@ -257,6 +257,8 @@ async function harness(options: {
       start,
       findByTask: vi.fn(async () => existingRun),
     },
+    supportedVerifierRefs: ['originos.artifact-output@1.0.0'],
+    supportedEvidenceSchemaRefs: ['originos.artifact-evidence@1.0.0'],
     clock: () => now,
   });
   return { root, published, taskPort, start, queryFacts, service, setRun: (run: CollaborationRunSnapshot) => { existingRun = run; } };
@@ -341,6 +343,28 @@ describe('ApprovedProjectTaskCreationService', () => {
       .rejects.toMatchObject({ code: 'ENOENT' });
     await expect(fs.access(path.join(test.root, '.collaboration-locks')))
       .rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('rejects verifier policies that the production runtime cannot resolve', async () => {
+    const source = contract();
+    source.verification = [{
+      ...source.verification[0]!,
+      verifierRef: 'trend-record-verifier',
+      evidenceSchemaRef: 'trend-record-evidence-v1',
+    }];
+    const test = await harness({ published: { contract: source } });
+
+    const result = await test.service.create(input());
+
+    expect(result).toMatchObject({
+      ok: false,
+      gaps: expect.arrayContaining([
+        expect.objectContaining({ code: 'EXECUTION_VERIFIER_UNAVAILABLE' }),
+        expect.objectContaining({ code: 'EXECUTION_EVIDENCE_SCHEMA_UNAVAILABLE' }),
+      ]),
+    });
+    expect(test.taskPort.create).not.toHaveBeenCalled();
+    expect(test.start).not.toHaveBeenCalled();
   });
 
   it('does not require a semantic input that the selected template itself produces', async () => {

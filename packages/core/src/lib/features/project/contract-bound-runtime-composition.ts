@@ -43,6 +43,10 @@ import { ContractBoundAgentSkillWorker } from '../agent/server';
 
 import type { AgentManager } from '../../integrations/pi-agent/agent-manager';
 import type { AgentSessionService } from '../agent';
+import {
+  ORIGINOS_ARTIFACT_EVIDENCE_SCHEMA_REF,
+  ORIGINOS_ARTIFACT_VERIFIER_REF,
+} from './composition/contract-runtime-types';
 import type {
   ProjectContractRuntimeCompositionOptions,
   ProjectContractRuntimeComposition,
@@ -114,6 +118,14 @@ export function createProjectContractRuntimeComposition(
     factPort: osdk,
     taskPort: new RuntimeApprovedProjectTaskPort(options.host, taskBoard),
     executionPort,
+    supportedVerifierRefs: [
+      ORIGINOS_ARTIFACT_VERIFIER_REF,
+      ...(options.additionalVerifiers ?? []).map(({ ref }) => ref),
+    ],
+    supportedEvidenceSchemaRefs: [
+      ORIGINOS_ARTIFACT_EVIDENCE_SCHEMA_REF,
+      ...(options.additionalEvidenceSchemas ?? []).map(({ ref }) => ref),
+    ],
   });
   const supervisorWorkItems = new ProjectSupervisorWorkItemRuntime({
     contractCatalog: contractStore,

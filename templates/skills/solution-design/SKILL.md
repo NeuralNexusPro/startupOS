@@ -237,7 +237,7 @@ Ask: "Are the divisions reasonable? Any missing scenarios?"
 - 保留 id/name/code/description/capability/triggerType/dependsOn/skillFileOutline 等展示信息。`ontologyObjects` 使用 `Record<string,string[]>`；旧 string[] 和 inputContract/outputContract/sopIO 仅作兼容展示，不是执行依据。
 - 字段覆盖由同版本 FactType 的 property schema 表达；若缺少合适 FactType，报告缺口并回到本体设计，不拼造字段或自动迁移。
 
-可执行格式样本：[canonical-example](references/canonical-example/README.md)。其中 IDs、权限、预算与 verifier 仅是订单示例，不得复制为其他项目的默认值。
+可执行格式样本：[canonical-example](references/canonical-example/README.md)。其中业务 IDs、权限与预算仅是订单示例，不得复制为其他项目的默认值。当前生产运行时的每个验证策略必须精确绑定内置 `originos.artifact-output@1.0.0` verifier 与 `originos.artifact-evidence@1.0.0` evidence schema；不得按节点名称臆造 verifier/schema 引用。
 
 ### Stage 2.6: SOP Data Flow Validation
 
