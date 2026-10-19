@@ -818,13 +818,14 @@ export const MultiAgentLauncher: React.FC<MultiAgentLauncherProps> = ({
           ))}
 
           {/* Greeting / completed input area — hidden when HITL card is present */}
-          {(isGreeting || isRunning || phase === "completed") && !isAwaitingHitl && (
+          {(isGreeting || isRunning || phase === "completed" || phase === "error") && !isAwaitingHitl && (
             <ChatInputBar
               onSubmit={(msg) => { void submitReply(msg); }}
               disabled={isLaunching || pendingUserMessage !== null}
               placeholder={
                 isGreeting ? "输入协作目标，按 Enter 发送…"
                 : phase === "completed" ? "继续提问或发起新任务…"
+                : phase === "error" ? "修正后重试或发起新任务…"
                 : "回复 Supervisor…"
               }
               onUpload={sessionId ? handleUpload : undefined}
