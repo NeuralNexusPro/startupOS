@@ -12,6 +12,7 @@ import type {
 } from '../../../../modules/collaboration-runtime/facade';
 import type {
   AgentTaskProjectMetadataMutationReceiptV1,
+  AgentTaskProjectionV1,
   AgentTaskRuntimeSnapshotV1,
 } from '../../../integrations/pi-agent/task-runtime';
 import type {
@@ -38,6 +39,43 @@ export function taskCreationSessionId(projectId: string, requestId: string): str
     .slice(0, 32)}`;
 }
 
+function resolveParentStepId(projection: AgentTaskProjectionV1): string {
+  const current = projection.currentStep;
+  const selected = current
+    ? projection.steps.find((step) => step.id === current)
+      ?? projection.steps.find((step) => step.text === current)
+    : undefined;
+  const parentStepId = selected?.id
+    ?? projection.steps.find((step) => step.status === 'active')?.id
+    ?? projection.steps[0]?.id;
+  if (!parentStepId) {throw new Error('APPROVED_TASK_STEP_MISSING');}
+  return parentStepId;
+}
+
+function resolveEvidenceStepId(
+  projection: AgentTaskProjectionV1,
+  boundStepId: string,
+): string {
+  if (projection.steps.some((step) => step.id === boundStepId)) {
+    return boundStepId;
+  }
+  const descendants = projection.steps.filter((step) =>
+    step.id.startsWith(`${boundStepId}.`)
+  );
+  if (descendants.length === 0) {
+    throw new Error('PROJECT_TASK_STEP_SCOPE_MISMATCH');
+  }
+  const current = projection.currentStep;
+  const selected = current
+    ? descendants.find((step) => step.id === current)
+      ?? descendants.find((step) => step.text === current)
+    : undefined;
+  return selected?.id
+    ?? descendants.find((step) => step.status === 'active')?.id
+    ?? descendants.find((step) => step.status === 'pending')?.id
+    ?? descendants.at(-1)!.id;
+}
+
 export class RuntimeApprovedProjectTaskPort implements ApprovedProjectTaskPort {
   constructor(
     private readonly host: ProjectContractRuntimeHostCapabilities,
@@ -56,8 +94,7 @@ export class RuntimeApprovedProjectTaskPort implements ApprovedProjectTaskPort {
       return null;
     }
     const projection = session.taskRuntime.execution.projection;
-    const parentStepId = projection.currentStep ?? projection.steps[0]?.id;
-    if (!parentStepId) {throw new Error('APPROVED_TASK_STEP_MISSING');}
+    const parentStepId = resolveParentStepId(projection);
     return {
       task: await this.taskBoard.getProjectTask(projectId, projection.taskId),
       parentStepId,
@@ -103,10 +140,24 @@ export class RuntimeApprovedProjectTaskPort implements ApprovedProjectTaskPort {
     if (!snapshot.projection || snapshot.execution.status === 'failed') {
       throw new Error(snapshot.execution.lastError?.message ?? 'APPROVED_TASK_CREATION_FAILED');
     }
-    const parentStepId = snapshot.projection.currentStep ?? snapshot.projection.steps[0]?.id;
-    if (!parentStepId) {throw new Error('APPROVED_TASK_STEP_MISSING');}
+    // createTask() normally starts the Pi Task continuation loop.  In the
+    // contract-bound path that loop must not execute the objective: the
+    // selected WorkItem worker is the sole execution authority.  Pause the
+    // newly-created parent task immediately and let evidence/outcome receipts
+    // advance it through the project-owned adapters.
+    const frozen = await runtime.controlTask({
+      version: 1,
+      requestId: `${input.requestId}:freeze`,
+      sessionId,
+      action: 'stop',
+      expectedRevision: snapshot.projection.revision,
+      expectedCursor: snapshot.projection.cursor,
+      bridgeEpoch: snapshot.execution.bridgeEpoch,
+    });
+    if (!frozen.projection) {throw new Error('APPROVED_TASK_FREEZE_FAILED');}
+    const parentStepId = resolveParentStepId(frozen.projection);
     return {
-      task: await this.taskBoard.getProjectTask(input.projectId, snapshot.projection.taskId),
+      task: await this.taskBoard.getProjectTask(input.projectId, frozen.projection.taskId),
       parentStepId,
       parentSessionId: sessionId,
     };
@@ -136,7 +187,24 @@ export function createProjectEvidenceSink(
           if (!updated) {throw new Error('PROJECT_TASK_SESSION_UNAVAILABLE');}
         },
       });
-      return createAgentTaskEvidenceSink(runtime).record(input);
+      const projection = runtime.getSnapshot().projection;
+      if (!projection || projection.taskId !== taskId) {
+        throw new Error('PROJECT_TASK_RUNTIME_UNAVAILABLE');
+      }
+      const evidenceStepId = resolveEvidenceStepId(
+        projection,
+        input.workItem.binding.parentStepId,
+      );
+      return createAgentTaskEvidenceSink(runtime).record({
+        ...input,
+        workItem: {
+          ...input.workItem,
+          binding: {
+            ...input.workItem.binding,
+            parentStepId: evidenceStepId,
+          },
+        },
+      });
     },
   };
 }

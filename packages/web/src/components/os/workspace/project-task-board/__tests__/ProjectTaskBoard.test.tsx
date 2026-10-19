@@ -191,6 +191,30 @@ describe('ProjectTaskBoard', () => {
     });
   });
 
+  it('shows the formal WorkItem failure stage, reason and recovery action', async () => {
+    service.getProjectTask.mockResolvedValue({
+      ok: true,
+      data: {
+        ...detail,
+        workItemFailures: [{
+          workItemId: 'work-1',
+          agentId: 'writer',
+          stage: 'verifier',
+          code: 'VERIFIER_FAILED',
+          reason: 'VERIFIER_FAILED:missing-report',
+          recoveryAction: 'retry',
+        }],
+      },
+    });
+    render(<ProjectTaskBoard projectId="project-1" />);
+
+    fireEvent.click(await screen.findByText('生成报告'));
+
+    expect(await screen.findByText('work-1 · verifier · VERIFIER_FAILED')).toBeInTheDocument();
+    expect(screen.getByText('VERIFIER_FAILED:missing-report')).toBeInTheDocument();
+    expect(screen.getByText('恢复动作：retry')).toBeInTheDocument();
+  });
+
   it('merges a higher authoritative revision without disturbing filter focus and releases on unmount', async () => {
     const revised = { ...detail, revision: 4, progress: 70, currentStep: '校对' } as ProjectTaskDetail;
     service.getProjectTask.mockResolvedValue({ ok: true, data: revised });

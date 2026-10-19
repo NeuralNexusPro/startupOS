@@ -44,6 +44,8 @@ export async function POST(
     }
 
     const { sendMessageToSupervisor } = await import("@originos/core/modules/collaboration-runtime/facade");
+    const { getProjectContractRuntimeComposition } = await import('@/services/ontologyCrossPackageService');
+    getProjectContractRuntimeComposition();
     const result = await sendMessageToSupervisor(params.id, message, workerId, llmConfig);
     if (!result.success) {
       return NextResponse.json(

@@ -105,7 +105,7 @@ test('mutation wrapper 使用真实 extension、actual entry persistence 与 can
   const planTool = host.getAgentTools().find((tool) => tool.name === 'task_plan');
   const result = await planTool.execute('agent-tool-plan-1', taskPlanInput());
 
-  assert.equal(result.isError, false);
+  assert.equal(result.isError, false, JSON.stringify(result));
   assert.equal(result.details.taskRuntime.taskId, 'T1');
   assert.equal(host.getScope().revision, 1);
   assert.equal(host.getSnapshot().state.activeTaskId, 'T1');
@@ -169,6 +169,38 @@ test('task_decompose mutation wrapper accepts a valid atomic child plan', async 
   });
   assert.equal(result.isError, false);
   assert.equal(host.getScope().revision, 2);
+  host.invalidate();
+});
+
+test('task_evidence mutation returns the canonical evidence ID instead of only the call ID', async () => {
+  const { host } = await createHost();
+  const planTool = host.getAgentTools().find((tool) => tool.name === 'task_plan');
+  const plan = taskPlanInput();
+  plan.plan_steps[0].allowedActions = ['task_evidence'];
+  await planTool.execute('evidence-plan-1', plan);
+  const evidenceTool = host.getAgentTools().find((tool) => tool.name === 'task_evidence');
+
+  const result = await evidenceTool.execute('call_evidence_1', {
+    task_id: 'T1',
+    type: 'test',
+    level: 'unit_test',
+    summary: 'Session host tests pass',
+    passed: 'true',
+    references: ['task-session-host.test.js'],
+    criterion_ids: ['T1-AC1'],
+    step_ids: ['T1-S1'],
+    quality: {
+      source: 'node:test',
+      reproducible: true,
+      verifier: 'tool',
+      artifactRefs: ['task-session-host.test.js'],
+      observedOutput: 'tests passed',
+    },
+  });
+
+  assert.equal(result.isError, false, JSON.stringify(result));
+  assert.match(result.content[0].text, /Canonical evidence ID: E1\./);
+  assert.match(result.content[0].text, /never use the call_\.\.\. request ID as evidence/);
   host.invalidate();
 });
 

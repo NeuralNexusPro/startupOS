@@ -32,6 +32,13 @@ import {
   previewLegacyOntologyFile,
   type LegacyOntologySourceKind,
 } from '@originos/core/lib/features/ontology';
+import {
+  SolutionOutputAcceptanceError,
+  SolutionOutputAcceptanceService,
+  type SaveSolutionOutputAcceptanceInput,
+  type SolutionOutputAcceptanceSnapshot,
+  type SolutionVersionRef,
+} from '@originos/core/lib/features/solution';
 import { getDataRoot, getTemplatesDir } from '@originos/core/lib/paths';
 import {
   PROJECT_DEFAULT_SKILLS,
@@ -54,6 +61,8 @@ const legacySourcePaths: Record<LegacyOntologySourceKind, (projectId: string) =>
 };
 
 export class ProjectService {
+  private readonly outputAcceptance = new SolutionOutputAcceptanceService();
+
   constructor() {
     this.registerHandlers();
   }
@@ -621,6 +630,50 @@ export class ProjectService {
     );
 
     ipcMain.handle(
+      IPC_CHANNELS.PROJECT_SOLUTION_ACCEPTANCE_GET,
+      async (
+        _event,
+        request: SolutionVersionRef
+      ): Promise<IpcResponse<SolutionOutputAcceptanceSnapshot>> => {
+        try {
+          const snapshot = await this.outputAcceptance.load(request);
+          if (!snapshot) {
+            return {
+              success: false,
+              error: { code: 'DESIGN_NOT_FOUND', message: '未找到方案版本。' },
+              timestamp: new Date().toISOString(),
+            };
+          }
+          return {
+            success: true,
+            data: snapshot,
+            timestamp: new Date().toISOString(),
+          };
+        } catch (error) {
+          return this.toSolutionAcceptanceError(error);
+        }
+      }
+    );
+
+    ipcMain.handle(
+      IPC_CHANNELS.PROJECT_SOLUTION_ACCEPTANCE_SAVE,
+      async (
+        _event,
+        request: SaveSolutionOutputAcceptanceInput
+      ): Promise<IpcResponse<SolutionOutputAcceptanceSnapshot>> => {
+        try {
+          return {
+            success: true,
+            data: await this.outputAcceptance.save(request),
+            timestamp: new Date().toISOString(),
+          };
+        } catch (error) {
+          return this.toSolutionAcceptanceError(error);
+        }
+      }
+    );
+
+    ipcMain.handle(
       IPC_CHANNELS.PROJECT_EXPORT,
       async (_event, request: { projectId: string }): Promise<IpcResponse<unknown>> => {
         try {
@@ -763,6 +816,21 @@ export class ProjectService {
       error: {
         code: 'INTERNAL_ERROR',
         message: error instanceof Error ? error.message : 'Unknown error',
+      },
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  private toSolutionAcceptanceError<T>(error: unknown): IpcResponse<T> {
+    console.error('[ProjectService] Solution output acceptance failed', error);
+    return {
+      success: false,
+      error: {
+        code:
+          error instanceof SolutionOutputAcceptanceError
+            ? error.code
+            : 'INTERNAL_ERROR',
+        message: error instanceof Error ? error.message : '读取产出验收策略失败。',
       },
       timestamp: new Date().toISOString(),
     };

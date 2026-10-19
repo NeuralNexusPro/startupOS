@@ -26,7 +26,8 @@ interface ManifestAgent {
   name: string;
   domain?: string;
   businessDomain?: string; // 兼容 agents.json 的字段名
-  responsibility: string;
+  responsibility?: string;
+  description?: string;
   dataOperations?: Record<string, string[]>;
   skills?: string[];
 }
@@ -76,12 +77,13 @@ function parseAgents(agents: ManifestAgent[]): Record<string, AgentNode> {
   const result: Record<string, AgentNode> = {};
 
   for (const a of agents) {
-    const capabilities = extractCapabilities(a.responsibility);
+    const responsibility = a.responsibility ?? a.description ?? "";
+    const capabilities = extractCapabilities(responsibility);
     result[a.id] = {
       id: a.id,
       name: a.name,
       domain: a.domain ?? a.businessDomain ?? "",
-      responsibility: a.responsibility,
+      responsibility,
       capabilities,
       dataOperations: a.dataOperations ?? {},
       skills: a.skills ?? [],

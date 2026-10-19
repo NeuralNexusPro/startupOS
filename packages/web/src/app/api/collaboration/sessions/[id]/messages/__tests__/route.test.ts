@@ -2,9 +2,13 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const mockSendMessageToSupervisor = vi.fn();
+const mockGetProjectContractRuntimeComposition = vi.fn();
 
 vi.mock("@originos/core/modules/collaboration-runtime/facade", () => ({
   sendMessageToSupervisor: mockSendMessageToSupervisor,
+}));
+vi.mock('@/services/ontologyCrossPackageService', () => ({
+  getProjectContractRuntimeComposition: mockGetProjectContractRuntimeComposition,
 }));
 
 const { POST } = await import("../route");

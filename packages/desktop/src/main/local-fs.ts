@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain } from 'electron';
+import { BrowserWindow, ipcMain, shell } from 'electron';
 import fs from 'node:fs/promises';
 import { watch, type FSWatcher } from 'node:fs';
 import path from 'node:path';
@@ -69,6 +69,10 @@ export class LocalFileSystem {
       return this.deleteFile(filePath);
     });
 
+    ipcMain.handle(IPC_CHANNELS.FS_OPEN, async (_event, filePath: string) => {
+      return this.openFile(filePath);
+    });
+
     ipcMain.handle(IPC_CHANNELS.FS_WATCH, async (_event, filePath: string) => {
       this.watchPath(filePath);
       return true;
@@ -131,6 +135,12 @@ export class LocalFileSystem {
   async deleteFile(filePath: string): Promise<void> {
     const fullPath = this.assertAllowed(filePath);
     await fs.unlink(fullPath);
+  }
+
+  async openFile(filePath: string): Promise<void> {
+    const fullPath = this.assertAllowed(filePath);
+    const error = await shell.openPath(fullPath);
+    if (error) throw new Error(error);
   }
 
   private watchPath(targetPath: string): void {

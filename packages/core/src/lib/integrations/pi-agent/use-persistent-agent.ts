@@ -57,6 +57,27 @@ export interface LlmConfig {
   maxTokens?: number;
 }
 
+type ProjectAgentStartResult = Awaited<ReturnType<typeof startProjectAgent>>;
+
+interface ProjectAgentMountState {
+  leases: Set<symbol>;
+  startPromise?: Promise<ProjectAgentStartResult>;
+}
+
+// Electron main 中的 Project Agent 按 projectId 共享。React StrictMode 会在开发态
+// 执行 setup -> cleanup -> setup，因此不能用单个 Hook ref 判断是否真正卸载。
+// 这里用跨 Hook 实例的 lease 集合保护共享 Agent：只有最后一个窗口 lease
+// 释放后才停止 Agent，并且同一项目的重复挂载共用同一个启动 Promise。
+const projectAgentMounts = new Map<string, ProjectAgentMountState>();
+
+function acquireProjectAgentMount(projectId: string): { lease: symbol; state: ProjectAgentMountState } {
+  const state = projectAgentMounts.get(projectId) ?? { leases: new Set<symbol>() };
+  const lease = Symbol(projectId);
+  state.leases.add(lease);
+  projectAgentMounts.set(projectId, state);
+  return { lease, state };
+}
+
 export function usePersistentAgent(projectId: string, llmConfig?: LlmConfig): UsePersistentAgentState {
   const [isReady, setIsReady] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
@@ -65,11 +86,12 @@ export function usePersistentAgent(projectId: string, llmConfig?: LlmConfig): Us
   const [artifactVersion, setArtifactVersion] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
   const abortingRef = useRef(false); // 正在中止，等待服务端确认
-  const startedRef = useRef(false); // Prevent double-start from StrictMode
-  const initTimestamp = useRef(0);  // Unique ID per hook instance
   // React state updates are asynchronous. Keep a synchronous queue as the source
   // of truth so a second submit cannot race an in-flight prompt.
-  const pendingMessagesRef = useRef<string[]>([]);
+  // pendingMessagesRef 承载串行发送队列；displayUserMessage=false 的条目
+  // （如 triggerGreeting 的系统触发）不渲染用户气泡。
+  const pendingMessagesRef = useRef<Array<{ content: string; displayUserMessage: boolean }>>([]);
+  const greetingResolveRef = useRef<(() => void) | null>(null);
   const isSendingRef = useRef(false);
   const streamSchedulersRef = useRef(new Map<string, {
     content: string;
@@ -126,23 +148,32 @@ export function usePersistentAgent(projectId: string, llmConfig?: LlmConfig): Us
 
   // 启动 Agent（仅执行一次）
   useEffect(() => {
-    const instanceTs = Date.now();
     const streamSchedulers = streamSchedulersRef.current;
-    initTimestamp.current = instanceTs;
-    if (startedRef.current) return;
-    startedRef.current = true;
+    const { lease, state: mountState } = acquireProjectAgentMount(projectId);
+    let active = true;
 
-    const start = async () => {
-      try {
+    if (!mountState.startPromise) {
+      const startPromise = (async () => {
         // 1. 确保 Agent.md / Tool.md 存在
         await initializeProjectAgent(projectId);
 
         // 2. 启动持久化 Agent（读取 Agent.md）
-        const res = await startProjectAgent({
+        return startProjectAgent({
           projectId,
           sessionId: `project-${projectId}`,
           llmConfig,
         });
+      })();
+      mountState.startPromise = startPromise;
+      void startPromise.catch(() => {
+        if (mountState.startPromise === startPromise) {
+          mountState.startPromise = undefined;
+        }
+      });
+    }
+
+    void mountState.startPromise.then((res) => {
+        if (!active) return;
         if (res.success) {
           const restoredMessages = res.data?.messages
             ?.filter((message): message is typeof message & { role: 'user' | 'assistant' } => message.role === 'user' || message.role === 'assistant')
@@ -162,29 +193,27 @@ export function usePersistentAgent(projectId: string, llmConfig?: LlmConfig): Us
         } else {
           console.error('[usePersistentAgent] Failed to start agent:', res.error);
         }
-      } catch (e) {
+      }).catch((e) => {
+        if (!active) return;
         console.error('[usePersistentAgent] Error starting agent:', e);
-      }
-    };
-
-    start();
-
-    // 组件卸载时延迟停止 Agent，给 StrictMode 双重挂载留出时间
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    timer = setTimeout(() => {}, 0); // Placeholder
-    clearTimeout(timer);
+      });
 
     return () => {
+      active = false;
       for (const state of streamSchedulers.values()) {
         state.scheduler.cancel();
       }
       streamSchedulers.clear();
       console.log('[usePersistentAgent] Cleanup scheduled for project:', projectId);
-      timer = setTimeout(() => {
-        if (initTimestamp.current !== instanceTs) {
-          console.log('[usePersistentAgent] Cleanup cancelled: component remounted (StrictMode)');
+      setTimeout(() => {
+        const current = projectAgentMounts.get(projectId);
+        if (!current) return;
+        current.leases.delete(lease);
+        if (current.leases.size > 0) {
+          console.log('[usePersistentAgent] Cleanup retained shared agent:', projectId, { leases: current.leases.size });
           return;
         }
+        projectAgentMounts.delete(projectId);
         console.log('[usePersistentAgent] Cleanup: stopping agent for project:', projectId);
         stopProjectAgent({ projectId }).catch(() => {});
       }, 500);
@@ -239,16 +268,10 @@ export function usePersistentAgent(projectId: string, llmConfig?: LlmConfig): Us
     }
   }, [finalizeStream, getStreamState]);
 
-  const sendMessage = useCallback(async (content: string) => {
-    if (!isReady) return;
-
-    pendingMessagesRef.current.push(content);
-    if (isSendingRef.current) return;
-    isSendingRef.current = true;
-
+  const runSendQueue = useCallback(async () => {
     try {
-      let nextContent = pendingMessagesRef.current.shift();
-      while (nextContent !== undefined) {
+      let next = pendingMessagesRef.current.shift();
+      while (next !== undefined) {
         // 等待正在进行的 abort 完成（最多 3 秒）
         if (abortingRef.current) {
           const deadline = Date.now() + 3000;
@@ -257,12 +280,14 @@ export function usePersistentAgent(projectId: string, llmConfig?: LlmConfig): Us
           }
         }
 
-        const userMsg: AgentMessage = {
-          role: 'user',
-          content: nextContent,
-          timestamp: Date.now(),
-        };
-        setMessages(prev => [...prev, userMsg]);
+        if (next.displayUserMessage) {
+          const userMsg: AgentMessage = {
+            role: 'user',
+            content: next.content,
+            timestamp: Date.now(),
+          };
+          setMessages(prev => [...prev, userMsg]);
+        }
         setIsThinking(true);
         setToolExecutions([]);
 
@@ -276,11 +301,12 @@ export function usePersistentAgent(projectId: string, llmConfig?: LlmConfig): Us
         }]);
 
         abortRef.current = new AbortController();
+        const isGreeting = !next.displayUserMessage;
 
         try {
           const res = await sendProjectAgentMessage({
             projectId,
-            content: nextContent,
+            content: next.content,
             sessionId: `session-${projectId}`,
             llmConfig,
           }, {
@@ -294,6 +320,10 @@ export function usePersistentAgent(projectId: string, llmConfig?: LlmConfig): Us
                 ));
                 setIsThinking(false);
                 abortRef.current = null;
+                if (isGreeting) {
+                  greetingResolveRef.current?.();
+                  greetingResolveRef.current = null;
+                }
               });
             },
             onError: (error) => {
@@ -305,6 +335,10 @@ export function usePersistentAgent(projectId: string, llmConfig?: LlmConfig): Us
               ));
               setIsThinking(false);
               abortRef.current = null;
+              if (isGreeting) {
+                greetingResolveRef.current?.();
+                greetingResolveRef.current = null;
+              }
             },
           });
 
@@ -330,88 +364,45 @@ export function usePersistentAgent(projectId: string, llmConfig?: LlmConfig): Us
           }
           setIsThinking(false);
           abortRef.current = null;
+        } finally {
+          if (isGreeting) {
+            greetingResolveRef.current?.();
+            greetingResolveRef.current = null;
+          }
         }
 
-        nextContent = pendingMessagesRef.current.shift();
+        next = pendingMessagesRef.current.shift();
       }
     } finally {
       isSendingRef.current = false;
     }
-  }, [projectId, isReady, llmConfig, processStreamEvent, finalizeStream, cancelStream]);
+  }, [projectId, llmConfig, processStreamEvent, finalizeStream, cancelStream]);
+
+  const sendMessage = useCallback(async (content: string) => {
+    if (!isReady) return;
+
+    pendingMessagesRef.current.push({ content, displayUserMessage: true });
+    if (isSendingRef.current) return;
+    isSendingRef.current = true;
+    await runSendQueue();
+  }, [isReady, runSendQueue]);
 
   const triggerGreeting = useCallback(async () => {
     if (!isReady || isThinking) return;
 
-    // 不添加用户消息，直接触发 Agent 生成问候语
-    setIsThinking(true);
-    setToolExecutions([]);
-
-    const assistantId = `assistant-${Date.now()}`;
-    setMessages(prev => [...prev, {
-      id: assistantId,
-      role: 'assistant',
-      content: '',
-      timestamp: Date.now(),
-      isStreaming: true,
-    }]);
-
-    abortRef.current = new AbortController();
-
-    try {
-      const res = await sendProjectAgentMessage({
-        projectId,
-        content: '__SYSTEM_TRIGGER_GREETING__',
-        sessionId: `session-${projectId}`,
-        llmConfig,
-      }, {
-        onEvent: (event) => processStreamEvent(event, assistantId),
-        onDone: () => {
-          void finalizeStream(assistantId).then(() => {
-            setMessages(prev => prev.map(m =>
-              m.id === assistantId && m.isStreaming
-                ? { ...m, isStreaming: false }
-                : m
-            ));
-            setIsThinking(false);
-            abortRef.current = null;
-          });
-        },
-        onError: (error) => {
-          cancelStream(assistantId);
-          setMessages(prev => prev.map(m =>
-            m.id === assistantId
-              ? { ...m, content: m.content || `[错误: ${error.message}]`, isStreaming: false }
-              : m
-          ));
-          setIsThinking(false);
-          abortRef.current = null;
-        },
-      });
-
-      if (!res.success) {
-        cancelStream(assistantId);
-        setMessages(prev => prev.map(m =>
-          m.id === assistantId
-            ? { ...m, content: `[错误: ${res.error?.message || 'Unknown error'}]`, isStreaming: false }
-            : m
-        ));
-        setIsThinking(false);
-        abortRef.current = null;
-      }
-    } catch (e: unknown) {
-      cancelStream(assistantId);
-      if (e instanceof Error && e.name !== 'AbortError') {
-        console.error('[usePersistentAgent] Error triggering greeting:', e);
-        setMessages(prev => prev.map(m =>
-          m.id === assistantId
-            ? { ...m, content: '[加载失败，请重试]', isStreaming: false }
-            : m
-        ));
-      }
-      setIsThinking(false);
-      abortRef.current = null;
+    // 系统触发的问候与用户消息共用串行发送队列：不渲染用户气泡、不落用户
+    // 消息内容，但复用同一条发送链路和事件订阅，保证与用户消息竞争时不会
+    // 丢失回复窗口。
+    const greetingCompleted = new Promise<void>((resolve) => {
+      pendingMessagesRef.current.push({ content: '__SYSTEM_TRIGGER_GREETING__', displayUserMessage: false });
+      greetingResolveRef.current = resolve;
+    });
+    if (!isSendingRef.current) {
+      isSendingRef.current = true;
+      void runSendQueue();
     }
-  }, [projectId, isReady, isThinking, llmConfig, processStreamEvent, finalizeStream, cancelStream]);
+    await greetingCompleted;
+  }, [isReady, isThinking, runSendQueue]);
 
   const abort = useCallback(async () => {
     abortRef.current?.abort();

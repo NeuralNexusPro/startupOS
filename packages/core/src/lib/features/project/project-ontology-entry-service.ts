@@ -10,13 +10,36 @@ import type {
 import {
   CanonicalOntologyStore,
   migrateLegacyOntology,
+  previewLegacyOntologyFile,
   validateCanonicalOntology,
   type CanonicalOntology,
   type CanonicalValidationIssue,
   type LegacyMigrationOptions,
+  type LegacyMigrationPreview,
+  type LegacyOntologySourceKind,
 } from '../ontology';
 
 export type { ProjectCanonicalOntologySummary, ProjectOntologyEntryResult, ProjectOntologyRef };
+
+export interface ProjectLegacyOntologyMigrationPreview extends LegacyMigrationPreview {
+  sourceKind?: LegacyOntologySourceKind;
+}
+
+const LEGACY_SOURCE_KINDS: readonly LegacyOntologySourceKind[] = [
+  'ontology',
+  'ontology-model',
+  'business-model',
+];
+
+function legacySourcePath(projectId: string, sourceKind: LegacyOntologySourceKind): string {
+  if (sourceKind === 'business-model') {
+    return path.join('projects', projectId, 'output', 'business-model.json');
+  }
+  if (sourceKind === 'ontology-model') {
+    return path.join('projects', projectId, 'ontology', 'ontology-model.json');
+  }
+  return path.join('projects', projectId, 'ontology', 'ontology.json');
+}
 
 export class ProjectOntologyInitializationError extends Error {
   readonly code: 'INVALID_CANONICAL_ONTOLOGY';
@@ -47,6 +70,14 @@ function isOntologyRef(value: unknown): value is ProjectOntologyRef {
 }
 
 function summary(ontology: CanonicalOntology): ProjectCanonicalOntologySummary {
+  const conceptsWithFactTypes = new Set(ontology.factTypes.map((factType) => factType.conceptId));
+  const factTypeGapNames = ontology.concepts
+    .filter((concept) => !conceptsWithFactTypes.has(concept.id))
+    .map((concept) => concept.name);
+  const documentFieldGapNames = ontology.concepts
+    .filter((concept) => concept.semanticKind === 'document')
+    .filter((concept) => !ontology.properties.some((property) => property.conceptId === concept.id))
+    .map((concept) => concept.name);
   return {
     ontologyId: ontology.id,
     ontologyVersion: ontology.version,
@@ -55,10 +86,18 @@ function summary(ontology: CanonicalOntology): ProjectCanonicalOntologySummary {
     conceptCount: ontology.concepts.length,
     relationCount: ontology.relations.length,
     factTypeCount: ontology.factTypes.length,
+    factTypeGapCount: factTypeGapNames.length,
+    factTypeGapNames,
     actionCount: ontology.actions.length,
     ruleCount: ontology.rules.length,
     businessStateCount: ontology.businessStates.length,
     transitionCount: ontology.transitions.length,
+    ...(documentFieldGapNames.length > 0
+      ? {
+          documentFieldGapCount: documentFieldGapNames.length,
+          documentFieldGapNames,
+        }
+      : {}),
   };
 }
 
@@ -105,7 +144,9 @@ export class ProjectOntologyEntryService {
     if (ontologyRef) {
       const stored = await this.ontologyStore.readOntology(projectId);
       if (!stored || stored.data.id !== ontologyRef.ontologyId || stored.data.version !== ontologyRef.ontologyVersion) {
-        return { kind: 'not_found' };
+        return (await this.hasLegacySource(projectId))
+          ? { kind: 'legacy_migration_required', migrationAvailable: true }
+          : { kind: 'not_found' };
       }
       return { kind: 'canonical', ontology: summary(stored.data) };
     }
@@ -122,6 +163,57 @@ export class ProjectOntologyEntryService {
       ? metadata.metadata['ontologyRef']
       : undefined;
     return this.resolve(projectId, ontologyRef);
+  }
+
+  /**
+   * Read-only discovery for the user-triggered migration flow. A valid source
+   * is preferred, while diagnostics from an existing invalid source remain
+   * available when no candidate can be migrated.
+   */
+  async previewLegacyOntology(
+    projectId: string,
+    preferredSourceKind?: LegacyOntologySourceKind,
+  ): Promise<ProjectLegacyOntologyMigrationPreview> {
+    const sourceKinds = preferredSourceKind
+      ? [preferredSourceKind]
+      : LEGACY_SOURCE_KINDS;
+    let invalidPreview: ProjectLegacyOntologyMigrationPreview | undefined;
+
+    for (const sourceKind of sourceKinds) {
+      try {
+        const preview = await previewLegacyOntologyFile({
+          projectId,
+          sourceKind,
+          sourcePath: legacySourcePath(projectId, sourceKind),
+        }, this.dataRoot);
+        const candidate = { ...preview, sourceKind };
+        if (preview.ontology) return candidate;
+        invalidPreview ??= candidate;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+    }
+
+    return invalidPreview ?? {
+      ontology: null,
+      diagnostics: [{
+        severity: 'error',
+        code: 'LEGACY_SOURCE_NOT_FOUND',
+        path: '',
+        message: 'No supported legacy ontology source was found for this project',
+      }],
+    };
+  }
+
+  async migrateAndBindSelectedLegacyOntology(
+    projectId: string,
+    sourceKind: LegacyOntologySourceKind,
+  ): Promise<ProjectCanonicalOntologySummary> {
+    return this.migrateAndBindLegacyOntology({
+      projectId,
+      sourceKind,
+      sourcePath: legacySourcePath(projectId, sourceKind),
+    });
   }
 
   /**

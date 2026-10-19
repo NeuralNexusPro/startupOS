@@ -1,8 +1,11 @@
 // contract-bound 项目执行组合根——装配上述模块为唯一生产组合并 re-export 公共符号。
 
+import path from 'node:path';
+
 import {
   CollaborationExecutionStore,
   FileCollaborationMutationLock,
+  registerSupervisorWorkItemRuntimePort,
 } from '../../../modules/collaboration-runtime/facade';
 import { CanonicalOntologyOutcomeAdapter, VersionedContractVerifierRegistry } from '../../../modules/collaboration-runtime/integrations';
 import {
@@ -14,7 +17,7 @@ import {
   type ContractIntegrityResult,
   type SolutionExecutionContract,
 } from '../solution';
-import { AgentManagerContractRuntime } from './composition/contract-artifact-runtime';
+import { AgentManagerContractRuntime, parseArtifactRef } from './composition/contract-artifact-runtime';
 import {
   ArtifactOutcomeDrafts,
   ArtifactVerifier,
@@ -37,10 +40,15 @@ import {
 import { ApprovedProjectTaskCreationService } from './project-task-creation';
 import { RuntimeProjectTaskSource } from './project-task-source';
 import { ProjectTaskBoardService } from './task-board';
+import { ProjectSupervisorWorkItemRuntime } from './supervisor-workitem-runtime';
 import { ContractBoundAgentSkillWorker } from '../agent/server';
 
 import type { AgentManager } from '../../integrations/pi-agent/agent-manager';
 import type { AgentSessionService } from '../agent';
+import {
+  ORIGINOS_ARTIFACT_EVIDENCE_SCHEMA_REF,
+  ORIGINOS_ARTIFACT_VERIFIER_REF,
+} from './composition/contract-runtime-types';
 import type {
   ProjectContractRuntimeCompositionOptions,
   ProjectContractRuntimeComposition,
@@ -50,6 +58,26 @@ import type {
 export { ORIGINOS_ARTIFACT_VERIFIER_REF, ORIGINOS_ARTIFACT_EVIDENCE_SCHEMA_REF } from './composition/contract-runtime-types';
 export type { ProjectContractRuntimeHostCapabilities, ProjectContractRuntimeCompositionOptions, ProjectContractRuntimeComposition } from './composition/contract-runtime-types';
 export { ProjectContractTaskRuntimeRecovery, ProjectContractTaskPriorityMutation } from './composition/contract-task-session-adapters';
+
+/** Resolve an immutable contract artifact ref to a data-root relative path. */
+export function resolveContractArtifactProjectPath(
+  dataRoot: string,
+  projectId: string,
+  ref: string,
+): string {
+  const absolutePath = parseArtifactRef(dataRoot, ref);
+  const relativePath = path.relative(dataRoot, absolutePath);
+  const segments = relativePath.split(path.sep);
+  if (
+    relativePath.startsWith('..')
+    || path.isAbsolute(relativePath)
+    || segments[0] !== 'projects'
+    || segments[1] !== projectId
+  ) {
+    throw new TypeError('Artifact does not belong to the current project');
+  }
+  return segments.join('/');
+}
 
 /**
  * The only production composition for contract-bound project execution.
@@ -112,7 +140,22 @@ export function createProjectContractRuntimeComposition(
     factPort: osdk,
     taskPort: new RuntimeApprovedProjectTaskPort(options.host, taskBoard),
     executionPort,
+    supportedVerifierRefs: [
+      ORIGINOS_ARTIFACT_VERIFIER_REF,
+      ...(options.additionalVerifiers ?? []).map(({ ref }) => ref),
+    ],
+    supportedEvidenceSchemaRefs: [
+      ORIGINOS_ARTIFACT_EVIDENCE_SCHEMA_REF,
+      ...(options.additionalEvidenceSchemas ?? []).map(({ ref }) => ref),
+    ],
   });
+  const supervisorWorkItems = new ProjectSupervisorWorkItemRuntime({
+    contractCatalog: contractStore,
+    contractPort,
+    taskCreation,
+    executionPort,
+  });
+  registerSupervisorWorkItemRuntimePort(supervisorWorkItems);
   const taskPriority = new ProjectContractTaskPriorityMutation(options.host);
   const taskSubscriptions = new AuthorizedProjectTaskSubscriptions(
     options.projectAccess,
@@ -130,7 +173,15 @@ export function createProjectContractRuntimeComposition(
     taskPriority,
     taskSubscriptions,
   });
-  return { service, executionPort, taskBoard, contractPort, taskCreation, taskSubscriptions };
+  return {
+    service,
+    executionPort,
+    taskBoard,
+    contractPort,
+    taskCreation,
+    taskSubscriptions,
+    supervisorWorkItems,
+  };
 }
 
 export function projectContractRuntimeHost(

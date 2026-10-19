@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ProjectTaskBoardService,
   ProjectTaskTransitionRejectedError,
+  projectWorkItemFailures,
   summarizeProjectTaskRun,
   type ProjectTaskRecord,
   type ProjectTaskSource,
@@ -127,6 +128,41 @@ async function setup() {
 }
 
 describe('project task board projection', () => {
+  it('projects the failed formal stage and recovery action from the WorkItem ledger', async () => {
+    const { run } = await setup();
+    const item = run.workItems[0]!;
+    const failed = {
+      ...run,
+      workItems: [{
+        ...item,
+        status: 'failed' as const,
+        attempts: [{
+          attemptId: `${item.id}:attempt-1`,
+          leaseEpoch: 1,
+          requestId: 'request-1',
+          payloadHash: 'sha256:test',
+          status: 'failed' as const,
+          createdAt: run.createdAt,
+          updatedAt: run.updatedAt,
+          readinessReceipt: {
+            receiptId: 'ready-1', status: 'ready' as const, checkedAt: run.createdAt,
+            inputRefs: [], grantedPermissions: [], targetAvailable: true as const,
+          },
+          reason: 'WORKER_RECEIPT_UNKNOWN:MODEL_TIMEOUT',
+        }],
+      }, ...run.workItems.slice(1)],
+    };
+
+    expect(projectWorkItemFailures(failed)).toEqual([{
+      workItemId: item.id,
+      agentId: item.assignedAgentId,
+      stage: 'worker',
+      code: 'WORKER_RECEIPT_UNKNOWN',
+      reason: 'WORKER_RECEIPT_UNKNOWN:MODEL_TIMEOUT',
+      recoveryAction: 'retry',
+    }]);
+  });
+
   it('keeps the task, run, WorkItem and revision in one projection', async () => {
     const { execution, record } = await setup();
     const board = new ProjectTaskBoardService(

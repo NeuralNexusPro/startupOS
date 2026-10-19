@@ -177,13 +177,13 @@ export async function runCommitWorker(
       'running',
     );
   } catch (error) {
-    if (!(error instanceof CollaborationMutationConflictError)) throw error;
     const current = await runReadRun(ctx, runId);
     const recorded = ops.attempt(
       ops.item(current, workItemIdValue),
       attemptId,
     ).workerReceipt;
     if (recorded?.receiptId === receipt.receiptId) return current;
+    if (!(error instanceof CollaborationMutationConflictError)) throw error;
     throw error;
   }
 }

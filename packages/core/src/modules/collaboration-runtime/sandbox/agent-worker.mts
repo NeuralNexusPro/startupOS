@@ -385,6 +385,7 @@ class AgentWorker {
   private async createProjectCognitiveRuntime(): Promise<{
     memoryCore: import("../../memory-core").MemoryCore;
     cognitiveManager: unknown;
+    memoryProvider: { system_prompt_block: () => Promise<string> };
   }> {
     const { getDataRoot } = await runtimeImport("lib/paths");
     const { ObservationPolicyResolver } = await runtimeImport("modules/memory-core/index");
@@ -413,7 +414,7 @@ class AgentWorker {
     cognitiveManager.register(providers.memoryProvider);
     await providers.patternProvider.initialize();
     cognitiveManager.register(providers.patternProvider);
-    return { memoryCore: providers.memoryCore, cognitiveManager };
+    return { memoryCore: providers.memoryCore, cognitiveManager, memoryProvider: providers.memoryProvider };
   }
 
   getRuntimeLogContext(): Record<string, unknown> {
@@ -742,7 +743,7 @@ class AgentWorker {
     agent.setTools(filteredTools);
 
     // 8. 创建 Memory Core 系统（协作 Agent 也需要记忆）
-    const { memoryCore, cognitiveManager } = await this.createProjectCognitiveRuntime();
+    const { memoryCore, cognitiveManager, memoryProvider } = await this.createProjectCognitiveRuntime();
     this.recallMemory = memoryCore.recall;
     this.originosCognitiveManager = cognitiveManager;
     agent.setTurnContextProvider((query: string) => (
@@ -1042,19 +1043,20 @@ class AgentWorker {
       {
         name: "dispatch_worker",
         label: "派发 Worker",
-        description: "派发一个 Worker Agent 执行具体子任务，立即返回 dispatchId。参数：workerId（Agent ID）、specificAction（具体动作指令）、acceptanceCriteria（验收标准）。",
+        description: "派发一个 Worker Agent 执行具体子任务，立即返回 dispatchId。taskTitle 必须是 6-20 个字、适合任务看板展示的简短名称；specificAction 保留完整执行说明。",
         parameters: {
           type: "object" as const,
           properties: {
             workerId: { type: "string" },
+            taskTitle: { type: "string", description: "6-20 个字的简短任务名称，不包含执行步骤和验收条件" },
             specificAction: { type: "string" },
             acceptanceCriteria: { type: "string" },
           },
-          required: ["workerId", "specificAction", "acceptanceCriteria"],
+          required: ["workerId", "taskTitle", "specificAction", "acceptanceCriteria"],
         },
         category: "system",
         enabled: true,
-        execute: async (toolCallId: string, args: { workerId: string; specificAction: string; acceptanceCriteria: string }) => {
+        execute: async (toolCallId: string, args: { workerId: string; taskTitle: string; specificAction: string; acceptanceCriteria: string }) => {
           const result = await this.callCoordinatorTool(toolCallId, "dispatch_worker", args);
           return { content: [{ type: "text" as const, text: result }] };
         },
@@ -1172,7 +1174,7 @@ class AgentWorker {
       {
         name: "escalate_to_human",
         label: "向用户提问（整合上下文）",
-        description: "向用户提问，发起 HITL 请求。必须提供 mergedContext 说明代哪个 Worker 询问、已知信息和待补字段。参数：question（整合后的问题文本）、mergedContext.onBehalfOf（Worker ID）、mergedContext.workerBlocks（触发阻塞列表）、mergedContext.knownInfo（已知信息）、mergedContext.remainingFields（待补字段）。",
+        description: "向用户提问，发起 HITL 请求。必须提供 mergedContext 说明代哪个 Worker 询问和待补字段；workerBlocks 仅在已有 Worker 阻塞记录时提供。参数：question（整合后的问题文本）、mergedContext.onBehalfOf（Worker ID）、mergedContext.workerBlocks（可选，触发阻塞列表）、mergedContext.knownInfo（可选，已知信息）、mergedContext.remainingFields（待补字段）。",
         parameters: {
           type: "object" as const,
           properties: {
@@ -1185,7 +1187,7 @@ class AgentWorker {
                 knownInfo: { type: "object" },
                 remainingFields: { type: "array", items: { type: "string" } },
               },
-              required: ["onBehalfOf", "workerBlocks", "remainingFields"],
+              required: ["onBehalfOf", "remainingFields"],
             },
           },
           required: ["question", "mergedContext"],
@@ -1196,7 +1198,7 @@ class AgentWorker {
           question: string;
           mergedContext: {
             onBehalfOf: string;
-            workerBlocks: unknown[];
+            workerBlocks?: unknown[];
             knownInfo?: Record<string, unknown>;
             remainingFields: string[];
           };
@@ -1226,7 +1228,10 @@ class AgentWorker {
             blockKey,
             decision: "escalate_to_human",
             rationale: args.question,
-            mergedContext: args.mergedContext,
+            mergedContext: {
+              ...args.mergedContext,
+              workerBlocks: args.mergedContext.workerBlocks ?? [],
+            },
           });
 
           // 发送 HITL 事件到 Runtime（source 是 supervisor，event-mapper 会透传）
@@ -1237,7 +1242,10 @@ class AgentWorker {
             type: "HUMAN_REVIEW_REQUEST",
             payload: {
               question: args.question,
-              mergedContext: args.mergedContext,
+              mergedContext: {
+                ...args.mergedContext,
+                workerBlocks: args.mergedContext.workerBlocks ?? [],
+              },
               toolCallId,
               agentId: this.agentId,
             },
@@ -1533,7 +1541,7 @@ class AgentWorker {
     // 创建 Memory Core 系统（三层记忆 + CognitiveManager）
     // Skill 类型 Agent 不需要记忆模块，跳过初始化
     if (this.agentType !== "skill") {
-      const { memoryCore, cognitiveManager } = await this.createProjectCognitiveRuntime();
+      const { memoryCore, cognitiveManager, memoryProvider } = await this.createProjectCognitiveRuntime();
       this.recallMemory = memoryCore.recall;
       this.originosCognitiveManager = cognitiveManager;
       agent.setTurnContextProvider((query: string) => (

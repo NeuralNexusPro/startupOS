@@ -8,6 +8,7 @@
  * getRuntime() 在 facade/index.ts 中初始化，此处通过 initRuntime() 注入。
  */
 
+import { createHash } from "node:crypto";
 import path from "path";
 
 import {
@@ -34,6 +35,7 @@ declare global {
   var __collaborationEventStores: Map<string, FsEventStore> | undefined;
   // eslint-disable-next-line no-var
   var __collaborationBlackboards: Map<string, Blackboard> | undefined;
+  var __collaborationPendingMessages: Map<string, string[]> | undefined;
 }
 
 if (!globalThis.__collaborationSessions) {
@@ -45,9 +47,54 @@ if (!globalThis.__collaborationEventStores) {
 if (!globalThis.__collaborationBlackboards) {
   globalThis.__collaborationBlackboards = new Map();
 }
+if (!globalThis.__collaborationPendingMessages) {
+  globalThis.__collaborationPendingMessages = new Map();
+}
 export const sessions = globalThis.__collaborationSessions;
 export const eventStores = globalThis.__collaborationEventStores;
 export const blackboards = globalThis.__collaborationBlackboards;
+const pendingMessages = globalThis.__collaborationPendingMessages;
+
+export function queueSessionMessage(sessionId: string, message: string): void {
+  const queued = pendingMessages.get(sessionId) ?? [];
+  queued.push(message);
+  pendingMessages.set(sessionId, queued);
+}
+
+export function takeSessionMessages(sessionId: string): string[] {
+  const queued = pendingMessages.get(sessionId) ?? [];
+  pendingMessages.delete(sessionId);
+  return queued;
+}
+
+export function buildContinuationGoal(previousGoal: string | undefined, messages: string[]): string {
+  const previous = (previousGoal ?? "").trim().slice(-4_000);
+  const updates = messages.map((message) => message.trim()).filter(Boolean).join("\n").slice(-4_000);
+  return [
+    "继续同一协作会话，请结合上一轮目标与用户最新补充直接推进，不要重新扫描完整事件日志。",
+    previous ? `上一轮目标：\n${previous}` : "",
+    updates ? `用户最新补充：\n${updates}` : "",
+  ].filter(Boolean).join("\n\n");
+}
+
+function formalExecutionRequestId(sessionId: string, objective: string): string {
+  const digest = createHash("sha256")
+    .update(`${sessionId}\u0000${objective.trim()}`)
+    .digest("hex");
+  return `request:${digest}`;
+}
+
+export function updateFormalObjective(
+  session: CollaborationSession,
+  objective: string,
+): void {
+  const requestId = formalExecutionRequestId(session.id, objective);
+  if (session.executionRequestId !== requestId) {
+    session.executionRequestId = requestId;
+    session.formalExecution = undefined;
+  }
+  session.globalGoal = objective;
+}
 
 import { getDataRoot } from '../../../lib/paths';
 
@@ -58,8 +105,12 @@ export function getProjectStateDir(projectId: string): string {
 }
 
 export async function saveProjectSessions(projectId: string): Promise<void> {
+  const reconciler = new OrphanReconciler(getProjectStateDir(projectId));
+  const persisted = await reconciler.loadSessions();
   const projectSessions = Array.from(sessions.values()).filter((session) => session.projectId === projectId);
-  await new OrphanReconciler(getProjectStateDir(projectId)).saveSessions(projectSessions);
+  const merged = new Map(persisted.map((session) => [session.id, session]));
+  for (const session of projectSessions) merged.set(session.id, session);
+  await reconciler.saveSessions(Array.from(merged.values()));
 }
 
 /** 生成唯一 session ID */
@@ -169,6 +220,7 @@ export async function loadPersistedSessions(): Promise<void> {
 export interface CreateSessionInput {
   projectId: string;
   globalGoal?: string;
+  requestId?: string;
   maxIterations?: number;
   timeoutMs?: number;
   mode?: "workflow" | "system";
@@ -198,6 +250,23 @@ function logRuntime(phase: string, data: Record<string, unknown>): void {
 }
 
 export async function createSession(input: CreateSessionInput, emitter: EventEmitter, agentDefinitionParser?: import("../../../modules/collaboration-runtime/config").AgentDefinitionParser): Promise<CollaborationSession> {
+  await loadPersistedSessions();
+  const projectId = input.projectId.startsWith("proj-") ? input.projectId : `proj-${input.projectId}`;
+  if (!input.globalGoal?.trim()) {
+    const reusable = Array.from(sessions.values())
+      .filter((session) => session.projectId === projectId
+        && !session.globalGoal
+        && (session.status === "created" || session.status === "greeting"))
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+    if (reusable) {
+      logRuntime("facade.session.reuse", {
+        sessionId: reusable.id,
+        projectId,
+        status: reusable.status,
+      });
+      return reusable;
+    }
+  }
   const id = generateId();
   const now = new Date().toISOString();
   const llmConfig = normalizeRuntimeLLMConfig(input.llmConfig)
@@ -211,9 +280,6 @@ export async function createSession(input: CreateSessionInput, emitter: EventEmi
     llmConfigSource: normalizeRuntimeLLMConfig(input.llmConfig) ? "request" : llmConfig ? "persisted" : "missing",
   });
 
-  // 规范化 projectId：统一使用带 proj- 前缀的格式，确保与文件系统路径一致
-  const projectId = input.projectId.startsWith("proj-") ? input.projectId : `proj-${input.projectId}`;
-
   const session: CollaborationSession = {
     id,
     projectId,
@@ -221,6 +287,7 @@ export async function createSession(input: CreateSessionInput, emitter: EventEmi
     status: "created",
     createdAt: now,
     updatedAt: now,
+    executionRequestId: input.requestId ?? `request:${id}`,
     config: {
       maxIterations: input.maxIterations,
       timeoutMs: input.timeoutMs,

@@ -16,6 +16,7 @@ import {
 } from './contract-runtime-types';
 import {
   CanonicalOntologyOSDK,
+  CanonicalOntologyStore,
   type CanonicalActionOutputDraft,
   type CanonicalFactReference,
 } from '../../ontology';
@@ -66,6 +67,9 @@ export class CanonicalReadiness implements WorkItemReadinessPort {
         ({ id }) => id === input.workItem.designNodeId,
       );
       if (!node) {throw new Error('CONTRACT_NODE_NOT_FOUND');}
+      const taskTemplate = input.run.contract.semanticContext.taskTemplates.find(
+        ({ designNodeId }) => designNodeId === node.id,
+      );
       const target = node.kind === 'agent'
         ? input.run.contract.agents.find(({ agentId }) => agentId === node.contractRef)
         : input.run.contract.skills.find(({ skillId }) => skillId === node.contractRef);
@@ -83,6 +87,7 @@ export class CanonicalReadiness implements WorkItemReadinessPort {
         await resolveTargetDirectory(this.dataRoot, {
           projectId: input.run.projectId,
           target: { kind: 'agent', targetId: node.contractRef, contract: agent },
+          taskTemplate,
         });
       } else {
         const skill = input.run.contract.skills.find(
@@ -92,6 +97,7 @@ export class CanonicalReadiness implements WorkItemReadinessPort {
         await resolveTargetDirectory(this.dataRoot, {
           projectId: input.run.projectId,
           target: { kind: 'skill', targetId: node.contractRef, contract: skill },
+          taskTemplate,
         });
       }
 
@@ -251,7 +257,11 @@ export function outputDraft(value: unknown): CanonicalActionOutputDraft {
 }
 
 export class ArtifactOutcomeDrafts implements FrozenOutcomeDraftPort {
-  constructor(private readonly dataRoot: string) {}
+  private readonly store: CanonicalOntologyStore;
+
+  constructor(private readonly dataRoot: string) {
+    this.store = new CanonicalOntologyStore(dataRoot);
+  }
 
   async resolve(input: Parameters<FrozenOutcomeDraftPort['resolve']>[0]): Promise<FrozenOutcomeDraft> {
     const ref = input.workerReceipt.outputRefs.find((candidate) => candidate.startsWith('artifact://'));
@@ -270,9 +280,68 @@ export class ArtifactOutcomeDrafts implements FrozenOutcomeDraftPort {
       || !Array.isArray(draft['outputs'])
       || !Number.isSafeInteger(draft['expectedRevision'])
       || (draft['expectedRevision'] as number) < 0
-      || (draft['currentStateId'] !== undefined && typeof draft['currentStateId'] !== 'string')
+      || (draft['currentStateId'] !== undefined
+        && draft['currentStateId'] !== null
+        && typeof draft['currentStateId'] !== 'string')
     ) {
       throw new Error('OUTCOME_DRAFT_INVALID');
+    }
+    const rawOutputs = draft['outputs'] as unknown[];
+    const directOutputs = rawOutputs.every((output) =>
+      Boolean(output && typeof output === 'object' && !Array.isArray(output)
+        && typeof (output as Record<string, unknown>)['factId'] === 'string'));
+    let outputs: CanonicalActionOutputDraft[];
+    let expectedRevision = draft['expectedRevision'] as number;
+    if (directOutputs) {
+      outputs = rawOutputs.map(outputDraft);
+    } else {
+      const stored = await this.store.readOntology(input.run.projectId);
+      if (!stored) {throw new Error('OUTCOME_ONTOLOGY_MISSING');}
+      const facts = await this.store.readFacts(input.run.projectId);
+      const revisions = new Set<number>();
+      outputs = rawOutputs.flatMap((output) => {
+        if (!output || typeof output !== 'object' || Array.isArray(output)) {
+          throw new Error('OUTCOME_DRAFT_INVALID');
+        }
+        const record = output as Record<string, unknown>;
+        const factTypeRef = record['factType'];
+        const instanceIds = record['instanceIds'];
+        if (!factTypeRef || typeof factTypeRef !== 'object' || Array.isArray(factTypeRef)
+          || !Array.isArray(instanceIds)) {
+          throw new Error('OUTCOME_DRAFT_INVALID');
+        }
+        const ref = factTypeRef as Record<string, unknown>;
+        const factTypeId = typeof ref['factTypeId'] === 'string' ? ref['factTypeId'] : '';
+        const factType = stored.data.factTypes.find(({ id }) => id === factTypeId);
+        if (!factType
+          || ref['ontologyId'] !== stored.data.id
+          || ref['ontologyVersion'] !== stored.data.version
+          || ref['conceptId'] !== factType.conceptId) {
+          throw new Error('OUTCOME_FACT_TYPE_MISMATCH');
+        }
+        return instanceIds.map((value) => {
+          if (typeof value !== 'string' || !value.trim()) {
+            throw new Error('OUTCOME_INSTANCE_REFERENCE_INVALID');
+          }
+          const instance = stored.data.instances.find(({ id }) => id === value);
+          if (!instance || instance.conceptId !== factType.conceptId) {
+            throw new Error(`OUTCOME_INSTANCE_NOT_FOUND:${value}`);
+          }
+          const revision = facts.reduce((latest, fact) =>
+            fact.ref.factId === instance.id ? Math.max(latest, fact.revision) : latest, 0);
+          revisions.add(revision);
+          return {
+            factId: instance.id,
+            factTypeId,
+            value: { ...instance.data },
+            source: { sourceType: 'runtime' as const, sourceId: input.workItem.id },
+          };
+        });
+      });
+      if (revisions.size !== 1) {
+        throw new Error('OUTCOME_INSTANCE_REVISION_AMBIGUOUS');
+      }
+      expectedRevision = revisions.values().next().value ?? 0;
     }
     return {
       actionId: draft['actionId'],
@@ -280,8 +349,8 @@ export class ArtifactOutcomeDrafts implements FrozenOutcomeDraftPort {
         ? { currentStateId: draft['currentStateId'] }
         : {}),
       inputFactRefs: draft['inputFactRefs'].map(factReference),
-      outputs: draft['outputs'].map(outputDraft),
-      expectedRevision: draft['expectedRevision'] as number,
+      outputs,
+      expectedRevision,
     };
   }
 }

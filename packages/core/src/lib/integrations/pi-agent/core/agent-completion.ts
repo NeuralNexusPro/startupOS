@@ -324,10 +324,17 @@ export async function runWithEmptyStopRecovery(
 			| typeof candidate
 			| null;
 		if (recoveryCandidate?.text.trim().length === 0) {
+			const stopReasons = [candidate.stopReason, recoveryCandidate.stopReason]
+				.filter((value): value is string => Boolean(value));
 			ctx.pendingCompletionCandidate = null;
 			ctx.lastToolFailure = {
 				toolName: "empty-stop-recovery",
-				reason: "The skill returned an empty terminal response twice.",
+				stage: "final-response",
+				stopReason: stopReasons.join(" → ") || "unknown",
+				attempts: 2,
+				reason: stopReasons.includes("length")
+					? "模型连续两次耗尽输出额度，隐藏思考占满了本轮输出，未生成可展示正文。"
+					: "模型连续两次结束时都没有返回可展示正文。",
 			};
 			ctx.emitCompletionFailureReport();
 		}
@@ -353,6 +360,58 @@ export async function runWithCompletionGuard(
 	if (!ctx.isCompletionGuardEnabled()) {
 		return;
 	}
+
+	const emptyCandidate = ctx.pendingCompletionCandidate;
+	if (emptyCandidate && emptyCandidate.text.trim().length === 0) {
+		ctx.pendingCompletionCandidate = null;
+		ctx.deferredAgentEndEvent = null;
+		ctx.hiddenMessages.add(emptyCandidate.message);
+		const recoveryMessage: SyntheticUserMessage = {
+			role: "user",
+			content: [{ type: "text", text: buildEmptyStopRecoveryMessage(1) }],
+		};
+		ctx.hiddenMessages.add(recoveryMessage);
+		logInfo(
+			`[LLM EmptyResponseRecovery] retrying empty terminal response — stopReason=${emptyCandidate.stopReason ?? "unknown"}, attempt=1/1`,
+		);
+		try {
+			await ctx.agent.prompt(recoveryMessage as unknown as AgentMessage);
+			ctx.throwIfModelStreamFailed();
+		} catch (error) {
+			ctx.lastToolFailure = {
+				toolName: "empty-response-recovery",
+				reason: error instanceof Error ? error.message : String(error),
+			};
+			ctx.emitCompletionFailureReport();
+			return;
+		}
+
+		const recoveryCandidate = ctx.pendingCompletionCandidate as
+			| Exclude<AgentCompletionContext["pendingCompletionCandidate"], null>
+			| null;
+		if (!recoveryCandidate || recoveryCandidate.text.trim().length === 0) {
+			const stopReasons = [emptyCandidate.stopReason, recoveryCandidate?.stopReason]
+				.filter((value): value is string => Boolean(value));
+			const lastToolResult = [...ctx.completionToolTrace].reverse().find((entry) => entry.includes("succeeded"));
+			if (recoveryCandidate) {
+				ctx.hiddenMessages.add(recoveryCandidate.message);
+			}
+			ctx.pendingCompletionCandidate = null;
+			ctx.deferredAgentEndEvent = null;
+			ctx.lastToolFailure = {
+				toolName: "模型最终回复",
+				stage: "final-response",
+				stopReason: stopReasons.join(" → ") || "unknown",
+				attempts: 2,
+				...(lastToolResult ? { lastToolResult } : {}),
+				workMayHaveCompleted: ctx.completionToolTrace.some((entry) => entry.includes("succeeded")),
+				reason: "模型在正常执行工具后，连续两次结束时都没有返回可展示的文本。",
+			};
+			ctx.emitCompletionFailureReport();
+			return;
+		}
+	}
+
 	await ctx.judgePendingCompletion();
 	let recoveryAttempt = 0;
 

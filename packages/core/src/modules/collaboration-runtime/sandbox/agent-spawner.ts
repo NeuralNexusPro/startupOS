@@ -53,6 +53,21 @@ function getAgentCommandTimeoutMs(): number {
   return 300_000;
 }
 
+/**
+ * Shutdown is a best-effort control message. A worker that already timed out may
+ * still be busy inside the model loop, so waiting another full model timeout
+ * makes the whole desktop appear frozen. Give it a brief chance to exit cleanly
+ * and then let shutdown() force-kill it.
+ */
+function getAgentShutdownTimeoutMs(): number {
+  const raw = process.env["COLLAB_SHUTDOWN_TIMEOUT_MS"];
+  if (raw) {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return 2_000;
+}
+
 function summarizeModel(model?: (RuntimeLLMConfig & { id?: string }) | null): Record<string, unknown> {
   if (!model) return { provided: false };
   const credentialSource = model.anthropicCredentialSource
@@ -341,6 +356,7 @@ export class AgentProcess {
         source: this.id,
         timestamp: new Date().toISOString(),
       });
+      if (this.pendingCommand) clearTimeout(this.pendingCommand.timer);
       this.pendingCommand?.reject(new Error(`Agent process exited with code ${code}, signal ${signal}`));
       this.pendingCommand = null;
       // Reject all queued prompts
@@ -351,6 +367,7 @@ export class AgentProcess {
 
     child.on("error", (err: Error) => {
       this.status = "error";
+      if (this.pendingCommand) clearTimeout(this.pendingCommand.timer);
       this.pendingCommand?.reject(err);
       this.pendingCommand = null;
     });
@@ -415,6 +432,7 @@ export class AgentProcess {
 
       this.pendingCommand = {
         resolve: (s) => {
+          clearTimeout(timer);
           logRuntime("process.prompt.done", {
             projectId: this.config.projectId,
             agentId: this.config.agentId,
@@ -425,6 +443,7 @@ export class AgentProcess {
           this._drainPromptQueue();
         },
         reject: (e) => {
+          clearTimeout(timer);
           logRuntime("process.prompt.error", {
             projectId: this.config.projectId,
             agentId: this.config.agentId,
@@ -519,8 +538,17 @@ export class AgentProcess {
     }
     console.error(`[AgentProcess:${this.id}] shutting down (status: ${this.status})`);
     this.status = "stopping";
+    const shutdownError = new Error(`Agent ${this.id} is shutting down`);
+    for (const queued of this.promptQueue) queued.reject(shutdownError);
+    this.promptQueue = [];
+    // A timed-out prompt must not remain registered while shutdown installs its
+    // own acknowledgment waiter.
+    if (this.pendingCommand) {
+      clearTimeout(this.pendingCommand.timer);
+      this.pendingCommand = null;
+    }
     try {
-      await this.sendCommand({ type: "shutdown" });
+      await this.sendCommand({ type: "shutdown" }, getAgentShutdownTimeoutMs());
       console.error(`[AgentProcess:${this.id}] shutdown command sent`);
     } catch {
       console.error(`[AgentProcess:${this.id}] shutdown command timed out, forcing kill`);
@@ -547,7 +575,10 @@ export class AgentProcess {
   // Internal
   // ==========================================================================
 
-  private sendCommand(cmd: Record<string, unknown>): Promise<AgentCommandState> {
+  private sendCommand(
+    cmd: Record<string, unknown>,
+    timeoutMs = getAgentCommandTimeoutMs(),
+  ): Promise<AgentCommandState> {
     return new Promise((resolve, reject) => {
       if (!this.child?.stdin) {
         reject(new Error("Agent stdin not available"));
@@ -555,9 +586,12 @@ export class AgentProcess {
       }
 
       const timer = setTimeout(() => {
-        console.error(`[AgentProcess:${this.id}] Command timed out after ${getAgentCommandTimeoutMs() / 1000}s waiting for child acknowledgment`);
+        if (this.pendingCommand?.timer === timer) {
+          this.pendingCommand = null;
+        }
+        console.error(`[AgentProcess:${this.id}] Command timed out after ${timeoutMs / 1000}s waiting for child acknowledgment`);
         reject(new Error("Command timed out waiting for child acknowledgment"));
-      }, getAgentCommandTimeoutMs()); // 默认 5 分钟 — 首次初始化需要动态加载大量模块
+      }, timeoutMs); // prompt 默认 5 分钟；shutdown 使用独立短超时
 
       this.pendingCommand = { resolve, reject, timer };
       this.child.stdin!.write(JSON.stringify(cmd) + "\n");
@@ -576,15 +610,18 @@ export class AgentProcess {
       try {
         const msg = JSON.parse(line) as Record<string, unknown>;
         if (msg["type"] === "ready") {
+          if (this.pendingCommand) clearTimeout(this.pendingCommand.timer);
           this.pendingCommand?.resolve("ready");
           this.pendingCommand = null;
         } else if (msg["type"] === "waiting") {
+          if (this.pendingCommand) clearTimeout(this.pendingCommand.timer);
           this.pendingCommand?.resolve("waiting");
           this.pendingCommand = null;
         } else if (msg["type"] === "event" && msg["event"]) {
           this.eventHandler?.(msg["event"] as RuntimeEvent);
         } else if (msg["type"] === "error") {
           const err = new Error(String(msg["message"] ?? msg["error"] ?? "Unknown error"));
+          if (this.pendingCommand) clearTimeout(this.pendingCommand.timer);
           this.pendingCommand?.reject(err);
           this.pendingCommand = null;
         }

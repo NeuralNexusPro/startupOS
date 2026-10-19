@@ -10,8 +10,14 @@ import type { AgentProcess } from '../../../modules/collaboration-runtime/sandbo
 import type { CollaborationTopology, RuntimeEvent } from '../../../modules/collaboration-runtime/session/types';
 import type { AgentsJsonAgent, UpstreamOutput } from './supervisor-dag-types';
 import { logRuntime, summarizeRuntimeConfig } from './supervisor-dag-types';
-import type { SupervisorDagCtx } from './supervisor-dag-tools';
+import {
+  blockWorkerTask,
+  failWorkerTask,
+  resumeWorkerTask,
+  type SupervisorDagCtx,
+} from './supervisor-dag-tools';
 import { hitlResumerRegistry as hitlResumerRegistryFromHitl } from './supervisor-dag-hitl';
+import { deriveTaskTitle } from '../session/task-title';
 
 /**
  * dispatch_worker case 主体（SUPA-02 glue）：派发 Worker 子进程。
@@ -25,6 +31,7 @@ export async function runDispatchWorker(
           const workerId = String(args["workerId"] ?? "");
           const specificAction = String(args["specificAction"] ?? ctx.config.globalGoal);
           const acceptanceCriteria = String(args["acceptanceCriteria"] ?? "完成任务");
+          const taskTitle = deriveTaskTitle(specificAction, String(args["taskTitle"] ?? ""));
 
           if (!workerId) {
             return JSON.stringify({ error: "workerId is required", candidates: ctx.availableWorkers() });
@@ -40,27 +47,80 @@ export async function runDispatchWorker(
             return JSON.stringify({ dispatchId: workerId, status: "already_running", candidates: ctx.availableWorkers(), nextStep: `必须立即调用 wait_workers(workerIds=["${workerId}"]) 等待 Worker 完成。` });
           }
 
+          let task = ctx.workerTaskIds.get(workerId)
+            ? ctx.bb.getTask(ctx.workerTaskIds.get(workerId) as string)
+            : undefined;
+          if (task?.status === "reported") {
+            const reason = "该轮产出已被新的任务派发替代。";
+            ctx.bb.failTask(task.id, reason);
+            task.failure = {
+              stage: "superseded",
+              reason,
+              code: "TASK_SUPERSEDED",
+              occurredAt: task.completedAt ?? new Date().toISOString(),
+            };
+            ctx.recordTaskEvent("TASK_FAILED", {
+              taskId: task.id,
+              error: reason,
+              stage: "superseded",
+              code: "TASK_SUPERSEDED",
+            });
+          }
+          if (!task || task.status === "reported" || task.status === "completed" || task.status === "failed") {
+            task = ctx.bb.createTask(specificAction);
+            task.title = taskTitle;
+            // Persist the intended owner on TASK_CREATED so a crash between
+            // creation and TASK_ASSIGNED can still recover this pending task.
+            task.assignedTo = workerId;
+            task.input = {
+              request: specificAction,
+              acceptanceCriteria,
+              globalGoal: ctx.config.globalGoal,
+              dependencies: [],
+            };
+            ctx.workerTaskIds.set(workerId, task.id);
+            ctx.recordTaskEvent("TASK_CREATED", { task: { ...task } });
+          }
+          const completedIndex = ctx.completedAgents.indexOf(workerId);
+          if (completedIndex >= 0) ctx.completedAgents.splice(completedIndex, 1);
+          const failedIndex = ctx.failedAgents.indexOf(workerId);
+          if (failedIndex >= 0) ctx.failedAgents.splice(failedIndex, 1);
+
           const checker = new DependencyChecker(ctx.bb);
           const dependencies = checker.deriveDependenciesFromTopology(workerId, ctx.topology);
+          task.dependsOn = dependencies.map((dependency) => dependency.agentId);
+          task.input = {
+            request: specificAction,
+            acceptanceCriteria,
+            globalGoal: ctx.config.globalGoal,
+            dependencies: dependencies.map((dependency) => dependency.agentId),
+          };
+          if (task.status === "pending") {
+            ctx.bb.assignTask(task.id, workerId);
+            ctx.recordTaskEvent("TASK_ASSIGNED", { taskId: task.id, agentId: workerId });
+          }
           const readiness = checker.checkDependencies(dependencies);
           if (!readiness.satisfied) {
-            ctx.protocol.worker(workerId).reportBlock("dependencies", readiness.missingDeps.map((dep) => dep.agentId), readiness.blockedReason);
-            ctx.protocol.persist();
-            return JSON.stringify({ status: "blocked", reason: readiness.blockedReason });
+            const waitingFor = readiness.missingDeps.map((dep) => dep.agentId);
+            ctx.protocol.worker(workerId).startTask(task.id, ctx.config.timeoutMs ?? 300_000, dependencies.map((dep) => dep.agentId));
+            ctx.protocol.worker(workerId).reportBlock("dependencies", waitingFor, readiness.blockedReason);
+            blockWorkerTask(ctx, workerId, readiness.blockedReason ?? "等待上游任务完成。", waitingFor);
+            return JSON.stringify({ status: "blocked", taskId: task.id, reason: readiness.blockedReason, waitingFor });
           }
-          const task = ctx.bb.createTask(specificAction);
-          ctx.recordTaskEvent("TASK_CREATED", { task: { ...task } });
-          ctx.bb.assignTask(task.id, workerId);
-          ctx.recordTaskEvent("TASK_ASSIGNED", { taskId: task.id, agentId: workerId });
+          if (task.status === "blocked") {
+            resumeWorkerTask(ctx, workerId, "assigned");
+          } else if (task.status === "running") {
+            ctx.bb.reassignTask(task.id, workerId);
+            ctx.recordTaskEvent("TASK_REASSIGNED", { taskId: task.id, agentId: workerId, reason: "runtime-recovery" });
+          }
           ctx.bb.startTask(task.id);
           ctx.recordTaskEvent("TASK_STARTED", { taskId: task.id }, workerId);
-          ctx.workerTaskIds.set(workerId, task.id);
           ctx.protocol.worker(workerId).startTask(task.id, ctx.config.timeoutMs ?? 300_000, dependencies.map((dep) => dep.agentId));
 
           // P2: 写入 swarm$tasks$<workerId> 到 Blackboard（pending 状态）
           ctx.bb.setData(`swarm$tasks$${workerId}`, {
-            taskId: workerId,
-            status: "pending",
+            taskId: task.id,
+            status: "running",
             assignedTo: workerId,
             goal: specificAction,
             acceptanceCriteria,
@@ -112,6 +172,7 @@ export async function runDispatchWorker(
             }
             if (ev.type === "HITL_ESCALATE" && ev.source === workerId) {
               ctx.protocol.worker(workerId).reportBlock("human-input", []);
+              blockWorkerTask(ctx, workerId, String(ev.payload?.["question"] ?? "等待用户补充信息。"));
               ctx.protocol.pause();
               // 直连路径：bridge 直接 emit HUMAN_REVIEW_REQUEST，不依赖 Supervisor LLM 中转
               workerEvents.push(ev);
@@ -151,7 +212,18 @@ export async function runDispatchWorker(
                 }
                 const sessionChannels = globalThis.__hitlChannelByWorker.get(ctx.config.sessionId) ?? new Map();
                 sessionChannels.set(workerId, {
-                  resume: (reply: string) => { ctx.protocol.start(); ctx.protocol.worker(workerId).updateProgress({ currentStep: "resumed" }); return workerProc.resume(reply); },
+                  resume: (reply: string) => {
+                    ctx.protocol.start();
+                    resumeWorkerTask(ctx, workerId, "running");
+                    ctx.protocol.worker(workerId).updateProgress({ currentStep: "resumed" });
+                    return workerProc.resume(reply).catch((error: unknown) => {
+                      failWorkerTask(ctx, workerId, error instanceof Error ? error.message : String(error), {
+                        stage: "worker-resume",
+                        code: "WORKER_RESUME_FAILED",
+                      });
+                      throw error;
+                    });
+                  },
                   question,
                   onBehalfOfName,
                 });
@@ -160,8 +232,13 @@ export async function runDispatchWorker(
                 // 同时注册到 hitlResumerRegistryFromHitl 作为 fallback
                 hitlResumerRegistryFromHitl.set(ctx.config.sessionId, (reply: string) => {
                   ctx.protocol.start();
+                  resumeWorkerTask(ctx, workerId, "running");
                   ctx.protocol.worker(workerId).updateProgress({ currentStep: "resumed" });
                   workerProc.resume(reply).catch((err: Error) => {
+                    failWorkerTask(ctx, workerId, err.message, {
+                      stage: "worker-resume",
+                      code: "WORKER_RESUME_FAILED",
+                    });
                     console.error(`[SupervisorDag] HITL fallback resume failed for ${workerId}:`, err);
                   });
                 });
@@ -174,6 +251,7 @@ export async function runDispatchWorker(
 
             if (ev.type === "HUMAN_REVIEW_REQUEST" && ev.source === workerId) {
               ctx.protocol.worker(workerId).reportBlock("human-input", []);
+              blockWorkerTask(ctx, workerId, String(ev.payload?.["question"] ?? "等待用户补充信息。"));
               ctx.protocol.pause();
               // 旧路径兜底（Worker 直接发 HUMAN_REVIEW_REQUEST，不经过 Supervisor）
               workerEvents.push(ev);
@@ -184,10 +262,15 @@ export async function runDispatchWorker(
                 const existingResumer = hitlResumerRegistryFromHitl.get(ctx.config.sessionId);
                 hitlResumerRegistryFromHitl.set(ctx.config.sessionId, (reply: string) => {
                   ctx.protocol.start();
+                  resumeWorkerTask(ctx, workerId, "running");
                   const workerProc = ctx.spawner.get(workerId);
                   if (workerProc) {
                     ctx.protocol.worker(workerId).updateProgress({ currentStep: "resumed" });
                   workerProc.resume(reply).catch((err: Error) => {
+                      failWorkerTask(ctx, workerId, err.message, {
+                        stage: "worker-resume",
+                        code: "WORKER_RESUME_FAILED",
+                      });
                       console.error(`[SupervisorDag] worker ${workerId} resume failed:`, err);
                     });
                   } else if (existingResumer) {
@@ -206,6 +289,20 @@ export async function runDispatchWorker(
               // 只处理一次：已经标记为 completed 则跳过重复的 AGENT_END
               const workerResult = ctx.workerResults.get(workerId);
               if (workerResult?.status === "completed" || workerResult?.status === "failed") {
+                return;
+              }
+
+              const exitCode = typeof ev.payload?.["exitCode"] === "number" ? ev.payload["exitCode"] as number : null;
+              const signal = typeof ev.payload?.["signal"] === "string" ? ev.payload["signal"] as string : "";
+              if ((exitCode !== null && exitCode !== 0) || signal) {
+                const reason = signal
+                  ? `Worker 进程被信号 ${signal} 终止。`
+                  : `Worker 进程异常退出（exit code ${exitCode}）。`;
+                failWorkerTask(ctx, workerId, reason, {
+                  stage: "process-exit",
+                  code: "WORKER_PROCESS_EXITED",
+                  exitCode,
+                });
                 return;
               }
 
@@ -234,7 +331,7 @@ export async function runDispatchWorker(
               const agent = ctx.agents.find((a) => a.id === workerId);
               ctx.upstreamResults.writeUpstreamOutput(workerId, agent?.name ?? workerId, output);
               ctx.bb.setData(`swarm$tasks$${workerId}`, {
-                taskId: workerId,
+                taskId,
                 status: "reported",
                 assignedTo: workerId,
                 completedAt: new Date().toISOString(),
@@ -282,39 +379,10 @@ export async function runDispatchWorker(
                 ctx.eventEmitter?.emit(completeEvent);
               })();
             } else if (ev.type === "AGENT_FAIL_TASK" && ev.source === workerId) {
-              const workerResult = ctx.workerResults.get(workerId);
-              if (workerResult) {
-                workerResult.status = "failed";
-              }
-              const failedTaskId = ctx.workerTaskIds.get(workerId);
-              if (failedTaskId) ctx.bb.failTask(failedTaskId);
-              ctx.protocol.worker(workerId).failTask("WORKER_FAILED");
-              ctx.protocol.persist();
-              ctx.failedAgents.push(workerId);
-
-              // P2: 更新 Blackboard task status = failed
-              ctx.bb.setData(`swarm$tasks$${workerId}`, {
-                taskId: workerId,
-                status: "failed",
-                failedAt: new Date().toISOString(),
-              }, workerId, {
-                sourceUri: `worker:fail:${ctx.config.sessionId ?? "supervisor"}`,
-              });
-              ctx.protocol.persist();
-
-              ctx.notifyWorkerCompletion(workerId);
-
-              const failEvent: RuntimeEvent = {
-                id: `sup-worker-failed-${workerId}-${Date.now()}`,
-                sessionId: ctx.config.sessionId ?? "supervisor",
-                seq: 0,
-                type: "SUPERVISOR_WORKER_FAILED",
-                payload: { workerId, error: ev.payload?.["error"] ?? "Unknown error" },
-                source: "supervisor",
-                timestamp: new Date().toISOString(),
-              };
-              void ctx.eventStore.append(failEvent);
-              ctx.eventEmitter?.emit(failEvent);
+              const failureReason = typeof ev.payload?.["error"] === "string"
+                ? ev.payload["error"] as string
+                : "Worker failed without a detailed error.";
+              failWorkerTask(ctx, workerId, failureReason, { stage: "worker-execution" });
             }
           };
 
@@ -370,22 +438,22 @@ export async function runDispatchWorker(
               });
               const wResult = ctx.workerResults.get(workerId);
               if (wResult && wResult.status === "running") {
-                wResult.status = "failed";
-                const failedTaskId = ctx.workerTaskIds.get(workerId);
-                if (failedTaskId) ctx.bb.failTask(failedTaskId);
-                ctx.protocol.worker(workerId).failTask("WORKER_FAILED");
-                ctx.protocol.persist();
-                ctx.failedAgents.push(workerId);
-                ctx.notifyWorkerCompletion(workerId);
+                const failureReason = err instanceof Error ? err.message : String(err);
+                failWorkerTask(ctx, workerId, failureReason, {
+                  stage: "prompt-dispatch",
+                  code: "WORKER_PROMPT_FAILED",
+                });
               }
             });
 
             return JSON.stringify({ dispatchId: workerId, status: "dispatched", candidates: ctx.availableWorkers(), nextStep: `必须立即调用 wait_workers(workerIds=["${workerId}"]) 等待 Worker 完成，不允许在等待前结束任务。` });
           } catch (spawnErr) {
-            ctx.protocol.worker(workerId).failTask("SPAWN_FAILED");
-            const taskId = ctx.workerTaskIds.get(workerId);
-            if (taskId) ctx.bb.failTask(taskId, "SPAWN_FAILED");
-            ctx.protocol.persist();
+            const failureReason = spawnErr instanceof Error ? spawnErr.message : String(spawnErr);
+            ctx.workerResults.set(workerId, { status: "failed", output: "", artifacts: [] });
+            failWorkerTask(ctx, workerId, `SPAWN_FAILED: ${failureReason}`, {
+              stage: "worker-spawn",
+              code: "WORKER_SPAWN_FAILED",
+            });
             console.error(`[SupervisorDag] Failed to spawn worker ${workerId}:`, spawnErr);
             logRuntime("worker.spawn.error", {
               projectId: ctx.config.projectId,
@@ -393,8 +461,6 @@ export async function runDispatchWorker(
               workerId,
               error: spawnErr instanceof Error ? spawnErr.message : String(spawnErr),
             });
-            ctx.workerResults.set(workerId, { status: "failed", output: "", artifacts: [] });
-            ctx.failedAgents.push(workerId);
             return JSON.stringify({ error: `Failed to spawn worker: ${(spawnErr as Error).message}` });
           }
 }

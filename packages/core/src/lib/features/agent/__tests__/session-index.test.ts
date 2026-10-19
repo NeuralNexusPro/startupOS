@@ -131,4 +131,23 @@ describe('AgentSessionService sessions index sidecar', () => {
     expect(spy).toHaveBeenCalledTimes(5);
     spy.mockRestore();
   });
+
+  it('coalesces concurrent history requests for the same role into one scan', async () => {
+    const service = new AgentSessionService();
+    await service.createSession({
+      sessionId: 'single-flight', projectId: 'project-g', projectName: 'PG',
+      projectContext: { projectId: 'project-g', projectName: 'PG' },
+    });
+    fs.rmSync(indexFilePath(directory, 'project-g'));
+
+    const spy = vi.spyOn(service, 'getSession');
+    const [first, second] = await Promise.all([
+      service.listSessions('project-g'),
+      service.listSessions('project-g'),
+    ]);
+
+    expect(first).toEqual(second);
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
+  });
 });

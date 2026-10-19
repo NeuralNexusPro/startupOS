@@ -21,6 +21,8 @@ const ConceptSchema = Type.Object({
     ])),
     required: Type.Optional(Type.Boolean()),
     description: Type.Optional(Type.String()),
+    enumValues: Type.Optional(Type.Array(Type.String({ minLength: 1 }), { minItems: 1 })),
+    format: Type.Optional(Type.String({ minLength: 1 })),
   }))),
 });
 const ClassificationCorrectionSchema = Type.Object({
@@ -61,7 +63,7 @@ function trustedSourceId(paramSourceId: string): string {
 export const interviewOntologySyncTool: ToolRegistration = {
   name: 'record_project_interview_observation',
   label: '记录访谈业务概念',
-  description: '记录已确认的业务概念、属性、中文业务分类或联系。关系优先传稳定 concept ID；旧名称只能精确唯一匹配。分类来源由可信服务根据访谈会话构造，用户纠正使用 classificationCorrections。返回每项结果；不读取或写入 business-model.json。',
+  description: '记录已确认的业务概念、属性、中文业务分类或联系。单据类概念必须同时提供已拆解的原子字段；每个字段须明确 valueType、required、description，可补充 enumValues 或 format，未通过严格校验时不会落库。关系优先传稳定 concept ID；旧名称只能精确唯一匹配。分类来源由可信服务根据访谈会话构造，用户纠正使用 classificationCorrections。返回每项结果；不读取或写入 business-model.json。',
   parameters: Params,
   category: 'ontology',
   enabled: true,

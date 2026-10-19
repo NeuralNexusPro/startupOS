@@ -5,6 +5,7 @@ import { X, FolderOpen, LayoutDashboard } from 'lucide-react';
 import { ResizableLayout } from './ResizableLayout';
 import { CUIDialogPanel } from './CUIDialogPanel';
 import { ArtifactDisplayPanel } from './ArtifactDisplayPanel';
+import { getProject, updateProject } from '@originos/core/lib/integrations/electron/services/project';
 import {
   normalizeRuntimeLLMConfig,
   usePersistentAgent,
@@ -12,6 +13,7 @@ import {
 import { useSettingsStore } from '@/store/settingsStore';
 import { AppWindowManager } from '@/services/AppWindowManager';
 import { ProjectWorkspace, WorkspaceWindow } from '@/components/os/workspace';
+import { SolutionDesign } from '@/components/solution/SolutionDesign';
 import { normalizeOntologyId, normalizeProjectEntryId } from '@/components/os/workspace/project-identity';
 import { canonicalToOntologyModel, loadProjectCanonicalOntology } from '@/components/os/workspace/project-canonical-ontology';
 import {
@@ -20,6 +22,11 @@ import {
   type BehaviorDraftReviewDto,
 } from '@/services/interview-behavior-drafts';
 import type { OntologyModel } from '@originos/core/types';
+import type { CanonicalOntology } from '@originos/core/lib/features/ontology/types';
+import {
+  isCanonicalInterviewComplete,
+  isInterviewBehaviorModelingRequired,
+} from './interview-completion';
 
 interface InterviewWindowProps {
   projectId?: string;
@@ -138,20 +145,44 @@ function InterviewHeader({ mode, onClose, projectName, projectId, ontologyId }: 
   );
 }
 
-/** 通过项目绑定的 canonical ontology 读取访谈结果。 */
-async function loadLatestModel(projectId: string): Promise<OntologyModel | null> {
+interface InterviewCanonicalSnapshot {
+  ontology: CanonicalOntology;
+  model: OntologyModel;
+}
+
+/** 通过项目绑定的 canonical ontology 读取访谈结果与完成事实。 */
+async function loadLatestCanonicalSnapshot(
+  projectId: string
+): Promise<InterviewCanonicalSnapshot | null> {
   const result = await loadProjectCanonicalOntology(projectId);
   return result.entry.kind === 'canonical' && result.ontology
-    ? canonicalToOntologyModel(result.ontology)
+    ? {
+        ontology: result.ontology,
+        model: canonicalToOntologyModel(result.ontology),
+      }
     : null;
 }
 
 /**
- * 从 Agent 消息历史中检查是否已有会话记录
- * 持久化 Agent 架构下，历史由 usePersistentAgent 管理，无需调用旧的 session API
+ * 首页创建访谈项目时使用「新项目 」前缀的临时名；canonical ontology 建立后，
+ * 把访谈派生的业务名称同步回 project.json，首页卡片与窗口标题随之更新。
+ * 名称候选：本体名称（agent 可能传 projectName）→ 首个业务领域名。
+ * 用户已手动命名的项目（非临时名）不覆盖。
  */
-function hasSessionHistory(messages: any[]): boolean {
-  return messages.length > 0;
+async function syncProjectNameFromOntology(projectId: string): Promise<string | null> {
+  const canonical = await loadProjectCanonicalOntology(projectId);
+  if (canonical.entry.kind !== 'canonical' || !canonical.ontology) return null;
+  const ontologyName = canonical.ontology.name?.trim() ?? '';
+  const candidate = ontologyName && ontologyName !== '项目业务模型' && ontologyName !== '业务模型'
+    ? ontologyName
+    : canonical.ontology.domains[0]?.name?.trim() ?? '';
+  if (!candidate) return null;
+  const response = await getProject(projectId);
+  if (!response.success || !response.data) return null;
+  const currentName = response.data.name?.trim() ?? '';
+  if (!currentName.startsWith('新项目')) return null;
+  const updated = await updateProject(projectId, { name: candidate });
+  return updated.success && updated.data ? updated.data.name : null;
 }
 
 /**
@@ -308,11 +339,9 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
-  const resolvedProjectName = useMemo(
-    () => projectName ?? '项目访谈',
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
-  );
+  // 展示名是可变的：访谈产出业务模型后会把派生名称同步回 project.json。
+  // 初始值取挂载时传入的 projectName，之后随 getProject / updateProject 刷新。
+  const [resolvedProjectName, setResolvedProjectName] = useState(projectName ?? '项目访谈');
   // Upload path for project files
   const projectUploadBase = `data/projects/${resolvedProjectId}`;
   const [displayMode, setDisplayMode] = useState<'empty' | 'collecting' | 'generating' | 'preview'>('empty');
@@ -324,7 +353,8 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
   const [behaviorModelingRequired, setBehaviorModelingRequired] = useState(false);
   const [isConfirmingBehaviorDraft, setIsConfirmingBehaviorDraft] = useState(false);
   const [behaviorDraftError, setBehaviorDraftError] = useState<string | undefined>();
-  const hasCheckedHistory = useRef(false); // 防止重复触发
+  const [interviewComplete, setInterviewComplete] = useState(false);
+  const hasStartedGreeting = useRef(false); // 防止重复触发
   const displayModeRef = useRef<'empty' | 'collecting' | 'generating' | 'preview'>('empty');
 
   const setDisplayModeSync = useCallback((mode: 'empty' | 'collecting' | 'generating' | 'preview') => {
@@ -369,9 +399,19 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
         resolvedProjectId,
         resolvedOntologyId,
       });
+      // 恢复历史会话时以 project.json 中的最新名称为准（可能已在别处重命名）。
+      getProject(resolvedProjectId)
+        .then((response) => {
+          if (response.success && response.data?.name) {
+            setResolvedProjectName(response.data.name);
+          }
+        })
+        .catch(() => undefined);
       const canonical = await loadProjectCanonicalOntology(resolvedProjectId);
       setLegacyMigrationRequired(canonical.entry.kind === 'legacy_migration_required');
       const canonicalOntology = canonical.entry.kind === 'canonical' ? canonical.ontology : undefined;
+      setInterviewComplete(isCanonicalInterviewComplete(canonicalOntology));
+      setBehaviorModelingRequired(isInterviewBehaviorModelingRequired(canonicalOntology));
       const model = canonicalOntology
         ? canonicalToOntologyModel(canonicalOntology)
         : null;
@@ -387,17 +427,6 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
         });
         setOntology(converted);
         setDisplayMode('preview');
-        const needsBehaviorModeling = (
-          canonicalOntology.factTypes.length === 0
-          && canonicalOntology.actions.length === 0
-          && canonicalOntology.rules.length === 0
-          && canonicalOntology.concepts.length > 0
-          && canonicalOntology.relations.length > 0
-        );
-        setBehaviorModelingRequired(needsBehaviorModeling);
-        if (needsBehaviorModeling) {
-          setActiveTab('行动');
-        }
         console.log('[InterviewWindow] Loaded canonical ontology');
       }
       await refreshBehaviorDraft();
@@ -406,56 +435,15 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
     loadArtifacts().catch(console.error);
   }, [projectId, resolvedProjectId, resolvedOntologyId, sessionId, refreshBehaviorDraft]);
 
-  // 发送初始触发消息，启动访谈流程
-  // 注意：只在无历史消息时才发送触发消息
+  // 每次进入访谈窗口都由 Agent 根据已恢复的历史与项目上下文开启或接续流程。
+  // 产物加载由上面的 effect 独立处理，不能让本体读取失败阻断开场。
   useEffect(() => {
-    if (!isInitialized || hasCheckedHistory.current || isThinking) {
+    if (!isInitialized || hasStartedGreeting.current || isThinking) {
       return;
     }
-
-    const shouldAutoStart = async () => {
-      hasCheckedHistory.current = true;
-
-      const canonical = await loadProjectCanonicalOntology(resolvedProjectId);
-      setLegacyMigrationRequired(canonical.entry.kind === 'legacy_migration_required');
-      const existingModel = canonical.entry.kind === 'canonical' && canonical.ontology
-        ? canonicalToOntologyModel(canonical.ontology)
-        : null;
-      const needsBehaviorModeling = canonical.entry.kind === 'canonical' && canonical.ontology
-        ? canonical.ontology.factTypes.length === 0
-          && canonical.ontology.actions.length === 0
-          && canonical.ontology.rules.length === 0
-          && canonical.ontology.concepts.length > 0
-          && canonical.ontology.relations.length > 0
-        : false;
-      setBehaviorModelingRequired(needsBehaviorModeling);
-      if (hasSessionHistory(piMessages)) {
-        if (needsBehaviorModeling) {
-          console.log('[InterviewWindow] Resuming behavior confirmation for existing interview', { resolvedProjectId });
-          triggerGreeting().catch(console.error);
-        } else {
-          console.log('[InterviewWindow] Found existing session history, skipping auto-start');
-        }
-        return;
-      }
-      if (existingModel) {
-        console.log('[InterviewWindow] Existing canonical ontology found, triggering review mode', { resolvedProjectId });
-        // 已有模型：显示已有数据，触发 Agent 生成审阅问候语
-        if (existingModel.nodes.length > 0) {
-          setOntology(existingModel);
-          setDisplayModeSync('preview');
-        }
-        // 触发 Agent 自动生成问候语（不显示用户消息）
-        triggerGreeting().catch(console.error);
-      } else if (canonical.entry.kind !== 'legacy_migration_required') {
-      console.log('[InterviewWindow] No history found, starting interview', { resolvedProjectId });
-      sendMessageStream('开始项目访谈').catch(console.error);
-      }
-    };
-
-    shouldAutoStart().catch(console.error);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isInitialized]);
+    hasStartedGreeting.current = true;
+    triggerGreeting().catch((error) => console.error('[InterviewWindow] Failed to start interview greeting', error));
+  }, [isInitialized, isThinking, triggerGreeting]);
 
   const handleProjectComplete = useCallback(() => {
     window.dispatchEvent(new CustomEvent('project:updated', {
@@ -463,6 +451,17 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
     }));
     onComplete?.({ projectId: resolvedProjectId, canonicalOntology: true });
   }, [resolvedProjectId, onComplete]);
+
+  // 访谈首次产出本体时，把派生出的业务名称同步回 project.json 并刷新标题。
+  // project:updated 已让首页重新拉取列表；这里只负责本地标题状态。
+  const syncProjectName = useCallback(() => {
+    if (!projectId) return;
+    syncProjectNameFromOntology(resolvedProjectId)
+      .then((nextName) => {
+        if (nextName) setResolvedProjectName(nextName);
+      })
+      .catch((error) => console.warn('[InterviewWindow] project name sync failed', error));
+  }, [projectId, resolvedProjectId]);
 
   // 监听工具执行完成后，主动刷新右侧面板模型数据
   // 只在工具执行完成时加载一次，避免轮询
@@ -474,10 +473,20 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
 
     refreshBehaviorDraft().catch((error) => console.warn('[InterviewWindow] behavior draft refresh failed', error));
 
-    loadLatestModel(resolvedProjectId).then(model => {
-      if (!model) return;
+    loadLatestCanonicalSnapshot(resolvedProjectId).then(snapshot => {
+      if (!snapshot) {
+        setInterviewComplete(false);
+        return;
+      }
+      const { model } = snapshot;
+      setInterviewComplete(isCanonicalInterviewComplete(snapshot.ontology));
+      setBehaviorModelingRequired(isInterviewBehaviorModelingRequired(snapshot.ontology));
       if (model.nodes.length === 0) return;
       setOntology(model);
+
+      if (model.nodes.length >= 1) {
+        syncProjectName();
+      }
 
       // 首次识别到业务概念时切换到 collecting
       if (displayModeRef.current === 'empty') {
@@ -490,7 +499,7 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
         handleProjectComplete();
       }
     }).catch(console.error);
-  }, [toolExecutions, projectId, resolvedProjectId, handleProjectComplete, refreshBehaviorDraft]);
+  }, [toolExecutions, projectId, resolvedProjectId, handleProjectComplete, refreshBehaviorDraft, syncProjectName]);
 
   // 监听主进程 artifact_changed 事件，刷新右侧图谱
   // 解决 toolExecutions useEffect 只检查最后一个工具的缺陷
@@ -498,10 +507,20 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
     if (!projectId || artifactVersion === 0) return;
 
     console.log('[InterviewWindow] artifact_changed detected, refreshing model', { artifactVersion, resolvedProjectId });
-    loadLatestModel(resolvedProjectId).then(model => {
-      if (!model) return;
+    loadLatestCanonicalSnapshot(resolvedProjectId).then(snapshot => {
+      if (!snapshot) {
+        setInterviewComplete(false);
+        return;
+      }
+      const { model } = snapshot;
+      setInterviewComplete(isCanonicalInterviewComplete(snapshot.ontology));
+      setBehaviorModelingRequired(isInterviewBehaviorModelingRequired(snapshot.ontology));
       if (model.nodes.length === 0) return;
       setOntology(model);
+
+      if (model.nodes.length >= 1) {
+        syncProjectName();
+      }
 
       if (displayModeRef.current === 'empty') {
         setDisplayModeSync('collecting');
@@ -512,7 +531,7 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
       }
     }).catch(console.error);
     refreshBehaviorDraft().catch((error) => console.warn('[InterviewWindow] behavior draft refresh failed', error));
-  }, [artifactVersion, projectId, resolvedProjectId, handleProjectComplete, refreshBehaviorDraft]);
+  }, [artifactVersion, projectId, resolvedProjectId, handleProjectComplete, refreshBehaviorDraft, syncProjectName]);
 
   const handleConfirmBehaviorDraft = useCallback(async () => {
     if (!behaviorDraftReview || isConfirmingBehaviorDraft) return;
@@ -521,9 +540,15 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
     try {
       const published = await confirmInterviewBehaviorDraft(resolvedProjectId, behaviorDraftReview);
       setBehaviorDraftReview(published);
-      const model = await loadLatestModel(resolvedProjectId);
-      if (model) {
+      const snapshot = await loadLatestCanonicalSnapshot(resolvedProjectId);
+      if (snapshot) {
+        const { model } = snapshot;
+        setInterviewComplete(isCanonicalInterviewComplete(snapshot.ontology));
+        setBehaviorModelingRequired(isInterviewBehaviorModelingRequired(snapshot.ontology));
         setOntology(model);
+        if (model.nodes.length >= 1) {
+          syncProjectName();
+        }
         setDisplayModeSync('preview');
       }
     } catch (error) {
@@ -532,7 +557,7 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
     } finally {
       setIsConfirmingBehaviorDraft(false);
     }
-  }, [behaviorDraftReview, isConfirmingBehaviorDraft, refreshBehaviorDraft, resolvedProjectId, setDisplayModeSync]);
+  }, [behaviorDraftReview, isConfirmingBehaviorDraft, refreshBehaviorDraft, resolvedProjectId, setDisplayModeSync, syncProjectName]);
 
   // 转换消息格式给 CUIDialogPanel
   const messages = useMemo(() => {
@@ -561,6 +586,41 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
     console.log('[InterviewWindow] Entity clicked:', entityName);
   };
 
+  const handleLegacyMigrationCompleted = useCallback(async () => {
+    const canonical = await loadProjectCanonicalOntology(resolvedProjectId);
+    if (canonical.entry.kind !== 'canonical' || !canonical.ontology) return;
+    setInterviewComplete(isCanonicalInterviewComplete(canonical.ontology));
+    setBehaviorModelingRequired(isInterviewBehaviorModelingRequired(canonical.ontology));
+    setOntology(canonicalToOntologyModel(canonical.ontology));
+    setLegacyMigrationRequired(false);
+    setDisplayModeSync('preview');
+    await refreshBehaviorDraft();
+  }, [refreshBehaviorDraft, resolvedProjectId, setDisplayModeSync]);
+
+  const handleOpenSolutionDesign = useCallback(() => {
+    const windowManager = AppWindowManager.getInstance();
+    windowManager.openComponentWindow(
+      `solution-design-${resolvedProjectId}`,
+      `${resolvedProjectName} · AI 解决方案`,
+      SolutionDesign,
+      {
+        projectId: resolvedProjectId,
+        projectName: resolvedProjectName,
+        ontologyId: resolvedOntologyId ?? undefined,
+      },
+      {
+        position: { width: 900, height: 700 },
+        constraints: { minWidth: 700, minHeight: 500 },
+        metadata: {
+          entryType: 'solution',
+          entryId: resolvedProjectId,
+          sessionId: `solution-${resolvedProjectId}`,
+          projectId: resolvedProjectId,
+        },
+      }
+    );
+  }, [resolvedOntologyId, resolvedProjectId, resolvedProjectName]);
+
   return (
     <div className="light h-full flex flex-col bg-background text-foreground">
       <InterviewHeader
@@ -582,6 +642,8 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
               uploadBasePath={projectUploadBase}
               onStop={abort}
               isGenerating={isThinking}
+              interviewComplete={interviewComplete}
+              onOpenSolutionDesign={handleOpenSolutionDesign}
             />
           }
           rightPanel={
@@ -593,6 +655,8 @@ export function InterviewWindow({ projectId, sessionId, projectName, ontologyId,
               activeTab={activeTab}
               onTabChange={setActiveTab}
               legacyMigrationRequired={legacyMigrationRequired}
+              projectId={resolvedProjectId}
+              onLegacyMigrationCompleted={() => void handleLegacyMigrationCompleted()}
               behaviorDraftReview={behaviorDraftReview ?? undefined}
               onConfirmBehaviorDraft={handleConfirmBehaviorDraft}
               isConfirmingBehaviorDraft={isConfirmingBehaviorDraft}

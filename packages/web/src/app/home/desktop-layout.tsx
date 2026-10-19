@@ -30,6 +30,7 @@ import { AppCard } from '@/components/framework/AppCard';
 import { Button } from '@/components/ui/button';
 import { HOME_APPS } from '@/config/homeApps';
 import { AppWindowManager } from '@/services/AppWindowManager';
+import { openSupervisorTaskBoard } from '@/components/os/task-board';
 import { usePerceptionStore } from '@/store/perceptionStore';
 
 // ============================================================================
@@ -345,6 +346,8 @@ export function DesktopLayout(input: {
                             }
                           } else if (app.action === 'open-sense-center') {
                             openSenseCenter();
+                          } else if (app.action === 'open-task-board') {
+                            openSupervisorTaskBoard();
                           }
                         }}
                         action="launch"

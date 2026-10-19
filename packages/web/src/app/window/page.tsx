@@ -11,9 +11,9 @@ const ProjectWorkspace = dynamic<any>(() => import('@/components/os/workspace/Pr
 const InterviewWindow = dynamic<any>(() => import('@/components/interview/InterviewWindow').then(m => ({ default: m.InterviewWindow })), { ssr: false });
 const AgentDialogContent = dynamic(() => import('@/components/os/agent-dialog/AgentDialogContent'), { ssr: false });
 const SolutionDesign = dynamic<any>(() => import('@/components/solution/SolutionDesign').then(m => ({ default: m.SolutionDesign })), { ssr: false });
-const CollaborationWindow = dynamic(() => import('./CollaborationWindow'), { ssr: false });
 const SandboxWindow = dynamic<any>(() => import('@/components/sandbox/SandboxWindow').then(m => ({ default: m.SandboxWindow })), { ssr: false });
 const SenseCenter = dynamic(() => import('@/components/os/sense-center').then(m => ({ default: m.SenseCenter })), { ssr: false });
+const SupervisorTaskBoardWindow = dynamic(() => import('@/components/os/task-board').then(m => ({ default: m.SupervisorTaskBoardWindow })), { ssr: false });
 
 function WindowContent() {
   const params = useSearchParams();
@@ -46,10 +46,12 @@ function WindowContent() {
   const sessionId = params.get('sessionId') ?? undefined;
   const skillName = params.get('skillName') ?? undefined;
   const initialMessage = params.get('initialMessage') ?? undefined;
+  const initialFilePath = params.get('initialFilePath') ?? undefined;
   const agentId = params.get('agentId') ?? '';
   const agentName = params.get('agentName') ?? undefined;
   const agentType = params.get('agentType') ?? undefined;
   const projectDescription = params.get('projectDescription') ?? undefined;
+  const initialProjectId = params.get('initialProjectId') ?? (projectId || undefined);
 
   return (
     <div
@@ -75,6 +77,7 @@ function WindowContent() {
           ontologyId={ontologyId}
           entryType={entryType}
           entryId={entryId}
+          initialFilePath={initialFilePath}
         />
       )}
       {windowType === 'project-workspace' && (
@@ -108,10 +111,7 @@ function WindowContent() {
         />
       )}
       {windowType === 'collaboration' && (
-        <CollaborationWindow
-          projectId={projectId}
-          projectName={projectName}
-        />
+        <SupervisorTaskBoardWindow initialProjectId={projectId} initialProjectName={projectName} />
       )}
       {windowType === 'sandbox' && (
         <SandboxWindow
@@ -119,6 +119,7 @@ function WindowContent() {
         />
       )}
       {windowType === 'sense-center' && <SenseCenter />}
+      {windowType === 'supervisor-task-board' && <SupervisorTaskBoardWindow initialProjectId={initialProjectId} initialProjectName={projectName} />}
       </div>
     </div>
   );

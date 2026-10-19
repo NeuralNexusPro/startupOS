@@ -11,6 +11,7 @@ export function validateMailConnectorSettings(
     authMode,
     mailbox,
     pollIntervalSeconds,
+    proxyUrl,
   } = value;
   if (
     typeof host !== 'string' ||
@@ -42,6 +43,8 @@ export function validateMailConnectorSettings(
     Number(pollIntervalSeconds) > 3_600
   )
     throw new Error('INVALID_EMAIL_POLL_INTERVAL');
+  if (proxyUrl !== undefined && proxyUrl !== '' && !isSafeMailProxyUrl(proxyUrl))
+    throw new Error('INVALID_EMAIL_PROXY_URL');
   return {
     host,
     port: Number(port),
@@ -50,5 +53,23 @@ export function validateMailConnectorSettings(
     authMode,
     mailbox,
     pollIntervalSeconds: Number(pollIntervalSeconds),
+    ...(typeof proxyUrl === 'string' && proxyUrl ? { proxyUrl } : {}),
   };
+}
+
+function isSafeMailProxyUrl(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length > 2_048) return false;
+  try {
+    const url = new URL(value);
+    return ['http:', 'https:', 'socks:', 'socks5:'].includes(url.protocol)
+      && Boolean(url.hostname)
+      && Boolean(url.port)
+      && !url.username
+      && !url.password
+      && !url.search
+      && !url.hash
+      && (url.pathname === '' || url.pathname === '/');
+  } catch {
+    return false;
+  }
 }

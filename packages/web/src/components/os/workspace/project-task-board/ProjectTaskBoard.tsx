@@ -770,6 +770,14 @@ function TaskDetail({
       <DetailRow label="当前步骤" value={detail.currentStep ?? '—'} /><DetailRow label="Run" value={detail.runId ? detail.runId + (detail.runStatus ? ' · ' + detail.runStatus : '') : '未关联'} />
       <DetailRow label="执行 Agent" value={detail.assignedAgentIds.length > 0 ? detail.assignedAgentIds.join('、') : '未分配'} />
       <DetailRow label="产物" value={detail.artifactRefs.length > 0 ? detail.artifactRefs.join('、') : '暂无'} />
+      {(detail.workItemFailures?.length ?? 0) > 0 && <div>
+        <h3 className="text-sm font-medium text-slate-800">执行失败详情</h3>
+        <ul className="mt-2 space-y-2">{detail.workItemFailures?.map((failure) => <li key={`${failure.workItemId}:${failure.code}`} className="rounded border border-rose-200 bg-rose-50 p-2 text-sm text-rose-800">
+          <div className="font-medium">{failure.workItemId} · {failure.stage} · {failure.code}</div>
+          <div className="mt-1">{failure.reason}</div>
+          <div className="mt-1 text-xs">恢复动作：{failure.recoveryAction}</div>
+        </li>)}</ul>
+      </div>}
       <DetailRow label="语义引用" value={detail.projectMetadata?.semanticRefs.length ? detail.projectMetadata.semanticRefs.join('、') : '未设置'} />
       {detail.task.blockers.filter((blocker) => !blocker.resolved).length > 0 && <div><h3 className="text-sm font-medium text-slate-800">阻塞</h3>{detail.task.blockers.filter((blocker) => !blocker.resolved).map((blocker) => <p key={blocker.id} className="mt-1 text-sm text-amber-800">{blocker.reason}：{blocker.neededToUnblock}</p>)}</div>}
       <div><h3 className="text-sm font-medium text-slate-800">WorkItems（{detail.workItemCount}）</h3>{detail.workItems.length === 0 ? <p className="mt-1 text-sm text-slate-500">没有关联的 WorkItem。</p> : <ul className="mt-2 space-y-2">{detail.workItems.map((item) => {

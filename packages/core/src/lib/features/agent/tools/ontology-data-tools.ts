@@ -18,6 +18,7 @@ import type { AgentToolResult, AgentToolUpdateCallback } from "@originos/pi-agen
 import * as store from '../../ontology-data-store';
 import * as queryEngine from '../../ontology-data-store';
 import * as schemaValidator from '../../ontology-data-store';
+import type { ConceptField, ConceptSchema } from '../../ontology-data-store';
 import {
 	projectIdFromOntologyId,
 } from '../../ontology-data-store/config';
@@ -145,6 +146,57 @@ async function tryReadCanonical(
 	const stored = await canonicalStore.readOntology(projectId).catch(() => null);
 	if (!stored) return null;
 	return { projectId, ontology: stored.data };
+}
+
+function canonicalFieldType(valueType: string): ConceptField['type'] {
+	switch (valueType) {
+		case 'number': return 'number';
+		case 'boolean': return 'boolean';
+		case 'date':
+		case 'datetime': return 'date';
+		case 'array': return 'array';
+		case 'object': return 'object';
+		case 'reference': return 'relation';
+		default: return 'string';
+	}
+}
+
+function canonicalConceptSchema(
+	ontologyId: string,
+	ontology: CanonicalOntology,
+	conceptId: string,
+): ConceptSchema {
+	const concept = ontology.concepts.find(({ id }) => id === conceptId);
+	if (!concept) {throw new Error(`概念 "${conceptId}" 在本体中不存在`);}
+	const conceptNames = new Map(ontology.concepts.map(({ id, name }) => [id, name]));
+	const fields = ontology.properties
+		.filter((property) => property.conceptId === conceptId)
+		.map((property): ConceptField => {
+			const type = canonicalFieldType(property.valueType);
+			const enumValues = property.metadata?.['enumValues'];
+			return {
+				name: property.name,
+				type,
+				required: property.required,
+				description: property.description,
+				...(Array.isArray(enumValues) && enumValues.every((value) => typeof value === 'string')
+					? { enum: enumValues as string[] }
+					: {}),
+				...(type === 'relation' && property.referenceConceptId
+					? {
+						relatedConceptId: property.referenceConceptId,
+						relatedConceptName: conceptNames.get(property.referenceConceptId),
+					}
+					: {}),
+			};
+		});
+	return {
+		conceptId: concept.id,
+		domainId: concept.domainId,
+		ontologyId,
+		name: concept.name,
+		fields,
+	};
 }
 
 async function readCanonicalOntologyOrThrow(ontologyId: string): Promise<AuthoringContext> {
@@ -624,7 +676,10 @@ const GetConceptSchemaTool: ToolRegistration = {
 			logToolStart(ctx, params);
 			checkAbort(ctx.signal);
 
-			const schema = await schemaValidator.loadConceptSchema(params.ontologyId, params.conceptId);
+			const canonical = await tryReadCanonical(params.ontologyId);
+			const schema = canonical
+				? canonicalConceptSchema(params.ontologyId, canonical.ontology, params.conceptId)
+				: await schemaValidator.loadConceptSchema(params.ontologyId, params.conceptId);
 			return successResult(ctx, { success: true, schema });
 		} catch (error) {
 			return errorResult(ctx, error);

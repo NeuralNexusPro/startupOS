@@ -336,6 +336,11 @@ export class OriginOSAgent {
 				api: streamModel.api,
 				provider: streamModel.provider,
 					baseUrl: sanitizeBaseUrlForLogging((streamModel as any).baseUrl),
+				thinking: {
+					level: opts['reasoningEffort'] ?? 'off',
+					requestFormat: (streamModel as any)?.compat?.thinkingFormat ?? 'none',
+					explicitControl: Boolean((streamModel as any)?.reasoning),
+				},
 			});
 			logInfo(`[streamFn] Context messages count:`, context.messages?.length);
 
@@ -496,20 +501,24 @@ export class OriginOSAgent {
 			? event.message.content.filter((block: any) => block.type === "toolCall").length
 			: 0;
 
-			if (
-				this.activeCompletionPolicy === "chat_guard" &&
-				(event.message as AssistantMessage).stopReason === "stop" &&
-				toolCallCount === 0
-			) {
-				this.pendingCompletionCandidate = {
-					message: event.message,
-					text,
-					stopReason: (event.message as AssistantMessage).stopReason,
-					toolCallCount,
-					repeatedResponse: this.assistantLoopGuardTriggered,
-				};
-			}
+		const stopReason = (event.message as AssistantMessage).stopReason;
+		const isGuardedTerminalResponse =
+			stopReason === "stop" ||
+			(stopReason === "length" && text.trim().length === 0);
+		if (
+			this.activeCompletionPolicy === "chat_guard" &&
+			isGuardedTerminalResponse &&
+			toolCallCount === 0
+		) {
+			this.pendingCompletionCandidate = {
+				message: event.message,
+				text,
+				stopReason,
+				toolCallCount,
+				repeatedResponse: this.assistantLoopGuardTriggered,
+			};
 		}
+	}
 
 	private emitUiEvent(event: AgentEvent): void {
 		if (

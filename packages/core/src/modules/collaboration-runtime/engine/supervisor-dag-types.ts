@@ -4,7 +4,7 @@ import type { RuntimeLLMConfig } from '../../../lib/integrations/pi-agent/llm-co
 import type { RuntimeEvent } from '../../../modules/collaboration-runtime/session/types';
 
 export interface AgentCollaboration {
-  targetAgentId: string;
+  targetAgentId?: string;
   targetAgentName?: string;
   // canonical solution-design 模板用 target 命名；加载时归一到 targetAgentId
   target?: string;
@@ -16,12 +16,16 @@ export interface AgentsJsonAgent {
   id: string;
   name: string;
   type: string;
-  responsibility: string;
+  // Legacy manifests use responsibility/dataOperations while the canonical
+  // solution contract uses description/ontologyObjects.
+  responsibility?: string;
+  description?: string;
   // canonical solution-design 模板用 domain 命名
   businessDomain?: string;
   domain?: string;
   skills?: string[];
   dataOperations?: Record<string, string[]>;
+  ontologyObjects?: Record<string, string[]>;
   ontologyOperations?: Array<{ objectType: string; operations: string[] }>;
   collaborations?: AgentCollaboration[];
 }

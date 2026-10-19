@@ -665,7 +665,7 @@ dependencies: []
 ### 生成要求
 
 1. **直接使用传入规格生成 SKILL.md**，跳过采访阶段
-2. **必须在生成的 SKILL.md 中引用 `references/ontology-tools.md`**，说明该 Skill 通过哪些系统工具操作本体数据
+2. **必须在生成的 SKILL.md 中引用 `references/ontology-tools.md`，并把本创建器的 `references/ontology-tools.md` 复制到生成技能的同名路径**，说明该 Skill 通过哪些系统工具操作本体数据
 3. **在 SKILL.md 的"执行步骤"中，明确列出调用的系统工具名称和参数**，例如：
 
 ```markdown
@@ -706,7 +706,12 @@ dependencies: []
 
 ### 产物
 
-生成 `skills/{skill-code}/SKILL.md`（如果当前工作目录是 Agent 目录，则完整路径为 `agents/{agent-id}/skills/{skill-code}/SKILL.md`），包含：
+生成以下两个文件（如果当前工作目录是 Agent 目录，则完整目录为 `agents/{agent-id}/skills/{skill-code}/`）：
+
+- `SKILL.md`
+- `references/ontology-tools.md`（从本创建器的 reference 原样复制，保证 SKILL.md 中的相对链接可读取）
+
+`SKILL.md` 包含：
 - 标准 frontmatter（name, code, description, version, type, author, tags, reads, writes）
 - 触发场景
 - 执行步骤（含系统工具调用示例）

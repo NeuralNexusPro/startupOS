@@ -21,6 +21,9 @@ import {
   eventStores,
   blackboards,
   loadPersistedSessions,
+  buildContinuationGoal,
+  queueSessionMessage,
+  updateFormalObjective,
 } from "./session-store";
 import { eventEmitter } from "./event-bus";
 
@@ -133,7 +136,7 @@ export async function sendMessageToSupervisor(
 
   // 欢迎模式：第一条消息成为全局目标，触发 DAG 启动（greeting 阶段不含附件，使用原始消息）
   if (session.status === "greeting") {
-    session.globalGoal = expandedMessage;
+    updateFormalObjective(session, expandedMessage);
     session.updatedAt = new Date().toISOString();
 
     // Recreate store/blackboard if lost (e.g. HMR)
@@ -166,7 +169,10 @@ export async function sendMessageToSupervisor(
     return { success: true };
   }
 
-  if (session.status !== "running") {
+  const canStartNextRun = session.status === "completed"
+    || session.status === "aborted"
+    || session.status === "terminated";
+  if (session.status !== "running" && !canStartNextRun) {
     return { success: false, error: `Session ${id} is not running (status: ${session.status})` };
   }
 
@@ -188,7 +194,40 @@ export async function sendMessageToSupervisor(
     await store.append(typedEvent);
   }
 
-  // If supervisor is suspended in HITL, resume it via the registry
+  // A terminal run has no live supervisor. Treat the next user message as a
+  // new goal in the same board conversation and start a fresh run explicitly.
+  if (canStartNextRun) {
+    updateFormalObjective(
+      session,
+      buildContinuationGoal(session.globalGoal, [expandedMessage]),
+    );
+    if (!_startDag) {
+      return { success: false, error: "Collaboration runtime is not initialized" };
+    }
+    const activeStore = store ?? new FsEventStore(path.join(
+      getDataRoot(), "projects", session.projectId, "collaboration-sessions",
+    ));
+    eventStores.set(id, activeStore);
+    await _startDag(session, activeStore, id);
+    return { success: true };
+  }
+
+  // 正式 WorkItem 运行没有常驻 Supervisor 进程。运行中的追加消息先进入
+  // 会话队列，待当前父任务进入终态后再创建新的幂等父任务。
+  if (session.formalExecution || session.executionRequestId) {
+    queueSessionMessage(id, expandedMessage);
+    logRuntime("facade.message.queued_for_formal_run", {
+      sessionId: id,
+      projectId: session.projectId,
+      runId: session.formalExecution?.runId ?? null,
+      messageChars: expandedMessage.length,
+    });
+    return { success: true };
+  }
+
+  // If the legacy supervisor is suspended in HITL, resume it via the registry.
+  // Formal runs never enter this legacy registry: their replies stay queued so
+  // a chat message cannot accidentally start or resume a second execution.
   if (_resumeSupervisorHitl && _resumeSupervisorHitl(id, expandedMessage, workerId)) {
     return { success: true };
   }
@@ -199,8 +238,15 @@ export async function sendMessageToSupervisor(
   const supervisorAgentId = `supervisor-${id}`;
   const supervisorProc = spawner.get(supervisorAgentId);
   if (supervisorProc) {
-    supervisorProc.prompt(expandedMessage).catch((err: unknown) => {
-      console.error(`[hitl-dispatcher] Supervisor prompt error:`, err);
+    // The current DAG destroys its Supervisor after AGENT_END. Sending another
+    // prompt to the same process races with that teardown and loses the reply.
+    // Persist the input above and let dag-runner start a fresh Supervisor as
+    // soon as the current run reaches a terminal state.
+    queueSessionMessage(id, expandedMessage);
+    logRuntime("facade.message.queued", {
+      sessionId: id,
+      projectId: session.projectId,
+      messageChars: expandedMessage.length,
     });
     return { success: true };
   }
@@ -212,7 +258,7 @@ export async function sendMessageToSupervisor(
     eventStores.set(id, newStore);
   }
   const activeStore = eventStores.get(id)!;
-  session.globalGoal = expandedMessage;
+  updateFormalObjective(session, expandedMessage);
   if (_startDag) {
     await _startDag(session, activeStore, id);
   }

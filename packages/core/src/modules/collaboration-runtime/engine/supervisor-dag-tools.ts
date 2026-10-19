@@ -59,6 +59,105 @@ export interface SupervisorDagCtx {
   dispatchWorker: (args: Record<string, unknown>) => Promise<string>;
 }
 
+export function blockWorkerTask(
+  ctx: SupervisorDagCtx,
+  workerId: string,
+  reason: string,
+  waitingFor: string[] = [],
+): void {
+  const taskId = ctx.workerTaskIds.get(workerId);
+  if (!taskId) return;
+  const task = ctx.bb.getTask(taskId);
+  if (!task || task.status === "completed" || task.status === "failed") return;
+  ctx.bb.blockTask(taskId, reason, waitingFor);
+  ctx.recordTaskEvent("TASK_BLOCKED", { taskId, reason, waitingFor }, workerId);
+  ctx.bb.setData(`swarm$tasks$${workerId}`, {
+    taskId,
+    assignedTo: workerId,
+    status: "blocked",
+    reason,
+    waitingFor,
+    blockedAt: new Date().toISOString(),
+  }, workerId, { sourceUri: `worker:block:${ctx.config.sessionId ?? "supervisor"}` });
+  ctx.protocol.persist();
+}
+
+export function resumeWorkerTask(
+  ctx: SupervisorDagCtx,
+  workerId: string,
+  status: "pending" | "assigned" | "running" | "reported" = "running",
+): void {
+  const taskId = ctx.workerTaskIds.get(workerId);
+  if (!taskId) return;
+  const task = ctx.bb.getTask(taskId);
+  if (!task || task.status !== "blocked") return;
+  ctx.bb.resumeTask(taskId, status);
+  ctx.recordTaskEvent("TASK_RESUMED", { taskId, status }, workerId);
+  ctx.bb.setData(`swarm$tasks$${workerId}`, {
+    taskId,
+    assignedTo: workerId,
+    status,
+    resumedAt: new Date().toISOString(),
+  }, workerId, { sourceUri: `worker:resume:${ctx.config.sessionId ?? "supervisor"}` });
+  ctx.protocol.persist();
+}
+
+export function failWorkerTask(
+  ctx: SupervisorDagCtx,
+  workerId: string,
+  reason: string,
+  details: { stage?: string; code?: string; toolName?: string; exitCode?: number | null } = {},
+): void {
+  const workerResult = ctx.workerResults.get(workerId);
+  const taskId = ctx.workerTaskIds.get(workerId);
+  const task = taskId ? ctx.bb.getTask(taskId) : undefined;
+  if (workerResult?.status === "failed" && (!task || task.status === "failed")) return;
+  if (workerResult) workerResult.status = "failed";
+  if (taskId && task && task.status !== "failed" && task.status !== "completed") {
+    ctx.bb.failTask(taskId, reason);
+    task.failure = {
+      stage: details.stage ?? "worker-execution",
+      reason,
+      ...(details.code ? { code: details.code } : {}),
+      ...(details.toolName ? { toolName: details.toolName } : {}),
+      ...(details.exitCode !== undefined ? { exitCode: details.exitCode } : {}),
+      occurredAt: task.completedAt ?? new Date().toISOString(),
+    };
+    ctx.recordTaskEvent("TASK_FAILED", {
+      taskId,
+      error: reason,
+      stage: details.stage ?? "worker-execution",
+      ...(details.code ? { code: details.code } : {}),
+      ...(details.toolName ? { toolName: details.toolName } : {}),
+      ...(details.exitCode !== undefined ? { exitCode: details.exitCode } : {}),
+    }, workerId);
+  }
+
+  ctx.protocol.worker(workerId).failTask(reason);
+  ctx.bb.setData(`swarm$tasks$${workerId}`, {
+    taskId: taskId ?? workerId,
+    assignedTo: workerId,
+    status: "failed",
+    reason,
+    failedAt: new Date().toISOString(),
+  }, workerId, { sourceUri: `worker:fail:${ctx.config.sessionId ?? "supervisor"}` });
+  ctx.protocol.persist();
+  if (!ctx.failedAgents.includes(workerId)) ctx.failedAgents.push(workerId);
+  ctx.notifyWorkerCompletion(workerId);
+
+  const failEvent: RuntimeEvent = {
+    id: `sup-worker-failed-${workerId}-${Date.now()}`,
+    sessionId: ctx.config.sessionId ?? "supervisor",
+    seq: 0,
+    type: "SUPERVISOR_WORKER_FAILED",
+    payload: { workerId, error: reason, stage: details.stage ?? "worker-execution" },
+    source: "supervisor",
+    timestamp: new Date().toISOString(),
+  };
+  void ctx.eventStore.append(failEvent);
+  ctx.eventEmitter?.emit(failEvent);
+}
+
 /** 等待指定 Worker 完成（或超时），返回完成/失败/等待分组与下一步提示 */
 export async function runWaitWorkers(
   ctx: SupervisorDagCtx,
@@ -104,14 +203,29 @@ export async function runWaitWorkers(
             }
           }
 
-          // 计算还有多少 Worker 未被派发，提示 Supervisor 继续
+          // Worker 进程结束只代表产出已上报。reported 必须先验收
+          // 成为 completed，才能提示 Supervisor 派发下游或输出汇总。
+          const pendingVerification = resultCompleted
+            .filter(({ workerId }) => {
+              const taskId = ctx.workerTaskIds.get(workerId);
+              return taskId && ctx.bb.getTask(taskId)?.status === "reported";
+            })
+            .map(({ workerId }) => workerId);
           const dispatchedIds = Array.from(ctx.workerResults.keys());
           const remainingWorkers = ctx.agents.filter((a) => !dispatchedIds.includes(a.id)).map((a) => a.id);
-          const nextStep = remainingWorkers.length > 0
+          const nextStep = pendingVerification.length > 0
+            ? `Worker 产出尚未验收：${pendingVerification.join(", ")}。必须先对每个 Worker 调用 run_verifier，验收通过后才能派发下游或结束任务。`
+            : remainingWorkers.length > 0
             ? `还有 ${remainingWorkers.length} 个 Worker 未派发：${remainingWorkers.join(", ")}。必须继续调用 dispatch_worker 派发下一个 Worker。`
-            : "所有 Worker 已派发完毕，请输出最终汇总报告并结束任务。";
+            : "所有 Worker 已派发并验收完成，请输出最终汇总报告并结束任务。";
 
-          return JSON.stringify({ completed: resultCompleted, failed: resultFailed, waiting: resultWaiting, nextStep });
+          return JSON.stringify({
+            completed: resultCompleted,
+            failed: resultFailed,
+            waiting: resultWaiting,
+            pendingVerification,
+            nextStep,
+          });
 }
 /** 取消运行中的 Worker 子进程 */
 export async function runCancelWorker(
@@ -121,10 +235,16 @@ export async function runCancelWorker(
           const workerId = String(args["workerId"] ?? "");
           if (workerId) {
             const wResult = ctx.workerResults.get(workerId);
-            if (wResult?.proc) {
-              try { await ctx.spawner.destroy(workerId); } catch { /* ignore */ }
-              wResult.status = "failed";
-              ctx.notifyWorkerCompletion(workerId);
+            const taskId = ctx.workerTaskIds.get(workerId);
+            const task = taskId ? ctx.bb.getTask(taskId) : undefined;
+            if (wResult?.proc || (task && task.status !== "completed" && task.status !== "failed")) {
+              failWorkerTask(ctx, workerId, "任务已由 Supervisor 取消。", {
+                stage: "cancelled",
+                code: "WORKER_CANCELLED",
+              });
+              if (wResult?.proc) {
+                try { await ctx.spawner.destroy(workerId); } catch { /* ignore */ }
+              }
             }
           }
           return JSON.stringify({ cancelled: workerId, status: "ok" });
@@ -165,8 +285,53 @@ export async function runVerifier(
             if (!ctx.completedAgents.includes(workerId)) ctx.completedAgents.push(workerId);
             ctx.bb.setData(`swarm$tasks$${workerId}`, { taskId: verifiedTaskId, assignedTo: workerId, status: "completed", completedAt: new Date().toISOString() }, "supervisor");
             ctx.protocol.persist();
+          } else if (!verification.passed && verifiedTaskId && ctx.bb.getTask(verifiedTaskId)?.status === "reported") {
+            const reason = verification.reasoning.trim() || "Supervisor 验收未通过。";
+            failWorkerTask(ctx, workerId, reason, {
+              stage: "verification",
+              code: "TASK_VERIFICATION_REJECTED",
+            });
           }
           return JSON.stringify({ passed: verification.passed, reasoning: verification.reasoning });
+}
+
+/**
+ * Runtime completion guard for Supervisor turns.
+ *
+ * The model is instructed to call run_verifier after every Worker report, but
+ * an otherwise valid Supervisor response may still stop before making the last
+ * tool call. A reported task is not terminal, so reconcile every such task at
+ * the runtime boundary before calculating the aggregate state.
+ */
+export async function settleReportedWorkerTasks(
+  ctx: SupervisorDagCtx,
+): Promise<Array<{ workerId: string; passed: boolean; reasoning: string }>> {
+  const results: Array<{ workerId: string; passed: boolean; reasoning: string }> = [];
+  for (const [workerId, taskId] of ctx.workerTaskIds) {
+    const task = ctx.bb.getTask(taskId);
+    if (task?.status !== "reported") continue;
+    const input = task.input as { acceptanceCriteria?: unknown } | undefined;
+    const criteria = typeof input?.acceptanceCriteria === "string"
+      ? input.acceptanceCriteria
+      : "完成任务";
+    try {
+      const raw = await runVerifier(ctx, { workerId, criteria });
+      const parsed = JSON.parse(raw) as { passed?: unknown; reasoning?: unknown };
+      results.push({
+        workerId,
+        passed: parsed.passed === true,
+        reasoning: typeof parsed.reasoning === "string" ? parsed.reasoning : "",
+      });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      failWorkerTask(ctx, workerId, reason, {
+        stage: "verification",
+        code: "TASK_VERIFICATION_ERROR",
+      });
+      results.push({ workerId, passed: false, reasoning: reason });
+    }
+  }
+  return results;
 }
 /** 列出黑板 artifacts */
 export function runBbListArtifacts(
@@ -213,6 +378,7 @@ export async function runResumeWorker(
 
           try {
             ctx.protocol.start();
+            resumeWorkerTask(ctx, targetWorkerId, "running");
             ctx.protocol.worker(targetWorkerId).updateProgress({ currentStep: "resumed" });
             await workerProc.resume(answer);
             const resultJson = JSON.stringify({
@@ -223,6 +389,10 @@ export async function runResumeWorker(
             console.error(`[SupervisorDag] resume_worker: resumed ${targetWorkerId} with answer`);
             return resultJson;
           } catch (resumeErr) {
+            failWorkerTask(ctx, targetWorkerId, resumeErr instanceof Error ? resumeErr.message : String(resumeErr), {
+              stage: "worker-resume",
+              code: "WORKER_RESUME_FAILED",
+            });
             return JSON.stringify({ error: (resumeErr as Error).message });
           }
 }

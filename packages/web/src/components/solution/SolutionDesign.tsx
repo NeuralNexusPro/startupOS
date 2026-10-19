@@ -13,6 +13,7 @@ import { normalizeRuntimeLLMConfig } from '@originos/core/lib/integrations/pi-ag
 import { useSettingsStore } from '@/store/settingsStore';
 import { AppWindowManager } from '@/services/AppWindowManager';
 import { SolutionContractPublishingContainer } from './SolutionContractPublishingContainer';
+import { SolutionOutputAcceptancePanel } from './SolutionOutputAcceptancePanel';
 
 import type { SolutionDesignStatus } from '@originos/core/lib/features/solution';
 
@@ -336,7 +337,7 @@ export function SolutionDesign({
 
   if (isInitializing) {
     return (
-      <div className="light flex h-full min-h-[400px] items-center justify-center bg-background text-foreground">
+      <div className="light solution-light-surface flex h-full min-h-[400px] items-center justify-center bg-background text-foreground">
         <div className="text-center space-y-4">
           <Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" />
           <p className="text-sm text-muted-foreground">正在读取业务模型，分析中...</p>
@@ -346,7 +347,7 @@ export function SolutionDesign({
   }
 
   return (
-    <div className="light flex h-full min-h-[500px] min-h-0 flex-col bg-background text-foreground">
+    <div className="light solution-light-surface flex h-full min-h-[500px] min-h-0 flex-col overflow-hidden bg-background text-foreground">
       {/* Header */}
       <div className="native-drag-region flex items-center gap-2 border-b border-border bg-card px-4 py-3">
         <Sparkles className="w-4 h-4 text-primary" />
@@ -424,7 +425,7 @@ export function SolutionDesign({
         />
 
         {/* Main content */}
-        <div className="min-w-0 flex-1 overflow-hidden">
+        <div className="relative min-w-0 flex-1 overflow-hidden">
           {/* Chat Tab */}
           {activeTab === 'chat' && (
             <div className="flex min-h-0 flex-col h-full">
@@ -456,7 +457,10 @@ export function SolutionDesign({
 
           {/* Topology Tab */}
           {activeTab === 'topology' && manifest && (
-            <div className="flex-1 overflow-y-auto p-6">
+            <div
+              aria-label="解决方案拓扑内容"
+              className="solution-scrollbar absolute inset-0 overflow-y-scroll bg-slate-50 p-6 pb-10"
+            >
               <div className="mb-4">
                 <h3 className="mb-1 text-sm font-semibold text-foreground">
                   {manifest.businessGoal || 'Agent 协作拓扑'}
@@ -476,6 +480,23 @@ export function SolutionDesign({
                   skillDefs={manifest.skills}
                   topologyViews={manifest.topologyViews}
                   solutionVersion={manifest.solutionVersion}
+                />
+              </div>
+
+              <div className="mt-4">
+                <SolutionOutputAcceptancePanel
+                  key={`acceptance:${manifest.solutionId}:${manifest.solutionVersion}`}
+                  projectId={projectId}
+                  solutionId={manifest.solutionId}
+                  solutionVersion={manifest.solutionVersion}
+                  agents={manifest.agents}
+                  skills={manifest.skills ?? []}
+                  onCreateVersion={() => {
+                    setActiveTab('chat');
+                    void handleSendMessage(
+                      `请基于方案 ${manifest.solutionVersion} 创建一个新版本。`
+                    );
+                  }}
                 />
               </div>
 

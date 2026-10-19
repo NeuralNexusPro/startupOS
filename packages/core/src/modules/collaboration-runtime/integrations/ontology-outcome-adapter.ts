@@ -133,6 +133,25 @@ export class CanonicalOntologyOutcomeAdapter implements WorkItemOutcomePort {
       return rejection('VERIFICATION_NOT_ACCEPTED', id);
     }
 
+    // A frozen read-only node may intentionally have neither an Action nor an
+    // ontology output. Its verified artifact is the outcome; forcing it through
+    // the Action Gate would make the worker invent an unrelated Action ID.
+    if (target.actions.length === 0 && input.workItem.outputRefs.length === 0) {
+      return {
+        receiptId: `${id}:accepted`,
+        status: 'accepted',
+        operationRef: `verified-observation:${input.verifierResult.resultRef}`,
+        factRefs: [],
+        contentHash: hash({
+          contractHash: input.run.contract.contractHash,
+          workItemId: input.workItem.id,
+          verifierRef: input.verifierResult.verificationMethod,
+          verifierHash: input.verifierResult.contentHash,
+          artifactRefs: input.verifierResult.artifactRefs,
+        }),
+      };
+    }
+
     const draft = await this.drafts.resolve(input);
     const binding = target.actions.find(({ actionId }) => actionId === draft.actionId);
     if (!binding) {

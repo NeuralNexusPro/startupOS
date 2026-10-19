@@ -17,6 +17,7 @@ import type {
 } from '../project-task-access-subscription';
 import type { ApprovedProjectTaskCreationService } from '../project-task-creation';
 import type { ProjectTaskBoardService } from '../task-board';
+import type { ProjectSupervisorWorkItemRuntime } from '../supervisor-workitem-runtime';
 
 export const ORIGINOS_ARTIFACT_VERIFIER_REF = 'originos.artifact-output@1.0.0';
 export const ORIGINOS_ARTIFACT_EVIDENCE_SCHEMA_REF = 'originos.artifact-evidence@1.0.0';
@@ -80,4 +81,5 @@ export interface ProjectContractRuntimeComposition {
   readonly contractPort: SolutionExecutionContractPort;
   readonly taskCreation: ApprovedProjectTaskCreationService;
   readonly taskSubscriptions: ProjectTaskSubscriptionPort;
+  readonly supervisorWorkItems: ProjectSupervisorWorkItemRuntime;
 }

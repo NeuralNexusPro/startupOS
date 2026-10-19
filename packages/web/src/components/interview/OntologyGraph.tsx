@@ -133,9 +133,26 @@ export function OntologyGraph({ ontology, className = '', onEntityClick, selecte
     return nodesRef.current.find((node) => Math.hypot(x - node.x, y - node.y) <= 29);
   };
 
+  // Whether the canvas exists must be derived from props, not from nodesRef.
+  // nodesRef is populated by an effect that itself needs canvasRef, so using the
+  // initially-empty ref here creates a deadlock: no canvas -> no graph nodes.
+  const isEmpty = !ontology || !ontology.nodes.some((node) => {
+    if (node.type !== 'entity' && node.type !== 'class') {
+      return false;
+    }
+    const kind = asSemanticNode(node).semanticKind ?? 'unclassified';
+    return filter === 'all' || kind === filter;
+  });
+
   return <div ref={graphRef} className={`relative min-w-0 text-foreground ${className}`}>
     <div className="mb-2 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground" aria-label="概念分类图例"><span className="mr-1">分类：</span><button type="button" onClick={() => setFilter('all')} className={`rounded border px-2 py-1 ${filter === 'all' ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-card hover:bg-muted'}`}>全部</button>{SEMANTIC_KIND_OPTIONS.map((kind) => <button key={kind} type="button" onClick={() => setFilter(kind)} className={`rounded border px-2 py-1 ${filter === kind ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-card hover:bg-muted'}`}>{semanticKindLabel(kind)}</button>)}</div>
-    <canvas ref={canvasRef} width={viewport.width} height={viewport.height} onMouseMove={(event) => { const found = nodeAt(event); hoveredNodeRef.current = found?.id ?? null; event.currentTarget.style.cursor = found ? 'pointer' : 'default'; }} onClick={(event) => { const found = nodeAt(event); if (found) onEntityClick?.(found.name); }} className="block w-full rounded-lg" />
-    {nodesRef.current.length === 0 && <div className="absolute inset-x-0 bottom-1/2 text-center text-sm text-muted-foreground">暂无符合筛选条件的概念</div>}
+    {isEmpty ? (
+      // 空态不渲染画布，避免空画布与图例/占位文案叠在一起。
+      <div className="flex h-40 items-center justify-center rounded-lg border border-dashed border-border bg-card/40 text-sm text-muted-foreground">
+        暂无符合筛选条件的概念
+      </div>
+    ) : (
+      <canvas ref={canvasRef} width={viewport.width} height={viewport.height} onMouseMove={(event) => { const found = nodeAt(event); hoveredNodeRef.current = found?.id ?? null; event.currentTarget.style.cursor = found ? 'pointer' : 'default'; }} onClick={(event) => { const found = nodeAt(event); if (found) onEntityClick?.(found.name); }} className="block w-full rounded-lg" />
+    )}
   </div>;
 }

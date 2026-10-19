@@ -1,20 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, createContext, useContext } from "react";
-import { Loader2, Network, X, ChevronRight } from "lucide-react";
+import { FolderKanban, Loader2, Network, X, ChevronRight } from "lucide-react";
 
 import { TopologyGraph } from "./TopologyGraph";
-import { TaskBoard } from "./TaskBoard";
 import { useCollaborationUi, type AgentActivity, type ForegroundMessage, type CoordinationGroup } from "./store";
 import { useSSEConnection, preconnect } from "./use-sse";
 import type { CollaborationRuntimeUiDeps, UploadedFileDisplay, UploadedFile } from "./ui-deps";
-import { getCollaborationTopology, createCollaborationSession, executeCollaborationSession, sendCollaborationMessage, getCollaborationTaskSnapshot } from "../../../lib/integrations/electron/services/collaboration";
+import { getCollaborationTopology, createCollaborationSession, executeCollaborationSession, sendCollaborationMessage } from "../../../lib/integrations/electron/services/collaboration";
 import type { RuntimeLLMConfig } from "../../../lib/integrations/pi-agent/llm-config";
 
 import type {
   CollaborationTopology,
   RuntimeEvent,
 } from "../session/types";
+import { reconcileFormalHitlProjection } from "./formal-hitl-projection";
 
 const UiDepsContext = createContext<CollaborationRuntimeUiDeps | null>(null);
 function useUiDeps(): CollaborationRuntimeUiDeps {
@@ -28,6 +28,30 @@ interface MultiAgentLauncherProps {
   projectName: string;
   uiDeps: CollaborationRuntimeUiDeps;
   llmConfig?: RuntimeLLMConfig;
+  onOpenTaskBoard?: () => void;
+  /** Render only the existing Supervisor conversation surface for embedding. */
+  conversationOnly?: boolean;
+  /** Notifies embedding surfaces as soon as the runtime session can receive events. */
+  onSessionCreated?: (sessionId: string) => void;
+  /** Lets embedding surfaces refresh their own projections from the same runtime event stream. */
+  onRuntimeEvent?: (event: RuntimeEvent) => void;
+  /** Optional collapse action supplied by an embedding surface. */
+  onCollapse?: () => void;
+  /** Restore the persisted Supervisor conversation instead of creating an empty session. */
+  initialSessionId?: string;
+  /** Historical events projected by the host, including ledger-backed HITL requests. */
+  initialEvents?: readonly RuntimeEvent[];
+  /** Resolve a formal WorkItem HITL request through the contract ledger. */
+  onFormalHitlReply?: (request: FormalHitlReplyRequest, answer: string) => Promise<boolean>;
+}
+
+export interface FormalHitlReplyRequest {
+  eventId: string;
+  runId: string;
+  requestId: string;
+  attemptId: string;
+  leaseEpoch: number;
+  options: readonly string[];
 }
 
 type Phase = "idle" | "creating" | "starting" | "greeting" | "running" | "completed" | "error";
@@ -90,7 +114,7 @@ function formatWorkerEvents(agentId: string, events: RuntimeEvent[]) {
 }
 
 interface HitlCardProps {
-  req: { eventId: string; workerId: string; workerName: string; question: string; timestamp: string };
+  req: { eventId: string; workerId: string; workerName: string; question: string; timestamp: string; formal?: { options: readonly string[] } };
   resolveAgentName: (id: string) => string;
   onReply: (answer: string) => void;
   disabled: boolean;
@@ -103,10 +127,28 @@ function HitlCard({ req, resolveAgentName, onReply, disabled }: HitlCardProps) {
   const displayName = req.workerName || (req.workerId ? resolveAgentName(req.workerId) : "");
   return (
     <div className="flex-shrink-0 border-t border-yellow-200/80 bg-yellow-50/90">
+      {req.formal && (
+        <div className="flex gap-2 px-3 pt-3">
+          {req.formal.options.includes("approve") && (
+            <button type="button" disabled={disabled} onClick={() => onReply("approve")}
+              className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
+              批准并继续
+            </button>
+          )}
+          {req.formal.options.includes("reject") && (
+            <button type="button" disabled={disabled} onClick={() => onReply("reject")}
+              className="rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50">
+              拒绝
+            </button>
+          )}
+        </div>
+      )}
       <ChatInputBar
         onSubmit={onReply}
         disabled={disabled}
-        placeholder={displayName ? `回复 ${displayName} 的问题…` : "输入回复…"}
+        placeholder={req.formal
+          ? "填写修改意见或其他处理要求…"
+          : displayName ? `回复 ${displayName} 的问题…` : "输入回复…"}
         lightBg
         className="bg-yellow-50/80"
       />
@@ -265,48 +307,19 @@ const COORDINATION_STYLE: Record<string, string> = {
   general: "text-gray-400",
 };
 
-/**
- * 快照任务键归一化：WorkspaceTaskSnapshot 的 agents[].activeTask / recentTerminalTask
- * 以 `taskId` 为键（agent-task-snapshot.ts 序列化形态），而 TaskItem 以 `id` 为键。
- * 在调用 mergeSnapshotTasks 前统一映射为 TaskItem 形态（只读转换，不改写快照字段语义）；
- * 畸形条目由 store 的 mergeSnapshotTasks 防御性跳过。
- */
-function normalizeSnapshotTaskKeys(data: unknown): unknown {
-  if (typeof data !== "object" || data === null) return data;
-  const snapshot = data as {
-    activeTasks?: unknown;
-    agents?: unknown;
-    [key: string]: unknown;
-  };
-  const toTaskItem = (value: unknown): unknown => {
-    if (typeof value !== "object" || value === null) return value;
-    const t = value as Record<string, unknown>;
-    if (typeof t["id"] === "string") return t;
-    if (typeof t["taskId"] !== "string") return t;
-    return { ...t, id: t["taskId"] };
-  };
-  const agents = Array.isArray(snapshot.agents)
-    ? snapshot.agents.map((agent) => {
-        if (typeof agent !== "object" || agent === null) return agent;
-        const a = agent as Record<string, unknown>;
-        return {
-          ...a,
-          activeTask: a["activeTask"] !== undefined ? toTaskItem(a["activeTask"]) : undefined,
-          recentTerminalTask: a["recentTerminalTask"] !== undefined ? toTaskItem(a["recentTerminalTask"]) : undefined,
-        };
-      })
-    : snapshot.agents;
-  const activeTasks = Array.isArray(snapshot.activeTasks)
-    ? snapshot.activeTasks.map(toTaskItem)
-    : snapshot.activeTasks;
-  return { ...snapshot, activeTasks, agents };
-}
-
 export const MultiAgentLauncher: React.FC<MultiAgentLauncherProps> = ({
   projectId,
   projectName,
   uiDeps,
   llmConfig,
+  onOpenTaskBoard,
+  conversationOnly = false,
+  onSessionCreated,
+  onRuntimeEvent,
+  onCollapse,
+  initialSessionId,
+  initialEvents = [],
+  onFormalHitlReply,
 }) => {
   const { useFileUpload } = uiDeps;
   const { MarkdownContent, ChatInputBar, AskUserQuestionComponent, parseAskUserQuestion, removeYamlBlock } = uiDeps;
@@ -326,29 +339,9 @@ export const MultiAgentLauncher: React.FC<MultiAgentLauncherProps> = ({
   const activities = useCollaborationUi((state) => state.activities);
   const events = useCollaborationUi((state) => state.events);
   const recentlyActiveAgents = useCollaborationUi((state) => state.recentlyActiveAgents);
-  const boardCollapsed = useCollaborationUi((state) => state.boardCollapsed);
   // displayMessages is maintained incrementally in the store — no useMemo needed.
   const displayMessages = useCollaborationUi((state) => state.displayMessages);
   const [pendingUserMessage, setPendingUserMessage] = useState<ForegroundMessage | null>(null);
-
-  // 会话恢复：sessionId 就绪后拉取一次快照对账（运行中靠事件流，不轮询）。
-  // 快照恢复范围按用户决策收窄：活跃任务 + 各 Agent 最近终端任务（mergeSnapshotTasks 内部实现）。
-  useEffect(() => {
-    if (sessionId === null) return;
-    void getCollaborationTaskSnapshot(sessionId)
-      .then((result) => {
-        if (!result.success) {
-          console.error("[MultiAgentLauncher] Get task snapshot failed:", result.error);
-          return; // 降级：仅事件驱动
-        }
-        // 快照 agents[].activeTask/recentTerminalTask 以 taskId 为键（agent-task-snapshot.ts），
-        // 归一化为 TaskItem.id 后再合并；畸形字段由 mergeSnapshotTasks 防御性跳过。
-        useCollaborationUi.getState().mergeSnapshotTasks(normalizeSnapshotTaskKeys(result.data));
-      })
-      .catch((error) => {
-        console.error("[MultiAgentLauncher] Get task snapshot request failed:", error);
-      });
-  }, [sessionId]);
 
   // Single interval to prune recentlyActiveAgents — replaces per-event setTimeout.
   useEffect(() => {
@@ -376,30 +369,44 @@ export const MultiAgentLauncher: React.FC<MultiAgentLauncherProps> = ({
   );
 
   // 多 HITL 并发：从事件历史派生所有未回复的 HITL 请求
-  interface HitlRequest { eventId: string; workerId: string; workerName: string; question: string; timestamp: string }
+  interface HitlRequest {
+    eventId: string;
+    workerId: string;
+    workerName: string;
+    question: string;
+    timestamp: string;
+    formal?: Omit<FormalHitlReplyRequest, "eventId">;
+  }
   const pendingHitlRequests = useMemo((): HitlRequest[] => {
     const requests: HitlRequest[] = [];
     for (const ev of events) {
       if (ev.type !== "HUMAN_REVIEW_REQUEST") continue;
       const wid = String(ev.payload?.["agentId"] ?? ev.source ?? "");
-      const alreadyReplied = events.some(
-        (e) =>
-          (e.type === "USER_REPLY_TO_SUPERVISOR" || e.type === "HUMAN_REVIEW_RESPONSE") &&
-          e.timestamp > ev.timestamp &&
-          (
-            !wid ||
-            !e.payload?.["workerId"] ||
-            String(e.payload?.["workerId"] ?? "") === wid ||
-            String(e.payload?.["agentId"] ?? "") === wid
-          ),
-      );
+      const requestId = String(ev.payload?.["requestId"] ?? "");
+      const alreadyReplied = events.some((e) => {
+        if (e.type !== "USER_REPLY_TO_SUPERVISOR" && e.type !== "HUMAN_REVIEW_RESPONSE") return false;
+        if (e.timestamp <= ev.timestamp) return false;
+        const responseRequestId = String(e.payload?.["requestId"] ?? "");
+        if (requestId) return responseRequestId === requestId;
+        return !wid
+          || String(e.payload?.["workerId"] ?? e.payload?.["agentId"] ?? "") === wid;
+      });
       if (!alreadyReplied) {
+        const runId = String(ev.payload?.["runId"] ?? "");
+        const attemptId = String(ev.payload?.["attemptId"] ?? "");
+        const leaseEpoch = Number(ev.payload?.["leaseEpoch"]);
+        const options = Array.isArray(ev.payload?.["options"])
+          ? ev.payload["options"].map(String)
+          : [];
         requests.push({
           eventId: ev.id,
           workerId: wid,
           workerName: "",
           question: String(ev.payload?.["question"] ?? ""),
           timestamp: ev.timestamp,
+          ...(runId && requestId && attemptId && Number.isInteger(leaseEpoch)
+            ? { formal: { runId, requestId, attemptId, leaseEpoch, options } }
+            : {}),
         });
       }
     }
@@ -419,6 +426,9 @@ export const MultiAgentLauncher: React.FC<MultiAgentLauncherProps> = ({
     if (lastEventId === null) return;
     const latest = useCollaborationUi.getState().events.at(-1);
     if (!latest) return;
+    if (latest.type.startsWith("TASK_") || latest.type === "SUPERVISOR_WORKER_COMPLETE" || latest.type === "SUPERVISOR_WORKER_FAILED") {
+      onRuntimeEvent?.(latest);
+    }
 
     if (latest.type === "SUPERVISOR_AGENT_START" || latest.type === "AGENT_START") {
       setPhase((prev) => prev === "greeting" ? "running" : prev);
@@ -442,14 +452,21 @@ export const MultiAgentLauncher: React.FC<MultiAgentLauncherProps> = ({
     if (latest.type === "SESSION_ERROR" || latest.type === "DAG_FAIL") {
       setPhase("error");
     }
-  }, [lastEventId]);
+  }, [lastEventId, onRuntimeEvent]);
 
   useEffect(() => {
     void getCollaborationTopology(projectId)
       .then((result) => {
-        if (result.success) setTopology(result.data as CollaborationTopology);
+        if (result.success) {
+          setTopology(result.data as CollaborationTopology);
+        } else {
+          // 拓扑加载失败不再静默：图面板整体消失时至少能在控制台/日志里定位。
+          console.error("[MultiAgentLauncher] Get topology failed:", result.error);
+        }
       })
-      .catch(() => {});
+      .catch((error) => {
+        console.error("[MultiAgentLauncher] Get topology request failed:", error);
+      });
   }, [projectId]);
 
   useSSEConnection(sessionId ?? "");
@@ -460,6 +477,17 @@ export const MultiAgentLauncher: React.FC<MultiAgentLauncherProps> = ({
     setError(null);
 
     try {
+      if (initialSessionId) {
+        useCollaborationUi.getState().reset();
+        for (const event of initialEvents) {
+          useCollaborationUi.getState().addEvent(event);
+        }
+        setSessionId(initialSessionId);
+        preconnect(initialSessionId);
+        onSessionCreated?.(initialSessionId);
+        setPhase(initialEvents.some((event) => event.type === "HUMAN_REVIEW_REQUEST") ? "running" : "greeting");
+        return;
+      }
       setPhase("creating");
       const createResult = await createCollaborationSession({ projectId, mode: "system", llmConfig });
 
@@ -474,6 +502,7 @@ export const MultiAgentLauncher: React.FC<MultiAgentLauncherProps> = ({
       setSessionId(sid);
       // 立即建立事件连接并开始缓冲，不等 React 重渲
       preconnect(sid);
+      onSessionCreated?.(sid);
 
       setPhase("starting");
       const execResult = await executeCollaborationSession(sid);
@@ -491,12 +520,20 @@ export const MultiAgentLauncher: React.FC<MultiAgentLauncherProps> = ({
       setPhase("error");
       autoStarted.current = false;
     }
-  }, [projectId, llmConfig]);
+  }, [projectId, llmConfig, onSessionCreated, initialEvents, initialSessionId]);
 
   useEffect(() => {
     void autoStart();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!initialSessionId || sessionId !== initialSessionId) return;
+    const updates = reconcileFormalHitlProjection(events, initialEvents, initialSessionId);
+    if (!updates.length) return;
+    for (const event of updates) useCollaborationUi.getState().addEvent(event);
+    if (updates.some(({ type }) => type === "HUMAN_REVIEW_REQUEST")) setPhase("running");
+  }, [events, initialEvents, initialSessionId, sessionId]);
 
   const uploadBasePath = useCallback(
     () => (sessionId ? `data/projects/${projectId}/collaboration-sessions/${sessionId}/attachments` : null),
@@ -542,7 +579,7 @@ export const MultiAgentLauncher: React.FC<MultiAgentLauncherProps> = ({
     } else {
       setPhase("running");
     }
-  }, [sessionId, phase, uploadedFiles]);
+  }, [sessionId, phase, uploadedFiles, llmConfig]);
 
   const agentNames: Record<string, string> = topology !== null
     ? Object.fromEntries(Object.entries(topology.agents).map(([id, a]) => [id, (a as { name: string }).name]))
@@ -621,27 +658,38 @@ export const MultiAgentLauncher: React.FC<MultiAgentLauncherProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {onOpenTaskBoard && !conversationOnly && (
+            <button
+              type="button"
+              onClick={onOpenTaskBoard}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 text-xs font-medium text-gray-600 transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
+              aria-label={`打开${projectName}任务看板`}
+            >
+              <FolderKanban className="h-3.5 w-3.5" />
+              任务看板
+            </button>
+          )}
           {phaseBadge}
+          {conversationOnly && onCollapse && (
+            <button
+              type="button"
+              onClick={onCollapse}
+              aria-label="收起协作对话"
+              className="grid h-8 w-8 place-items-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+            >
+              <span aria-hidden="true">‹</span>
+            </button>
+          )}
         </div>
       </div>
 
       {/* Agent status bar */}
-      {topology !== null && (isRunning || isLaunching) && (
+      {!conversationOnly && topology !== null && (isRunning || isLaunching) && (
         <AgentStatusBar
           topology={topology}
           activities={activities}
           recentlyActiveAgents={recentlyActiveAgents}
           onNodeClick={(id) => setSelectedAgentId((prev) => prev === id ? null : id)}
-        />
-      )}
-
-      {/* Task board (Story 9.44) — only when session exists */}
-      {sessionId !== null && (
-        <TaskBoard
-          collapsed={boardCollapsed}
-          onToggleCollapsed={() => useCollaborationUi.getState().setBoardCollapsed(!boardCollapsed)}
-          onTaskClick={(agentId) => setSelectedAgentId((prev) => prev === agentId ? null : agentId)}
-          agentNames={agentNames}
         />
       )}
 
@@ -662,7 +710,7 @@ export const MultiAgentLauncher: React.FC<MultiAgentLauncherProps> = ({
       <div className="min-h-0 flex-1 overflow-hidden flex">
 
         {/* Left: Chat + Input */}
-        <div className="flex h-full flex-col overflow-hidden border-r border-gray-100 bg-gray-50/50" style={{ width: topology !== null ? (selectedAgentId ? '35%' : '50%') : '100%', transition: 'width 0.2s' }}>
+        <div className="flex h-full flex-col overflow-hidden border-r border-gray-100 bg-gray-50/50" style={{ width: conversationOnly ? '100%' : topology !== null ? (selectedAgentId ? '35%' : '50%') : '100%', transition: 'width 0.2s' }}>
 
           {/* Launching skeleton */}
           {isLaunching && allDisplayMessages.length === 0 && (
@@ -809,6 +857,10 @@ export const MultiAgentLauncher: React.FC<MultiAgentLauncherProps> = ({
               req={req}
               resolveAgentName={resolveAgentName}
               onReply={(answer) => {
+                if (req.formal && onFormalHitlReply) {
+                  void onFormalHitlReply({ eventId: req.eventId, ...req.formal }, answer);
+                  return;
+                }
                 void submitReply(answer, req.workerId);
               }}
               disabled={isLaunching}
@@ -818,13 +870,14 @@ export const MultiAgentLauncher: React.FC<MultiAgentLauncherProps> = ({
           ))}
 
           {/* Greeting / completed input area — hidden when HITL card is present */}
-          {(isGreeting || isRunning || phase === "completed") && !isAwaitingHitl && (
+          {(isGreeting || isRunning || phase === "completed" || phase === "error") && !isAwaitingHitl && (
             <ChatInputBar
               onSubmit={(msg) => { void submitReply(msg); }}
               disabled={isLaunching || pendingUserMessage !== null}
               placeholder={
                 isGreeting ? "输入协作目标，按 Enter 发送…"
                 : phase === "completed" ? "继续提问或发起新任务…"
+                : phase === "error" ? "修正后重试或发起新任务…"
                 : "回复 Supervisor…"
               }
               onUpload={sessionId ? handleUpload : undefined}
@@ -842,7 +895,7 @@ export const MultiAgentLauncher: React.FC<MultiAgentLauncherProps> = ({
         </div>
 
         {/* Worker detail drawer */}
-        {selectedAgentId !== null && (
+        {!conversationOnly && selectedAgentId !== null && (
           <div className="flex h-full flex-col overflow-hidden border-l border-gray-100 bg-white" style={{ width: '30%', minWidth: 280, transition: 'width 0.2s' }}>
             <WorkerDetailDrawer
               agentId={selectedAgentId}
@@ -855,7 +908,7 @@ export const MultiAgentLauncher: React.FC<MultiAgentLauncherProps> = ({
         )}
 
         {/* Right: Topology panel */}
-        {topology !== null && (
+        {!conversationOnly && topology !== null && (
           <div className="flex h-full flex-col overflow-hidden bg-slate-950" style={{ width: selectedAgentId ? '35%' : '50%', transition: 'width 0.2s' }}>
             <div className="flex flex-shrink-0 items-center gap-2 border-b border-cyan-400/20 bg-slate-950 px-4 py-2.5">
               <Network className="h-3.5 w-3.5 text-cyan-300" />

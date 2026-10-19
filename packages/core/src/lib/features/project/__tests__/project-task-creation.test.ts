@@ -222,10 +222,13 @@ async function harness(options: {
   const published = options.published ?? { contract: contract() };
   const taskPort = new MemoryTaskPort();
   let existingRun: CollaborationRunSnapshot | null = null;
-  const start = vi.fn(async () => {
+  const start = vi.fn(async (request: {
+    parentStepId: string;
+  }) => {
     const task = await taskPort.findByRequest('project-1', 'request-1');
     if (!task) throw new Error('task missing');
-    const run = options.start ? await options.start(task) : runFor(task);
+    const normalizedTask = { ...task, parentStepId: request.parentStepId };
+    const run = options.start ? await options.start(normalizedTask) : runFor(normalizedTask);
     existingRun = run;
     return run;
   });
@@ -254,6 +257,8 @@ async function harness(options: {
       start,
       findByTask: vi.fn(async () => existingRun),
     },
+    supportedVerifierRefs: ['originos.artifact-output@1.0.0'],
+    supportedEvidenceSchemaRefs: ['originos.artifact-evidence@1.0.0'],
     clock: () => now,
   });
   return { root, published, taskPort, start, queryFacts, service, setRun: (run: CollaborationRunSnapshot) => { existingRun = run; } };
@@ -286,6 +291,9 @@ describe('ApprovedProjectTaskCreationService', () => {
     });
     expect(test.taskPort.create).toHaveBeenCalledTimes(1);
     expect(test.start).toHaveBeenCalledTimes(1);
+    expect(test.start).toHaveBeenCalledWith(expect.objectContaining({
+      entryDesignNodeId: 'prepare-node',
+    }));
     const ledger = await fs.readFile(path.join(
       test.root,
       'projects/project-1/task-creation/operations.jsonl',
@@ -340,6 +348,42 @@ describe('ApprovedProjectTaskCreationService', () => {
       .rejects.toMatchObject({ code: 'ENOENT' });
   });
 
+  it('rejects verifier policies that the production runtime cannot resolve', async () => {
+    const source = contract();
+    source.verification = [{
+      ...source.verification[0]!,
+      verifierRef: 'trend-record-verifier',
+      evidenceSchemaRef: 'trend-record-evidence-v1',
+    }];
+    const test = await harness({ published: { contract: source } });
+
+    const result = await test.service.create(input());
+
+    expect(result).toMatchObject({
+      ok: false,
+      gaps: expect.arrayContaining([
+        expect.objectContaining({ code: 'EXECUTION_VERIFIER_UNAVAILABLE' }),
+        expect.objectContaining({ code: 'EXECUTION_EVIDENCE_SCHEMA_UNAVAILABLE' }),
+      ]),
+    });
+    expect(test.taskPort.create).not.toHaveBeenCalled();
+    expect(test.start).not.toHaveBeenCalled();
+  });
+
+  it('does not require a semantic input that the selected template itself produces', async () => {
+    const source = contract();
+    const produced = source.topology.externalInputs[0]!;
+    source.agents[0]!.outputs = [{ factType: produced, required: true }];
+    const test = await harness({ published: { contract: source } });
+
+    const result = await test.service.create(input({ semanticInputs: [] }));
+
+    expect(result).toMatchObject({ ok: true });
+    expect(test.taskPort.create).toHaveBeenCalledTimes(1);
+    expect(test.start).toHaveBeenCalledTimes(1);
+    expect(test.queryFacts).not.toHaveBeenCalled();
+  });
+
   it('recovers a persisted Task and an unrecorded Run after interruption without duplication', async () => {
     let first = true;
     let persistedRun: CollaborationRunSnapshot | null = null;
@@ -363,6 +407,33 @@ describe('ApprovedProjectTaskCreationService', () => {
     expect(recovered).toMatchObject({ ok: true, receipt: { run: { runId: 'run-1' } } });
     expect(test.taskPort.create).toHaveBeenCalledTimes(1);
     expect(test.start).toHaveBeenCalledTimes(1);
+  });
+
+  it('repairs a legacy receipt that persisted the step text as parentStepId', async () => {
+    const test = await harness();
+    const legacyTask = taskDetail();
+    legacyTask.task.currentStep = '执行任务目标并验证交付结果';
+    legacyTask.task.steps[0] = {
+      ...legacyTask.task.steps[0]!,
+      id: 'T1-S1',
+      text: '执行任务目标并验证交付结果',
+    };
+    test.taskPort.receipts.set('project-1:request-1', {
+      task: legacyTask,
+      parentStepId: '执行任务目标并验证交付结果',
+      parentSessionId: 'session-1',
+    });
+
+    const result = await test.service.create(input());
+
+    expect(result).toMatchObject({
+      ok: true,
+      receipt: { binding: { parentStepId: 'T1-S1' } },
+    });
+    expect(test.start).toHaveBeenCalledWith(expect.objectContaining({
+      parentStepId: 'T1-S1',
+    }));
+    expect(test.taskPort.create).not.toHaveBeenCalled();
   });
 
   it('revalidates revocation before Run recovery and never substitutes another contract', async () => {

@@ -102,27 +102,37 @@ export function aggregateRun(snapshot: CollaborationRunSnapshot): CollaborationR
   if (snapshot.status === 'canceled' || snapshot.status === 'paused') {
     return snapshot;
   }
+  if (snapshot.workItems.some((item) => item.status === 'failed')) {
+    return { ...snapshot, terminalStatus: 'failed' };
+  }
   if (
     snapshot.workItems.length > 0
     && snapshot.workItems.every((item) => item.status === 'completed')
   ) {
     return { ...snapshot, terminalStatus: 'completed' };
   }
-  if (snapshot.workItems.some((item) => item.status === 'failed')) {
-    return { ...snapshot, terminalStatus: 'failed' };
-  }
-  return { ...snapshot, status: 'running' };
+  return { ...snapshot, status: 'running', terminalStatus: undefined };
 }
 
 export function createWorkItems(
   contract: SolutionExecutionContract,
   binding: SolutionTaskBinding,
   inputRefs: readonly string[],
+  nodeIds: readonly string[] = contract.topology.nodes.map(({ id }) => id),
+  entry = false,
 ): CollaborationWorkItem[] {
   const agentById = new Map(contract.agents.map((agent) => [agent.agentId, agent]));
   const skillById = new Map(contract.skills.map((skill) => [skill.skillId, skill]));
-  return contract.topology.nodes.map((node) => {
-    const incoming = contract.topology.edges
+  const selected = new Set(nodeIds);
+  return contract.topology.nodes.filter(({ id }) => selected.has(id)).map((node) => {
+    const template = contract.semanticContext.taskTemplates.find(
+      (candidate) => candidate.designNodeId === node.id,
+    );
+    const skillOwnerCandidates = node.kind === 'skill'
+      && template?.candidateSkillIds.includes(node.contractRef)
+      ? template.candidateAgentIds
+      : [];
+    const incoming = entry ? [] : contract.topology.edges
       .filter((edge) => edge.toNodeId === node.id)
       .map((edge) => edge.factType.factTypeId);
     const outputs = node.kind === 'agent'
@@ -132,9 +142,13 @@ export function createWorkItems(
       id: workItemId(binding.runId, node.id),
       binding,
       designNodeId: node.id,
-      assignedAgentId: node.kind === 'agent' ? node.contractRef : '',
+      assignedAgentId: node.kind === 'agent'
+        ? node.contractRef
+        : skillOwnerCandidates.length === 1
+          ? skillOwnerCandidates[0]!
+          : '',
       skillRefs: node.kind === 'skill' ? [node.contractRef] : [],
-      dependsOn: contract.topology.edges
+      dependsOn: entry ? [] : contract.topology.edges
         .filter((edge) => edge.toNodeId === node.id)
         .map((edge) => workItemId(binding.runId, edge.fromNodeId)),
       inputRefs: incoming.length ? incoming : inputRefs,

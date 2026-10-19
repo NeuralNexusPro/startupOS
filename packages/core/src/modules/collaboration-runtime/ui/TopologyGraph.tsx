@@ -20,6 +20,7 @@ const STATUS_STYLES: Record<AgentStatus, {
   label: string;
 }> = {
   idle: { shell: "#ffffff", accent: "#94a3b8", dot: "#64748b", title: "#0f172a", meta: "#64748b", badge: "#f8fafc", label: "空闲" },
+  running: { shell: "#ffffff", accent: "#4f46e5", dot: "#4f46e5", title: "#0f172a", meta: "#475569", badge: "#e0e7ff", label: "执行中" },
   thinking: { shell: "#ffffff", accent: "#0284c7", dot: "#0284c7", title: "#0f172a", meta: "#475569", badge: "#e0f2fe", label: "思考中" },
   tool_call: { shell: "#ffffff", accent: "#ea580c", dot: "#ea580c", title: "#0f172a", meta: "#475569", badge: "#ffedd5", label: "调用工具" },
   complete: { shell: "#ffffff", accent: "#059669", dot: "#059669", title: "#0f172a", meta: "#475569", badge: "#d1fae5", label: "已完成" },
@@ -329,6 +330,7 @@ export function TopologyGraph({ topology, activities, recentlyActiveAgents = [],
             const styles = STATUS_STYLES[status];
             const statusLabel = styles.label;
             const isActive = recentlyActiveAgents.includes(node.id);
+            const isExecuting = status === "running" || status === "thinking" || status === "tool_call";
             const nodeTitle = getNodeTitle(node, index);
             const nodeSubtitle = getNodeSubtitle(node);
 
@@ -345,8 +347,8 @@ export function TopologyGraph({ topology, activities, recentlyActiveAgents = [],
                   height={node.height}
                   rx={8}
                   fill={styles.shell}
-                  stroke={isActive ? styles.accent : "#dbe3ee"}
-                  strokeWidth={isActive ? 1.4 : 1}
+                  stroke={isActive || isExecuting ? styles.accent : "#dbe3ee"}
+                  strokeWidth={isActive || isExecuting ? 2 : 1}
                   filter="url(#collab-node-shadow)"
                 />
                 <rect

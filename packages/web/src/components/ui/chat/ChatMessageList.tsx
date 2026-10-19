@@ -45,6 +45,8 @@ export interface ChatMessageListProps {
   skipIndices?: Set<number>;
   /** Interactive task content rendered inside the conversation scroll area. */
   footerContent?: React.ReactNode;
+  /** Force the restored conversation into view when its session becomes ready. */
+  scrollToBottomKey?: string;
 }
 
 // ============================================================================
@@ -90,6 +92,7 @@ export function ChatMessageList({
   assistantMessageExtra,
   skipIndices = new Set(),
   footerContent,
+  scrollToBottomKey,
 }: ChatMessageListProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const prevLengthRef = useRef(0);
@@ -142,6 +145,18 @@ export function ChatMessageList({
     }
     prevLengthRef.current = messages.length;
   }, [messages.length]);
+
+  useEffect(() => {
+    if (!scrollToBottomKey) return;
+    // Wait for the restored history to render inside the scroll container.
+    const frame = requestAnimationFrame(() => {
+      const list = listRef.current;
+      if (!list) return;
+      list.scrollTop = list.scrollHeight;
+      isNearBottomRef.current = true;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [scrollToBottomKey]);
 
   // Also scroll on streaming content updates (throttled)
   useEffect(() => {

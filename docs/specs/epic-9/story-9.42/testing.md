@@ -42,6 +42,9 @@
 ### TC-U4 状态隔离
 
 - WorkItem completed 不完成父 Step。
+- Run 快照只包含当前自然语言目标命中的任务模板 WorkItem，不能一次性包含完整拓扑。
+- 当前 WorkItem 完成并通过验收后 Run 完成；后续任务必须由 Supervisor 结合产出和用户新消息重新规划。
+- HITL 未确认时当前 WorkItem 不完成，也不能预先生成后续任务。
 - Run completed 不完成父 Task。
 - 只有 Evidence Gate 和 `task_complete` 可以完成。
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { ArrowRight, CheckCircle2 } from 'lucide-react';
 import { ChatMessageList } from '@/components/ui/chat';
 import { ChatInputBar, type UploadedFileDisplay } from '@/components/ui/chat-input-bar';
 import { useFileUpload, type UploadedFile } from '@/lib/hooks/use-file-upload';
@@ -32,6 +33,10 @@ interface CUIDialogPanelProps {
   onStop?: () => void;
   /** Whether agent is currently generating response */
   isGenerating?: boolean;
+  /** Canonical project facts prove that interview modeling is complete. */
+  interviewComplete?: boolean;
+  /** Continue the same project into solution design. */
+  onOpenSolutionDesign?: () => void;
 }
 
 /**
@@ -50,8 +55,9 @@ export function CUIDialogPanel({
   uploadBasePath,
   onStop,
   isGenerating,
+  interviewComplete = false,
+  onOpenSolutionDesign,
 }: CUIDialogPanelProps) {
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const [answeredQuestions, setAnsweredQuestions] = useState<Set<number>>(new Set());
   const [visibleToolIds, setVisibleToolIds] = useState<Set<string>>(new Set());
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFileDisplay[]>([]);
@@ -164,6 +170,7 @@ export function CUIDialogPanel({
         onQuestionAnswer={handleQuestionAnswer as any}
         answeredQuestions={answeredQuestions}
         showTimestamps
+        scrollToBottomKey={!isLoading && messages.length > 0 ? _sessionId ?? 'interview-ready' : undefined}
         emptyState={
           <div className="flex items-center justify-center h-full">
             <p className="text-sm text-muted-foreground">等待 Oracle 开始访谈...</p>
@@ -171,7 +178,30 @@ export function CUIDialogPanel({
         }
       />
 
-      <div ref={messagesEndRef} />
+      {interviewComplete && onOpenSolutionDesign && (
+        <section
+          aria-label="访谈已完成"
+          className="mx-4 mb-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950 shadow-sm"
+        >
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+            <div className="min-w-0 flex-1">
+              <h3 className="text-sm font-semibold">访谈已完成</h3>
+              <p className="mt-1 text-sm text-emerald-800">
+                业务模型已经准备好，建议进入解决方案设计，规划 Agent 与 Skill 如何协作落地。
+              </p>
+              <button
+                type="button"
+                onClick={onOpenSolutionDesign}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
+              >
+                进入解决方案设计
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
 
       <ChatInputBar
         onSubmit={wrappedSendMessage}

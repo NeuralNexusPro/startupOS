@@ -129,6 +129,59 @@ describe('createRuntimeModel', () => {
     expect(model.compat?.maxTokensField).toBe('max_completion_tokens');
   });
 
+  it('maps an enterprise GLM alias to minimal OpenAI-compatible reasoning', async () => {
+    const { createRuntimeModel } = await import('../server-config.js');
+
+    const model = createRuntimeModel({
+      provider: 'openai-compatible',
+      model: 'ep-cl-glm',
+      baseUrl: 'https://example.com/v1',
+      apiKey: 'sk-test-key',
+      thinkingLevel: 'off',
+    }) as {
+      reasoning?: boolean;
+      compat?: { thinkingFormat?: string; supportsReasoningEffort?: boolean };
+      thinkingLevelMap?: { off?: string };
+    };
+
+    expect(model.reasoning).toBe(true);
+    expect(model.compat?.thinkingFormat).toBe('openai');
+    expect(model.compat?.supportsReasoningEffort).toBe(true);
+    expect(model.thinkingLevelMap?.off).toBe('minimal');
+  });
+
+  it('keeps native GLM model IDs on the Z.AI thinking dialect', async () => {
+    const { createRuntimeModel } = await import('../server-config.js');
+    const model = createRuntimeModel({
+      provider: 'openai-compatible',
+      model: 'glm-4.5',
+      baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+      apiKey: 'sk-test-key',
+      thinkingLevel: 'off',
+    }) as { reasoning?: boolean; compat?: { thinkingFormat?: string } };
+
+    expect(model.reasoning).toBe(true);
+    expect(model.compat?.thinkingFormat).toBe('zai');
+  });
+
+  it('does not send vendor thinking controls for an unknown compatible model', async () => {
+    const { createRuntimeModel } = await import('../server-config.js');
+
+    const model = createRuntimeModel({
+      provider: 'openai-compatible',
+      model: 'custom-chat-model',
+      baseUrl: 'https://example.com/v1',
+      apiKey: 'sk-test-key',
+      thinkingLevel: 'off',
+    }) as {
+      reasoning?: boolean;
+      compat?: { thinkingFormat?: string };
+    };
+
+    expect(model.reasoning).toBe(false);
+    expect(model.compat?.thinkingFormat).toBe('openai');
+  });
+
   it('extracts credential value from structured key payload before creating runtime model', async () => {
     const { createRuntimeModel } = await import('../server-config.js');
 

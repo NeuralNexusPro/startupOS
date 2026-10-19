@@ -48,6 +48,14 @@ Supervisor tools 直发、Worker `HITL_ESCALATE` 直连转换、旧路径兜底�
 
 `COLLAB_SNAPSHOT_GET: 'collaboration:snapshot:get'`：core 与 desktop 两份 `ipc-protocol.ts` 同步常量，desktop handler 转发 core facade `getSessionTaskSnapshot`（desktop 已依赖该门面，不复制业务逻辑）；Web 走既有 HTTP route 零改动。客户端函数 `getCollaborationTaskSnapshot` 完全套用 `services/collaboration.ts` 既有 `isElectron() → IPC / else fetch + readJsonResponse` 模式。
 
+### 6. 看板会话复用 MultiAgentLauncher
+
+项目任务看板不维护第二套“创建 session + 文件轮询消息”的聊天实现，而以 `conversationOnly` 模式嵌入既有 `MultiAgentLauncher`。该模式保留原来的 session 创建、`preconnect`、SSE/IPC 订阅、Supervisor 连续消息、HITL、Markdown、附件和输入条，只隐藏拓扑与 Worker 详情等全屏布局。折叠仅通过 CSS 隐藏容器，不卸载 Launcher，避免 session 与事件订阅丢失。Launcher 通过 `onRuntimeEvent` 在任务事件到达时通知看板刷新任务投影，聊天内容本身不再依赖投影轮询。
+
+### 7. 产物导航复用项目工作区
+
+文件产物引用先归一化为当前项目根目录内的相对路径。`.md` 使用带 `initialFilePath` 的 `WorkspaceWindow` 打开，由工作区 Markdown 编辑器负责读取和编辑；其他扩展名通过受数据根目录约束的 `FS_OPEN` IPC 调用 Electron `shell.openPath`，交给系统默认应用。业务单据和本体数据变更用独立的 `ProjectWorkspace` 数据窗口查看，避免在任务看板复制数据查询和详情 UI。绝对路径、父目录穿越或无法归属当前项目的引用拒绝打开，并在原卡片下显示原因。
+
 ## Risks / Trade-offs
 
 - [TASK_CREATED 与 ASSIGNED 连发导致逐帧跳动] → zustand 更新天然批处理（React 18 自动批）；行渲染直接取最新 status，不做逐事件过渡动画。

@@ -2,6 +2,7 @@ import { fireEvent, render, screen, cleanup } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { SolutionGraphView } from '../TopologyGraph';
 import { projectTopology, type TopologySkill } from '../solution-topology';
+import { fitTopologyToViewport } from '../topology-layout';
 afterEach(cleanup);
 const skill: TopologySkill = {
   id: 'check',
@@ -76,6 +77,10 @@ describe('real topology interaction', () => {
     ])
       expect(detail).toContain(value);
     expect(screen.getByText('方案版本：v4')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '适应画布' })).toBeTruthy();
+    expect(screen.getByLabelText('协同图画布').className).toContain(
+      'solution-scrollbar'
+    );
     expect(performance.now() - started).toBeLessThan(5000);
   });
   it('preserves explicit workflow identities, edges, orphan skills and missing references', () => {
@@ -152,6 +157,12 @@ describe('real topology interaction', () => {
   });
 });
 
+it('calculates a bounded scale that fits the complete graph into the viewport', () => {
+  expect(fitTopologyToViewport(2400, 600, 960, 540)).toBeCloseTo(0.38, 2);
+  expect(fitTopologyToViewport(400, 220, 1200, 800)).toBe(1.15);
+  expect(fitTopologyToViewport(0, 220, 1200, 800)).toBe(1);
+});
+
 it('keeps agent and skill namespaces separate and reports duplicate or malformed nodes', () => {
   const graph = projectTopology(
     [{ id: 'same', name: '角色同名' }],
@@ -210,6 +221,35 @@ it('uses edges rather than source array order for workflow placement', async () 
     layout.nodes.find((node) => node.id === 'end')!.x
   );
   expect(layout.edges[0]?.label).toBe('触发');
+});
+
+it('labels canonical collaboration edges in Chinese and merges duplicate visual lines', () => {
+  const factA = { factTypeId: 'a' };
+  const factB = { factTypeId: 'b' };
+  const graph = projectTopology(
+    [
+      { id: 'a', name: '角色 A' },
+      { id: 'b', name: '角色 B' },
+    ],
+    [],
+    {
+      team: {
+        nodes: [
+          { id: 'a', type: 'agent', contractRef: 'a' },
+          { id: 'b', type: 'agent', contractRef: 'b' },
+        ],
+        edges: [
+          { source: 'a', target: 'b', type: 'collaboration', factType: factA },
+          { source: 'a', target: 'b', type: 'collaboration', factType: factB },
+        ],
+      },
+    },
+    'team'
+  );
+
+  expect(graph.edges).toEqual([
+    { source: 'a', target: 'b', label: '协作', reference: [factA, factB] },
+  ]);
 });
 
 it('keeps partially generated draft contracts readable without crashing', () => {

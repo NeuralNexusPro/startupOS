@@ -85,6 +85,26 @@ export function projectTopology(
         nodes.set(id, { id, name: `缺失引用：${id}`, kind: 'missing' });
         diagnostics.push(`关系引用不存在：${id}`);
       }
+    const existing = edges.find(
+      (candidate) =>
+        candidate.source === edge.source &&
+        candidate.target === edge.target &&
+        candidate.label === edge.label
+    );
+    if (existing) {
+      if (edge.reference !== undefined) {
+        const references = Array.isArray(existing.reference)
+          ? existing.reference
+          : existing.reference === undefined
+            ? []
+            : [existing.reference];
+        const serialized = new Set(references.map((item) => JSON.stringify(item)));
+        if (!serialized.has(JSON.stringify(edge.reference))) {
+          existing.reference = [...references, edge.reference];
+        }
+      }
+      return;
+    }
     edges.push(edge);
   };
   if (explicit) {
@@ -246,6 +266,7 @@ function edgeLabel(value: string): string {
         depend: '依赖',
         'agent-skill': '调用',
         'skill-agent': '输出',
+        collaboration: '协作',
       } as Record<string, string>
     )[value] || value
   );

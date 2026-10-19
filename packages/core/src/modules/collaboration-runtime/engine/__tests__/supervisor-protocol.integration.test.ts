@@ -4,7 +4,7 @@ import path from 'node:path';
 import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest';
 import type { RuntimeEvent } from '../../session/types';
 
-const state = vi.hoisted(() => ({ root: '', callbacks: new Map<string, (event: RuntimeEvent) => void>(), results: new Map<string, (value: string) => void>(), gate: null as Promise<void> | null }));
+const state = vi.hoisted(() => ({ root: '', callbacks: new Map<string, (event: RuntimeEvent) => void>(), results: new Map<string, (value: string) => void>(), gate: null as Promise<void> | null, recoveryEvents: [] as RuntimeEvent[] }));
 vi.mock('@originos/pi-agent-adapter/ai', () => ({ streamSimple: async function* () { if (state.gate) await state.gate; yield { type: 'text_delta', delta: '{"passed":true,"reasoning":"verified"}' }; } }));
 vi.mock('../../../../lib/paths', () => ({ getDataRoot: () => state.root }));
 vi.mock('../../sandbox', () => ({
@@ -34,12 +34,15 @@ async function start(parallel = false) {
   const dir = path.join(state.root, 'projects/p/solutions/v1.0');
   await mkdir(dir, { recursive: true });
   await writeFile(path.join(dir, 'agents.json'), JSON.stringify({ agents: ['a', 'b', 'c'].map((id, i) => ({ id, name: id, skills: [], responsibility: id, businessDomain: 'test', collaborations: !parallel && i < 2 ? [{ targetAgentId: ['b', 'c'][i], type: 'trigger' }] : [] })) }));
-  const running = executeSupervisorDag({ projectId: 'p', sessionId: 's', globalGoal: 'test', modelFactory: { createAutoModel: () => ({}) } }, { append: async () => {} } as never);
+  const running = executeSupervisorDag(
+    { projectId: 'p', sessionId: 's', globalGoal: 'test', modelFactory: { createAutoModel: () => ({}) } },
+    { append: async () => {}, read: async () => state.recoveryEvents } as never,
+  );
   await vi.waitFor(() => expect(state.callbacks.has('supervisor-s')).toBe(true));
   return { running };
 }
 describe('production Supervisor protocol', () => {
-  beforeEach(async () => { state.root = await mkdtemp(path.join(tmpdir(), 's936-production-')); state.callbacks.clear(); state.results.clear(); state.gate = null; });
+  beforeEach(async () => { state.root = await mkdtemp(path.join(tmpdir(), 's936-production-')); state.callbacks.clear(); state.results.clear(); state.gate = null; state.recoveryEvents = []; });
   afterEach(async () => { await stopProtocolObserver('s', true); vi.useRealTimers(); });
 
   it('gates three-agent chain on verified completion and persists reported state', async () => {
@@ -47,10 +50,24 @@ describe('production Supervisor protocol', () => {
     expect((await command('dispatch_worker', { workerId: 'b' })).status).toBe('blocked');
     expect(state.callbacks.has('b')).toBe(false);
     for (const id of ['a', 'b', 'c']) {
-      expect((await command('dispatch_worker', { workerId: id })).status).toBe('dispatched');
+      const dispatchArgs = id === 'a'
+        ? { workerId: id, specificAction: 'collect input', acceptanceCriteria: 'artifact ready' }
+        : { workerId: id };
+      expect((await command('dispatch_worker', dispatchArgs)).status).toBe('dispatched');
+      if (id === 'a') {
+        expect(activeProtocolObserver('s')?.blackboard.getTasks().find(task => task.assignedTo === id)?.input).toEqual({
+          request: 'collect input',
+          acceptanceCriteria: 'artifact ready',
+          globalGoal: 'test',
+          dependencies: [],
+        });
+      }
       emit(id, 'AGENT_END', { content: 'saved', messages: [{ role: 'assistant', content: [{ type: 'toolCall', name: 'write', arguments: { path: 'file' } }] }] });
       const observer = activeProtocolObserver('s')!;
       expect(observer.blackboard.getTasks().find(task => task.assignedTo === id)?.status).toBe('reported');
+      const waitResult = await command('wait_workers', { workerIds: [id], timeoutMs: 1 });
+      expect(waitResult.pendingVerification).toEqual([id]);
+      expect(waitResult.nextStep).toContain('run_verifier');
       if (id === 'a') expect((await command('dispatch_worker', { workerId: 'b' })).status).toBe('blocked');
       const verified = await command('run_verifier', { workerId: id });
       expect(verified.passed).toBe(true);
@@ -63,6 +80,23 @@ describe('production Supervisor protocol', () => {
     recovered.restoreFromState({ ...recovered.toState(), ...projection });
     expect(recovered?.getTasks().filter(task => task.status === 'completed')).toHaveLength(3);
     expect(recovered?.memoryIndex.supervisor?.status).toBeDefined();
+  });
+
+  it('recovers completed upstream tasks from events before dispatching downstream work', async () => {
+    const task = { id: 'task-a-old', description: 'collect input', status: 'pending', assignedTo: 'a', createdAt: '2026-10-15T00:00:00.000Z' };
+    state.recoveryEvents = [
+      { id: 'e1', sessionId: 's', seq: 1, type: 'TASK_CREATED', source: 'supervisor', payload: { task }, timestamp: '2026-10-15T00:00:00.000Z' },
+      { id: 'e2', sessionId: 's', seq: 2, type: 'TASK_ASSIGNED', source: 'supervisor', payload: { taskId: task.id, agentId: 'a' }, timestamp: '2026-10-15T00:01:00.000Z' },
+      { id: 'e3', sessionId: 's', seq: 3, type: 'TASK_STARTED', source: 'a', payload: { taskId: task.id }, timestamp: '2026-10-15T00:02:00.000Z' },
+      { id: 'e4', sessionId: 's', seq: 4, type: 'TASK_REPORTED', source: 'a', payload: { taskId: task.id, output: 'saved' }, timestamp: '2026-10-15T00:03:00.000Z' },
+      { id: 'e5', sessionId: 's', seq: 5, type: 'TASK_COMPLETED', source: 'supervisor', payload: { taskId: task.id, output: 'verified' }, timestamp: '2026-10-15T00:04:00.000Z' },
+    ];
+
+    const { running } = await start();
+
+    expect((await command('dispatch_worker', { workerId: 'b' })).status).toBe('dispatched');
+    await stopProtocolObserver('s', true);
+    await running;
   });
 
   it('runs three independent workers and cancels every observation timer', async () => {

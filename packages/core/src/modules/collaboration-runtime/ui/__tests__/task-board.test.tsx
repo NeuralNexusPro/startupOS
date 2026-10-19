@@ -15,7 +15,7 @@
 
 import React from "react";
 import { describe, it, expect, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 
 import type { RuntimeEvent } from "../../session/types";
 import { TaskBoard } from "../TaskBoard";
@@ -104,7 +104,7 @@ describe("TaskBoard", () => {
     expect(screen.getByText("agent-x")).not.toBeNull();
   });
 
-  it("shows 未分配 for a task without assignedTo and keeps its row disabled", () => {
+  it("shows 未分配 for a task without assignedTo and keeps Agent drawer closed", () => {
     useCollaborationUi.getState().addEvent(
       makeEvent("c1", "TASK_CREATED", {
         task: { id: "t1", description: "待分配任务", status: "pending", createdAt: "2026-10-12T10:20:00Z" },
@@ -115,9 +115,10 @@ describe("TaskBoard", () => {
 
     expect(screen.getByText("未分配")).not.toBeNull();
     const row = screen.getByRole("button", { name: /任务 待分配任务/ });
-    expect(row.hasAttribute("disabled")).toBe(true);
+    expect(row.hasAttribute("disabled")).toBe(false);
     fireEvent.click(row);
     expect(onTaskClick).not.toHaveBeenCalled();
+    expect(row.getAttribute("aria-expanded")).toBe("true");
   });
 
   it("calls onTaskClick with the assigned agentId on row click", () => {
@@ -183,5 +184,59 @@ describe("TaskBoard", () => {
     expect(screen.getByText("已完成 1")).not.toBeNull();
     expect(screen.getByText("失败 0")).not.toBeNull();
     expect(screen.getByText("已完成").tagName).toBe("SPAN");
+  });
+
+  it("places reported and blocked work in separate kanban columns", () => {
+    useCollaborationUi.getState().setTasks([
+      {
+        id: "reported-task",
+        description: "待验收产出",
+        status: "reported",
+        assignedTo: "data-collector",
+        createdAt: "2026-10-12T10:20:00Z",
+      },
+      {
+        id: "blocked-task",
+        description: "等待上游数据",
+        status: "blocked",
+        assignedTo: "data-analyst",
+        createdAt: "2026-10-12T10:21:00Z",
+      },
+    ]);
+
+    renderBoard();
+
+    const reviewColumn = screen.getByLabelText("待 Supervisor 验收任务");
+    const blockedColumn = screen.getByLabelText("受阻任务");
+    expect(within(reviewColumn).getByText("待验收产出")).not.toBeNull();
+    expect(within(reviewColumn).queryByText("等待上游数据")).toBeNull();
+    expect(within(blockedColumn).getByText("等待上游数据")).not.toBeNull();
+  });
+
+  it("shows the selected task input and output in the kanban detail", () => {
+    useCollaborationUi.getState().addEvent(
+      makeEvent("io-1", "TASK_CREATED", {
+        task: {
+          id: "task-io",
+          description: "核对请假申请",
+          status: "pending",
+          input: { request: "核对李明请假", acceptanceCriteria: "返回审批结果" },
+          createdAt: "2026-10-12T10:20:00Z",
+        },
+      }),
+    );
+    useCollaborationUi.getState().addEvent(
+      makeEvent("io-2", "TASK_ASSIGNED", { taskId: "task-io", agentId: "data-collector" }),
+    );
+    useCollaborationUi.getState().addEvent(
+      makeEvent("io-3", "TASK_COMPLETED", { taskId: "task-io", output: "审批通过" }),
+    );
+    renderBoard();
+
+    fireEvent.click(screen.getByRole("button", { name: /任务 核对请假申请/ }));
+    expect(screen.getByText("任务输入")).not.toBeNull();
+    expect(screen.getByText("任务输出")).not.toBeNull();
+    expect(screen.getByText(/核对李明请假/)).not.toBeNull();
+    expect(screen.getByText("审批通过")).not.toBeNull();
   });
 });

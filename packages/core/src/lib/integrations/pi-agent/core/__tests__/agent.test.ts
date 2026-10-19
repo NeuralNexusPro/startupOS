@@ -44,11 +44,12 @@ const basicConfig: OriginOSAgentConfig = {
 function emitAssistantStop(
 	internalAgent: any,
 	text: string,
+	stopReason: "stop" | "length" = "stop",
 ): void {
 	const message = {
 		role: "assistant",
 		content: [{ type: "text", text }],
-		stopReason: "stop",
+		stopReason,
 	};
 	internalAgent.emit({ type: "message_start", message });
 	internalAgent.emit({ type: "message_end", message });
@@ -173,6 +174,48 @@ describe("OriginOSAgent", () => {
 	});
 
 	describe("Runtime environment and completion guard", () => {
+		it("recovers an empty length-limited project response before completing", async () => {
+			vi.mocked(piAi.completeSimple).mockResolvedValue({
+				role: "assistant",
+				content: [{ type: "text", text: '{"status":"complete","reason":"visible response returned"}' }],
+				stopReason: "stop",
+			} as any);
+			agent = new OriginOSAgent(basicConfig);
+			const internalAgent = (agent as any).agent;
+			const receivedEvents: any[] = [];
+			agent.subscribe((event) => receivedEvents.push(event));
+			const promptSpy = vi.spyOn(internalAgent, "prompt")
+				.mockImplementationOnce(async () => {
+					emitAssistantStop(internalAgent, "", "length");
+				})
+				.mockImplementationOnce(async () => {
+					emitAssistantStop(internalAgent, "分工已确认。接下来请确认供应商从准入到淘汰的状态流转。");
+				});
+
+			await agent.prompt("一致");
+
+			expect(promptSpy).toHaveBeenCalledTimes(2);
+			expect(JSON.stringify(receivedEvents)).toContain("分工已确认");
+			expect(receivedEvents.some((event) => event.message?.completionFailure)).toBe(false);
+		});
+
+		it("reports a recoverable failure when an empty length response repeats", async () => {
+			agent = new OriginOSAgent(basicConfig);
+			const internalAgent = (agent as any).agent;
+			const receivedEvents: any[] = [];
+			agent.subscribe((event) => receivedEvents.push(event));
+			vi.spyOn(internalAgent, "prompt").mockImplementation(async () => {
+				emitAssistantStop(internalAgent, "", "length");
+			});
+
+			await agent.prompt("一致");
+
+			const failure = receivedEvents.find((event) =>
+				event.type === "message_end" && event.message?.completionFailure
+			);
+			expect(failure?.message?.content?.[0]?.text).toContain("任务未能自动完成");
+		});
+
 		it("runs semantic completion judging without recovery for an accepted response", async () => {
 			agent = new OriginOSAgent({
 				...basicConfig,

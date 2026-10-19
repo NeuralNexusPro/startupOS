@@ -8,7 +8,10 @@ export * from './ontology-work-item-recovery';
 export * from './task-board';
 export * from './project-task-source';
 export * from './solution-design-source';
+export * from './solution-materialization-types';
+export * from './solution-materialization-service';
 export * from './contract-bound-runtime-composition';
 
 export * from './project-task-creation';
 export * from './project-task-access-subscription';
+export * from './supervisor-workitem-runtime';

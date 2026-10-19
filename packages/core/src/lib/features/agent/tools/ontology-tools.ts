@@ -21,6 +21,7 @@ import {
 	CanonicalOntologyAuthoringService,
 	CanonicalOntologyStore,
 	getCanonicalOntologyAuthoringRevision,
+	projectCanonicalToLegacyOntology,
 	type CanonicalOntology,
 	type CanonicalOntologyAuthoringCommand,
 	type CanonicalOntologyAuthoringReceipt,
@@ -262,7 +263,11 @@ const QueryOntologyTool: ToolRegistration = {
 
 			sendProgress(ctx, `读取本体: ${params.ontologyId}`, 0.5);
 
-			const ontology = await ontologyOps.loadOntology(params.ontologyId);
+			const projectId = projectIdFromOntologyId(params.ontologyId);
+			const canonical = await new CanonicalOntologyStore().readOntology(projectId).catch(() => null);
+			const ontology = canonical
+				? projectCanonicalToLegacyOntology(canonical.data)
+				: await ontologyOps.loadOntology(params.ontologyId);
 
 			sendProgress(ctx, "本体查询完成", 1);
 

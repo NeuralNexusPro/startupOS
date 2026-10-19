@@ -8,6 +8,7 @@ export interface MailConnectorSettings {
   authMode: MailAuthMode;
   mailbox: string;
   pollIntervalSeconds: number;
+  proxyUrl?: string;
 }
 
 export interface MailSecret {

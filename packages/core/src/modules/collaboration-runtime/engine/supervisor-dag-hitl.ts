@@ -47,6 +47,12 @@ if (!globalThis.__hitlChannelByWorker) {
   globalThis.__hitlChannelByWorker = new Map();
 }
 
+/** Clear all transient continuations owned by one collaboration run. */
+export function clearSupervisorHitlSession(sessionId: string): void {
+  globalThis.__hitlResumerRegistry?.delete(sessionId);
+  globalThis.__hitlChannelByWorker?.delete(sessionId);
+}
+
 export function resumeSupervisorHitl(sessionId: string, userReply: string, workerId?: string): boolean {
   // 优先：直连 Worker channel（不依赖 Supervisor LLM 决策）
   const workerChannels = globalThis.__hitlChannelByWorker?.get(sessionId);

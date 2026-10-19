@@ -6,7 +6,7 @@ const CREDENTIAL_KEY = /(^|[-_.])(password|passcode|secret|token|credential|auth
 export function validateMailConnectorSettings(value: unknown): MailConnectorSettings {
   if (!isRecord(value)) throw new Error('Invalid Mail profile');
   assertNoCredentialFields(value);
-  const { host, port, secure, username, authMode, mailbox, pollIntervalSeconds } = value;
+  const { host, port, secure, username, authMode, mailbox, pollIntervalSeconds, proxyUrl } = value;
   if (typeof host !== 'string' || host.length < 1 || host.length > 253 || /\s/.test(host)) throw new Error('Invalid Mail host');
   if (!Number.isSafeInteger(port) || Number(port) < 1 || Number(port) > 65_535) throw new Error('Invalid Mail port');
   if (typeof secure !== 'boolean') throw new Error('Invalid Mail TLS mode');
@@ -14,7 +14,25 @@ export function validateMailConnectorSettings(value: unknown): MailConnectorSett
   if (authMode !== 'password' && authMode !== 'oauth2-token') throw new Error('Invalid Mail auth mode');
   if (typeof mailbox !== 'string' || mailbox.length < 1 || mailbox.length > 255) throw new Error('Invalid Mail mailbox');
   if (!Number.isSafeInteger(pollIntervalSeconds) || Number(pollIntervalSeconds) < 15 || Number(pollIntervalSeconds) > 3_600) throw new Error('Invalid Mail poll interval');
-  return { host, port: Number(port), secure, username, authMode, mailbox, pollIntervalSeconds: Number(pollIntervalSeconds) };
+  if (proxyUrl !== undefined && proxyUrl !== '' && !isSafeMailProxyUrl(proxyUrl)) throw new Error('Invalid Mail proxy URL');
+  return { host, port: Number(port), secure, username, authMode, mailbox, pollIntervalSeconds: Number(pollIntervalSeconds), ...(typeof proxyUrl === 'string' && proxyUrl ? { proxyUrl } : {}) };
+}
+
+function isSafeMailProxyUrl(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length > 2_048) return false;
+  try {
+    const url = new URL(value);
+    return ['http:', 'https:', 'socks:', 'socks5:'].includes(url.protocol)
+      && Boolean(url.hostname)
+      && Boolean(url.port)
+      && !url.username
+      && !url.password
+      && !url.search
+      && !url.hash
+      && (url.pathname === '' || url.pathname === '/');
+  } catch {
+    return false;
+  }
 }
 
 export function assertNoCredentialFields(value: JsonValue | Record<string, unknown>, path = 'settings'): void {

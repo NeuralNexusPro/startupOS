@@ -65,3 +65,31 @@
 
 - **WHEN** 通知写入因存储或权限异常失败
 - **THEN** 系统 MUST 仅记录控制台错误，协作窗口的 HITL 输入卡 MUST 正常出现且用户可继续回复
+
+### Requirement: 项目看板复用 Supervisor 实时会话
+
+项目维度任务看板的会话区 SHALL 复用既有多 Agent 运行会话的 Supervisor 消息链路和交互表面。会话创建后 MUST 在首条用户消息前建立 SSE/IPC 事件订阅；同一会话内的后续消息 MUST 继续发送给同一个 Supervisor，并实时呈现 Supervisor 回复、协调步骤、HITL 问答、Markdown 与附件交互。折叠会话区 MUST NOT 销毁当前会话。
+
+#### Scenario: 看板发布任务后实时收到 Supervisor 回复
+
+- **WHEN** 用户在项目任务看板会话区发送自然语言任务
+- **THEN** 用户消息 MUST 立即显示，Supervisor 的处理状态和回复 MUST 通过既有事件流持续更新，不得等待任务文件轮询后才出现
+
+#### Scenario: 折叠后继续同一会话
+
+- **WHEN** 用户折叠再展开看板会话区
+- **THEN** 当前 Supervisor sessionId 与消息上下文 MUST 保持不变，后续输入 MUST 继续发送到该会话
+
+### Requirement: 任务产物可直接查看
+
+任务详情中的文件产物 SHALL 提供打开操作：Markdown 文件 MUST 在 OriginOS 项目工作区 Markdown 编辑器中定位打开，其他文件格式 MUST 交给操作系统默认应用打开。业务单据或本体数据变更 SHALL 提供数据查看操作，打开当前项目的数据窗口。无法将文件引用安全解析到当前项目或系统打开失败时，系统 MUST 显示具体原因，不得静默无响应。
+
+#### Scenario: 打开 Worker 生成的文件
+
+- **WHEN** 用户点击任务详情中的文件产物
+- **THEN** Markdown 文件 MUST 打开当前项目工作区并自动定位，其他文件 MUST 使用系统默认应用打开
+
+#### Scenario: 查看业务数据产物
+
+- **WHEN** 用户点击任务详情中的单据或业务数据变更
+- **THEN** 系统 MUST 打开当前项目的数据窗口，供用户查看本体实例数据

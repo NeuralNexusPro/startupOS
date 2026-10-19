@@ -83,12 +83,14 @@ function derivePendingHitlRequests(events: RuntimeEvent[]): HitlRequest[] {
   for (const ev of events) {
     if (ev.type !== "HUMAN_REVIEW_REQUEST") continue;
     const wid = String(ev.payload?.["agentId"] ?? ev.source ?? "");
-    const alreadyReplied = events.some(
-      (e) =>
-        (e.type === "USER_REPLY_TO_SUPERVISOR" || e.type === "HUMAN_REVIEW_RESPONSE") &&
-        e.timestamp > ev.timestamp &&
-        (!wid || String(e.payload?.["workerId"] ?? "") === wid || String(e.payload?.["agentId"] ?? "") === wid)
-    );
+    const requestId = String(ev.payload?.["requestId"] ?? "");
+    const alreadyReplied = events.some((e) => {
+      if (e.type !== "USER_REPLY_TO_SUPERVISOR" && e.type !== "HUMAN_REVIEW_RESPONSE") return false;
+      if (e.timestamp <= ev.timestamp) return false;
+      const responseRequestId = String(e.payload?.["requestId"] ?? "");
+      if (requestId) return responseRequestId === requestId;
+      return !wid || String(e.payload?.["workerId"] ?? e.payload?.["agentId"] ?? "") === wid;
+    });
     if (!alreadyReplied) {
       requests.push({
         eventId: ev.id,
@@ -254,5 +256,16 @@ describe("derivePendingHitlRequests", () => {
     const result = derivePendingHitlRequests(events);
     expect(result).toHaveLength(1);
     expect(result[0]!.workerId).toBe("worker-b");
+  });
+
+  it("matches concurrent formal replies by request id even for the same worker", () => {
+    const events = [
+      makeEvent("01", "HUMAN_REVIEW_REQUEST", { question: "Q1", agentId: "worker-a", requestId: "hitl-1" }, "worker-a"),
+      makeEvent("02", "HUMAN_REVIEW_REQUEST", { question: "Q2", agentId: "worker-a", requestId: "hitl-2" }, "worker-a"),
+      makeEvent("03", "HUMAN_REVIEW_RESPONSE", { requestId: "hitl-1" }, "user"),
+    ];
+    const result = derivePendingHitlRequests(events);
+    expect(result).toHaveLength(1);
+    expect(result[0]!.question).toBe("Q2");
   });
 });

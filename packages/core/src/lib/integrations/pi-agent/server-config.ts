@@ -152,6 +152,12 @@ export function createOpenAICompatibleModel(
 		baseUrl = `${baseUrl.replace(/\/$/, "")}/v1`;
 	}
 	const apiKey = options?.apiKey || getAnthropicApiKey();
+	const isGatewayGlmAlias = detectGatewayGlmAlias(actualModelId);
+	const thinkingFormat = isGatewayGlmAlias
+		? "openai"
+		: detectOpenAICompatibleThinkingFormat(actualModelId);
+	const supportsReasoningEffort = isGatewayGlmAlias;
+	const supportsThinkingControl = thinkingFormat !== "openai" || supportsReasoningEffort;
 
 	const openAIModel: Model<"openai-completions"> = {
 		id: actualModelId,
@@ -159,7 +165,10 @@ export function createOpenAICompatibleModel(
 		api: "openai-completions",
 		provider: "openai",
 		baseUrl: baseUrl,
-		reasoning: false,
+		// `reasoning` controls whether pi-ai emits the provider-specific thinking
+		// switch. Marking every custom model as false made the UI say "off" while
+		// omitting the actual disable field from GLM/Qwen/DeepSeek requests.
+		reasoning: supportsThinkingControl,
 		input: ["text"],
 		cost: {
 			input: 0,
@@ -173,17 +182,50 @@ export function createOpenAICompatibleModel(
 		compat: {
 			supportsUsageInStreaming: true,
 			maxTokensField: "max_tokens",
-			supportsReasoningEffort: false,
+			supportsReasoningEffort,
 			supportsStore: false,
 			supportsDeveloperRole: false,
 			requiresToolResultName: false,
 			requiresAssistantAfterToolResult: false,
 			requiresThinkingAsText: false,
-			thinkingFormat: "openai",
+			thinkingFormat,
 		},
+		...(isGatewayGlmAlias && {
+			// The enterprise OpenAI-compatible GLM route resolves to GLM 5.3 and
+			// ignores Z.AI's `thinking.type=disabled`. Its supported control is
+			// `reasoning_effort`; map the UI's off state to the smallest direct-answer
+			// effort so hidden reasoning cannot consume the whole output budget.
+			thinkingLevelMap: {
+				off: "minimal",
+				minimal: "minimal",
+				low: "low",
+				medium: "medium",
+				high: "high",
+			},
+		}),
 	};
 
 	return applyRuntimeFieldMapping(openAIModel, options?.mapping);
+}
+
+/**
+ * Select the request dialect used to explicitly enable/disable hidden thinking.
+ * Keep unknown OpenAI-compatible models on the neutral dialect: sending a
+ * vendor-only field to an unknown gateway can make otherwise valid calls fail.
+ */
+export function detectOpenAICompatibleThinkingFormat(
+	modelId: string,
+): "openai" | "zai" | "qwen" | "deepseek" {
+	const normalized = modelId.trim().toLowerCase();
+	if (normalized.includes("glm")) return "zai";
+	if (normalized.includes("qwen")) return "qwen";
+	if (normalized.includes("deepseek")) return "deepseek";
+	return "openai";
+}
+
+export function detectGatewayGlmAlias(modelId: string): boolean {
+	const normalized = modelId.trim().toLowerCase();
+	return normalized.startsWith("ep-") && normalized.includes("glm");
 }
 
 function applyRuntimeFieldMapping<TApi extends "anthropic-messages" | "openai-completions" | "google" | "azure-openai-responses">(

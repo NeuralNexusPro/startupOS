@@ -17,7 +17,6 @@ import {fileTools} from "./file-tools";
 import {systemTools} from "./system-tools";
 import {bashTools} from "./bash-tools";
 import {skillTools} from "./skill-tools";
-import {urlTools} from "./url-tools";
 import {askUserQuestionTools} from "./ask-user-question-tools";
 
 // ============================================================================
@@ -60,9 +59,6 @@ export function initializeGenericTools(): void {
 
 	// 注册技能工具
 	skillTools.forEach(tool => registerTool(tool));
-
-	// 注册 URL 工具
-	urlTools.forEach(tool => registerTool(tool));
 
 	// 注册 Ask User Question 工具
 	askUserQuestionTools.forEach(tool => registerTool(tool));

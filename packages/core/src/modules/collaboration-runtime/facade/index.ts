@@ -78,6 +78,22 @@ export {
   CollaborationWorkItemHandoffError,
 } from "./contract-execution";
 export { createAgentTaskEvidenceSink } from "./task-runtime-evidence-sink";
+export {
+  assertCollaborationArtifactIdentifier,
+  collaborationArtifactPath,
+  createCollaborationArtifactRef,
+  parseCollaborationArtifactRef,
+} from './artifact-reference';
+export {
+  getSupervisorWorkItemRuntimePort,
+  registerSupervisorWorkItemRuntimePort,
+  type AdvanceSupervisorWorkItemsInput,
+  type BindSupervisorWorkItemInput,
+  type BindSupervisorWorkItemResult,
+  type SupervisorWorkItemBindingReceipt,
+  type SupervisorWorkItemDesignGap,
+  type SupervisorWorkItemRuntimePort,
+} from './supervisor-workitem-runtime';
 
 // ============================================================================
 // Re-export — hitl-dispatcher 公共 API
@@ -98,3 +114,16 @@ export async function createSession(input: CreateSessionInput): Promise<Collabor
 }
 
 export { getSessionTaskSnapshot } from './protocol-snapshot';
+export {
+  readSupervisorTaskBoard,
+  type SupervisorTaskAcceptance,
+  type SupervisorTaskArtifact,
+  type SupervisorTaskBoardConversation,
+  type SupervisorTaskBoardConversationEntry,
+  type SupervisorTaskBoardProject,
+  type SupervisorTaskBoardProjection,
+  type SupervisorTaskBoardStatus,
+  type SupervisorTaskBoardTask,
+  type SupervisorTaskDataChange,
+  type SupervisorTaskFailure,
+} from './task-board-projection';

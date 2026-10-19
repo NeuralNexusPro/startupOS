@@ -8,6 +8,19 @@ describe('Mail provisioning contracts', () => {
     expect(validateMailConnectorSettings(profile)).toEqual(profile);
     expect(fingerprintMailProfile(profile)).toBe(fingerprintMailProfile({ ...profile }));
   });
+  it('accepts a credential-free proxy and requires a new test receipt when the proxy changes', () => {
+    const proxied = { ...profile, proxyUrl: 'socks5://127.0.0.1:10808' };
+    expect(validateMailConnectorSettings(proxied)).toEqual(proxied);
+    expect(fingerprintMailProfile(proxied)).not.toBe(fingerprintMailProfile(profile));
+  });
+  it.each([
+    'socks5://user:pass@127.0.0.1:10808',
+    'socks5://127.0.0.1:10808?token=secret',
+    'file:///tmp/socket',
+    'socks5://127.0.0.1',
+  ])('rejects an unsafe proxy URL', (proxyUrl) => {
+    expect(() => validateMailConnectorSettings({ ...profile, proxyUrl })).toThrow('Invalid Mail proxy URL');
+  });
   it.each([
     [{ ...profile, port: 0 }], [{ ...profile, port: 65_536 }], [{ ...profile, pollIntervalSeconds: 14 }],
     [{ ...profile, pollIntervalSeconds: 3_601 }], [{ ...profile, host: '' }], [{ ...profile, username: '' }],

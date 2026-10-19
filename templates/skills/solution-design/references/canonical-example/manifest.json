@@ -124,14 +124,14 @@
       {
         "id": "verify-prepare",
         "nodeId": "prepare",
-        "verifierRef": "order-verifier",
-        "evidenceSchemaRef": "order-evidence-v1"
+        "verifierRef": "originos.artifact-output@1.0.0",
+        "evidenceSchemaRef": "originos.artifact-evidence@1.0.0"
       },
       {
         "id": "verify-publish",
         "nodeId": "publish",
-        "verifierRef": "publication-verifier",
-        "evidenceSchemaRef": "publication-evidence-v1"
+        "verifierRef": "originos.artifact-output@1.0.0",
+        "evidenceSchemaRef": "originos.artifact-evidence@1.0.0"
       }
     ],
     "hitl": [

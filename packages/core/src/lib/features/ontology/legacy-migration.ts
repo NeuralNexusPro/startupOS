@@ -16,22 +16,6 @@ import {
   type CanonicalValueType,
 } from './types';
 
-type LegacyTimed = { createdAt: string; updatedAt: string };
-type LegacyOntologyInput = LegacyTimed & {
-  id: string;
-  projectId: string;
-  name: string;
-  version: string;
-  domains: Array<LegacyTimed & { id: string; name: string; description: string; icon?: string; color?: string }>;
-  concepts: Array<LegacyTimed & {
-    id: string; domainId: string; name: string; type: string; attributes: Record<string, unknown>; description?: string;
-  }>;
-  instances: Array<LegacyTimed & { id: string; conceptId: string; data: Record<string, unknown> }>;
-  relations: Array<{
-    id: string; sourceId: string; targetId: string; type: string; metadata?: Record<string, unknown>; createdAt: string;
-  }>;
-};
-
 export type LegacyOntologySourceKind = 'ontology' | 'ontology-model' | 'business-model';
 
 export interface LegacyMigrationDiagnostic {
@@ -81,32 +65,38 @@ export interface LegacyOntologyModelView {
   createdAt: number;
 }
 
-const timed = {
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-};
+const legacyTimestampSchema = z.union([z.string().datetime(), z.number().finite()]);
 const legacyOntologySchema = z.object({
-  id: z.string().min(1),
-  projectId: z.string().min(1),
-  name: z.string().min(1),
-  version: z.string().min(1),
-  ...timed,
+  id: z.string().min(1).optional(),
+  ontologyId: z.string().min(1).optional(),
+  projectId: z.string().min(1).optional(),
+  name: z.string().min(1).optional(),
+  version: z.string().min(1).default('1.0.0'),
+  createdAt: legacyTimestampSchema.optional(),
+  updatedAt: legacyTimestampSchema.optional(),
   domains: z.array(z.object({
-    id: z.string().min(1), name: z.string().min(1), description: z.string(),
-    icon: z.string().optional(), color: z.string().optional(), ...timed,
+    id: z.string().min(1), name: z.string().min(1), description: z.string().default(''),
+    icon: z.string().optional(), color: z.string().optional(),
+    createdAt: legacyTimestampSchema.optional(), updatedAt: legacyTimestampSchema.optional(),
   }).passthrough()),
   concepts: z.array(z.object({
     id: z.string().min(1), domainId: z.string().min(1), name: z.string().min(1),
-    type: z.string().min(1), attributes: z.record(z.unknown()), description: z.string().optional(), ...timed,
+    type: z.string().min(1), attributes: z.record(z.unknown()).default({}), description: z.string().optional(),
+    createdAt: legacyTimestampSchema.optional(), updatedAt: legacyTimestampSchema.optional(),
   }).passthrough()),
   instances: z.array(z.object({
-    id: z.string().min(1), conceptId: z.string().min(1), data: z.record(z.unknown()), ...timed,
-  }).passthrough()),
+    id: z.string().min(1), conceptId: z.string().min(1), data: z.record(z.unknown()).default({}),
+    createdAt: legacyTimestampSchema.optional(), updatedAt: legacyTimestampSchema.optional(),
+  }).passthrough()).default([]),
   relations: z.array(z.object({
     id: z.string().min(1), sourceId: z.string().min(1), targetId: z.string().min(1),
-    type: z.string().min(1), metadata: z.record(z.unknown()).optional(), createdAt: z.string().datetime(),
-  }).passthrough()),
-}).passthrough();
+    type: z.string().min(1), cardinality: z.string().min(1).optional(), description: z.string().optional(),
+    metadata: z.record(z.unknown()).optional(), createdAt: legacyTimestampSchema.optional(),
+  }).passthrough()).default([]),
+}).passthrough().refine((value) => value.id || value.ontologyId, {
+  message: 'id or ontologyId is required',
+  path: ['id'],
+});
 
 type InterviewNode = {
   id: string;
@@ -176,6 +166,57 @@ function issue(pathValue: string, message: string): LegacyMigrationDiagnostic {
   return { severity: 'error', code: 'INVALID_REFERENCE', path: pathValue, message };
 }
 
+function normalizationWarning(pathValue: string, message: string): LegacyMigrationDiagnostic {
+  return { severity: 'warning', code: 'LEGACY_FIELD_DEFAULTED', path: pathValue, message };
+}
+
+function legacyDate(value: string | number | undefined, fallback: Date): Date {
+  return value === undefined ? new Date(fallback) : new Date(value);
+}
+
+function legacyValueType(value: unknown): CanonicalValueType {
+  if (typeof value !== 'string') return valueType(value);
+  const normalized = value.trim().toLowerCase();
+  if (['number', 'integer', 'float', 'double'].includes(normalized)) return 'number';
+  if (['boolean', 'bool'].includes(normalized)) return 'boolean';
+  if (['date', 'datetime', 'timestamp'].includes(normalized)) return 'date';
+  if (['object', 'json'].includes(normalized)) return 'object';
+  if (['array', 'list'].includes(normalized)) return 'array';
+  if (['reference', 'ref'].includes(normalized)) return 'reference';
+  return 'string';
+}
+
+function legacyProperty(
+  conceptId: string,
+  propertyName: string,
+  propertyValue: unknown,
+  propertyIndex: number,
+  sourceId: string,
+  conceptIndex: number,
+): CanonicalProperty {
+  const descriptor = propertyValue && typeof propertyValue === 'object' && !Array.isArray(propertyValue)
+    ? propertyValue as Record<string, unknown>
+    : undefined;
+  const declaredType = descriptor?.['type'];
+  const description = descriptor?.['description'];
+  const referenceConceptId = descriptor?.['referenceConceptId'];
+  const enumValues = descriptor?.['enum'];
+  return {
+    id: `${conceptId}-property-${propertyIndex}`,
+    conceptId,
+    name: propertyName,
+    valueType: legacyValueType(declaredType ?? propertyValue),
+    required: descriptor?.['required'] === true
+      || (typeof propertyValue === 'string' && propertyValue.trim().toLowerCase() === 'required'),
+    ...(typeof description === 'string' ? { description } : {}),
+    ...(typeof referenceConceptId === 'string' ? { referenceConceptId } : {}),
+    metadata: {
+      source: source(sourceId, 'ontology', `concepts.${conceptIndex}.attributes.${propertyName}`),
+      ...(Array.isArray(enumValues) ? { enumValues } : {}),
+    },
+  };
+}
+
 function duplicateIds(items: Array<{ id: string }>, collection: string): LegacyMigrationDiagnostic[] {
   const seen = new Set<string>();
   return items.flatMap((item, index) => {
@@ -197,14 +238,33 @@ function baseOntology(projectId: string, id: string, name: string, version: stri
 function convertOntology(input: unknown, projectId: string, sourceId: string): LegacyMigrationPreview {
   const parsed = legacyOntologySchema.safeParse(input);
   if (!parsed.success) return { ontology: null, diagnostics: diagnostic(parsed.error) };
-  const value = parsed.data as unknown as LegacyOntologyInput;
+  const value = parsed.data;
+  const ontologyId = value.id ?? value.ontologyId!;
+  const createdAt = legacyDate(value.createdAt, new Date(0));
+  const updatedAt = legacyDate(value.updatedAt, createdAt);
+  const ontologyName = value.name ?? value.domains[0]?.name ?? '项目业务模型';
   const diagnostics: LegacyMigrationDiagnostic[] = [
     ...duplicateIds(value.domains, 'domains'),
     ...duplicateIds(value.concepts, 'concepts'),
     ...duplicateIds(value.instances, 'instances'),
     ...duplicateIds(value.relations, 'relations'),
   ];
-  if (value.projectId !== projectId) diagnostics.push(issue('projectId', `Expected ${projectId}`));
+  if (value.projectId && value.projectId !== projectId) diagnostics.push(issue('projectId', `Expected ${projectId}`));
+  if (!value.id && value.ontologyId) diagnostics.push(normalizationWarning('id', '已使用旧版 ontologyId 作为新本体标识'));
+  if (!value.projectId) diagnostics.push(normalizationWarning('projectId', `已将旧版本体绑定到项目 ${projectId}`));
+  if (!value.name) diagnostics.push(normalizationWarning('name', `已使用“${ontologyName}”作为本体名称`));
+  if (!value.createdAt || !value.updatedAt) {
+    diagnostics.push(normalizationWarning('createdAt', '已根据可用的旧版时间补齐本体时间'));
+  }
+  if (value.domains.some((item) => !item.createdAt || !item.updatedAt)) {
+    diagnostics.push(normalizationWarning('domains', '已使用本体时间补齐领域时间'));
+  }
+  if (value.concepts.some((item) => !item.createdAt || !item.updatedAt)) {
+    diagnostics.push(normalizationWarning('concepts', '已使用本体时间补齐概念时间'));
+  }
+  if (value.instances.some((item) => !item.createdAt || !item.updatedAt)) {
+    diagnostics.push(normalizationWarning('instances', '已使用本体时间补齐实例时间'));
+  }
   const domainIds = new Set(value.domains.map((item) => item.id));
   const conceptIds = new Set(value.concepts.map((item) => item.id));
   value.concepts.forEach((item, index) => {
@@ -230,20 +290,37 @@ function convertOntology(input: unknown, projectId: string, sourceId: string): L
   });
   if (diagnostics.some((item) => item.severity === 'error')) return { ontology: null, diagnostics };
   const rootSource = source(sourceId, 'ontology');
-  const ontology = baseOntology(projectId, value.id, value.name, value.version, new Date(value.createdAt), rootSource);
-  ontology.updatedAt = new Date(value.updatedAt);
-  ontology.domains = value.domains.map((item) => ({ ...item, createdAt: new Date(item.createdAt), updatedAt: new Date(item.updatedAt) }));
-  ontology.concepts = value.concepts.map((item, index) => ({
-    ...item, sourceRefs: [source(sourceId, 'ontology', `concepts.${index}`)],
-    createdAt: new Date(item.createdAt), updatedAt: new Date(item.updatedAt),
+  const ontology = baseOntology(projectId, ontologyId, ontologyName, value.version, createdAt, rootSource);
+  ontology.updatedAt = updatedAt;
+  ontology.domains = value.domains.map((item) => ({
+    ...item,
+    createdAt: legacyDate(item.createdAt, createdAt),
+    updatedAt: legacyDate(item.updatedAt, updatedAt),
   }));
+  ontology.concepts = value.concepts.map((item, index) => {
+    const properties = Object.entries(item.attributes).map(([propertyName, propertyValue], propertyIndex) => (
+      legacyProperty(item.id, propertyName, propertyValue, propertyIndex, sourceId, index)
+    ));
+    ontology.properties.push(...properties);
+    return {
+      ...item,
+      propertyIds: properties.map((property) => property.id),
+      sourceRefs: [source(sourceId, 'ontology', `concepts.${index}`)],
+      createdAt: legacyDate(item.createdAt, createdAt), updatedAt: legacyDate(item.updatedAt, updatedAt),
+    };
+  });
   ontology.instances = value.instances.map((item, index) => ({
     ...item, sourceRefs: [source(sourceId, 'ontology', `instances.${index}`)],
-    createdAt: new Date(item.createdAt), updatedAt: new Date(item.updatedAt),
+    createdAt: legacyDate(item.createdAt, createdAt), updatedAt: legacyDate(item.updatedAt, updatedAt),
   }));
   ontology.relations = value.relations.filter((_, index) => !hierarchyRelations.has(index)).map((item) => ({
     id: item.id, name: item.type, sourceConceptId: item.sourceId, targetConceptId: item.targetId,
-    cardinality: 'many-to-many', metadata: { ...item.metadata, legacyType: item.type, createdAt: item.createdAt },
+    cardinality: cardinality(item.cardinality ?? 'N:M'), description: item.description,
+    metadata: {
+      ...item.metadata,
+      legacyType: item.type,
+      createdAt: legacyDate(item.createdAt, createdAt).toISOString(),
+    },
   }));
   return { ontology, diagnostics };
 }
@@ -498,11 +575,31 @@ export async function rollbackLegacyOntologyMigration(
 }
 
 export function projectCanonicalToLegacyOntology(ontology: CanonicalOntology): LegacyOntologyView {
+  const propertiesByConcept = new Map<string, CanonicalProperty[]>();
+  ontology.properties.forEach((property) => {
+    propertiesByConcept.set(property.conceptId, [
+      ...(propertiesByConcept.get(property.conceptId) ?? []),
+      property,
+    ]);
+  });
   return {
     id: ontology.id, projectId: ontology.projectId, name: ontology.name,
     domains: ontology.domains.map((item) => ({ ...item, createdAt: item.createdAt.toISOString(), updatedAt: item.updatedAt.toISOString() })),
     concepts: ontology.concepts.map(({ sourceRefs: _sourceRefs, propertyIds: _propertyIds, ...item }) => ({
-      ...item, createdAt: item.createdAt.toISOString(), updatedAt: item.updatedAt.toISOString(),
+      ...item,
+      attributes: Object.fromEntries((propertiesByConcept.get(item.id) ?? []).map((property) => [
+        property.name,
+        {
+          type: property.valueType,
+          required: property.required,
+          ...(property.description ? { description: property.description } : {}),
+          ...(property.referenceConceptId ? { referenceConceptId: property.referenceConceptId } : {}),
+          ...(Array.isArray(property.metadata?.['enumValues'])
+            ? { enum: property.metadata['enumValues'] }
+            : {}),
+        },
+      ])),
+      createdAt: item.createdAt.toISOString(), updatedAt: item.updatedAt.toISOString(),
     })),
     instances: ontology.instances.map(({ sourceRefs: _sourceRefs, stateId: _stateId, ...item }) => ({
       ...item, createdAt: item.createdAt.toISOString(), updatedAt: item.updatedAt.toISOString(),

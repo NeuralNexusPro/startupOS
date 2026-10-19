@@ -205,6 +205,10 @@ export interface ProjectTaskCreationServiceDependencies {
   readonly factPort: ProjectTaskCreationFactPort;
   readonly taskPort: ApprovedProjectTaskPort;
   readonly executionPort: Pick<CollaborationExecutionPort, 'start' | 'findByTask'>;
+  /** Exact verifier implementations installed in this runtime composition. */
+  readonly supportedVerifierRefs: readonly string[];
+  /** Exact evidence schema implementations installed in this runtime composition. */
+  readonly supportedEvidenceSchemaRefs: readonly string[];
   readonly mutationLock?: CollaborationMutationLockPort;
   readonly clock?: () => Date;
   readonly operationStore?: ProjectTaskCreationOperationStore;
@@ -327,6 +331,27 @@ function targetsForTemplate(
   }] : []);
 }
 
+function sameFactType(
+  left: { readonly ontologyId: string; readonly ontologyVersion: string; readonly conceptId: string; readonly factTypeId: string },
+  right: { readonly ontologyId: string; readonly ontologyVersion: string; readonly conceptId: string; readonly factTypeId: string },
+): boolean {
+  return left.ontologyId === right.ontologyId
+    && left.ontologyVersion === right.ontologyVersion
+    && left.conceptId === right.conceptId
+    && left.factTypeId === right.factTypeId;
+}
+
+function templateProducedFactTypes(
+  contract: SolutionExecutionContract,
+  template: SolutionTaskTemplate,
+) {
+  const agents = template.candidateAgentIds.flatMap((agentId) =>
+    contract.agents.find((candidate) => candidate.agentId === agentId)?.outputs ?? []);
+  const skills = template.candidateSkillIds.flatMap((skillId) =>
+    contract.skills.find((candidate) => candidate.skillId === skillId)?.outputs ?? []);
+  return [...agents, ...skills].map(({ factType }) => factType);
+}
+
 function factState(value: Readonly<Record<string, unknown>>): string | undefined {
   const stateId = value['stateId'];
   return typeof stateId === 'string' ? stateId : undefined;
@@ -407,9 +432,11 @@ export class ApprovedProjectTaskCreationService {
       await this.operationStore.append(operation);
     }
 
-    let taskReceipt = operation.taskReceipt;
+    let taskReceipt = operation.taskReceipt
+      ? this.normalizeTaskReceipt(operation.taskReceipt)
+      : undefined;
     if (!taskReceipt) {
-      taskReceipt = await this.dependencies.taskPort.findByRequest(
+      taskReceipt = this.normalizeTaskReceipt(await this.dependencies.taskPort.findByRequest(
         input.projectId,
         input.requestId,
       ) ?? await this.dependencies.taskPort.create({
@@ -427,7 +454,7 @@ export class ApprovedProjectTaskCreationService {
           contractHash: input.contractHash,
           taskTemplateId: input.taskTemplateId,
         },
-      });
+      }));
       this.assertTaskReceipt(input, taskReceipt);
       operation = await this.advance(operation, {
         stage: 'task_created',
@@ -435,6 +462,12 @@ export class ApprovedProjectTaskCreationService {
       });
     } else {
       this.assertTaskReceipt(input, taskReceipt);
+      if (taskReceipt.parentStepId !== operation.taskReceipt?.parentStepId) {
+        operation = await this.advance(operation, {
+          stage: 'task_created',
+          taskReceipt,
+        });
+      }
     }
 
     // The contract may be revoked between Task creation and Run creation.
@@ -446,6 +479,7 @@ export class ApprovedProjectTaskCreationService {
       const existing = await this.dependencies.executionPort.findByTask(
         input.projectId,
         taskReceipt.task.taskId,
+        taskReceipt.parentSessionId,
       );
       run = existing ?? await this.dependencies.executionPort.start({
         projectId: input.projectId,
@@ -457,6 +491,7 @@ export class ApprovedProjectTaskCreationService {
         executionContractId: input.contractId,
         contractHash: input.contractHash,
         inputRefs: beforeRun.value.inputRefs,
+        entryDesignNodeId: beforeRun.value.template.designNodeId,
         ...(taskReceipt.parentSessionId
           ? { parentSessionId: taskReceipt.parentSessionId }
           : {}),
@@ -544,6 +579,26 @@ export class ApprovedProjectTaskCreationService {
       '返回方案设计并重新发布完整契约。',
       'contractHash',
     ));
+    const supportedVerifierRefs = new Set(this.dependencies.supportedVerifierRefs);
+    const supportedEvidenceSchemaRefs = new Set(
+      this.dependencies.supportedEvidenceSchemaRefs,
+    );
+    for (const policy of contract.verification) {
+      if (!supportedVerifierRefs.has(policy.verifierRef)) gaps.push(gap(
+        'EXECUTION_VERIFIER_UNAVAILABLE',
+        `执行环境未安装验证器 ${policy.verifierRef}。`,
+        '在方案中绑定已安装的版本化验证器后发布新版本。',
+        'verification.verifierRef',
+        policy.verifierRef,
+      ));
+      if (!supportedEvidenceSchemaRefs.has(policy.evidenceSchemaRef)) gaps.push(gap(
+        'EXECUTION_EVIDENCE_SCHEMA_UNAVAILABLE',
+        `执行环境未安装证据结构 ${policy.evidenceSchemaRef}。`,
+        '在方案中绑定已安装的版本化证据结构后发布新版本。',
+        'verification.evidenceSchemaRef',
+        policy.evidenceSchemaRef,
+      ));
+    }
     const template = contract.semanticContext.taskTemplates.find(
       ({ id }) => id === input.taskTemplateId,
     );
@@ -555,6 +610,15 @@ export class ApprovedProjectTaskCreationService {
       input.taskTemplateId,
     ));
     if (gaps.length || !template) return { ok: false, gaps };
+
+    const producedFactTypes = templateProducedFactTypes(contract, template);
+    const requiredExternalInputs = contract.topology.externalInputs.filter((expected) =>
+      !producedFactTypes.some((produced) => sameFactType(produced, expected)));
+    const producedConcepts = new Set(producedFactTypes.map((factType) => [
+      factType.ontologyId,
+      factType.ontologyVersion,
+      factType.conceptId,
+    ].join('/')));
 
     const targets = targetsForTemplate(contract, template);
     if (targets.length !== template.candidateAgentIds.length
@@ -612,7 +676,12 @@ export class ApprovedProjectTaskCreationService {
     ]));
     for (const slot of contract.semanticContext.objectSlots) {
       const ref = bySlot.get(slot.id);
-      if (slot.required && !ref) gaps.push(gap(
+      const producedByTemplate = producedConcepts.has([
+        slot.concept.ontologyId,
+        slot.concept.ontologyVersion,
+        slot.concept.conceptId,
+      ].join('/'));
+      if (slot.required && !producedByTemplate && !ref) gaps.push(gap(
         'REQUIRED_SEMANTIC_OBJECT_MISSING',
         `缺少必填语义对象 ${slot.id}。`,
         '绑定与该 slot 概念完全匹配的 canonical fact。',
@@ -642,7 +711,7 @@ export class ApprovedProjectTaskCreationService {
         ));
       }
     }
-    for (const expected of contract.topology.externalInputs) {
+    for (const expected of requiredExternalInputs) {
       if (!input.semanticInputs.some(({ factRef }) =>
         factRef.ontologyId === expected.ontologyId
         && factRef.ontologyVersion === expected.ontologyVersion
@@ -744,12 +813,22 @@ export class ApprovedProjectTaskCreationService {
     if (receipt.task.projectId !== input.projectId
       || !receipt.task.taskId
       || receipt.task.revision < 0
-      || !receipt.parentStepId) {
+      || !IDENTIFIER.test(receipt.parentStepId)) {
       throw new ProjectTaskCreationError(
         'TASK_RECEIPT_INVALID',
         'Task creation receipt does not match the project scope',
       );
     }
+  }
+
+  private normalizeTaskReceipt(
+    receipt: ApprovedProjectTaskReceipt,
+  ): ApprovedProjectTaskReceipt {
+    if (IDENTIFIER.test(receipt.parentStepId)) return receipt;
+    const step = receipt.task.task.steps.find(({ id, text }) =>
+      id === receipt.parentStepId || text === receipt.parentStepId
+    );
+    return step ? { ...receipt, parentStepId: step.id } : receipt;
   }
 
   private assertRun(

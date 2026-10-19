@@ -13,6 +13,8 @@
 - 新增 Electron IPC 通道 `COLLAB_SNAPSHOT_GET` 与双通道客户端函数 `getCollaborationTaskSnapshot`，会话恢复时拉取一次快照对账；恢复范围按用户决策收窄为活跃任务 + 各 Agent 最近终端任务，不做全量恢复。
 - 新增 facade 级通知挂点 `hitl-notify.ts`：`HUMAN_REVIEW_REQUEST` 事件经既有 `addElectronForwarder` 触发 `NotificationManager.createNotification` 写入 OriginOS 通知中心（按事件 id 幂等，失败仅 console.error，通知中心 UI 零改动）。
 - 不改 engine/session/protocol 核心子层，不新增存储与快照字段；项目工作区「任务」页签（`project-task-board-*` 体系）不呈现协作任务，两套体系不打通。
+- 项目维度任务看板内嵌既有 `MultiAgentLauncher` Supervisor 会话表面，复用同一会话的 SSE/IPC 事件流、流式消息、HITL、Markdown、附件与连续追问交互；看板不再通过文件轮询模拟聊天响应。
+- 任务详情中的文件产物可直接打开并定位到项目工作区；业务单据或本体数据变更可打开当前项目的数据窗口查看。
 
 ## Capabilities
 
@@ -26,8 +28,8 @@
 
 ## Impact
 
-- 影响 `packages/core/src/modules/collaboration-runtime/ui/`（store、TaskBoard、MultiAgentLauncher）、`facade/`（hitl-notify、dag-runner 组装点）、`packages/core/src/lib/integrations/electron/`（ipc-protocol、services/collaboration）与 `packages/desktop/src/main/`（ipc-protocol、collaboration-service handler）。
-- 复用既有 HTTP route `GET /api/collaboration/sessions/[id]/snapshot` 与 `NotificationManager`，Web 侧 UI 与 API route 零改动。
+- 影响 `packages/core/src/modules/collaboration-runtime/ui/`（store、TaskBoard、MultiAgentLauncher）、`facade/`（hitl-notify、dag-runner 组装点）、`packages/core/src/lib/integrations/electron/`（ipc-protocol、services/collaboration）、`packages/desktop/src/main/`（ipc-protocol、collaboration-service handler）与 Web 任务看板会话容器。
+- 复用既有 HTTP route `GET /api/collaboration/sessions/[id]/snapshot`、`NotificationManager` 与 MultiAgentLauncher；API route 无需新增聊天协议。
 - 不新增持久化、数据库、外部集成；`project-task-board-*` 相关 capability 与文件零改动。
 - 依赖 Story 9.41/9.42 已交付的协作事件流与快照基础设施；为 Story 9.43 之后的多 Agent 可观测性补齐看板与通知能力。
 

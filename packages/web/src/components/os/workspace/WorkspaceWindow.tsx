@@ -29,13 +29,14 @@ interface WorkspaceWindowProps {
   entryId?: string;
   ontologyId?: string;
   basePath?: string;
+  initialFilePath?: string;
 }
 
 /**
  * Main workspace window component
  * Left: directory tree  |  Right: file viewer/editor
  */
-export function WorkspaceWindow({ projectId, projectName, entryType, entryId, ontologyId: propOntologyId, basePath }: WorkspaceWindowProps) {
+export function WorkspaceWindow({ projectId, projectName, entryType, entryId, ontologyId: propOntologyId, basePath, initialFilePath }: WorkspaceWindowProps) {
   const { files, openedFile, isLoading, loadFiles, openFile, createFile, saveFile, setActiveProject } = useWorkspace();
   const { watchPath, unwatchPath, onChanged } = useLocalFS();
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('项目');
@@ -72,7 +73,9 @@ export function WorkspaceWindow({ projectId, projectName, entryType, entryId, on
       return;
     }
 
-    resolveWorkspace(entryType, entryId)
+    const workspaceEntryType = entryType === 'project-file' ? 'project' : entryType;
+    const workspaceEntryId = entryType === 'project-file' ? normalizeProjectEntryId(projectId) : entryId;
+    resolveWorkspace(workspaceEntryType, workspaceEntryId)
       .then(result => {
         if (result.success) {
           setResolvedBasePath((result.data as any).baseDir);
@@ -90,8 +93,13 @@ export function WorkspaceWindow({ projectId, projectName, entryType, entryId, on
   useEffect(() => {
     if (!resolvedBasePath) return;
     setActiveProject(currentProjectId, resolvedBasePath);
-    loadFiles(currentProjectId);
-  }, [currentProjectId, resolvedBasePath, setActiveProject, loadFiles]);
+    void loadFiles(currentProjectId).then(() => {
+      if (!initialFilePath) return;
+      return openFile(currentProjectId, initialFilePath).then(() => setViewMode('editor'));
+    }).catch((error: unknown) => {
+      console.error('[WorkspaceWindow] Failed to open initial file:', error);
+    });
+  }, [currentProjectId, initialFilePath, loadFiles, openFile, resolvedBasePath, setActiveProject]);
 
   useEffect(() => {
     if (!resolvedBasePath || !isElectron()) {

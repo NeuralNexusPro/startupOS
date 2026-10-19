@@ -14,9 +14,38 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { RuntimeEvent, TaskItem } from "../../session/types";
 import {
   applyTaskEventToTasks,
+  eventActivityAgentId,
+  eventToAgentStatus,
   mergeSnapshotTasksPure,
   useCollaborationUi,
 } from "../store";
+
+describe("Agent runtime activity", () => {
+  it("attributes Supervisor task assignment to the worker and marks it running", () => {
+    const event = makeEvent("activity-assigned", "TASK_ASSIGNED", { taskId: "t1", agentId: "data-collector" });
+    expect(eventActivityAgentId(event)).toBe("data-collector");
+    expect(eventToAgentStatus(event)).toMatchObject({ status: "running", message: "任务已派发" });
+  });
+
+  it("marks worker task lifecycle completion and failure", () => {
+    expect(eventToAgentStatus(makeEvent("activity-reported", "TASK_REPORTED", { taskId: "t1" }, "data-collector")))
+      .toMatchObject({ status: "waiting", message: "等待 Supervisor 验收" });
+    expect(eventToAgentStatus(makeEvent("activity-complete", "TASK_COMPLETED", { taskId: "t1" }, "data-collector")))
+      .toMatchObject({ status: "complete" });
+    expect(eventToAgentStatus(makeEvent("activity-failed", "TASK_FAILED", { taskId: "t1", error: "boom" }, "data-collector")))
+      .toMatchObject({ status: "fail", message: "boom" });
+  });
+
+  it("reflects blocked, resumed and reassigned task activity", () => {
+    expect(eventToAgentStatus(makeEvent("activity-blocked", "TASK_BLOCKED", { taskId: "t1", reason: "等待依赖" }, "data-collector")))
+      .toMatchObject({ status: "waiting", message: "等待依赖" });
+    expect(eventToAgentStatus(makeEvent("activity-resumed", "TASK_RESUMED", { taskId: "t1" }, "data-collector")))
+      .toMatchObject({ status: "running" });
+    const reassigned = makeEvent("activity-reassigned", "TASK_REASSIGNED", { taskId: "t1", agentId: "new-worker" });
+    expect(eventActivityAgentId(reassigned)).toBe("new-worker");
+    expect(eventToAgentStatus(reassigned)).toMatchObject({ status: "running" });
+  });
+});
 
 // ============================================================================
 // Fixtures（testing.md 测试数据集 1/2）
@@ -124,6 +153,39 @@ describe("applyTaskEventToTasks", () => {
     );
     expect(result[0]?.status).toBe("failed");
     expect(result[0]?.completedAt).toBe(ts);
+    expect(result[0]?.failure).toMatchObject({
+      stage: "worker-execution",
+      reason: "连接超时",
+      occurredAt: ts,
+    });
+  });
+
+  it("TASK_BLOCKED and TASK_RESUMED preserve the intended resume state", () => {
+    const running: TaskItem = { ...TASK_T1, assignedTo: "data-collector", status: "running" };
+    const blocked = applyTaskEventToTasks(
+      [running],
+      makeEvent("e-block", "TASK_BLOCKED", { taskId: "t1", reason: "等待用户", waitingFor: ["user"] }),
+    );
+    expect(blocked[0]).toMatchObject({
+      status: "blocked",
+      blocked: { reason: "等待用户", waitingFor: ["user"], resumeStatus: "running" },
+    });
+
+    const resumed = applyTaskEventToTasks(
+      blocked,
+      makeEvent("e-resume", "TASK_RESUMED", { taskId: "t1" }),
+    );
+    expect(resumed[0]?.status).toBe("running");
+    expect(resumed[0]?.blocked).toBeUndefined();
+  });
+
+  it("TASK_REASSIGNED moves a recoverable task back to assigned", () => {
+    const running: TaskItem = { ...TASK_T1, assignedTo: "old-worker", status: "running" };
+    const result = applyTaskEventToTasks(
+      [running],
+      makeEvent("e-reassign", "TASK_REASSIGNED", { taskId: "t1", agentId: "new-worker" }),
+    );
+    expect(result[0]).toMatchObject({ status: "assigned", assignedTo: "new-worker" });
   });
 
   it("returns tasks unchanged for unknown / non-task event types", () => {
