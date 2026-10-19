@@ -154,12 +154,24 @@ export class CollaborationExecutionStore implements CollaborationExecutionPort {
       taskRevision: input.taskRevision,
       parentSessionId: input.parentSessionId,
     };
+    const entryDesignNodeId = input.entryDesignNodeId
+      ?? contract.topology.nodes.find((node) =>
+        !contract.topology.edges.some((edge) => edge.toNodeId === node.id)
+      )?.id;
     const snapshot: CollaborationRunSnapshot = {
       runId,
       projectId: input.projectId,
       binding,
       contract,
-      workItems: createWorkItems(contract, binding, input.inputRefs),
+      workItems: createWorkItems(
+        contract,
+        binding,
+        input.inputRefs,
+        [entryDesignNodeId].filter(
+          (nodeId): nodeId is string => Boolean(nodeId),
+        ),
+        true,
+      ),
       status: 'running',
       revision: 1,
       createdAt: timestamp,
@@ -484,7 +496,13 @@ export class CollaborationExecutionStore implements CollaborationExecutionPort {
           attemptStatus = 'revision';
           itemStatus = 'revision';
         }
-      } else if (input.decision === 'edit') {
+      } else if (
+        input.decision === 'edit'
+        || (
+          input.decision === 'reject'
+          && request.trigger === 'after_verification'
+        )
+      ) {
         attemptStatus = 'revision';
         itemStatus = 'revision';
       } else {
@@ -499,7 +517,11 @@ export class CollaborationExecutionStore implements CollaborationExecutionPort {
           candidate.requestId === resolved.requestId ? resolved : candidate
         ),
         updatedAt: timestamp,
-        reason: input.decision === 'reject' ? 'HITL_REJECTED' : attempt.reason,
+        reason: input.decision === 'reject'
+          ? request.trigger === 'after_verification'
+            ? 'OUTPUT_ACCEPTANCE_REJECTED'
+            : 'HITL_REJECTED'
+          : attempt.reason,
       };
       const nextItem: CollaborationWorkItem = {
         ...item,
@@ -558,7 +580,6 @@ export class CollaborationExecutionStore implements CollaborationExecutionPort {
           'The run does not belong to the requested project',
         );
       }
-      ops.assertRunning(current);
       const item = ops.item(current, input.workItemId);
       let attempt = item.attempts.find(
         (candidate) => candidate.attemptId === input.attemptId,
@@ -595,6 +616,7 @@ export class CollaborationExecutionStore implements CollaborationExecutionPort {
             'The WorkItem revision changed before reconciliation',
           );
         }
+        ops.assertRunning(current);
         if (input.leaseEpoch !== item.leaseEpoch + 1) {
           throw new CollaborationReconciliationError(
             'OLD_LEASE_EPOCH',

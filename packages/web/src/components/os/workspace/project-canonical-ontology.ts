@@ -9,6 +9,10 @@ import type {
   CanonicalOntology,
   CanonicalValidationIssue,
 } from '@originos/core/lib/features/ontology/types';
+import type {
+  LegacyMigrationDiagnostic,
+  LegacyOntologySourceKind,
+} from '@originos/core/lib/features/ontology';
 
 import type { ProjectOntologyEntryResult } from '@originos/core/lib/features/project';
 import type { OntologyModel } from '@originos/core/types';
@@ -102,6 +106,22 @@ interface AuthoringApiEnvelope {
   };
 }
 
+export interface ProjectLegacyOntologyMigrationPreview {
+  mode: 'dry-run';
+  sourceKind?: LegacyOntologySourceKind;
+  ontology: CanonicalOntology | null;
+  diagnostics: LegacyMigrationDiagnostic[];
+}
+
+interface MigrationApiEnvelope {
+  success: boolean;
+  data?: ProjectLegacyOntologyMigrationPreview | {
+    mode: 'migrated';
+    ontology: unknown;
+  };
+  error?: { message?: string };
+}
+
 export type ProjectCanonicalOntologyMutation =
   CanonicalOntologyAuthoringCommand extends infer Command
     ? Command extends CanonicalOntologyAuthoringBase
@@ -129,6 +149,42 @@ export async function loadProjectCanonicalOntology(
     throw new Error(payload.error?.message ?? '无法读取项目本体。');
   }
   return payload.data;
+}
+
+async function requestProjectOntologyMigration(
+  projectId: string,
+  body: { confirmed: boolean; sourceKind?: LegacyOntologySourceKind },
+): Promise<MigrationApiEnvelope['data']> {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/ontology/migration`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+  );
+  const payload = await response.json() as MigrationApiEnvelope;
+  if (!response.ok || !payload.success || !payload.data) {
+    throw new Error(payload.error?.message ?? '无法迁移项目本体。');
+  }
+  return payload.data;
+}
+
+export async function previewProjectLegacyOntology(
+  projectId: string,
+): Promise<ProjectLegacyOntologyMigrationPreview> {
+  const result = await requestProjectOntologyMigration(projectId, { confirmed: false });
+  if (!result || result.mode !== 'dry-run') throw new Error('本体迁移预览响应无效。');
+  return result;
+}
+
+export async function migrateProjectLegacyOntology(
+  projectId: string,
+  sourceKind: LegacyOntologySourceKind,
+): Promise<ProjectCanonicalOntologyResponse> {
+  const result = await requestProjectOntologyMigration(projectId, { confirmed: true, sourceKind });
+  if (!result || result.mode !== 'migrated') throw new Error('本体迁移响应无效。');
+  return loadProjectCanonicalOntology(projectId);
 }
 
 export function canonicalAuthoringRevision(

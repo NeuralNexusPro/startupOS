@@ -255,6 +255,39 @@ describe('VersionedContractVerifierRegistry', () => {
 });
 
 describe('CanonicalOntologyOutcomeAdapter', () => {
+  it('accepts a verified read-only node without inventing an ontology Action', async () => {
+    const state = await publishedFixture();
+    const { run } = await startedRun(state.contract, state.dataRoot);
+    const readOnlyRun: CollaborationRunSnapshot = {
+      ...run,
+      contract: {
+        ...run.contract,
+        agents: run.contract.agents.map((agent) => ({
+          ...agent,
+          actions: [],
+        })),
+      },
+      workItems: run.workItems.map((item) => ({
+        ...item,
+        outputRefs: [],
+      })),
+    };
+    const submitAction = vi.fn();
+    const resolve = vi.fn();
+    const adapter = new CanonicalOntologyOutcomeAdapter(
+      { submitAction },
+      { resolve },
+    );
+
+    await expect(adapter.commit(await outcomeInput(readOnlyRun))).resolves.toMatchObject({
+      status: 'accepted',
+      operationRef: 'verified-observation:verification:order-ready',
+      factRefs: [],
+    });
+    expect(submitAction).not.toHaveBeenCalled();
+    expect(resolve).not.toHaveBeenCalled();
+  });
+
   it('submits through canonical OSDK and recovers duplicate receipts idempotently', async () => {
     const state = await publishedFixture();
     const { run } = await startedRun(state.contract, state.dataRoot);

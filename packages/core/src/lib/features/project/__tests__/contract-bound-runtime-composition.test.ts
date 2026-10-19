@@ -8,6 +8,7 @@ import {
   ORIGINOS_ARTIFACT_EVIDENCE_SCHEMA_REF,
   ORIGINOS_ARTIFACT_VERIFIER_REF,
   createProjectContractRuntimeComposition,
+  resolveContractArtifactProjectPath,
   type ProjectContractRuntimeHostCapabilities,
 } from '../contract-bound-runtime-composition';
 
@@ -149,6 +150,20 @@ afterEach(async () => {
 });
 
 describe('createProjectContractRuntimeComposition', () => {
+  it('resolves immutable artifact refs inside the current project only', () => {
+    const root = path.join(os.tmpdir(), 'originos-artifact-root');
+    expect(resolveContractArtifactProjectPath(
+      root,
+      'project-1',
+      'artifact://collaboration/project-1/run-1/T1/attempt-1',
+    )).toBe('projects/project-1/collaboration-artifacts/run-1/T1/attempt-1.json');
+    expect(() => resolveContractArtifactProjectPath(
+      root,
+      'project-2',
+      'artifact://collaboration/project-1/run-1/T1/attempt-1',
+    )).toThrow('current project');
+  });
+
   it.each(['web', 'desktop'])('injects the same real Worker pipeline for the %s host', async (hostId) => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), `originos-${hostId}-composition-`));
     roots.push(root);

@@ -12,6 +12,7 @@ import {
   type ProjectCanonicalOntologyMutation,
   type ProjectCanonicalOntologyResponse,
 } from './project-canonical-ontology';
+import { LegacyOntologyMigrationCard } from './LegacyOntologyMigrationCard';
 import { CanonicalOntologyEditor } from '../data-editor/CanonicalOntologyEditor';
 
 interface OntologyTabViewProps {
@@ -79,9 +80,14 @@ export const OntologyTabView = ({ projectId }: OntologyTabViewProps) => {
   }
   if (result.entry.kind !== 'canonical' || !result.ontology) {
     return (
-      <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
-        <AlertCircle className="mr-2 h-4 w-4 shrink-0" />
-        <MigrationState entry={result.entry} />
+      <div className="flex h-full flex-col items-center justify-center p-6 text-center text-sm text-muted-foreground">
+        <div className="flex items-center">
+          <AlertCircle className="mr-2 h-4 w-4 shrink-0" />
+          <MigrationState entry={result.entry} />
+        </div>
+        {result.entry.kind === 'legacy_migration_required' ? (
+          <LegacyOntologyMigrationCard projectId={projectId} onMigrated={setResult} />
+        ) : null}
       </div>
     );
   }

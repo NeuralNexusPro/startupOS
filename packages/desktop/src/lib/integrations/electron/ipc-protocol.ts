@@ -9,6 +9,7 @@ export const IPC_CHANNELS = {
   FS_WRITE: 'fs:write',
   FS_LIST: 'fs:list',
   FS_DELETE: 'fs:delete',
+  FS_OPEN: 'fs:open',
   FS_WATCH: 'fs:watch',
   FS_UNWATCH: 'fs:unwatch',
   FS_CHANGED: 'fs:changed',

@@ -252,6 +252,52 @@ describe('ContractBoundAgentSkillWorker', () => {
     });
   });
 
+  it('executes a frozen skill through its explicitly contracted Agent owner', async () => {
+    const skillNode: SolutionContractNode = {
+      id: 'summarize',
+      kind: 'skill',
+      contractRef: 'summarize',
+      requiresVerification: true,
+    };
+    const input = executionInput({ node: skillNode });
+    const ownedInput: WorkerExecutionInput = {
+      ...input,
+      run: {
+        ...input.run,
+        contract: {
+          ...input.run.contract,
+          semanticContext: {
+            ...input.run.contract.semanticContext,
+            taskTemplates: [{
+              id: 'summarize-template',
+              designNodeId: 'summarize',
+              objective: 'Summarize the document',
+              candidateAgentIds: ['writer'],
+              candidateSkillIds: ['summarize'],
+            }],
+          },
+        },
+      },
+      workItem: {
+        ...input.workItem,
+        assignedAgentId: 'writer',
+      },
+    };
+    const execute = vi.fn(async () => success('owned-skill'));
+    const worker = new ContractBoundAgentSkillWorker({ execute });
+
+    await expect(worker.execute(ownedInput)).resolves.toMatchObject({
+      receiptId: 'receipt-owned-skill',
+    });
+    expect(execute.mock.calls[0]?.[0]).toMatchObject({
+      target: { kind: 'skill', targetId: 'summarize' },
+      taskTemplate: {
+        candidateAgentIds: ['writer'],
+        candidateSkillIds: ['summarize'],
+      },
+    });
+  });
+
   it('keeps concurrent executions of the same logical agent isolated by run/workItem/attempt', async () => {
     const releases = new Map<string, () => void>();
     const requests: ContractBoundRuntimeRequest[] = [];

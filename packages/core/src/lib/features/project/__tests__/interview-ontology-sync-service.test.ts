@@ -51,7 +51,7 @@ describe('InterviewOntologySyncService', () => {
     await writeFile(path.join(root, 'projects', projectId, 'project.json'), JSON.stringify({ id: projectId, name: '访谈项目', metadata: {} }));
     const store = new CanonicalOntologyStore(root); const service = new InterviewOntologySyncService(store, new ProjectOntologyEntryService(root, store), root);
     try {
-      const created = await service.record({ projectId, sourceId: 's1', operationId: 'create', domain: { name: '质量' }, concepts: [{ name: '审核员', semanticKind: 'role' }, { name: '报告', semanticKind: 'document' }] });
+      const created = await service.record({ projectId, sourceId: 's1', operationId: 'create', domain: { name: '质量' }, concepts: [{ name: '审核员', semanticKind: 'role' }, { name: '报告', semanticKind: 'document', properties: [{ name: '报告编号', valueType: 'string', required: true, description: '报告的唯一业务编号' }] }] });
       const [auditor, report] = created.ontology.concepts;
       const relation = await service.record({ projectId, sourceId: 's1', operationId: 'relation', domain: { name: '质量' }, concepts: [], relations: [{ name: '编写', sourceConceptId: auditor!.id, targetConceptId: report!.id }] });
       expect(relation.results[0]).toMatchObject({ status: 'accepted', item: 'relation' });
@@ -61,6 +61,33 @@ describe('InterviewOntologySyncService', () => {
       expect(corrected.ontology.concepts.find((item) => item.id === auditor!.id)).toMatchObject({ semanticKind: 'organization', classificationSource: { classifiedBy: 'user', userConfirmed: true } });
       const later = await service.record({ projectId, sourceId: 's3', operationId: 'later', domain: { name: '质量' }, concepts: [{ name: '审核员', semanticKind: 'role' }] });
       expect(later.ontology.concepts.find((item) => item.id === auditor!.id)?.semanticKind).toBe('organization');
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it('rejects empty or loosely decomposed document fields and accepts a strict field contract', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'originos-interview-sync-'));
+    const projectId = 'project-document-fields';
+    await mkdir(path.join(root, 'projects', projectId), { recursive: true });
+    await writeFile(path.join(root, 'projects', projectId, 'project.json'), JSON.stringify({ id: projectId, name: '访谈项目', metadata: {} }));
+    const store = new CanonicalOntologyStore(root);
+    const service = new InterviewOntologySyncService(store, new ProjectOntologyEntryService(root, store), root);
+    try {
+      const missing = await service.record({ projectId, sourceId: 's1', operationId: 'missing', domain: { name: '质量' }, concepts: [{ name: '异常单', semanticKind: 'document' }] });
+      expect(missing.results[0]).toMatchObject({ status: 'rejected', issues: [expect.objectContaining({ code: 'DOCUMENT_PROPERTIES_REQUIRED' })] });
+      expect(missing.ontology.concepts).toHaveLength(0);
+
+      const loose = await service.record({ projectId, sourceId: 's1', operationId: 'loose', domain: { name: '质量' }, concepts: [{ name: '异常单', semanticKind: 'document', properties: [{ name: '问题、原因和措施' }] }] });
+      expect(loose.results[0]).toMatchObject({ status: 'rejected' });
+      expect(loose.results[0]?.issues?.map(({ code }) => code)).toEqual(expect.arrayContaining([
+        'COMPOUND_PROPERTY_NAME',
+        'PROPERTY_VALUE_TYPE_REQUIRED',
+        'PROPERTY_REQUIRED_FLAG_REQUIRED',
+        'PROPERTY_DESCRIPTION_REQUIRED',
+      ]));
+
+      const accepted = await service.record({ projectId, sourceId: 's1', operationId: 'accepted', domain: { name: '质量' }, concepts: [{ name: '异常单', semanticKind: 'document', properties: [{ name: '严重程度', valueType: 'string', required: true, description: '异常对质量的影响等级', enumValues: ['一般', '严重'] }] }] });
+      expect(accepted.results.every(({ status }) => status !== 'rejected')).toBe(true);
+      expect(accepted.ontology.properties[0]).toMatchObject({ name: '严重程度', valueType: 'string', required: true, metadata: { enumValues: ['一般', '严重'] } });
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 });

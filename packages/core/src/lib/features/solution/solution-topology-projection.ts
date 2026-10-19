@@ -47,11 +47,15 @@ interface PersistedAgent {
   readonly id?: unknown;
   readonly name?: unknown;
   readonly responsibility?: unknown;
+  // canonical solution-design uses description for the Agent responsibility summary
+  readonly description?: unknown;
   readonly businessDomain?: unknown;
   // canonical solution-design 模板用 domain 命名
   readonly domain?: unknown;
   readonly skills?: unknown;
   readonly dataOperations?: unknown;
+  // canonical solution-design uses ontologyObjects for the same read/write projection
+  readonly ontologyObjects?: unknown;
   readonly collaborations?: unknown;
 }
 
@@ -145,7 +149,10 @@ function parseProjection(document: PersistedAgentsDocument): ProjectSolutionTopo
     if (!isRecord(item)) throw new Error('INVALID_SOLUTION_TOPOLOGY:agent');
     const id = readString(item['id'], 'agent.id');
     if (agents[id] !== undefined) throw new Error(`INVALID_SOLUTION_TOPOLOGY:duplicate-agent:${id}`);
-    const responsibility = readString(item['responsibility'], `agent.${id}.responsibility`);
+    const responsibility = readString(
+      item['responsibility'] ?? item['description'],
+      `agent.${id}.responsibility`
+    );
     agents[id] = {
       id,
       name: readString(item['name'], `agent.${id}.name`),
@@ -154,7 +161,9 @@ function parseProjection(document: PersistedAgentsDocument): ProjectSolutionTopo
         : typeof item['domain'] === 'string' ? item['domain'] : '',
       responsibility,
       capabilities: extractCapabilities(responsibility),
-      dataOperations: readDataOperations(item['dataOperations']),
+      dataOperations: readDataOperations(
+        item['dataOperations'] ?? item['ontologyObjects']
+      ),
       skills: readStringArray(item['skills'], `agent.${id}.skills`),
     };
   }

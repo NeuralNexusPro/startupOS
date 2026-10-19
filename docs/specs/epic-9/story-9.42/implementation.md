@@ -39,10 +39,11 @@
 
 ### 4. WorkItem 实例化
 
-- [x] 根据 contract topology 创建 WorkItems。
+- [x] 每个 Run 只创建自然语言目标命中的任务模板 WorkItem；能力拓扑保留为后续规划参考。
 - [x] 每个 WorkItem 必须关联 designNodeId、Agent、Skill、依赖和 I/O refs。
 - [x] runtime 不创建契约外协作节点。
 - [x] 保留并行、依赖、有限重试和 HITL。
+- [x] 未经 Supervisor 结合上一轮产出重新规划的后续节点不进入 Run ledger 或任务看板。
 
 ### 5. 修复 Verifier
 

@@ -10,6 +10,7 @@ import {
   type CanonicalAction,
   type CanonicalBusinessState,
   type CanonicalFactType,
+  type CanonicalOntology,
   type CanonicalRule,
   type CanonicalStateTransition,
   type CanonicalValidationIssue,
@@ -129,6 +130,271 @@ function idsOnly(refs: readonly InterviewBehaviorMessageRef[]): boolean {
   return refs.every((ref) => Boolean(ref) && typeof ref.messageId === 'string' && ref.messageId.trim().length > 0 && Object.keys(ref).length === 1);
 }
 
+function record(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function strings(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function stableCandidateId(prefix: string, ...parts: string[]): string {
+  const digest = createHash('sha256').update(parts.join('\u0000')).digest('hex').slice(0, 16);
+  return `${prefix}-${digest}`;
+}
+
+function normalizedName(value: string): string {
+  return value.replace(/\s+/g, '').toLocaleLowerCase();
+}
+
+function resolveCandidateConcept(
+  ontology: CanonicalOntology,
+  value: Record<string, unknown>,
+  pathPrefix: string,
+  issues: CanonicalValidationIssue[],
+): CanonicalOntology['concepts'][number] | undefined {
+  const conceptId = typeof value['conceptId'] === 'string' ? value['conceptId'].trim() : '';
+  if (conceptId) {
+    const concept = ontology.concepts.find((item) => item.id === conceptId);
+    if (concept) return concept;
+    issues.push(issue('UNKNOWN_BEHAVIOR_CONCEPT', `${pathPrefix}.conceptId`, `Unknown concept: ${conceptId}`));
+    return undefined;
+  }
+  const conceptName = typeof value['conceptName'] === 'string' ? value['conceptName'].trim() : '';
+  const matches = ontology.concepts.filter((item) => normalizedName(item.name) === normalizedName(conceptName));
+  if (matches.length === 1) return matches[0];
+  issues.push(issue(
+    matches.length > 1 ? 'AMBIGUOUS_BEHAVIOR_CONCEPT' : 'MISSING_BEHAVIOR_CONCEPT',
+    `${pathPrefix}.conceptName`,
+    conceptName ? `Concept name did not resolve uniquely: ${conceptName}` : 'A conceptId or exact conceptName is required',
+  ));
+  return undefined;
+}
+
+function actionSubject(value: string): string {
+  return normalizedName(value).replace(/^(记录|创建|新增|深入分析|分析|挂靠|编写|撰写|写入|写|整理|维护|更新|生成|发布|确认)+/, '');
+}
+
+function inferActionFactType(
+  action: Record<string, unknown>,
+  factTypes: readonly CanonicalFactType[],
+  concepts: ReadonlyMap<string, CanonicalOntology['concepts'][number]>,
+): CanonicalFactType | undefined {
+  const actionName = typeof action['name'] === 'string' ? action['name'] : '';
+  const description = typeof action['description'] === 'string' ? action['description'] : '';
+  const subject = actionSubject(actionName);
+  const scored = factTypes.map((factType) => {
+    const conceptName = concepts.get(factType.conceptId)?.name ?? '';
+    const factName = normalizedName(factType.name);
+    const normalizedConceptName = normalizedName(conceptName);
+    let score = 0;
+    // The action verb's object is the strongest signal. Descriptions often
+    // mention related inputs (for example “使用场景”), which must not steal
+    // ownership from the record the action actually creates.
+    if (subject.length >= 2 && factName.includes(subject)) score += 320;
+    if (subject.length >= 2 && normalizedConceptName.includes(subject)) score += 280;
+    if (normalizedName(actionName).includes(factName)) score += 300;
+    if (description.includes(factType.name)) score += 140;
+    if (conceptName && description.includes(conceptName)) score += 60;
+    return { factType, score };
+  }).sort((left, right) => right.score - left.score);
+  return scored[0] && scored[0].score > 0 && scored[0].score > (scored[1]?.score ?? -1)
+    ? scored[0].factType
+    : undefined;
+}
+
+function canonicalizeBehaviorCandidates(
+  ontology: CanonicalOntology,
+  input: InterviewBehaviorCandidates,
+): { candidates?: InterviewBehaviorCandidates; issues: CanonicalValidationIssue[] } {
+  const issues: CanonicalValidationIssue[] = [];
+  const factTypes: CanonicalFactType[] = [];
+  for (const [index, raw] of (input.factTypes as readonly unknown[]).entries()) {
+    const value = record(raw);
+    if (!value) { issues.push(issue('INVALID_FACT_TYPE_CANDIDATE', `factTypes[${index}]`, 'FactType candidate must be an object')); continue; }
+    const concept = resolveCandidateConcept(ontology, value, `factTypes[${index}]`, issues);
+    const name = typeof value['name'] === 'string' ? value['name'].trim() : '';
+    if (!concept || !name) { if (!name) issues.push(issue('FACT_TYPE_NAME_REQUIRED', `factTypes[${index}].name`, 'FactType name is required')); continue; }
+    const declaredPropertyIds = strings(value['propertyIds']);
+    const fieldRecords = Array.isArray(value['fields']) ? value['fields'].map(record).filter((item): item is Record<string, unknown> => Boolean(item)) : [];
+    const propertyIds = declaredPropertyIds.length > 0
+      ? declaredPropertyIds
+      : fieldRecords.map((field, fieldIndex) => {
+          const fieldName = typeof field['name'] === 'string' ? field['name'].trim() : '';
+          const property = ontology.properties.find((item) => item.conceptId === concept.id && normalizedName(item.name) === normalizedName(fieldName));
+          if (!property) issues.push(issue('FACT_TYPE_PROPERTY_NOT_FOUND', `factTypes[${index}].fields[${fieldIndex}]`, `No confirmed property matches ${concept.name}.${fieldName}`));
+          return property?.id;
+        }).filter((propertyId): propertyId is string => Boolean(propertyId));
+    factTypes.push({
+      id: typeof value['id'] === 'string' && value['id'].trim() ? value['id'].trim() : stableCandidateId('fact-type', concept.id, name),
+      conceptId: concept.id,
+      name,
+      propertyIds,
+      ...(typeof value['description'] === 'string' && value['description'].trim() ? { description: value['description'].trim() } : {}),
+    });
+  }
+
+  const states: CanonicalBusinessState[] = [];
+  for (const [index, raw] of (input.businessStates as readonly unknown[]).entries()) {
+    const value = record(raw);
+    if (!value) { issues.push(issue('INVALID_BUSINESS_STATE_CANDIDATE', `businessStates[${index}]`, 'Business state candidate must be an object')); continue; }
+    const concept = resolveCandidateConcept(ontology, value, `businessStates[${index}]`, issues);
+    const name = typeof value['name'] === 'string' ? value['name'].trim() : '';
+    if (!concept || !name) { if (!name) issues.push(issue('BUSINESS_STATE_NAME_REQUIRED', `businessStates[${index}].name`, 'Business state name is required')); continue; }
+    states.push({
+      id: typeof value['id'] === 'string' && value['id'].trim() ? value['id'].trim() : stableCandidateId('business-state', concept.id, name),
+      conceptId: concept.id,
+      name,
+      ...(typeof value['initial'] === 'boolean' ? { initial: value['initial'] } : {}),
+      ...(typeof value['terminal'] === 'boolean' ? { terminal: value['terminal'] } : {}),
+      ...(typeof value['description'] === 'string' && value['description'].trim() ? { description: value['description'].trim() } : {}),
+    });
+  }
+
+  const rules: CanonicalRule[] = [];
+  for (const [index, raw] of (input.rules as readonly unknown[]).entries()) {
+    const value = record(raw);
+    if (!value) { issues.push(issue('INVALID_RULE_CANDIDATE', `rules[${index}]`, 'Rule candidate must be an object')); continue; }
+    const name = typeof value['name'] === 'string' ? value['name'].trim() : '';
+    if (!name) { issues.push(issue('RULE_NAME_REQUIRED', `rules[${index}].name`, 'Rule name is required')); continue; }
+    const kind = ['invariant', 'precondition', 'postcondition', 'derivation', 'permission'].includes(String(value['kind']))
+      ? value['kind'] as CanonicalRule['kind']
+      : 'invariant';
+    const severity = ['error', 'warning', 'info'].includes(String(value['severity']))
+      ? value['severity'] as CanonicalRule['severity']
+      : 'error';
+    rules.push({
+      id: typeof value['id'] === 'string' && value['id'].trim() ? value['id'].trim() : stableCandidateId('rule', name),
+      name,
+      kind,
+      expression: value['expression'] ?? { condition: value['condition'] ?? true, action: value['action'] ?? true },
+      severity,
+      ...(typeof value['description'] === 'string' && value['description'].trim() ? { description: value['description'].trim() } : {}),
+    });
+  }
+
+  const conceptById = new Map(ontology.concepts.map((concept) => [concept.id, concept]));
+  const factTypeById = new Map(factTypes.map((factType) => [factType.id, factType]));
+  const stateById = new Map(states.map((state) => [state.id, state]));
+  const ruleById = new Map(rules.map((rule) => [rule.id, rule]));
+  const actions: CanonicalAction[] = [];
+  for (const [index, raw] of (input.actions as readonly unknown[]).entries()) {
+    const value = record(raw);
+    if (!value) { issues.push(issue('INVALID_ACTION_CANDIDATE', `actions[${index}]`, 'Action candidate must be an object')); continue; }
+    const name = typeof value['name'] === 'string' ? value['name'].trim() : '';
+    if (!name) { issues.push(issue('ACTION_NAME_REQUIRED', `actions[${index}].name`, 'Action name is required')); continue; }
+    const explicitConcept = typeof value['conceptId'] === 'string' || typeof value['conceptName'] === 'string'
+      ? resolveCandidateConcept(ontology, value, `actions[${index}]`, issues)
+      : undefined;
+    const inferredFactType = inferActionFactType(value, factTypes, conceptById);
+    const concept = explicitConcept ?? (inferredFactType ? conceptById.get(inferredFactType.conceptId) : undefined);
+    if (!concept) { issues.push(issue('ACTION_CONCEPT_REQUIRED', `actions[${index}].conceptId`, `Action ${name} could not be bound unambiguously to a business object`)); continue; }
+    const declaredOutputIds = strings(value['outputFactTypeIds']);
+    const outputFactTypeIds = declaredOutputIds.length > 0 ? declaredOutputIds : inferredFactType ? [inferredFactType.id] : [];
+    actions.push({
+      id: typeof value['id'] === 'string' && value['id'].trim() ? value['id'].trim() : stableCandidateId('action', concept.id, name),
+      name,
+      conceptId: concept.id,
+      inputFactTypeIds: strings(value['inputFactTypeIds']),
+      outputFactTypeIds,
+      ...(strings(value['fromStateIds']).length ? { fromStateIds: strings(value['fromStateIds']) } : {}),
+      ...(typeof value['toStateId'] === 'string' && value['toStateId'].trim() ? { toStateId: value['toStateId'].trim() } : {}),
+      ...(strings(value['ruleIds']).length ? { ruleIds: strings(value['ruleIds']) } : {}),
+      permissions: strings(value['permissions']),
+      ...(typeof value['description'] === 'string' && value['description'].trim() ? { metadata: { description: value['description'].trim() } } : {}),
+    });
+  }
+
+  const actionById = new Map(actions.map((action) => [action.id, action]));
+  const transitions: CanonicalStateTransition[] = [];
+  for (const [index, raw] of (input.transitions as readonly unknown[]).entries()) {
+    const value = record(raw);
+    if (!value) { issues.push(issue('INVALID_TRANSITION_CANDIDATE', `transitions[${index}]`, 'Transition candidate must be an object')); continue; }
+    const concept = resolveCandidateConcept(ontology, value, `transitions[${index}]`, issues);
+    const name = typeof value['name'] === 'string' ? value['name'].trim() : '';
+    const stateId = (key: 'fromStateId' | 'toStateId', nameKey: 'fromState' | 'toState'): string | undefined => {
+      if (typeof value[key] === 'string' && stateById.has(value[key] as string)) return value[key] as string;
+      const stateName = typeof value[nameKey] === 'string' ? value[nameKey].trim() : '';
+      return states.find((state) => state.conceptId === concept?.id && normalizedName(state.name) === normalizedName(stateName))?.id;
+    };
+    const fromStateId = stateId('fromStateId', 'fromState');
+    const toStateId = stateId('toStateId', 'toState');
+    if (!concept || !name || !fromStateId || !toStateId) {
+      if (!name) issues.push(issue('TRANSITION_NAME_REQUIRED', `transitions[${index}].name`, 'Transition name is required'));
+      if (!fromStateId) issues.push(issue('TRANSITION_FROM_STATE_REQUIRED', `transitions[${index}].fromState`, 'Transition source state did not resolve'));
+      if (!toStateId) issues.push(issue('TRANSITION_TO_STATE_REQUIRED', `transitions[${index}].toState`, 'Transition target state did not resolve'));
+      continue;
+    }
+    const declaredActionId = typeof value['actionId'] === 'string' && actionById.has(value['actionId']) ? value['actionId'] : undefined;
+    transitions.push({
+      id: typeof value['id'] === 'string' && value['id'].trim() ? value['id'].trim() : stableCandidateId('transition', concept.id, name),
+      conceptId: concept.id,
+      name,
+      fromStateId,
+      toStateId,
+      ...(declaredActionId ? { actionId: declaredActionId } : {}),
+      ...(strings(value['ruleIds']).filter((id) => ruleById.has(id)).length ? { ruleIds: strings(value['ruleIds']).filter((id) => ruleById.has(id)) } : {}),
+    });
+  }
+
+  for (const [index, action] of actions.entries()) {
+    action.inputFactTypeIds.forEach((id) => { if (!factTypeById.has(id) && !ontology.factTypes.some((item) => item.id === id)) issues.push(issue('ACTION_FACT_TYPE_NOT_FOUND', `actions[${index}].inputFactTypeIds`, `Unknown FactType: ${id}`)); });
+    action.outputFactTypeIds.forEach((id) => { if (!factTypeById.has(id) && !ontology.factTypes.some((item) => item.id === id)) issues.push(issue('ACTION_FACT_TYPE_NOT_FOUND', `actions[${index}].outputFactTypeIds`, `Unknown FactType: ${id}`)); });
+  }
+  return issues.length > 0 ? { issues } : { candidates: { factTypes, businessStates: states, rules, actions, transitions }, issues };
+}
+
+function normalizeInterviewBehaviorDraft(value: unknown): InterviewBehaviorDraft | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const draft = value as Record<string, unknown>;
+  const candidates = draft['candidates'];
+  if (!candidates || typeof candidates !== 'object' || Array.isArray(candidates)) return undefined;
+  const candidateRecord = candidates as Record<string, unknown>;
+  const valid = (
+    typeof draft['id'] === 'string'
+    && typeof draft['projectId'] === 'string'
+    && typeof draft['ontologyId'] === 'string'
+    && typeof draft['ontologyVersion'] === 'string'
+    && typeof draft['sourceId'] === 'string'
+    && typeof draft['candidateHash'] === 'string'
+    && typeof draft['createdAt'] === 'string'
+    && typeof draft['updatedAt'] === 'string'
+    && typeof draft['draftRevision'] === 'number'
+    && Array.isArray(draft['sourceMessageRefs'])
+    && Array.isArray(draft['clarifications'])
+    && ['collecting', 'ready', 'needs_review', 'published', 'discarded'].includes(String(draft['status']))
+    && Array.isArray(candidateRecord['actions'])
+    && Array.isArray(candidateRecord['transitions'])
+    && Array.isArray(candidateRecord['rules'])
+  );
+  if (!valid) return undefined;
+  const factTypes = Array.isArray(candidateRecord['factTypes'])
+    ? candidateRecord['factTypes']
+    : (Array.isArray(candidateRecord['facts']) ? candidateRecord['facts'] : []);
+  const businessStates = Array.isArray(candidateRecord['businessStates'])
+    ? candidateRecord['businessStates']
+    : (Array.isArray(candidateRecord['states']) ? candidateRecord['states'] : []);
+  const clarifications = (draft['clarifications'] as unknown[]).map((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
+    const clarification = item as Record<string, unknown>;
+    if (typeof clarification['resolved'] === 'boolean') return clarification;
+    return { ...clarification, resolved: clarification['status'] === 'resolved' };
+  });
+  return {
+    ...draft,
+    candidates: {
+      actions: candidateRecord['actions'],
+      factTypes,
+      businessStates,
+      transitions: candidateRecord['transitions'],
+      rules: candidateRecord['rules'],
+    },
+    clarifications,
+  } as unknown as InterviewBehaviorDraft;
+}
+
 function candidateClarifications(
   candidates: InterviewBehaviorCandidates,
   knownPermissionIds: readonly string[],
@@ -145,6 +411,45 @@ function candidateClarifications(
         resolved: false,
       });
     }
+  }
+  return result;
+}
+
+function contractGapClarifications(
+  ontology: CanonicalOntology,
+  candidates: InterviewBehaviorCandidates,
+): InterviewBehaviorClarification[] {
+  const result: InterviewBehaviorClarification[] = [];
+  const coveredConceptIds = new Set([
+    ...ontology.factTypes.map((factType) => factType.conceptId),
+    ...candidates.factTypes.map((factType) => factType.conceptId),
+  ]);
+  for (const concept of ontology.concepts) {
+    if (!coveredConceptIds.has(concept.id)) {
+      result.push({
+        id: `fact-type-required:${concept.id}`,
+        kind: 'business_meaning',
+        candidateId: concept.id,
+        question: `请确认“${concept.name}”的数据形态、包含的信息，以及它会在什么环节被产生或更新。`,
+        resolved: false,
+      });
+    }
+  }
+  if (ontology.actions.length + candidates.actions.length === 0) {
+    result.push({
+      id: 'action-required',
+      kind: 'business_meaning',
+      question: '请确认业务中由谁执行哪些处理动作，以及动作的输入、输出、权限和状态变化。',
+      resolved: false,
+    });
+  }
+  if (ontology.rules.length + candidates.rules.length === 0) {
+    result.push({
+      id: 'rule-required',
+      kind: 'business_meaning',
+      question: '请确认限制这些处理动作成立、拒绝或需要审批的业务规则。',
+      resolved: false,
+    });
   }
   return result;
 }
@@ -166,7 +471,6 @@ export class InterviewBehaviorDraftService {
   async save(input: SaveInterviewBehaviorDraftInput): Promise<InterviewBehaviorDraftResult> {
     const sourceCheck = this.validateSourceRefs(input.sourceMessageRefs);
     if (sourceCheck.length) return this.failure('INVALID_SOURCE_REFS', sourceCheck);
-    const candidateHash = hashInterviewBehaviorCandidates(input.candidates);
     const existing = input.draftId ? await this.read(input.projectId, input.draftId) : undefined;
     if (existing && existing.sourceId !== input.sourceId) return this.failure('DRAFT_SOURCE_MISMATCH', [issue('DRAFT_SOURCE_MISMATCH', 'sourceId', 'A draft belongs to a different interview source')], existing);
     if (existing && input.expectedDraftRevision !== existing.draftRevision) return this.failure('DRAFT_REVISION_CONFLICT', [issue('DRAFT_REVISION_CONFLICT', 'expectedDraftRevision', 'Draft revision changed; review the current draft before saving')], existing);
@@ -174,7 +478,18 @@ export class InterviewBehaviorDraftService {
 
     const ontology = await this.store.readOntology(input.projectId);
     if (!ontology || ontology.data.id !== input.ontologyId || ontology.data.version !== input.ontologyVersion) return this.failure('ONTOLOGY_NOT_FOUND', [issue('ONTOLOGY_NOT_FOUND', 'ontologyId', 'The selected canonical ontology is unavailable')], existing);
-    const automatic = candidateClarifications(input.candidates, input.knownPermissionIds ?? []);
+    const normalized = canonicalizeBehaviorCandidates(ontology.data, input.candidates);
+    // Interview drafts are allowed to be incomplete while the assistant is
+    // still collecting business decisions. Keep their original shape so the
+    // gap detector can ask for the missing definitions. Publication remains
+    // strict and refuses candidates that cannot be bound to canonical IDs.
+    const candidates = normalized.candidates ?? input.candidates;
+    const candidateHash = hashInterviewBehaviorCandidates(candidates);
+    const currentOntologyRevision = getCanonicalOntologyAuthoringRevision(ontology.data);
+    const automatic = [
+      ...candidateClarifications(candidates, input.knownPermissionIds ?? []),
+      ...contractGapClarifications(ontology.data, candidates),
+    ];
     const clarifications = this.mergeClarifications(input.clarifications ?? [], automatic);
     const now = new Date().toISOString();
     const draft: InterviewBehaviorDraft = {
@@ -182,11 +497,14 @@ export class InterviewBehaviorDraftService {
       projectId: input.projectId,
       ontologyId: input.ontologyId,
       ontologyVersion: input.ontologyVersion,
-      baseRevision: input.baseRevision,
+      // The service owns the persistence boundary and therefore binds drafts to
+      // the actual revision it read. A model-supplied stale revision must not
+      // make an otherwise current review impossible to publish.
+      baseRevision: currentOntologyRevision,
       draftRevision: (existing?.draftRevision ?? 0) + 1,
       sourceId: input.sourceId,
       sourceMessageRefs: input.sourceMessageRefs.map((ref) => ({ messageId: ref.messageId })),
-      candidates: input.candidates,
+      candidates,
       clarifications,
       status: clarifications.some((item) => !item.resolved) ? 'collecting' : 'ready',
       candidateHash,
@@ -201,7 +519,42 @@ export class InterviewBehaviorDraftService {
     const draft = await this.read(projectId, draftId);
     if (!draft) return this.failure('DRAFT_NOT_FOUND', [issue('DRAFT_NOT_FOUND', 'draftId', 'Behavior draft was not found')]);
     if (draft.sourceId !== sourceId) return this.failure('DRAFT_SOURCE_MISMATCH', [issue('DRAFT_SOURCE_MISMATCH', 'sourceId', 'A draft belongs to a different interview source')], draft);
-    return { ok: true, draft };
+    return this.revalidateContractGaps(projectId, draft);
+  }
+
+  private async revalidateContractGaps(projectId: string, draft: InterviewBehaviorDraft): Promise<InterviewBehaviorDraftResult> {
+    if (draft.status === 'published' || draft.status === 'discarded') return { ok: true, draft };
+    const ontology = await this.store.readOntology(projectId);
+    if (!ontology || ontology.data.id !== draft.ontologyId || ontology.data.version !== draft.ontologyVersion) {
+      return this.failure('ONTOLOGY_NOT_FOUND', [issue('ONTOLOGY_NOT_FOUND', 'ontologyId', 'The selected canonical ontology is unavailable')], draft);
+    }
+    const normalized = canonicalizeBehaviorCandidates(ontology.data, draft.candidates);
+    const legacyCandidateRepairAvailable = draft.status === 'needs_review'
+      && normalized.candidates !== undefined
+      && hashInterviewBehaviorCandidates(normalized.candidates) !== draft.candidateHash
+      && getCanonicalOntologyAuthoringRevision(ontology.data) === draft.baseRevision
+      && !draft.clarifications.some((item) => !item.resolved);
+    // Historical interview drafts used business-language references such as
+    // conceptName/fields. Run coverage checks against their canonicalized
+    // projection, otherwise every migrated draft appears to have no FactType.
+    const contractGaps = contractGapClarifications(
+      ontology.data,
+      normalized.candidates ?? draft.candidates,
+    );
+    if (contractGaps.length === 0) return {
+      ok: true,
+      draft: legacyCandidateRepairAvailable ? { ...draft, status: 'ready' } : draft,
+    };
+    const clarifications = this.mergeClarifications(draft.clarifications, contractGaps);
+    return {
+      ok: true,
+      draft: {
+        ...draft,
+        clarifications,
+        status: 'collecting',
+        confirmation: undefined,
+      },
+    };
   }
 
   /**
@@ -228,7 +581,7 @@ export class InterviewBehaviorDraftService {
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
     const draft = drafts.find((item) => item.sourceId === sourceId) ?? drafts[0];
     if (!draft) return this.failure('DRAFT_NOT_FOUND', [issue('DRAFT_NOT_FOUND', 'sourceId', 'No behavior draft exists for this interview')]);
-    return { ok: true, draft };
+    return this.revalidateContractGaps(projectId, draft);
   }
 
   /** Called only from the renderer/IPC confirmation boundary, never by model tool input. */
@@ -285,12 +638,23 @@ export class InterviewBehaviorDraftService {
     const revision = getCanonicalOntologyAuthoringRevision(stored.data);
     if (revision !== draft.baseRevision) return this.needsReview(draft, 'ONTOLOGY_REVISION_CONFLICT', 'The ontology changed after this draft was collected; review it again before publication');
 
+    const normalized = canonicalizeBehaviorCandidates(stored.data, draft.candidates);
+    if (!normalized.candidates) {
+      return this.needsReview(
+        draft,
+        'PUBLISH_CANDIDATES_INVALID',
+        'The behavior draft contains definitions that cannot be bound to the current ontology',
+        normalized.issues,
+      );
+    }
+    const candidates = normalized.candidates;
+
     const commands = [
-      ...draft.candidates.factTypes.map((value) => ({ type: 'factType.create' as const, value })),
-      ...draft.candidates.businessStates.map((value) => ({ type: 'businessState.create' as const, value })),
-      ...draft.candidates.rules.map((value) => ({ type: 'rule.create' as const, value })),
-      ...draft.candidates.actions.map((value) => ({ type: 'action.create' as const, value })),
-      ...draft.candidates.transitions.map((value) => ({ type: 'transition.create' as const, value })),
+      ...candidates.factTypes.map((value) => ({ type: 'factType.create' as const, value })),
+      ...candidates.businessStates.map((value) => ({ type: 'businessState.create' as const, value })),
+      ...candidates.rules.map((value) => ({ type: 'rule.create' as const, value })),
+      ...candidates.actions.map((value) => ({ type: 'action.create' as const, value })),
+      ...candidates.transitions.map((value) => ({ type: 'transition.create' as const, value })),
     ];
     const result = await this.authoring.execute({
       type: 'batch', projectId, ontologyId: draft.ontologyId, ontologyVersion: draft.ontologyVersion,
@@ -298,8 +662,14 @@ export class InterviewBehaviorDraftService {
       audit: { source: 'project-interview-behavior-draft', sourceId, draftId, confirmationId: draft.confirmation.confirmationId }, commands,
     });
     if (result.ok === false) return this.needsReview(draft, 'PUBLISH_REJECTED', 'The behavior draft could not be applied; review its references and try again', result.issues);
+    const normalizedHash = hashInterviewBehaviorCandidates(candidates);
     const published: InterviewBehaviorDraft = {
       ...draft,
+      candidates,
+      candidateHash: normalizedHash,
+      confirmation: draft.confirmation
+        ? { ...draft.confirmation, candidateHash: normalizedHash }
+        : draft.confirmation,
       status: 'published',
       publication: { operationId, publishedAt: new Date().toISOString(), beforeRevision: result.receipt.beforeRevision, afterRevision: result.receipt.afterRevision },
       updatedAt: new Date().toISOString(),
@@ -320,14 +690,24 @@ export class InterviewBehaviorDraftService {
 
   private mergeClarifications(explicit: readonly InterviewBehaviorClarification[], automatic: readonly InterviewBehaviorClarification[]): InterviewBehaviorClarification[] {
     const entries = new Map<string, InterviewBehaviorClarification>();
-    for (const item of [...automatic, ...explicit]) entries.set(item.id, { ...item });
+    // Derived gaps win over model-provided flags. A missing contract cannot be
+    // marked resolved until the corresponding candidate actually exists.
+    for (const item of [...explicit, ...automatic]) entries.set(item.id, { ...item });
     return [...entries.values()];
   }
 
   private root(projectId: string): string { return path.join(this.dataRoot, 'projects', projectId, 'interview', 'behavior-drafts'); }
   private file(projectId: string, draftId: string): string { return path.join(this.root(projectId), `${draftId}.json`); }
   private async read(projectId: string, draftId: string): Promise<InterviewBehaviorDraft | undefined> {
-    try { return JSON.parse(await readFile(this.file(projectId, draftId), 'utf8')) as InterviewBehaviorDraft; }
+    try {
+      const content = await readFile(this.file(projectId, draftId), 'utf8');
+      // Windows/Office 产出的历史 JSON 可能带 UTF-8 BOM。BOM 不属于 JSON
+      // token，但不应让一个旧草稿阻断整个项目的审阅面板。
+      const parsed: unknown = JSON.parse(content.replace(/^\uFEFF/, ''));
+      // 历史 Agent 曾把中间行为模型 JSON 直接写进 behavior-drafts 目录。
+      // 这类文件不是可确认草稿，应跳过，不能让整个项目恢复失败。
+      return normalizeInterviewBehaviorDraft(parsed);
+    }
     catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error; }
   }
   private async write(draft: InterviewBehaviorDraft): Promise<void> {

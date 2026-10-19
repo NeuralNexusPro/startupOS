@@ -1,5 +1,7 @@
 // contract-bound 项目执行组合根——装配上述模块为唯一生产组合并 re-export 公共符号。
 
+import path from 'node:path';
+
 import {
   CollaborationExecutionStore,
   FileCollaborationMutationLock,
@@ -15,7 +17,7 @@ import {
   type ContractIntegrityResult,
   type SolutionExecutionContract,
 } from '../solution';
-import { AgentManagerContractRuntime } from './composition/contract-artifact-runtime';
+import { AgentManagerContractRuntime, parseArtifactRef } from './composition/contract-artifact-runtime';
 import {
   ArtifactOutcomeDrafts,
   ArtifactVerifier,
@@ -56,6 +58,26 @@ import type {
 export { ORIGINOS_ARTIFACT_VERIFIER_REF, ORIGINOS_ARTIFACT_EVIDENCE_SCHEMA_REF } from './composition/contract-runtime-types';
 export type { ProjectContractRuntimeHostCapabilities, ProjectContractRuntimeCompositionOptions, ProjectContractRuntimeComposition } from './composition/contract-runtime-types';
 export { ProjectContractTaskRuntimeRecovery, ProjectContractTaskPriorityMutation } from './composition/contract-task-session-adapters';
+
+/** Resolve an immutable contract artifact ref to a data-root relative path. */
+export function resolveContractArtifactProjectPath(
+  dataRoot: string,
+  projectId: string,
+  ref: string,
+): string {
+  const absolutePath = parseArtifactRef(dataRoot, ref);
+  const relativePath = path.relative(dataRoot, absolutePath);
+  const segments = relativePath.split(path.sep);
+  if (
+    relativePath.startsWith('..')
+    || path.isAbsolute(relativePath)
+    || segments[0] !== 'projects'
+    || segments[1] !== projectId
+  ) {
+    throw new TypeError('Artifact does not belong to the current project');
+  }
+  return segments.join('/');
+}
 
 /**
  * The only production composition for contract-bound project execution.

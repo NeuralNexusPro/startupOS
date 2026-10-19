@@ -14,5 +14,5 @@ export function resolveEmptyStopRecoveryEnabled(
 }
 
 export function buildEmptyStopRecoveryMessage(attempt: number): string {
-	return `[Internal empty-stop recovery] Recovery attempt ${attempt} of 1. The previous assistant turn ended with an empty response and no tool call. Continue the current user request now.`;
+	return `[Internal empty-stop recovery] Recovery attempt ${attempt} of 1. The previous assistant turn ended with an empty response and no tool call. Continue the current user request now. Return a concise visible answer immediately; do not spend the response budget on hidden analysis.`;
 }

@@ -4,7 +4,10 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { resolveTargetDirectory } from '../composition/contract-artifact-runtime';
+import {
+  extractJsonObject,
+  resolveTargetDirectory,
+} from '../composition/contract-artifact-runtime';
 
 import type { CanonicalSkillContract } from '../../ontology';
 
@@ -75,5 +78,21 @@ describe('resolveTargetDirectory', () => {
         candidateSkillIds: ['trend-record'],
       },
     })).rejects.toThrow('CONTRACT_TARGET_UNAVAILABLE');
+  });
+});
+
+describe('extractJsonObject', () => {
+  it('accepts a JSON result wrapped by a short natural-language preface', () => {
+    expect(extractJsonObject('处理完成。\n{"result":"success","summary":"已整理"}')).toEqual({
+      result: 'success',
+      summary: '已整理',
+    });
+  });
+
+  it('returns the final JSON object when a response contains an earlier example', () => {
+    expect(extractJsonObject([
+      '格式示例：{"result":"example"}',
+      '最终结果：{"result":"success","summary":"真实结果"}',
+    ].join('\n'))).toMatchObject({ result: 'success', summary: '真实结果' });
   });
 });

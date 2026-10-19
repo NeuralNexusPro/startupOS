@@ -43,6 +43,38 @@ export interface HitlPolicy {
   readonly approverRole: string;
 }
 
+export type SolutionOutputAcceptanceMode = 'automatic' | 'user' | 'role';
+
+export interface SolutionNodeOutputAcceptance {
+  readonly nodeId: string;
+  readonly mode: SolutionOutputAcceptanceMode;
+  /** Stable Agent role ID. Required only when mode is `role`. */
+  readonly approverRole?: string;
+}
+
+export interface SolutionOutputAcceptanceNode extends SolutionNodeOutputAcceptance {
+  readonly kind: SolutionContractNode['kind'];
+  readonly contractRef: string;
+  readonly name: string;
+}
+
+export interface SolutionOutputAcceptanceRole {
+  readonly id: string;
+  readonly name: string;
+}
+
+export interface SolutionOutputAcceptanceSnapshot extends SolutionVersionRef {
+  readonly status: SolutionDesignStatus;
+  readonly locked: boolean;
+  readonly published: boolean;
+  readonly nodes: readonly SolutionOutputAcceptanceNode[];
+  readonly roles: readonly SolutionOutputAcceptanceRole[];
+}
+
+export interface SaveSolutionOutputAcceptanceInput extends SolutionVersionRef {
+  readonly nodes: readonly SolutionNodeOutputAcceptance[];
+}
+
 export interface PermissionPolicy {
   readonly allowed: readonly string[];
 }

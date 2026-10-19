@@ -86,15 +86,25 @@ export class AgentSessionService {
     ipcMain.handle(
       IPC_CHANNELS.AGENT_SESSION_LIST,
       async (_event, request?: { projectId?: string }): Promise<IpcResponse<unknown>> => {
+        const startedAt = Date.now();
         console.log('[IPC] AGENT_SESSION_LIST', request);
         try {
           const sessions = await agentSessionService.listSessions(request?.projectId);
+          console.log('[IPC] AGENT_SESSION_LIST completed', {
+            projectId: request?.projectId,
+            count: sessions.length,
+            elapsedMs: Date.now() - startedAt,
+          });
           return {
             success: true,
             data: { sessions, count: sessions.length },
             timestamp: new Date().toISOString(),
           };
         } catch (error) {
+          console.warn('[IPC] AGENT_SESSION_LIST failed', {
+            projectId: request?.projectId,
+            elapsedMs: Date.now() - startedAt,
+          });
           return this.toErrorResponse(error, '[AgentSessionService] List sessions failed');
         }
       }

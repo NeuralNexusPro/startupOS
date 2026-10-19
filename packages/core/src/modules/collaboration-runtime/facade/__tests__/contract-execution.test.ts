@@ -48,7 +48,7 @@ function startInput(contract: SolutionExecutionContract) {
 }
 
 describe('contract-bound collaboration execution', () => {
-  it('starts a run from the exact approved contract and instantiates WorkItems', async () => {
+  it('starts a run from the exact approved contract with only the entry WorkItem', async () => {
     const { contract, execution } = await setup();
     const snapshot = await execution.start(startInput(contract));
     const prepare = snapshot.workItems.find(
@@ -60,13 +60,49 @@ describe('contract-bound collaboration execution', () => {
 
     expect(snapshot.binding.executionContractId).toBe(contract.contractId);
     expect(snapshot.binding.contractHash).toBe(contract.contractHash);
-    expect(snapshot.workItems).toHaveLength(2);
+    expect(snapshot.workItems).toHaveLength(1);
     expect(prepare?.assignedAgentId).toBe('preparer');
     expect(prepare?.dependsOn).toEqual([]);
-    expect(publish?.skillRefs).toEqual(['publisher']);
-    expect(publish?.dependsOn).toEqual([prepare?.id]);
-    expect(publish?.inputRefs).toEqual(['order-ready']);
+    expect(publish).toBeUndefined();
     await expect(execution.inspect(snapshot.runId)).resolves.toEqual(snapshot);
+  });
+
+  it('shows the sole candidate Agent as the owner of a skill WorkItem', async () => {
+    const dataRoot = await mkdtemp(path.join(tmpdir(), 'collaboration-skill-owner-'));
+    const contractStore = new SolutionExecutionContractStore(dataRoot);
+    const contractBody = body();
+    const publication = await contractStore.publishCompiled(
+      ontology(),
+      'confirmed',
+      {
+        ...contractBody,
+        semanticContext: {
+          ...contractBody.semanticContext,
+          taskTemplates: [
+            ...contractBody.semanticContext.taskTemplates,
+            {
+              id: 'publish-template',
+              designNodeId: 'publish',
+              objective: 'Publish the prepared order',
+              candidateAgentIds: ['preparer'],
+              candidateSkillIds: ['publisher'],
+            },
+          ],
+        },
+      },
+    );
+    expect(publication.ok).toBe(true);
+    if (!publication.ok) throw new Error('Fixture contract must publish');
+    const execution = new CollaborationExecutionStore(contractStore, dataRoot);
+
+    const snapshot = await execution.start({
+      ...startInput(publication.published.contract),
+      entryDesignNodeId: 'publish',
+    });
+    const publish = snapshot.workItems.find(({ designNodeId }) => designNodeId === 'publish');
+
+    expect(publish?.assignedAgentId).toBe('preparer');
+    expect(publish?.skillRefs).toEqual(['publisher']);
   });
 
   it('finds a run by its exact project Task binding', async () => {
@@ -273,19 +309,12 @@ async function executableSetup(
 }
 
 describe('WorkItem execution ledger', () => {
-  it('blocks downstream execution before required upstream facts are accepted', async () => {
+  it('does not materialize downstream work before upstream output is accepted', async () => {
     const { execution, run, calls } = await executableSetup();
-    const publish = run.workItems.find((item) => item.designNodeId === 'publish')!;
-    await expect(execution.executeWorkItem({
-      runId: run.runId,
-      workItemId: publish.id,
-      requestId: 'request-downstream-early',
-      payloadHash: 'sha256:downstream-early',
-    })).rejects.toThrow(/dependencies are not satisfied/);
+    const publish = run.workItems.find((item) => item.designNodeId === 'publish');
+    expect(publish).toBeUndefined();
     expect(calls).toEqual({ worker: 0, verifier: 0, evidence: 0 });
-    expect((await execution.inspect(run.runId)).workItems.find(
-      (item) => item.id === publish.id,
-    )?.attempts).toEqual([]);
+    expect((await execution.inspect(run.runId)).workItems).toHaveLength(1);
   });
 
   it('records intent, receipt, verification and evidence once for an idempotent request', async () => {
@@ -319,7 +348,7 @@ describe('WorkItem execution ledger', () => {
     ).rejects.toThrow(/conflicts/);
   });
 
-  it('fences late receipts after pause, cancellation, and a newer lease epoch', async () => {
+  it('rejects state transitions and late receipts after the selected task completes', async () => {
     const { execution, run } = await executableSetup();
     const prepare = run.workItems.find(
       (item) => item.designNodeId === 'prepare'
@@ -333,7 +362,7 @@ describe('WorkItem execution ledger', () => {
     const done = await execution.executeWorkItem(request);
     const attempt = done.workItems.find((item) => item.id === prepare.id)!
       .attempts[0]!;
-    await execution.pause(run.runId);
+    await expect(execution.pause(run.runId)).rejects.toThrow(/completed/);
     await expect(
       execution.recordWorkerReceipt(
         run.runId,
@@ -342,18 +371,7 @@ describe('WorkItem execution ledger', () => {
         attempt.leaseEpoch,
         receipt()
       )
-    ).rejects.toThrow(/paused/);
-    await execution.resume(run.runId);
-    await execution.cancel(run.runId);
-    await expect(
-      execution.recordWorkerReceipt(
-        run.runId,
-        prepare.id,
-        attempt.attemptId,
-        attempt.leaseEpoch,
-        receipt()
-      )
-    ).rejects.toThrow(/canceled/);
+    ).rejects.toThrow(/completed/);
   });
 
   it('rejects an old lease receipt after a retry receives a newer epoch', async () => {

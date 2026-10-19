@@ -109,6 +109,42 @@
     background: transparent;
   }
 
+  .solution-light-surface {
+    color-scheme: light;
+    background-color: hsl(210 40% 98%);
+  }
+
+  .solution-scrollbar {
+    color-scheme: light;
+    scrollbar-color: #cbd5e1 #f8fafc;
+    scrollbar-width: thin;
+    scrollbar-gutter: stable;
+    overscroll-behavior: contain;
+  }
+
+  .solution-scrollbar::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .solution-scrollbar::-webkit-scrollbar-track {
+    background: #f8fafc;
+  }
+
+  .solution-scrollbar::-webkit-scrollbar-thumb {
+    border: 2px solid #f8fafc;
+    border-radius: 9999px;
+    background: #cbd5e1;
+  }
+
+  .solution-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+  }
+
+  .solution-scrollbar::-webkit-scrollbar-corner {
+    background: #f8fafc;
+  }
+
   .native-drag-region {
     -webkit-app-region: drag;
   }

@@ -170,16 +170,20 @@ export async function runRecordVerifiedEvidence(ctx: CoordinatorCommandsCtx, inp
 		},
 		input: {
 			task_id: input.taskId,
-			type: "agent_output",
-			level: "runtime",
+			// pi-tasks accepts a closed evidence vocabulary. Contract verification
+			// produces a persisted artifact inspected by a deterministic tool, so it
+			// maps to file/static_read/tool rather than leaking runtime-specific
+			// labels into the public Task protocol.
+			type: "file",
+			level: "static_read",
 			summary: input.summary,
 			passed: "true",
 			references: [...input.references],
 			...(input.stepId ? { step_ids: [input.stepId] } : {}),
 			quality: {
-				source: "collaboration-runtime",
+				source: input.verifier,
 				reproducible: true,
-				verifier: input.verifier,
+				verifier: "tool",
 				artifactRefs: [...input.artifactRefs],
 				observedOutput: input.contentHash,
 			},

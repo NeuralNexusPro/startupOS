@@ -7,6 +7,7 @@ import { ChatInputBar } from '@/components/ui/chat-input-bar';
 import { useFileUpload } from '@/lib/hooks/use-file-upload';
 import { useSettingsStore } from '@/store/settingsStore';
 import { normalizeRuntimeLLMConfig } from '@originos/core/lib/integrations/pi-agent/client';
+import { openSupervisorTaskBoard } from '@/components/os/task-board';
 
 interface CollaborationWindowProps {
   projectId: string;
@@ -43,6 +44,7 @@ export default function CollaborationWindow({ projectId, projectName }: Collabor
       projectId={projectId}
       projectName={projectName}
       llmConfig={llmConfig}
+      onOpenTaskBoard={() => openSupervisorTaskBoard(projectId, projectName)}
       uiDeps={{
         MarkdownContent,
         ChatInputBar,

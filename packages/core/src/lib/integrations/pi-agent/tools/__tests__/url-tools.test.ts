@@ -22,6 +22,10 @@ describe("generate_file_url", () => {
 		vi.restoreAllMocks();
 	});
 
+	it("is disabled so Agents use open_file instead", () => {
+		expect(tool?.enabled).toBe(false);
+	});
+
 	it("resolves a data-prefixed path from the data root", async () => {
 		const result = await tool?.execute(
 			"call-1",

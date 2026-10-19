@@ -151,13 +151,7 @@ export async function runClaimAttempt(
 ): Promise<string> {
   let attemptId = '';
   await runMutate(ctx, input.runId, (snapshot) => {
-    ops.assertRunning(snapshot);
     const item = ops.item(snapshot, input.workItemId);
-    if (!item.dependsOn.every(
-      (id) => ops.item(snapshot, id).status === 'completed',
-    )) {
-      throw new Error('WorkItem dependencies are not satisfied');
-    }
     const matching = item.attempts.find(
       (attempt) => attempt.requestId === input.requestId,
     );
@@ -167,6 +161,12 @@ export async function runClaimAttempt(
     if (matching) {
       attemptId = matching.attemptId;
       return snapshot;
+    }
+    ops.assertRunning(snapshot);
+    if (!item.dependsOn.every(
+      (id) => ops.item(snapshot, id).status === 'completed',
+    )) {
+      throw new Error('WorkItem dependencies are not satisfied');
     }
     if (item.status === 'completed') {
       throw new Error('WorkItem is already completed');

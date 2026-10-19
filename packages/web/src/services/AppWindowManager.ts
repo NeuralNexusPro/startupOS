@@ -76,6 +76,8 @@ export class AppWindowManager {
         windowType = 'sandbox';
       } else if (entryType === 'sense-center') {
         windowType = 'sense-center';
+      } else if (entryType === 'supervisor-task-board') {
+        windowType = 'supervisor-task-board';
       } else {
         windowType = 'workspace';
       }

@@ -18,6 +18,7 @@ import { SpotlightItemType } from '@originos/core/types';
 
 import AgentDialogContent from '@/components/os/agent-dialog/AgentDialogContent';
 import { openSenseCenter } from '@/components/os/sense-center';
+import { openSupervisorTaskBoard } from '@/components/os/task-board';
 import type { SystemNotificationActivationTarget } from '@/components/os/notification/SystemNotificationToastHost';
 import { WorkspaceWindow } from '@/components/os/workspace';
 import { InterviewWindow } from '@/components/interview';
@@ -29,10 +30,6 @@ import { getIpcRenderer, isElectron, IPC_CHANNELS } from '@originos/core/lib/int
 import { subscribeToNativeWindowClosed } from '@originos/core/lib/integrations/electron/window';
 import { deleteProject } from '@originos/core/lib/integrations/electron/services/project';
 import { deleteUserAgent, deleteUserSkill } from '@originos/core/lib/integrations/electron/services/user-registry';
-import { MultiAgentLauncher } from '@originos/core/modules/collaboration-runtime/ui/MultiAgentLauncher';
-import { MarkdownContent, AskUserQuestionComponent, parseAskUserQuestion, removeYamlBlock } from '@/components/ui/chat-message';
-import { ChatInputBar } from '@/components/ui/chat-input-bar';
-import { useFileUpload } from '@/lib/hooks/use-file-upload';
 import { AppWindowManager } from '@/services/AppWindowManager';
 import useSandboxStore from '@/store/sandboxStore';
 import { useSpotlightStore } from '@/store/spotlightStore';
@@ -97,7 +94,7 @@ export function useHomeHandlers(input: {
   loadUserAgents: () => void;
   loadUserSkills: () => void;
 }) {
-  const { projects, projectsRef, userAgents, userSkills, llmConfig, loadProjects, createProject, loadUserAgents, loadUserSkills } = input;
+  const { projects, projectsRef, userAgents, userSkills, loadProjects, createProject, loadUserAgents, loadUserSkills } = input;
 
   const handleCreateProject = async () => {
     console.log('[HomePage] Opening interview window');
@@ -213,6 +210,10 @@ export function useHomeHandlers(input: {
       }
       if (detail.action === 'open-sense-center') {
         openSenseCenter();
+        return;
+      }
+      if (detail.action === 'open-task-board') {
+        openSupervisorTaskBoard();
         return;
       }
       if (detail.action === 'launch-skill' && detail.skillId) {
@@ -579,31 +580,7 @@ export function useHomeHandlers(input: {
   const handleOpenCollaboration = (projectId: string) => {
     const project = projects.find(p => p.id === projectId);
     const projectName = project?.name || '项目';
-
-    const windowManager = AppWindowManager.getInstance();
-    windowManager.openComponentWindow(
-      `collaboration-${projectId}`,
-      `${projectName} · 多 Agent 协作`,
-      MultiAgentLauncher,
-      {
-        projectId,
-        projectName,
-        llmConfig,
-        uiDeps: {
-          MarkdownContent,
-          ChatInputBar,
-          AskUserQuestionComponent,
-          parseAskUserQuestion,
-          removeYamlBlock,
-          useFileUpload,
-        },
-      },
-      {
-        position: { width: 1300, height: 800 },
-        constraints: { minWidth: 900, minHeight: 600 },
-        metadata: { entryType: 'collaboration', entryId: projectId, sessionId: `collaboration-${projectId}`, projectId },
-      }
-    );
+    openSupervisorTaskBoard(projectId, projectName);
   };
 
   const handleDeleteProject = async (projectId: string) => {
@@ -702,6 +679,10 @@ export function useHomeHandlers(input: {
         }
         if (app.action === 'open-sense-center') {
           openSenseCenter();
+          return;
+        }
+        if (app.action === 'open-task-board') {
+          openSupervisorTaskBoard();
         }
       },
       keywords: [app.id, app.name, app.description, app.type],

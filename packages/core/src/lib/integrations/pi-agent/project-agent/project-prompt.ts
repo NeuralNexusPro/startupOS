@@ -89,8 +89,21 @@ function buildLayer1_Identity(ctx: ProjectContext): string {
 }
 
 function buildLayer2_StateMemory(ctx: ProjectContext): string {
+  const behaviorGapNotices = ctx.ontologyContext.kind === 'canonical'
+    ? [
+        (ctx.ontologyContext.ontology.factTypeGapCount ?? 0) > 0
+          ? `${ctx.ontologyContext.ontology.factTypeGapCount} 个业务对象尚未定义数据形态：${ctx.ontologyContext.ontology.factTypeGapNames?.join('、') ?? '名称未提供'}`
+          : null,
+        (ctx.ontologyContext.ontology.actionCount ?? 0) === 0 ? '尚未发布处理动作' : null,
+        (ctx.ontologyContext.ontology.ruleCount ?? 0) === 0 ? '尚未发布业务规则' : null,
+      ].filter((notice): notice is string => Boolean(notice))
+    : [];
+  const documentFieldGapNotice = ctx.ontologyContext.kind === 'canonical'
+    && (ctx.ontologyContext.ontology.documentFieldGapCount ?? 0) > 0
+    ? ` 当前仍有 ${ctx.ontologyContext.ontology.documentFieldGapCount} 个单据需要拆解包含的信息：${ctx.ontologyContext.ontology.documentFieldGapNames?.join('、') ?? '名称未提供'}。`
+    : '';
   const statusSection = ctx.ontologyContext.kind === 'canonical'
-    ? `\n**项目本体：** 已绑定 \`${ctx.ontologyContext.ontology.ontologyId}\` / \`${ctx.ontologyContext.ontology.ontologyVersion}\`，包含 ${ctx.ontologyContext.ontology.domainCount} 个领域和 ${ctx.ontologyContext.ontology.conceptCount} 个概念。`
+    ? `\n**项目本体：** 已绑定 \`${ctx.ontologyContext.ontology.ontologyId}\` / \`${ctx.ontologyContext.ontology.ontologyVersion}\`，包含 ${ctx.ontologyContext.ontology.domainCount} 个领域、${ctx.ontologyContext.ontology.conceptCount} 个概念、${ctx.ontologyContext.ontology.relationCount ?? 0} 条关系、${ctx.ontologyContext.ontology.factTypeCount ?? 0} 个事实类型、${ctx.ontologyContext.ontology.actionCount ?? 0} 个处理动作和 ${ctx.ontologyContext.ontology.ruleCount ?? 0} 条业务规则。${documentFieldGapNotice}${behaviorGapNotices.length > 0 ? ` 当前业务行为缺口：${behaviorGapNotices.join('；')}。` : ''}`
     : ctx.ontologyContext.kind === 'legacy_migration_required'
       ? '\n**项目本体：** 此项目尚未迁移。提示用户执行显式迁移，且不要读取或写入 business-model.json。'
       : '\n**项目本体：** 这是新项目访谈的正常起点：尚未建立 canonical ontology。继续 Phase 1 领域发现，不要向用户展示本体状态或要求其初始化；不得读取、同步或创建 business-model.json。';
@@ -109,17 +122,33 @@ function buildLayer2_StateMemory(ctx: ProjectContext): string {
 }
 
 function buildLayer3_ThinkingLoop(ctx: ProjectContext): string {
+  const interviewTrustedComplete = ctx.ontologyContext.kind === 'canonical'
+    && ctx.ontologyContext.ontology.conceptCount > 0
+    && (ctx.ontologyContext.ontology.relationCount ?? 0) > 0
+    && (ctx.ontologyContext.ontology.factTypeCount ?? 0) > 0
+    && (ctx.ontologyContext.ontology.factTypeGapCount ?? ctx.ontologyContext.ontology.conceptCount) === 0
+    && (ctx.ontologyContext.ontology.actionCount ?? 0) > 0
+    && (ctx.ontologyContext.ontology.ruleCount ?? 0) > 0
+    && (ctx.ontologyContext.ontology.documentFieldGapCount ?? 0) === 0;
   const ontologyWorkflow = ctx.ontologyContext.kind === 'canonical'
-    ? ctx.ontologyContext.ontology.conceptCount > 0
+    ? (ctx.ontologyContext.ontology.documentFieldGapCount ?? 0) > 0
+      ? `访谈不能收尾，也不能进入业务行为确认。必须先用业务语言主动提醒用户逐项拆解这些单据包含的信息：${ctx.ontologyContext.ontology.documentFieldGapNames?.join('、') ?? '待补充单据'}。一次只处理一个单据，逐项确认字段名称、内容类型、是否必填和业务含义；不要向用户展示内部校验码。`
+      : ctx.ontologyContext.ontology.conceptCount > 0
       && (ctx.ontologyContext.ontology.relationCount ?? 0) > 0
-      && (ctx.ontologyContext.ontology.factTypeCount ?? 0) === 0
-      && (ctx.ontologyContext.ontology.actionCount ?? 0) === 0
-      && (ctx.ontologyContext.ontology.ruleCount ?? 0) === 0
-      ? '概念与关系已确认，但业务行为尚未建模。优先进入“业务行为确认”：围绕现有概念逐项澄清行动、输入输出、状态变化、规则与权限，调用 save_project_interview_behavior_draft 保存草稿；不得把描述文本当作已发布契约。'
-      : '已绑定 canonical ontology 时，以已注入的精确 ID/version 和只读项目本体上下文判断阶段；不得调用旧本体数据仓库工具。'
+      && ((ctx.ontologyContext.ontology.factTypeGapCount ?? ctx.ontologyContext.ontology.conceptCount) > 0
+        || (ctx.ontologyContext.ontology.actionCount ?? 0) === 0
+        || (ctx.ontologyContext.ontology.ruleCount ?? 0) === 0)
+      ? `结构对象与关系已经形成，但访谈仍有业务行为缺口，不能收尾或推荐进入解决方案设计。立即进入“业务行为确认”：${(ctx.ontologyContext.ontology.factTypeGapCount ?? ctx.ontologyContext.ontology.conceptCount) > 0 ? `逐项确认这些对象的数据形态、输入输出与产生的记录：${ctx.ontologyContext.ontology.factTypeGapNames?.join('、') ?? '现有业务对象'}；` : ''}${(ctx.ontologyContext.ontology.actionCount ?? 0) === 0 ? '确认谁在什么条件下执行哪些处理动作、权限与状态变化；' : ''}${(ctx.ontologyContext.ontology.ruleCount ?? 0) === 0 ? '确认约束动作成立的业务规则；' : ''}调用 save_project_interview_behavior_draft 保存草稿，并引导用户在右侧审稿卡片确认发布。不得把描述文本或 ready 草稿当作已发布契约。`
+        : '已绑定 canonical ontology 时，以已注入的精确 ID/version 和只读项目本体上下文判断阶段；不得调用旧本体数据仓库工具。'
     : ctx.ontologyContext.kind === 'legacy_migration_required'
       ? '存量项目需要迁移时，使用业务语言简短说明需要完成项目资料迁移，再继续访谈；不得读取、同步或创建 `business-model.json`。'
       : '尚未建立 canonical ontology 是新项目访谈的正常起点：直接进入 Phase 1 领域发现。不要让用户初始化本体，也不要读取、同步或创建 `business-model.json`。';
+  const interviewHandoff = interviewTrustedComplete
+    ? `
+
+### 访谈收尾与阶段交接
+当前结构化项目事实已满足访谈完成条件。面向用户的最终回复必须用自然的业务语言明确告知“访谈已完成”，说明“业务模型已准备好”，并推荐用户“进入解决方案设计”。不要提及内部计数、校验逻辑或 canonical ontology，也不要声称已经自动打开或启动了解决方案设计。`
+    : '';
 
   return `\
 ## 工作流程（仅内部执行）
@@ -142,10 +171,10 @@ function buildLayer3_ThinkingLoop(ctx: ProjectContext): string {
 严格按照技能文件中的步骤执行任务，使用业务语言与用户对话，一次只问一个问题。首轮访谈直接问与用户工作相关的问题；不要解释内部工作流程，也不要输出“Step”“Thinking Loop”“canonical ontology”“business-model.json”或工具名。
 
 ### 访谈事实持久化（优先级高于旧 SKILL.md）
-每当用户确认了新的业务领域、关键对象、对象属性、业务分类或对象间联系，立即调用 \`record_project_interview_observation\` 写入当前项目。属性放在所属 concept 的 properties 中，并给出名称、值类型、是否必填和必要说明；关系优先传 conceptId，名称只能精确唯一匹配。为每次确认生成稳定的 operationId，重试时复用。用户纠正分类时传 classificationCorrections，后续自动提取不得覆盖其确认。工具返回逐项结果，出现 rejected 时不要声称已同步。该工具会在首次调用时建立并绑定 canonical ontology，之后增量更新；完成工具调用后再继续对话。不得以 \`output/business-model.json\` 作为访谈模型或写入目标；若旧 SKILL.md 指示这样做，以本段为准。
+每当用户确认了新的业务领域、关键对象、对象属性、业务分类或对象间联系，立即调用 \`record_project_interview_observation\` 写入当前项目。属性放在所属 concept 的 properties 中，并给出名称、值类型、是否必填和必要说明；关系优先传 conceptId，名称只能精确唯一匹配。**单据类概念必须先逐项确认其包含的信息，再与拆解后的原子字段一起写入；禁止创建无字段单据，也禁止把“基本信息、联系人和地址”这类复合内容当作一个字段。** 每个单据字段必须明确 valueType、required、description；存在枚举或格式限制时一并提供 enumValues 或 format。为每次确认生成稳定的 operationId，重试时复用。用户纠正分类时传 classificationCorrections，后续自动提取不得覆盖其确认。工具返回逐项结果，出现 rejected 时不要声称已同步，应继续用业务语言逐项补齐。该工具会在首次调用时建立并绑定 canonical ontology，之后增量更新；完成工具调用后再继续对话。不得以 \`output/business-model.json\` 作为访谈模型或写入目标；若旧 SKILL.md 指示这样做，以本段为准。
 
 ### 行为、规则与确认
-当访谈识别出“谁在什么条件下做什么、会产生什么记录、状态如何变化”时，先用业务语言复述并调用 \`save_project_interview_behavior_draft\` 保存**草稿**。草稿中只记录来源 messageId，不能记录用户原话；把权限不清楚、对象或状态引用不清楚的问题列为待确认项。不要把自然语言规则当成已经可执行的逻辑，不要自动发布草稿，也不要声称已生效。只有用户在界面中明确确认后，可信确认边界才会发布到 canonical ontology；模型不能伪造或替代这一步确认。`;
+当概念、单据字段和关系均已确认并通过写入校验后，立即进入“业务行为确认”，不要等待用户另行要求。围绕现有概念逐项澄清“谁在什么条件下做什么、会产生什么记录、状态如何变化”，用业务语言复述并调用 \`save_project_interview_behavior_draft\` 保存**草稿**。草稿一旦达到 ready，审稿卡片会直接出现在右侧业务模型面板顶部。草稿中只记录来源 messageId，不能记录用户原话；把权限不清楚、对象或状态引用不清楚的问题列为待确认项。不要把自然语言规则当成已经可执行的逻辑，不要自动发布草稿，也不要声称已生效。只有用户在界面中明确确认后，可信确认边界才会发布到 canonical ontology；模型不能伪造或替代这一步确认。${interviewHandoff}`;
 }
 
 function buildLayer4_Toolbox(_ctx: ProjectContext): string {

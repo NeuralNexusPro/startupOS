@@ -5,6 +5,7 @@ import { OntologyGraph } from './OntologyGraph';
 import type { OntologyModel, OntologyNode } from '@originos/core/types';
 import type { CanonicalSemanticKind } from '@originos/core/lib/features/ontology/types';
 import type { BehaviorDraftReviewDto } from '@/services/interview-behavior-drafts';
+import { LegacyOntologyMigrationCard } from '@/components/os/workspace/LegacyOntologyMigrationCard';
 
 import { SEMANTIC_KIND_OPTIONS, semanticKindLabel } from './semantic-kind';
 
@@ -83,6 +84,8 @@ interface ArtifactDisplayPanelProps {
   activeTab?: '图谱' | '实体' | '关系' | '行动' | '规则';
   onTabChange?: (tab: '图谱' | '实体' | '关系' | '行动' | '规则') => void;
   legacyMigrationRequired?: boolean;
+  projectId?: string;
+  onLegacyMigrationCompleted?: () => void;
   behaviorDraftReview?: BehaviorDraftReviewDto;
   behaviorModelingRequired?: boolean;
   onConfirmBehaviorDraft?: () => void;
@@ -152,6 +155,8 @@ export function ArtifactDisplayPanel({
   activeTab = '图谱',
   onTabChange,
   legacyMigrationRequired = false,
+  projectId,
+  onLegacyMigrationCompleted,
   behaviorDraftReview,
   behaviorModelingRequired = false,
   onConfirmBehaviorDraft,
@@ -168,7 +173,13 @@ export function ArtifactDisplayPanel({
     <div className="flex flex-col h-full bg-background text-foreground">
       <PanelHeader mode={mode} ontology={ontology} behaviorModelingRequired={behaviorModelingRequired} />
       <div className="flex-1 overflow-y-auto">
-        {mode === 'empty' && <EmptyState legacyMigrationRequired={legacyMigrationRequired} />}
+        {mode === 'empty' && (
+          <EmptyState
+            legacyMigrationRequired={legacyMigrationRequired}
+            projectId={projectId}
+            onLegacyMigrationCompleted={onLegacyMigrationCompleted}
+          />
+        )}
         {mode === 'collecting' && <CollectingState ontology={ontology} onEntityClick={onEntityClick} selectedEntity={selectedEntity} />}
         {mode === 'generating' && <GeneratingState message={generationMessage} />}
         {mode === 'preview' && ontology && (
@@ -192,7 +203,15 @@ export function ArtifactDisplayPanel({
   );
 }
 
-function EmptyState({ legacyMigrationRequired }: { legacyMigrationRequired: boolean }) {
+function EmptyState({
+  legacyMigrationRequired,
+  projectId,
+  onLegacyMigrationCompleted,
+}: {
+  legacyMigrationRequired: boolean;
+  projectId?: string;
+  onLegacyMigrationCompleted?: () => void;
+}) {
   return (
     <div className="flex flex-col items-center justify-center h-full gap-4 p-8 text-muted-foreground">
       <EmptyIllustration />
@@ -202,6 +221,12 @@ function EmptyState({ legacyMigrationRequired }: { legacyMigrationRequired: bool
           {legacyMigrationRequired ? '旧项目保持只读，请先通过显式迁移入口完成迁移。' : '通过左侧对话，Oracle 将实时构建项目本体。'}
         </p>
       </div>
+      {legacyMigrationRequired && projectId ? (
+        <LegacyOntologyMigrationCard
+          projectId={projectId}
+          onMigrated={() => onLegacyMigrationCompleted?.()}
+        />
+      ) : null}
     </div>
   );
 }
@@ -262,6 +287,11 @@ function EntityCard({ node, compact = false, selectedEntity }: { node: OntologyN
       </div>
       {!compact && node.description && (
         <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{node.description}</p>
+      )}
+      {!compact && kind === 'document' && props.length === 0 && (
+        <p className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-700 dark:text-amber-300">
+          单据字段待补充：需要逐项确认字段名称、类型、是否必填及业务含义。
+        </p>
       )}
       {props.length > 0 && (
         <div className={`flex flex-wrap gap-1 ${compact ? 'mt-1' : 'mt-2'}`}>
@@ -337,15 +367,42 @@ function PreviewState({ ontology, onCreateProject, isCreatingProject, onEntityCl
     kind,
     count: entities.filter((node) => semanticKindOf(node) === kind).length,
   })).filter(({ count }) => count > 0);
+  const conceptGroups = SEMANTIC_KIND_OPTIONS.map((kind) => ({
+    kind,
+    entities: entities.filter((node) => semanticKindOf(node) === kind),
+  })).filter(({ entities: items }) => items.length > 0);
+  const documentFieldGapCount = entities.filter((node) => (
+    semanticKindOf(node) === 'document'
+    && (node.children?.filter((child) => child.type === 'property').length ?? 0) === 0
+  )).length;
 
   return (
     <div className="flex flex-col h-full">
-      {behaviorModelingRequired && (
-        <div className="mx-5 mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-foreground">
-          <span className="font-medium">下一步：业务行为确认。</span>
-          先在左侧访谈中补充各业务对象的处理动作、输入输出、状态变化、规则与权限。助手形成行动草稿后，本页“行动”标签会出现“确认并写入项目本体”按钮。
+      {documentFieldGapCount > 0 && (
+        <div className="mx-5 mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-foreground" role="status">
+          <span className="font-medium">还需要补充单据内容。</span>
+          {` 请在左侧访谈中逐项拆解 ${entities
+            .filter((node) => semanticKindOf(node) === 'document' && (node.children?.filter((child) => child.type === 'property').length ?? 0) === 0)
+            .map((node) => `“${node.name}”`)
+            .join('、')} 包含的信息，并确认每项内容的类型、是否必填和业务含义。完成前访谈不会进入行动确认。`}
         </div>
       )}
+      {behaviorDraftReview ? (
+        <div className="mx-5 mt-4">
+          <BehaviorDraftReview
+            draft={behaviorDraftReview}
+            onConfirm={onConfirmBehaviorDraft}
+            isConfirming={isConfirmingBehaviorDraft}
+            error={behaviorDraftError}
+            blockedReason={documentFieldGapCount > 0 ? `还有 ${documentFieldGapCount} 个单据未完成字段拆解，补齐后才能确认行动草稿。` : undefined}
+          />
+        </div>
+      ) : behaviorModelingRequired ? (
+        <div className="mx-5 mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-foreground">
+          <span className="font-medium">下一步：业务行为确认。</span>
+          先在左侧访谈中补充各业务对象的处理动作、输入输出、状态变化、规则与权限。助手形成行动草稿后，审稿卡片会直接出现在本面板顶部。
+        </div>
+      ) : null}
       {/* Tabs */}
       <div className="flex border-b border-border px-5 shrink-0">
         {TABS.map((tab) => (
@@ -400,11 +457,19 @@ function PreviewState({ ontology, onCreateProject, isCreatingProject, onEntityCl
         {localActiveTab === '实体' && (
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <p className="text-xs text-muted-foreground">每个概念都保留所属分类和描述，可在本体编辑器中修正。</p>
+              <p className="text-xs text-muted-foreground">概念按业务分类组织；每项都保留分类、描述和已确认字段。</p>
               <span className="text-xs text-muted-foreground">{entities.length} 项</span>
             </div>
-            {entities.map((node) => (
-              <EntityCard key={node.id} node={node} selectedEntity={selectedEntity} />
+            {conceptGroups.map(({ kind, entities: groupedEntities }) => (
+              <section key={kind} className="space-y-2" aria-label={`${semanticKindLabel(kind)}概念`}>
+                <div className="flex items-center gap-2 pt-1">
+                  <span className={`rounded-full border px-2 py-0.5 text-[11px] ${SEMANTIC_BADGE[kind]}`}>{semanticKindLabel(kind)}</span>
+                  <span className="text-[11px] text-muted-foreground">{groupedEntities.length} 项</span>
+                </div>
+                {groupedEntities.map((node) => (
+                  <EntityCard key={node.id} node={node} selectedEntity={selectedEntity} />
+                ))}
+              </section>
             ))}
             {entities.length === 0 && (
               <p className="text-xs text-muted-foreground text-center py-8">暂无业务概念</p>
@@ -425,7 +490,6 @@ function PreviewState({ ontology, onCreateProject, isCreatingProject, onEntityCl
 
         {localActiveTab === '行动' && (
           <div className="space-y-3">
-            <BehaviorDraftReview draft={behaviorDraftReview} onConfirm={onConfirmBehaviorDraft} isConfirming={isConfirmingBehaviorDraft} error={behaviorDraftError} />
             {(contracts?.actions ?? []).map((action) => (
               <ActionCard key={action.id} action={action} rules={rules} />
             ))}
@@ -557,14 +621,23 @@ function TransitionCard({ transition, rules }: { transition: NonNullable<Behavio
   </article>;
 }
 
-function BehaviorDraftReview({ draft, onConfirm, isConfirming, error }: { draft?: BehaviorDraftReviewDto; onConfirm?: () => void; isConfirming: boolean; error?: string }) {
+function BehaviorDraftReview({ draft, onConfirm, isConfirming, error, blockedReason }: { draft?: BehaviorDraftReviewDto; onConfirm?: () => void; isConfirming: boolean; error?: string; blockedReason?: string }) {
   if (!draft) return null;
   const confirmation = draft.confirmation?.status === 'confirmed' ? '已确认' : draft.confirmation?.status === 'required' ? '等待确认' : '无需确认';
-  const canConfirm = draft.status === 'ready' && draft.unresolvedClarificationCount === 0 && Boolean(onConfirm);
+  const statusLabel: Record<BehaviorDraftReviewDto['status'], string> = {
+    collecting: '整理中',
+    ready: '可审阅',
+    needs_review: '需重新整理',
+    published: '已写入',
+    discarded: '已废弃',
+  };
+  const canConfirm = draft.status === 'ready' && draft.unresolvedClarificationCount === 0 && !blockedReason && Boolean(onConfirm);
   return <section className="rounded-xl border border-border bg-muted/30 p-3" aria-live="polite" aria-label="行动草稿审阅状态">
     <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-medium text-foreground">行动草稿审阅</p><span className="rounded-full border border-border bg-background px-2 py-0.5 text-[11px] text-muted-foreground">{confirmation}</span></div>
     <p className="mt-1 text-xs text-muted-foreground">{draft.summary}</p>
-    <p className="mt-2 text-[11px] text-muted-foreground">{draft.candidateCount} 项待写入定义 · 当前状态：{draft.status}</p>
+    <p className="mt-2 text-[11px] text-muted-foreground">{draft.candidateCount} 项待写入定义 · 当前状态：{statusLabel[draft.status]}</p>
+    {draft.status === 'needs_review' && <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-300">项目模型已变化，请让访谈助手按当前模型重新整理这份草稿。</p>}
+    {blockedReason && <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-300">{blockedReason}</p>}
     {draft.unresolvedClarificationCount > 0 && <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-300">请先在访谈中澄清 {draft.unresolvedClarificationCount} 项问题。</p>}
     {draft.status === 'ready' && <button type="button" onClick={onConfirm} disabled={!canConfirm || isConfirming} className="mt-3 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50">{isConfirming ? '正在写入项目本体…' : '确认并写入项目本体'}</button>}
     {error && <p role="alert" className="mt-2 text-xs text-destructive">{error}</p>}

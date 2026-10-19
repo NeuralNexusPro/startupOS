@@ -48,6 +48,14 @@ export async function deleteLocalFile(filePath: string): Promise<void> {
   await getIpcRenderer().invoke<void>(IPC_CHANNELS.FS_DELETE, filePath);
 }
 
+export async function openLocalFile(filePath: string): Promise<void> {
+  if (!isElectron()) {
+    throw new Error('System file opening is only available in Electron');
+  }
+
+  await getIpcRenderer().invoke<void>(IPC_CHANNELS.FS_OPEN, filePath);
+}
+
 export async function watchLocalPath(targetPath: string): Promise<void> {
   if (!isElectron()) {
     return;

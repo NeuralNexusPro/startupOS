@@ -419,7 +419,21 @@ describe("AgentTaskRuntimeCoordinator evidence boundary", () => {
 		await harness.coordinator.createTask({ version: 1, requestId: "create-evidence-task", sessionId: "session-1", objective: "Evidence task" });
 		(harness.host.invoke as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ eventId: "evidence-event-1", revisionBefore: 1, revisionAfter: 2, stateHash: "evidence-hash-1" });
 		await expect(harness.coordinator.recordVerifiedEvidence({ version: 1, requestId: "evidence-request-1", taskId: "T1", stepId: "T1-S1", summary: "Verifier passed", references: ["verification-1"], artifactRefs: ["artifact-1"], verifier: "deterministic-fixture", contentHash: "sha256:verification-content" })).resolves.toMatchObject({ eventId: "evidence-event-1", revisionAfter: 2 });
-		expect(harness.host.invoke).toHaveBeenLastCalledWith(expect.objectContaining({ toolName: "task_evidence", scope: expect.objectContaining({ sessionId: "session-1", bridgeEpoch: 3 }), input: expect.objectContaining({ task_id: "T1", step_ids: ["T1-S1"], passed: "true" }) }));
+		expect(harness.host.invoke).toHaveBeenLastCalledWith(expect.objectContaining({
+			toolName: "task_evidence",
+			scope: expect.objectContaining({ sessionId: "session-1", bridgeEpoch: 3 }),
+			input: expect.objectContaining({
+				task_id: "T1",
+				step_ids: ["T1-S1"],
+				type: "file",
+				level: "static_read",
+				passed: "true",
+				quality: expect.objectContaining({
+					source: "deterministic-fixture",
+					verifier: "tool",
+				}),
+			}),
+		}));
 	});
 
 	it("rejects evidence outside the current canonical task", async () => {

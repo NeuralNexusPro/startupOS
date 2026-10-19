@@ -135,6 +135,7 @@ function isValidSessionId(sessionId: string): boolean {
  */
 export class AgentSessionService {
   private store = jsonStore;
+  private readonly listSessionsInFlight = new Map<string, Promise<SessionListItem[]>>();
 
   /**
    * Create a new session
@@ -295,6 +296,24 @@ export class AgentSessionService {
    * 索引缺失/损坏/与文件 mtime+size 失配时回退全量扫描并重建索引。
    */
   async listSessions(projectId?: string): Promise<SessionListItem[]> {
+    const requestKey = projectId ?? '__global__';
+    const existing = this.listSessionsInFlight.get(requestKey);
+    if (existing) {
+      return existing;
+    }
+
+    const request = this.listSessionsInternal(projectId);
+    this.listSessionsInFlight.set(requestKey, request);
+    try {
+      return await request;
+    } finally {
+      if (this.listSessionsInFlight.get(requestKey) === request) {
+        this.listSessionsInFlight.delete(requestKey);
+      }
+    }
+  }
+
+  private async listSessionsInternal(projectId?: string): Promise<SessionListItem[]> {
     // Determine which directory to scan
     const sessionsDir = projectId
       ? `${getProjectSessionsDir(projectId)}/`
@@ -317,8 +336,24 @@ export class AgentSessionService {
     // 会话数大时在 Windows（Defender 实时扫描）下会长时间阻塞主进程
     let fallbackLlmConfig: AgentSession['llmConfig'] | undefined;
 
-    for (const sessionId of validSessionIds) {
-      const session = await this.getSession(sessionId, projectId, { skipLlmConfigBackfill: true });
+    const loadedSessions: Array<AgentSession | null> = [];
+    // Keep disk reads concurrent, but yield between bounded batches. On Windows an
+    // old role can contain hundreds of session files and Defender adds latency to
+    // every open; a serial scan made the Electron main process appear frozen.
+    const batchSize = 12;
+    for (let offset = 0; offset < validSessionIds.length; offset += batchSize) {
+      const batch = validSessionIds.slice(offset, offset + batchSize);
+      loadedSessions.push(...await Promise.all(batch.map((sessionId) => (
+        this.getSession(sessionId, projectId, { skipLlmConfigBackfill: true })
+      ))));
+      if (offset + batchSize < validSessionIds.length) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+    }
+
+    for (let index = 0; index < validSessionIds.length; index += 1) {
+      const sessionId = validSessionIds[index]!;
+      const session = loadedSessions[index];
 
       if (session) {
         // Skip sessions with missing projectContext (defensive)
@@ -526,8 +561,7 @@ export class AgentSessionService {
         return null;
       }
 
-      const items: SessionListItem[] = [];
-      for (const sessionId of sessionIds) {
+      const validated = await Promise.all(sessionIds.map(async (sessionId) => {
         const entry = entries.get(sessionId);
         if (!entry) {
           return null;
@@ -537,10 +571,12 @@ export class AgentSessionService {
           return null;
         }
         if (projectId && entry.projectId !== projectId) {
-          continue;
+          return undefined;
         }
-        items.push(this.indexEntryToListItem(entry));
-      }
+        return this.indexEntryToListItem(entry);
+      }));
+      if (validated.some((item) => item === null)) return null;
+      const items = validated.filter((item): item is SessionListItem => item !== undefined);
       return items.sort((a, b) => b.updatedAt - a.updatedAt);
     } catch {
       // 索引读取/校验失败一律回退全量扫描，不影响功能正确性
@@ -558,9 +594,12 @@ export class AgentSessionService {
     projectId: string | null,
   ): Promise<void> {
     try {
+      const itemStats = await Promise.all(items.map(async (item) => ({
+        item,
+        stat: await this.store.stat(`${sessionsDir}${item.sessionId}.json`),
+      })));
       const entries: SessionIndexEntry[] = [];
-      for (const item of items) {
-        const stat = await this.store.stat(`${sessionsDir}${item.sessionId}.json`);
+      for (const { item, stat } of itemStats) {
         if (!stat) continue;
         entries.push({
           ...item,
@@ -572,11 +611,14 @@ export class AgentSessionService {
       // 扫描中被过滤掉的会话（如 projectContext 缺失）也要记录 stat，
       // 否则它们的文件存在会让条目数校验永久失配，索引永远无法生效。
       const itemIds = new Set(items.map((item) => item.sessionId));
-      for (const sessionId of sessionIds) {
-        if (itemIds.has(sessionId)) continue;
-        const stat = await this.store.stat(`${sessionsDir}${sessionId}.json`);
+      const skippedIds = sessionIds.filter((sessionId) => !itemIds.has(sessionId));
+      const skipped = await Promise.all(skippedIds.map(async (sessionId) => ({
+        sessionId,
+        stat: await this.store.stat(`${sessionsDir}${sessionId}.json`),
+        session: await this.getSession(sessionId, projectId ?? undefined, { skipLlmConfigBackfill: true }),
+      })));
+      for (const { sessionId, stat, session } of skipped) {
         if (!stat) continue;
-        const session = await this.getSession(sessionId, projectId ?? undefined);
         const item = session ? this.toSessionListItem(session) : {
           sessionId,
           projectId: projectId ?? 'unknown',

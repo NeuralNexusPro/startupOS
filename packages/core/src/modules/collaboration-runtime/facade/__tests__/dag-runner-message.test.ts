@@ -34,4 +34,35 @@ describe('formalRunStatusMessage', () => {
     expect(message).toContain('MAX_DURATION_EXCEEDED');
     expect(message).toContain('启动新的 Run');
   });
+
+  it('reports a review-stalled worker reason instead of a generic running status', () => {
+    const message = formalRunStatusMessage('T1', snapshot({
+      workItems: [{
+        id: 'run-1:analyze',
+        binding: snapshot({}).binding,
+        designNodeId: 'analyze',
+        assignedAgentId: 'analyst',
+        skillRefs: ['analyze'],
+        dependsOn: [],
+        inputRefs: [],
+        outputRefs: [],
+        status: 'needs_review',
+        revision: 1,
+        leaseEpoch: 1,
+        attempts: [{
+          attemptId: 'attempt-1',
+          leaseEpoch: 1,
+          requestId: 'request-1',
+          payloadHash: `sha256:${'b'.repeat(64)}`,
+          status: 'needs_review',
+          createdAt: '2026-10-18T00:00:00.000Z',
+          updatedAt: '2026-10-18T00:00:00.000Z',
+          reason: 'WORKER_RESULT_INVALID',
+        }],
+      }],
+    }));
+
+    expect(message).toContain('WORKER_RESULT_INVALID');
+    expect(message).toContain('暂未继续推进');
+  });
 });

@@ -11,6 +11,7 @@ import type {
   WorkItemHitlRequest,
   WorkItemStatus,
 } from "./contract-execution-types";
+import { parseCollaborationArtifactRef } from './artifact-reference';
 
 export type SupervisorTaskBoardStatus = WorkItemStatus | "planned";
 
@@ -20,6 +21,9 @@ export interface SupervisorTaskAcceptance {
   approverName: string;
   requestId: string;
   attemptId: string;
+  leaseEpoch: number;
+  question: string;
+  options: readonly ("approve" | "reject" | "edit")[];
 }
 
 export interface SupervisorTaskBoardTask extends Omit<TaskItem, "status" | "failure"> {
@@ -114,6 +118,70 @@ interface BlackboardFile {
   data?: {
     artifacts?: Record<string, BlackboardArtifact>;
   };
+}
+
+interface ContractArtifactEnvelopeProjection {
+  schemaVersion?: string;
+  content?: string;
+}
+
+function formatBusinessValue(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) {
+    return value.map((item) => `- ${formatBusinessValue(item)}`).join('\n');
+  }
+  if (typeof value === 'object') {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, child]) => `**${key}**：${formatBusinessValue(child)}`)
+      .join('\n\n');
+  }
+  return String(value);
+}
+
+function presentContractWorkerContent(content: unknown): string | undefined {
+  if (!content || typeof content !== 'object' || Array.isArray(content)) return undefined;
+  const record = content as Record<string, unknown>;
+  if (typeof record['summary'] === 'string' && record['summary'].trim()) {
+    return record['summary'].trim();
+  }
+  const outcome = record['outcome'];
+  if (outcome && typeof outcome === 'object' && !Array.isArray(outcome)) {
+    const outputs = (outcome as Record<string, unknown>)['outputs'];
+    if (Array.isArray(outputs)) {
+      const rendered = outputs.flatMap((output) => {
+        if (!output || typeof output !== 'object' || Array.isArray(output)) return [];
+        const value = (output as Record<string, unknown>)['value'];
+        const text = formatBusinessValue(value).trim();
+        return text ? [text] : [];
+      });
+      if (rendered.length) return rendered.join('\n\n---\n\n');
+    }
+  }
+  if (typeof record['result'] === 'string' && record['result'] !== 'success') {
+    return record['result'];
+  }
+  return undefined;
+}
+
+async function readContractWorkerOutput(
+  dataRoot: string,
+  refs: readonly string[],
+): Promise<string | undefined> {
+  for (const ref of refs) {
+    if (!ref.startsWith('artifact://collaboration/')) continue;
+    try {
+      const raw = await fs.readFile(parseCollaborationArtifactRef(dataRoot, ref), 'utf8');
+      const envelope = JSON.parse(raw) as ContractArtifactEnvelopeProjection;
+      if (typeof envelope.content !== 'string') continue;
+      const presented = presentContractWorkerContent(JSON.parse(envelope.content) as unknown);
+      if (presented) return presented;
+    } catch {
+      // A missing/corrupt internal receipt must not break the complete task-board projection.
+    }
+  }
+  return undefined;
 }
 
 interface AgentDisplayEntry {
@@ -392,9 +460,7 @@ function pendingAcceptance(
   const request = [...attempts]
     .reverse()
     .flatMap((attempt) => [...(attempt.hitlRequests ?? [])].reverse())
-    .find((candidate): candidate is WorkItemHitlRequest =>
-      candidate.status === "pending" && candidate.trigger === "after_verification"
-    );
+    .find((candidate): candidate is WorkItemHitlRequest => candidate.status === "pending");
   if (!request) return undefined;
   const userApproval = request.approverRole === "user";
   return {
@@ -405,6 +471,9 @@ function pendingAcceptance(
       : agentNames.get(request.approverRole) ?? request.approverRole,
     requestId: request.requestId,
     attemptId: request.attemptId,
+    leaseEpoch: request.leaseEpoch,
+    question: request.question,
+    options: request.options,
   };
 }
 
@@ -470,6 +539,7 @@ function legacyTaskFailure(
 }
 
 async function contractRunTasks(
+  dataRoot: string,
   projectDirectory: string,
   projectId: string,
   projectName: string,
@@ -481,7 +551,7 @@ async function contractRunTasks(
   const runs = await Promise.all(files.map((file) =>
     readJson<CollaborationRunSnapshot>(path.join(runsDirectory, file))
   ));
-  return runs.flatMap((run) => {
+  const projectedRuns = await Promise.all(runs.map(async (run) => {
     if (!run || run.projectId !== projectId || !Array.isArray(run.workItems)) {
       return [];
     }
@@ -491,16 +561,13 @@ async function contractRunTasks(
     const completedIds = new Set(
       run.workItems.filter(({ status }) => status === "completed").map(({ id }) => id),
     );
-    return visibleItems.map((item: CollaborationRunSnapshot["workItems"][number]): SupervisorTaskBoardTask => {
+    return Promise.all(visibleItems.map(async (item: CollaborationRunSnapshot["workItems"][number]): Promise<SupervisorTaskBoardTask> => {
       const collaborationSession = collaborationSessionByRunId.get(run.runId);
       const attempt = item.attempts.at(-1);
       const description = contractTaskDescription(run, item.designNodeId);
-      const artifacts = (attempt?.workerReceipt?.outputRefs ?? []).map((ref) => ({
-        kind: "artifact" as const,
-        name: path.basename(ref) || ref,
-        ref,
-        operation: "产出",
-      }));
+      const output = attempt?.workerReceipt
+        ? await readContractWorkerOutput(dataRoot, attempt.workerReceipt.outputRefs)
+        : undefined;
       const acceptance = item.status === "waiting_hitl"
         ? pendingAcceptance(item.attempts, agentNames)
         : undefined;
@@ -516,12 +583,9 @@ async function contractRunTasks(
         assignedTo: item.assignedAgentId,
         dependsOn: [...item.dependsOn],
         input: { refs: [...item.inputRefs] },
-        output: attempt?.workerReceipt
-          ? {
-              refs: [...attempt.workerReceipt.outputRefs],
-              verification: attempt.verifierResult?.status,
-            }
-          : undefined,
+        output: output ?? (attempt?.workerReceipt
+          ? `Agent 已完成执行${attempt.verifierResult?.status === 'passed' ? '，并通过验证' : ''}。`
+          : undefined),
         createdAt: item.attempts[0]?.createdAt ?? run.createdAt,
         ...(item.status === "completed" && attempt?.updatedAt
           ? { completedAt: attempt.updatedAt }
@@ -542,11 +606,13 @@ async function contractRunTasks(
         designNodeId: item.designNodeId,
         ...(failure ? { failure } : {}),
         ...(acceptance ? { acceptance } : {}),
-        artifacts,
+        // outputRefs are runtime receipt envelopes, not files created for the user.
+        artifacts: [],
         dataChanges: [],
       };
-    });
-  });
+    }));
+  }));
+  return projectedRuns.flat();
 }
 
 async function projectTaskGroup(dataRoot: string, projectId: string): Promise<SupervisorTaskBoardProject | null> {
@@ -570,6 +636,7 @@ async function projectTaskGroup(dataRoot: string, projectId: string): Promise<Su
     .map((agent) => [agent.id, agent.name]));
 
   const formalTasks = await contractRunTasks(
+    dataRoot,
     projectDirectory,
     projectId,
     projectName,

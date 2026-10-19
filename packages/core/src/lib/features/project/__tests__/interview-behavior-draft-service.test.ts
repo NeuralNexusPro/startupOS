@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -10,6 +10,7 @@ import {
 } from '../../ontology';
 import {
   InterviewBehaviorDraftService,
+  hashInterviewBehaviorCandidates,
   type InterviewBehaviorCandidates,
 } from '../interview-behavior-draft-service';
 
@@ -66,6 +67,102 @@ describe('InterviewBehaviorDraftService', () => {
     expect((await store.readOntology(projectId))!.data.actions).toEqual([]);
   });
 
+  it('keeps an incomplete behavior contract collecting and lists every uncovered concept', async () => {
+    const { service, projectId } = await setup();
+    const incomplete: InterviewBehaviorCandidates = { ...candidates(), factTypes: [] };
+    const saved = await service.save({
+      projectId,
+      sourceId: 'session-a',
+      ontologyId: `ontology-${projectId}`,
+      ontologyVersion: '1.0.0',
+      baseRevision: 0,
+      sourceMessageRefs: [{ messageId: 'message-1' }],
+      candidates: incomplete,
+      knownPermissionIds: ['quality:inspect'],
+    });
+
+    expect(saved).toMatchObject({
+      ok: true,
+      draft: {
+        status: 'collecting',
+        clarifications: [expect.objectContaining({
+          id: 'fact-type-required:batch',
+          kind: 'business_meaning',
+          resolved: false,
+        })],
+      },
+    });
+  });
+
+  it('revalidates a historical ready draft before review or confirmation', async () => {
+    const { root, service, projectId } = await setup();
+    const saved = await saveReady(service, projectId); if (!saved.ok) throw new Error('save failed');
+    const draftPath = path.join(root, 'projects', projectId, 'interview', 'behavior-drafts', `${saved.draft.id}.json`);
+    const historical = JSON.parse(await readFile(draftPath, 'utf8')) as Record<string, unknown>;
+    const historicalCandidates = historical['candidates'] as Record<string, unknown>;
+    historicalCandidates['factTypes'] = [];
+    historical['status'] = 'ready';
+    historical['clarifications'] = [];
+    historical['candidateHash'] = hashInterviewBehaviorCandidates(historicalCandidates as unknown as InterviewBehaviorCandidates);
+    await writeFile(draftPath, JSON.stringify(historical), 'utf8');
+
+    expect(await service.review(projectId, 'session-a', saved.draft.id)).toMatchObject({
+      ok: true,
+      draft: {
+        status: 'collecting',
+        confirmation: undefined,
+        clarifications: [expect.objectContaining({ id: 'fact-type-required:batch' })],
+      },
+    });
+    expect(await service.confirmFromTrustedUi(projectId, 'session-a', saved.draft.id, 'confirm-incomplete')).toMatchObject({
+      ok: false,
+      code: 'DRAFT_NOT_READY',
+    });
+  });
+
+  it('repairs and publishes a historical business-language draft through canonical bindings', async () => {
+    const { root, service, projectId, store } = await setup();
+    const saved = await saveReady(service, projectId); if (!saved.ok) throw new Error('save failed');
+    const draftPath = path.join(root, 'projects', projectId, 'interview', 'behavior-drafts', `${saved.draft.id}.json`);
+    const historical = JSON.parse(await readFile(draftPath, 'utf8')) as Record<string, unknown>;
+    const looseCandidates = {
+      factTypes: [{ conceptName: '来料批次', name: '来料记录', fields: [] }],
+      businessStates: [
+        { conceptName: '来料批次', name: '待检', initial: true },
+        { conceptName: '来料批次', name: '合格', terminal: true },
+      ],
+      rules: [{ name: '检验通过才可入库', condition: '检验结果为通过', action: '允许入库' }],
+      actions: [{ name: '记录来料批次', description: '为来料批次生成来料记录' }],
+      transitions: [{ conceptName: '来料批次', name: '完成检验', fromState: '待检', toState: '合格' }],
+    } as unknown as InterviewBehaviorCandidates;
+    historical['candidates'] = looseCandidates;
+    historical['candidateHash'] = hashInterviewBehaviorCandidates(looseCandidates);
+    historical['status'] = 'needs_review';
+    historical['clarifications'] = [];
+    historical['confirmation'] = undefined;
+    await writeFile(draftPath, JSON.stringify(historical), 'utf8');
+
+    const review = await service.review(projectId, 'session-a', saved.draft.id);
+    expect(review).toMatchObject({ ok: true, draft: { status: 'ready' } });
+    if (!review.ok) throw new Error('review failed');
+    const published = await service.confirmAndPublishFromTrustedUi({
+      projectId,
+      sourceId: 'session-a',
+      draftId: saved.draft.id,
+      expectedDraftRevision: review.draft.draftRevision,
+      candidateHash: review.draft.candidateHash,
+      confirmationId: 'confirm-legacy',
+      operationId: 'publish-legacy',
+    });
+
+    expect(published).toMatchObject({ ok: true, draft: { status: 'published' } });
+    const ontologyAfter = (await store.readOntology(projectId))!.data;
+    expect(ontologyAfter.factTypes).toEqual([expect.objectContaining({ conceptId: 'batch', name: '来料记录', propertyIds: [] })]);
+    expect(ontologyAfter.actions).toEqual([expect.objectContaining({ conceptId: 'batch', name: '记录来料批次' })]);
+    expect(ontologyAfter.rules).toEqual([expect.objectContaining({ name: '检验通过才可入库' })]);
+    expect(ontologyAfter.transitions).toEqual([expect.objectContaining({ conceptId: 'batch' })]);
+  });
+
   it('requires matching revision and candidate hash before a canonical write', async () => {
     const { service, projectId, store } = await setup();
     const saved = await saveReady(service, projectId); if (!saved.ok) throw new Error('save failed');
@@ -118,6 +215,16 @@ describe('InterviewBehaviorDraftService', () => {
     expect(failed).toMatchObject({ ok: false, code: 'ONTOLOGY_REVISION_CONFLICT', draft: { status: 'needs_review' } });
   });
 
+  it('binds a saved draft to the revision read by the trusted service', async () => {
+    const { service, projectId, store } = await setup();
+    const current = (await store.readOntology(projectId))!.data;
+    await store.writeOntology(projectId, { ...current, metadata: { 'originos.authoringRevision': 7 } });
+
+    const saved = await saveReady(service, projectId);
+
+    expect(saved).toMatchObject({ ok: true, draft: { baseRevision: 7, status: 'ready' } });
+  });
+
   it('reviewLatest prefers the exact source and falls back to the latest legacy draft', async () => {
     const { service, projectId } = await setup();
     // UI queries with its own session id; the draft was saved by the model with a stale id.
@@ -134,5 +241,52 @@ describe('InterviewBehaviorDraftService', () => {
     if (!second.ok) throw new Error('second save failed');
     expect(await service.reviewLatest(projectId, 'session-a')).toMatchObject({ ok: true, draft: { id: saved.draft.id } });
     expect(await service.reviewLatest(projectId, 'project-initialization-1')).toMatchObject({ ok: true, draft: { id: second.draft.id } });
+  });
+
+  it('reads a historical UTF-8 BOM draft without blocking project restoration', async () => {
+    const { root, service, projectId } = await setup();
+    const saved = await saveReady(service, projectId); if (!saved.ok) throw new Error('save failed');
+    const draftPath = path.join(root, 'projects', projectId, 'interview', 'behavior-drafts', `${saved.draft.id}.json`);
+    const content = await readFile(draftPath, 'utf8');
+    await writeFile(draftPath, `\uFEFF${content}`, 'utf8');
+
+    expect(await service.reviewLatest(projectId, 'session-a')).toMatchObject({
+      ok: true,
+      draft: { id: saved.draft.id },
+    });
+  });
+
+  it('ignores a BOM-prefixed intermediate behavior file that is not a review draft', async () => {
+    const { root, service, projectId } = await setup();
+    const saved = await saveReady(service, projectId); if (!saved.ok) throw new Error('save failed');
+    const legacyPath = path.join(root, 'projects', projectId, 'interview', 'behavior-drafts', '中间行为模型.json');
+    await writeFile(legacyPath, '\uFEFF{"facts":[],"states":[],"actions":[],"transitions":[],"rules":[]}', 'utf8');
+
+    expect(await service.reviewLatest(projectId, 'session-a')).toMatchObject({
+      ok: true,
+      draft: { id: saved.draft.id },
+    });
+  });
+
+  it('normalizes historical facts and states candidate names for read-only review', async () => {
+    const { root, service, projectId } = await setup();
+    const saved = await saveReady(service, projectId); if (!saved.ok) throw new Error('save failed');
+    const draftPath = path.join(root, 'projects', projectId, 'interview', 'behavior-drafts', `${saved.draft.id}.json`);
+    const historical = JSON.parse(await readFile(draftPath, 'utf8')) as Record<string, unknown>;
+    const currentCandidates = historical['candidates'] as Record<string, unknown>;
+    historical['candidates'] = {
+      actions: currentCandidates['actions'],
+      facts: currentCandidates['factTypes'],
+      states: currentCandidates['businessStates'],
+      transitions: currentCandidates['transitions'],
+      rules: currentCandidates['rules'],
+    };
+    await writeFile(draftPath, JSON.stringify(historical), 'utf8');
+
+    const reviewed = await service.reviewLatest(projectId, 'session-a');
+    expect(reviewed).toMatchObject({ ok: true, draft: { id: saved.draft.id } });
+    if (!reviewed.ok) throw new Error('review failed');
+    expect(reviewed.draft.candidates.factTypes[0]).toMatchObject({ id: 'inspection-fact' });
+    expect(reviewed.draft.candidates.businessStates[0]).toMatchObject({ id: 'pending' });
   });
 });

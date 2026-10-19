@@ -55,6 +55,8 @@ export type EventType =
   | "TASK_REPORTED"
   | "TASK_COMPLETED"
   | "TASK_FAILED"
+  | "TASK_BLOCKED"
+  | "TASK_RESUMED"
   | "TASK_REASSIGNED"
 
   // Blackboard operations
@@ -131,14 +133,34 @@ export type TaskState = "pending" | "assigned" | "running" | "completed" | "fail
 
 export interface TaskItem {
   id: string;
+  /** Short human-readable name for task boards. Legacy tasks may omit it. */
+  title?: string;
   description: string;
   status: TaskState;
   assignedTo?: string;
   dependsOn?: string[];
   input?: unknown;
   output?: unknown;
+  failure?: TaskFailureDetails;
+  blocked?: TaskBlockDetails;
   createdAt: string; // ISO 8601
   completedAt?: string; // ISO 8601
+}
+
+export interface TaskBlockDetails {
+  reason: string;
+  waitingFor: string[];
+  blockedAt: string;
+  resumeStatus: "pending" | "assigned" | "running" | "reported";
+}
+
+export interface TaskFailureDetails {
+  stage: string;
+  reason: string;
+  code?: string;
+  toolName?: string;
+  exitCode?: number | null;
+  occurredAt: string;
 }
 
 export interface BlackboardMessage {

@@ -13,6 +13,29 @@ interface PositionedTopology {
   height: number;
 }
 
+export function fitTopologyToViewport(
+  layoutWidth: number,
+  layoutHeight: number,
+  viewportWidth: number,
+  viewportHeight: number,
+  padding = 48
+): number {
+  if (
+    layoutWidth <= 0 ||
+    layoutHeight <= 0 ||
+    viewportWidth <= 0 ||
+    viewportHeight <= 0
+  ) {
+    return 1;
+  }
+  const availableWidth = Math.max(1, viewportWidth - padding);
+  const availableHeight = Math.max(1, viewportHeight - padding);
+  return Math.max(
+    0.08,
+    Math.min(1.15, availableWidth / layoutWidth, availableHeight / layoutHeight)
+  );
+}
+
 export function layoutTopology(
   projection: GraphProjection,
   view: GraphView

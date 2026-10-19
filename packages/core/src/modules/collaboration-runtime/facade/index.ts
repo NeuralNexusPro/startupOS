@@ -79,6 +79,12 @@ export {
 } from "./contract-execution";
 export { createAgentTaskEvidenceSink } from "./task-runtime-evidence-sink";
 export {
+  assertCollaborationArtifactIdentifier,
+  collaborationArtifactPath,
+  createCollaborationArtifactRef,
+  parseCollaborationArtifactRef,
+} from './artifact-reference';
+export {
   getSupervisorWorkItemRuntimePort,
   registerSupervisorWorkItemRuntimePort,
   type AdvanceSupervisorWorkItemsInput,

@@ -34,7 +34,7 @@ import type { RuntimeEvent, TaskItem, TaskState } from "../session/types";
 // Types
 // ============================================================================
 
-export type AgentStatus = "idle" | "thinking" | "tool_call" | "complete" | "fail" | "waiting";
+export type AgentStatus = "idle" | "running" | "thinking" | "tool_call" | "complete" | "fail" | "waiting";
 
 export interface AgentActivity {
   agentId: string;
@@ -340,7 +340,7 @@ export function mapEventToForegroundMessages(event: RuntimeEvent): ForegroundMes
 // Task event mapping (Story 9.44 — pure functions, no state)
 // ============================================================================
 
-/** 事件驱动的六类 TASK_* 事件（与引擎 blackboard.ts apply 语义对齐）。 */
+/** 事件驱动的 TASK_* 事件（与引擎 blackboard.ts apply 语义对齐）。 */
 const TASK_EVENT_TYPES = new Set<string>([
   "TASK_CREATED",
   "TASK_ASSIGNED",
@@ -348,6 +348,9 @@ const TASK_EVENT_TYPES = new Set<string>([
   "TASK_REPORTED",
   "TASK_COMPLETED",
   "TASK_FAILED",
+  "TASK_BLOCKED",
+  "TASK_RESUMED",
+  "TASK_REASSIGNED",
 ]);
 
 /** 防御式收窄 unknown → TaskItem；id/description 必须是 string，status 非法时回退 pending。 */
@@ -417,8 +420,42 @@ export function applyTaskEventToTasks(tasks: TaskItem[], event: RuntimeEvent): T
         t.id === taskId ? { ...t, assignedTo: agentId, status: "assigned" as const } : t,
       );
     }
+    case "TASK_REASSIGNED": {
+      const agentId = typeof payload["agentId"] === "string" ? payload["agentId"] : undefined;
+      return tasks.map((t) =>
+        t.id === taskId
+          ? { ...t, assignedTo: agentId, status: "assigned" as const, completedAt: undefined, failure: undefined, blocked: undefined }
+          : t,
+      );
+    }
     case "TASK_STARTED":
       return tasks.map((t) => (t.id === taskId ? { ...t, status: "running" as const } : t));
+    case "TASK_BLOCKED":
+      return tasks.map((t) => {
+        if (t.id !== taskId || t.status === "completed" || t.status === "failed") return t;
+        const resumeStatus = t.status === "blocked" ? (t.blocked?.resumeStatus ?? "assigned") : t.status;
+        return {
+          ...t,
+          status: "blocked" as const,
+          blocked: {
+            reason: typeof payload["reason"] === "string" ? payload["reason"] : "任务等待外部条件。",
+            waitingFor: Array.isArray(payload["waitingFor"])
+              ? payload["waitingFor"].filter((item): item is string => typeof item === "string")
+              : [],
+            blockedAt: event.timestamp,
+            resumeStatus,
+          },
+        };
+      });
+    case "TASK_RESUMED":
+      return tasks.map((t) => {
+        if (t.id !== taskId || t.status !== "blocked") return t;
+        const requestedStatus = payload["status"];
+        const status = requestedStatus === "pending" || requestedStatus === "assigned" || requestedStatus === "running" || requestedStatus === "reported"
+          ? requestedStatus
+          : t.blocked?.resumeStatus ?? "assigned";
+        return { ...t, status, blocked: undefined };
+      });
     case "TASK_REPORTED":
       return tasks.map((t) =>
         t.id === taskId ? { ...t, status: "reported" as const, output: payload["output"] } : t,
@@ -431,7 +468,20 @@ export function applyTaskEventToTasks(tasks: TaskItem[], event: RuntimeEvent): T
       );
     case "TASK_FAILED":
       return tasks.map((t) =>
-        t.id === taskId ? { ...t, status: "failed" as const, completedAt: event.timestamp } : t,
+        t.id === taskId ? {
+          ...t,
+          status: "failed" as const,
+          completedAt: event.timestamp,
+          output: { error: typeof payload["error"] === "string" ? payload["error"] : "任务执行失败，但运行时未提供具体原因。" },
+          failure: {
+            stage: typeof payload["stage"] === "string" ? payload["stage"] : "worker-execution",
+            reason: typeof payload["error"] === "string" ? payload["error"] : "任务执行失败，但运行时未提供具体原因。",
+            ...(typeof payload["code"] === "string" ? { code: payload["code"] } : {}),
+            ...(typeof payload["toolName"] === "string" ? { toolName: payload["toolName"] } : {}),
+            ...(typeof payload["exitCode"] === "number" ? { exitCode: payload["exitCode"] } : {}),
+            occurredAt: event.timestamp,
+          },
+        } : t,
       );
     default:
       return tasks;
@@ -701,6 +751,20 @@ export const useCollaborationUi = create<CollaborationUiState>((set, get) => ({
  */
 export function eventToAgentStatus(event: RuntimeEvent): Partial<AgentActivity> | null {
   switch (event.type) {
+    case "TASK_ASSIGNED":
+    case "TASK_REASSIGNED":
+      return { status: "running", message: "任务已派发" };
+    case "TASK_STARTED":
+    case "TASK_RESUMED":
+      return { status: "running", message: "正在执行任务" };
+    case "TASK_REPORTED":
+      return { status: "waiting", message: "等待 Supervisor 验收" };
+    case "TASK_COMPLETED":
+      return { status: "complete", message: "任务已完成" };
+    case "TASK_BLOCKED":
+      return { status: "waiting", message: String(event.payload?.["reason"] ?? "任务等待外部条件") };
+    case "TASK_FAILED":
+      return { status: "fail", message: event.payload?.["error"] as string };
     case "AGENT_THINKING":
       return { status: "thinking", message: event.payload?.["message"] as string };
     case "TOOL_CALL":
@@ -720,7 +784,7 @@ export function eventToAgentStatus(event: RuntimeEvent): Partial<AgentActivity> 
     case "WORKER_BLOCK":
       return { status: "waiting", message: event.payload?.["suggestedQuestion"] as string };
     case "AGENT_START":
-      return { status: "idle" };
+      return { status: "running", message: "正在执行任务" };
     case "AGENT_END":
       return { status: "complete" };
     case "ASSISTANT_MESSAGE": {
@@ -737,4 +801,18 @@ export function eventToAgentStatus(event: RuntimeEvent): Partial<AgentActivity> 
     default:
       return null;
   }
+}
+
+/** Resolve the worker represented by a runtime event instead of attributing
+ * Supervisor-emitted task lifecycle events to the Supervisor itself. */
+export function eventActivityAgentId(event: RuntimeEvent): string | undefined {
+  if (event.type === "TASK_ASSIGNED" || event.type === "TASK_REASSIGNED") {
+    const assigned = event.payload?.["agentId"];
+    return typeof assigned === "string" && assigned.trim() ? assigned : event.target ?? event.source;
+  }
+  if (event.type === "SUPERVISOR_WORKER_COMPLETE" || event.type === "SUPERVISOR_WORKER_FAILED") {
+    const worker = event.payload?.["workerId"];
+    return typeof worker === "string" && worker.trim() ? worker : event.target ?? event.source;
+  }
+  return event.source || event.target;
 }

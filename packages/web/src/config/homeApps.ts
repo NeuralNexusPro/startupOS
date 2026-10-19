@@ -80,6 +80,15 @@ export const HOME_APPS: HomeAppConfig[] = [
     type: 'action',
     action: 'open-sense-center',
   },
+  {
+    id: 'app-task-board',
+    name: '任务看板',
+    description: '按项目查看 Supervisor 派发给各 Agent 的任务与产出',
+    icon: '📋',
+    color: 'from-indigo-500',
+    type: 'action',
+    action: 'open-task-board',
+  },
   // --- 系统内置 Skill (SKILL_APPS) ---
   {
     id: 'app-brainstorming',

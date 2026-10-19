@@ -39,6 +39,29 @@ function noHitlBody(
   };
 }
 
+function outputAcceptanceBody(): SolutionExecutionContractBody {
+  const source = body();
+  return {
+    ...source,
+    topology: {
+      ...source.topology,
+      nodes: source.topology.nodes.map((node) => {
+        if (node.id === 'prepare') {
+          return { ...node, hitlPolicyId: 'accept-prepare-output' };
+        }
+        const { hitlPolicyId: _hitlPolicyId, ...withoutPolicy } = node;
+        return withoutPolicy;
+      }),
+    },
+    hitl: [{
+      id: 'accept-prepare-output',
+      nodeId: 'prepare',
+      trigger: 'after_verification',
+      approverRole: 'user',
+    }],
+  };
+}
+
 function workerReceipt(
   id = 'worker-1',
   tokens = 10,
@@ -503,6 +526,74 @@ describe('short-transaction collaboration ledger', () => {
     }
   });
 
+  it('completes the selected task after verified output is accepted without pre-planning another task', async () => {
+    const state = await fixture(outputAcceptanceBody());
+    const waiting = await state.execution.executeWorkItem({
+      runId: state.run.runId,
+      workItemId: prepare(state.run).id,
+      requestId: 'prepare-output',
+      payloadHash: 'sha256:prepare-output',
+    });
+
+    const waitingItem = prepare(waiting);
+    expect(waitingItem.status).toBe('waiting_hitl');
+    expect(waitingItem.attempts[0]).toMatchObject({
+      status: 'waiting_hitl',
+      verifierResult: { status: 'passed' },
+    });
+    expect(state.calls).toMatchObject({ verifier: 1, outcome: 0, evidence: 0 });
+
+    expect(waiting.workItems.find((item) =>
+      item.designNodeId === 'publish'
+    )).toBeUndefined();
+
+    const request = pendingHitl(waiting);
+    const accepted = await state.execution.resolveHitl({
+      runId: state.run.runId,
+      requestId: request.requestId,
+      attemptId: request.attemptId,
+      leaseEpoch: request.leaseEpoch,
+      decision: 'approve',
+      decisionRef: 'user-approved-output',
+    });
+    expect(prepare(accepted).status).toBe('completed');
+    expect(accepted.terminalStatus).toBe('completed');
+    expect(state.calls).toMatchObject({ verifier: 1, outcome: 1, evidence: 1 });
+    expect(accepted.workItems).toHaveLength(1);
+  });
+
+  it('returns rejected verified output to revision without losing evidence', async () => {
+    const state = await fixture(outputAcceptanceBody());
+    const waiting = await state.execution.executeWorkItem({
+      runId: state.run.runId,
+      workItemId: prepare(state.run).id,
+      requestId: 'prepare-rejected-output',
+      payloadHash: 'sha256:prepare-rejected-output',
+    });
+    const request = pendingHitl(waiting);
+
+    const revised = await state.execution.resolveHitl({
+      runId: state.run.runId,
+      requestId: request.requestId,
+      attemptId: request.attemptId,
+      leaseEpoch: request.leaseEpoch,
+      decision: 'reject',
+      decisionRef: 'user-requested-revision',
+    });
+
+    expect(revised.terminalStatus).toBeUndefined();
+    expect(prepare(revised)).toMatchObject({
+      status: 'revision',
+      attempts: [expect.objectContaining({
+        status: 'revision',
+        reason: 'OUTPUT_ACCEPTANCE_REJECTED',
+        workerReceipt: expect.objectContaining({ receiptId: 'worker-1' }),
+        verifierResult: expect.objectContaining({ status: 'passed' }),
+      })],
+    });
+    expect(state.calls).toMatchObject({ outcome: 0, evidence: 0 });
+  });
+
   it('persists and dispatches an on-failure HITL request', async () => {
     const source = noHitlBody();
     const contractBody: SolutionExecutionContractBody = {
@@ -615,7 +706,7 @@ describe('short-transaction collaboration ledger', () => {
     expect(attemptsResult.terminalStatus).toBe('failed');
   });
 
-  it('marks the Run completed only after every frozen WorkItem completes', async () => {
+  it('marks the Run completed when the selected task template WorkItem completes', async () => {
     const state = await fixture();
     const first = prepare(state.run);
     const prepared = await state.execution.executeWorkItem({
@@ -624,18 +715,9 @@ describe('short-transaction collaboration ledger', () => {
       requestId: 'complete-prepare',
       payloadHash: 'sha256:complete-prepare',
     });
-    expect(prepared.terminalStatus).toBeUndefined();
-    const publish = prepared.workItems.find((item) =>
-      item.designNodeId === 'publish'
-    )!;
-    const completed = await state.execution.executeWorkItem({
-      runId: state.run.runId,
-      workItemId: publish.id,
-      requestId: 'complete-publish',
-      payloadHash: 'sha256:complete-publish',
-    });
-    expect(completed.terminalStatus).toBe('completed');
-    expect(completed.workItems.every((item) => item.status === 'completed')).toBe(
+    expect(prepared.terminalStatus).toBe('completed');
+    expect(prepared.workItems).toHaveLength(1);
+    expect(prepared.workItems.every((item) => item.status === 'completed')).toBe(
       true,
     );
   });

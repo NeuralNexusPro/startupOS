@@ -5,6 +5,11 @@ export interface ToolFailureSummary {
 	toolCallId?: string;
 	exitCode?: number | null;
 	reason: string;
+	stage?: string;
+	stopReason?: string;
+	attempts?: number;
+	lastToolResult?: string;
+	workMayHaveCompleted?: boolean;
 }
 
 export interface CompletionAssessmentInput {
@@ -121,6 +126,9 @@ function requiredActionFor(
 	}
 
 	const reason = failure.reason.toLowerCase();
+	if (failure.stage === "final-response") {
+		return "任务工具可能已经执行完成，请先在任务详情核对产物；可点击重试，让 Supervisor 重新汇总结果，无需重复执行已完成的 Worker 任务。";
+	}
 	if (
 		failure.toolName === "execute_command" &&
 		(reason.includes("parsererror") ||
@@ -142,11 +150,18 @@ export function buildCompletionFailureReport(
 	failure: ToolFailureSummary | null,
 ): string {
 	const lines = [
-		"任务未能自动完成，自动恢复次数已耗尽。",
+		failure?.stage === "final-response"
+			? "任务执行结果已保留，但 Supervisor 未能生成最终汇总。"
+			: "任务未能自动完成，自动恢复次数已耗尽。",
 		"",
+		`失败阶段：${failure?.stage ?? "任务执行"}`,
 		`最后失败工具：${failure?.toolName ?? "未记录"}`,
+		...(failure?.stopReason ? [`模型停止原因：${failure.stopReason}`] : []),
+		...(failure?.attempts !== undefined ? [`尝试次数：${failure.attempts}`] : []),
+		...(failure?.lastToolResult ? [`最后工具结果：${failure.lastToolResult}`] : []),
 		`退出码：${failure?.exitCode ?? "未提供"}`,
 		`失败原因：${failure?.reason ?? "语义完成度检查连续判定任务尚未完成。"}`,
+		...(failure?.workMayHaveCompleted ? ["执行状态：Worker 或工具可能已经完成；本次失败发生在结果汇总回复阶段。"] : []),
 		`所需操作：${requiredActionFor(failure)}`,
 	];
 	return lines.join("\n");

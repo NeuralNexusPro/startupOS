@@ -133,15 +133,27 @@ ${conversationSummary}
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]) as { passed?: boolean; reasoning?: string; outputText?: string };
+      const reasoning = typeof parsed.reasoning === "string" ? parsed.reasoning.trim() : "";
+      // A rejection without any reason is not a usable verification decision. Some
+      // OpenAI-compatible providers return this shape when structured generation is
+      // truncated or otherwise incomplete. Treat it as an invalid verifier response
+      // and use the deterministic evidence-based fallback instead of permanently
+      // blocking every downstream task.
+      if (parsed.passed === false && reasoning.length === 0) {
+        return verifierFallbackResult(textParts, artifacts, toolCallCount);
+      }
       return {
         passed: parsed.passed ?? false,
-        reasoning: parsed.reasoning ?? responseText,
+        reasoning: reasoning || responseText,
         extractedArtifacts: artifacts,
         outputText: parsed.outputText ?? textParts.join("\n"),
       };
     }
 
     // 回退：如果无法解析 JSON
+    if (responseText.trim().length === 0) {
+      return verifierFallbackResult(textParts, artifacts, toolCallCount);
+    }
     return {
       passed: responseText.includes("true") || responseText.includes("通过"),
       reasoning: responseText,

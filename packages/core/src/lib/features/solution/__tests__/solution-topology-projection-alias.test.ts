@@ -57,4 +57,31 @@ describe('loadProjectSolutionTopologyProjection canonical alias compatibility', 
       { from: 'a', to: 'b', type: 'trigger', description: 'both' },
     ]);
   });
+
+  it('accepts description and ontologyObjects from newly generated canonical Agents', async () => {
+    const dataRoot = await mkdtemp(path.join(os.tmpdir(), 'solution-topology-alias-'));
+    await writeAgents(dataRoot, 'project-new', 'v1.0', [
+      {
+        id: 'tracker',
+        name: '趋势跟踪 Agent',
+        description: '浏览榜单；维护待看清单',
+        domain: '技术趋势跟踪',
+        ontologyObjects: { '趋势项目': ['create', 'query'] },
+        skills: ['trend-record'],
+        collaborations: [],
+      },
+    ]);
+
+    const projection = await loadProjectSolutionTopologyProjection({
+      projectId: 'project-new',
+      dataRoot,
+    });
+
+    expect(projection?.agents['tracker']).toMatchObject({
+      responsibility: '浏览榜单；维护待看清单',
+      domain: '技术趋势跟踪',
+      capabilities: ['浏览榜单', '维护待看清单'],
+      dataOperations: { '趋势项目': ['create', 'query'] },
+    });
+  });
 });

@@ -178,4 +178,22 @@ describe("completion guard", () => {
 		expect(report).toContain("PowerShell");
 		expect(report).toContain("所需操作：");
 	});
+
+	it("distinguishes final response failure from worker execution failure", () => {
+		const report = buildCompletionFailureReport({
+			toolName: "模型最终回复",
+			stage: "final-response",
+			stopReason: "stop → stop",
+			attempts: 2,
+			lastToolResult: "read_file: succeeded",
+			workMayHaveCompleted: true,
+			reason: "模型连续两次没有返回可展示文本。",
+		});
+
+		expect(report).toContain("任务执行结果已保留");
+		expect(report).toContain("失败阶段：final-response");
+		expect(report).toContain("模型停止原因：stop → stop");
+		expect(report).toContain("最后工具结果：read_file: succeeded");
+		expect(report).toContain("无需重复执行已完成的 Worker 任务");
+	});
 });

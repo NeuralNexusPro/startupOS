@@ -51,6 +51,8 @@ export function normalizeAgentsJsonAgents(agents: AgentsJsonAgent[]): AgentsJson
   return agents.map((agent) => ({
     ...agent,
     businessDomain: agent.businessDomain ?? agent.domain ?? "",
+    responsibility: agent.responsibility ?? agent.description ?? "",
+    dataOperations: agent.dataOperations ?? agent.ontologyObjects ?? {},
     collaborations: agent.collaborations?.map((collab) => ({
       ...collab,
       targetAgentId: collab.targetAgentId ?? collab.target ?? "",
@@ -182,8 +184,8 @@ export function toManifestAgent(a: AgentsJsonAgent): ManifestAgent {
     id: a.id,
     name: a.name,
     domain: a.businessDomain ?? "",
-    responsibility: a.responsibility,
-    dataOperations: a.dataOperations ?? {},
+    responsibility: a.responsibility ?? a.description ?? "",
+    dataOperations: a.dataOperations ?? a.ontologyObjects ?? {},
     skills: a.skills ?? [],
   };
 }

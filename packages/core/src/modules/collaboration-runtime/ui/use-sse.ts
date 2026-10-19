@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useRef, useCallback } from "react";
-import { useCollaborationUi, eventToAgentStatus } from "./store";
+import { useCollaborationUi, eventActivityAgentId, eventToAgentStatus } from "./store";
 import type { RuntimeEvent } from "../session/types";
 import { subscribeCollaborationEvents } from "../../../lib/integrations/electron/services/collaboration";
 
@@ -121,8 +121,9 @@ export function useSSEConnection(sessionId: string) {
       addEvent(event);
 
       const activity = eventToAgentStatus(event);
-      if (activity && event.source) {
-        updateAgentActivity(event.source as string, activity);
+      const activityAgentId = eventActivityAgentId(event);
+      if (activity && activityAgentId) {
+        updateAgentActivity(activityAgentId, activity);
       }
     };
 

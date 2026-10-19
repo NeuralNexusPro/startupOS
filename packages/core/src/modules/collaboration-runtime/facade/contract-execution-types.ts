@@ -271,6 +271,8 @@ export interface StartCollaborationRunInput extends SolutionVersionRef {
   readonly executionContractId: string;
   readonly contractHash: string;
   readonly inputRefs: readonly string[];
+  /** The task-template node to materialize first. Later WorkItems are planned incrementally. */
+  readonly entryDesignNodeId?: string;
   readonly parentSessionId?: string;
 }
 

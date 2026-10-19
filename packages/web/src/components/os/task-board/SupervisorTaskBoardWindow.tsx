@@ -30,13 +30,13 @@ import type {
 import { normalizeRuntimeLLMConfig } from '@originos/core/lib/integrations/pi-agent/client';
 import { getCollaborationTopology } from '@originos/core/lib/integrations/electron/services/collaboration';
 import { openLocalFile } from '@originos/core/lib/integrations/electron/local-fs';
-import { MultiAgentLauncher } from '@originos/core/modules/collaboration-runtime/ui/MultiAgentLauncher';
+import { MultiAgentLauncher, type FormalHitlReplyRequest } from '@originos/core/modules/collaboration-runtime/ui/MultiAgentLauncher';
 import { MarkdownContent } from '@/components/ui/chat-message';
 import { AskUserQuestionComponent, parseAskUserQuestion, removeYamlBlock } from '@/components/ui/chat-message';
 import { ChatInputBar } from '@/components/ui/chat-input-bar';
 import { useFileUpload } from '@/lib/hooks/use-file-upload';
 import { useSettingsStore } from '@/store/settingsStore';
-import type { CollaborationTopology } from '@originos/core/modules/collaboration-runtime/session/types';
+import type { CollaborationTopology, RuntimeEvent } from '@originos/core/modules/collaboration-runtime/session/types';
 import { TopologyGraph } from '@originos/core/modules/collaboration-runtime/ui/TopologyGraph';
 import { useCollaborationUi } from '@originos/core/modules/collaboration-runtime/ui/store';
 import { ProjectWorkspace, WorkspaceWindow } from '@/components/os/workspace';
@@ -92,6 +92,8 @@ export function resolveProjectArtifactPath(ref: string, projectId: string): stri
     ? normalized.slice(markerIndex + projectMarker.length)
     : normalized.startsWith(`data/projects/${projectId}/`)
       ? normalized.slice(`data/projects/${projectId}/`.length)
+      : normalized.startsWith(`projects/${projectId}/`)
+        ? normalized.slice(`projects/${projectId}/`.length)
       : normalized.replace(/^\.\//u, '');
   if (!relative || relative.startsWith('/') || /^[a-zA-Z]:\//u.test(relative) || relative.split('/').some((segment) => segment === '..')) return null;
   return relative;
@@ -104,7 +106,18 @@ function productWindowKey(value: string): string {
 }
 
 export async function openTaskArtifact(task: SupervisorTaskBoardTask, ref: string): Promise<boolean> {
-  const filePath = resolveProjectArtifactPath(ref, task.projectId);
+  let resolvedRef = ref;
+  if (ref.startsWith('artifact://')) {
+    const response = await fetch('/api/collaboration/task-board', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'resolve-artifact', projectId: task.projectId, artifactRef: ref }),
+    });
+    const payload = await response.json() as { path?: string; error?: string };
+    if (!response.ok || !payload.path) throw new Error(payload.error ?? '无法解析任务产物');
+    resolvedRef = payload.path;
+  }
+  const filePath = resolveProjectArtifactPath(resolvedRef, task.projectId);
   if (!filePath) return false;
   if (!filePath.toLowerCase().endsWith('.md')) {
     await openLocalFile(`projects/${task.projectId}/${filePath}`);
@@ -150,6 +163,49 @@ interface SupervisorTaskBoardWindowProps {
   initialProjectName?: string;
 }
 
+export function restoredConversationEvents(project: SupervisorTaskBoardProject | undefined): {
+  sessionId?: string;
+  events: RuntimeEvent[];
+} {
+  if (!project) return { events: [] };
+  const pending = project.tasks.find((task) => task.status === 'waiting_hitl' && task.acceptance);
+  const conversation = pending
+    ? project.conversations.find((item) => item.sessionId === pending.sessionId)
+    : project.conversations[0];
+  const sessionId = pending?.sessionId ?? conversation?.sessionId;
+  if (!sessionId) return { events: [] };
+  const events: RuntimeEvent[] = (conversation?.entries ?? []).map((entry, index) => ({
+    id: `restored:${entry.id}`,
+    sessionId,
+    seq: index + 1,
+    type: entry.role === 'user' ? 'USER_INPUT' : entry.role === 'supervisor' ? 'ASSISTANT_MESSAGE' : 'AGENT_THINKING',
+    source: entry.role === 'user' ? 'user' : 'supervisor',
+    payload: entry.role === 'user' ? { message: entry.content } : entry.role === 'supervisor' ? { content: entry.content } : { message: entry.content },
+    timestamp: entry.timestamp,
+  }));
+  for (const task of project.tasks) {
+    if (task.sessionId !== sessionId || task.status !== 'waiting_hitl' || !task.acceptance || !task.runId) continue;
+    events.push({
+      id: `formal-hitl:${task.acceptance.requestId}`,
+      sessionId,
+      seq: events.length + 1,
+      type: 'HUMAN_REVIEW_REQUEST',
+      source: 'supervisor',
+      payload: {
+        question: task.acceptance.question,
+        agentId: task.assignedTo,
+        runId: task.runId,
+        requestId: task.acceptance.requestId,
+        attemptId: task.acceptance.attemptId,
+        leaseEpoch: task.acceptance.leaseEpoch,
+        options: task.acceptance.options,
+      },
+      timestamp: task.createdAt,
+    });
+  }
+  return { sessionId, events };
+}
+
 export const SupervisorTaskBoardWindow = ({ initialProjectId, initialProjectName }: SupervisorTaskBoardWindowProps): React.ReactElement => {
   const [projection, setProjection] = useState<SupervisorTaskBoardProjection>();
   const [error, setError] = useState<string>();
@@ -180,6 +236,8 @@ export const SupervisorTaskBoardWindow = ({ initialProjectId, initialProjectName
     }
     return merged;
   }, [activities, initialProjectId, projection]);
+  const currentProject = projection?.projects.find((project) => project.projectId === initialProjectId);
+  const restoredConversation = useMemo(() => restoredConversationEvents(currentProject), [currentProject]);
 
   const load = useCallback(async (): Promise<void> => {
     setLoading(true);
@@ -239,6 +297,32 @@ export const SupervisorTaskBoardWindow = ({ initialProjectId, initialProjectName
     window.setTimeout(() => { void load(); }, 200);
   }, [load]);
 
+  const resolveFormalHitl = useCallback(async (request: FormalHitlReplyRequest, answer: string): Promise<boolean> => {
+    if (!initialProjectId || !restoredConversation.sessionId) return false;
+    setError(undefined);
+    const response = await fetch('/api/collaboration/task-board', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId: initialProjectId, ...request, answer }),
+    });
+    const payload = await response.json() as { error?: string };
+    if (!response.ok) {
+      setError(payload.error ?? '无法提交人工确认');
+      return false;
+    }
+    useCollaborationUi.getState().addEvent({
+      id: `formal-hitl-response:${request.requestId}:${Date.now()}`,
+      sessionId: restoredConversation.sessionId,
+      seq: Date.now(),
+      type: 'HUMAN_REVIEW_RESPONSE',
+      source: 'user',
+      payload: { response: answer, requestId: request.requestId },
+      timestamp: new Date().toISOString(),
+    });
+    await load();
+    return true;
+  }, [initialProjectId, load, restoredConversation.sessionId]);
+
   const visibleProjects = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return (projection?.projects ?? [])
@@ -290,7 +374,7 @@ export const SupervisorTaskBoardWindow = ({ initialProjectId, initialProjectName
         </nav>
       </aside>
 
-      {initialProjectId && (
+      {initialProjectId && projection && (
         <CollaborationConversationPanel
           projectId={initialProjectId}
           projectName={initialProjectName ?? projection?.projects[0]?.projectName ?? '当前项目'}
@@ -299,6 +383,9 @@ export const SupervisorTaskBoardWindow = ({ initialProjectId, initialProjectName
           llmConfig={normalizeRuntimeLLMConfig(getEffectiveConfig())}
           onSessionCreated={() => { void load(); }}
           onRuntimeEvent={refreshFromRuntimeEvent}
+          initialSessionId={restoredConversation.sessionId}
+          initialEvents={restoredConversation.events}
+          onFormalHitlReply={resolveFormalHitl}
         />
       )}
 
@@ -357,12 +444,30 @@ export const SupervisorTaskBoardWindow = ({ initialProjectId, initialProjectName
         </div>
       </section>
 
-      {selectedTask && <TaskDetail task={selectedTask} onClose={() => setSelectedTask(undefined)} />}
+      {selectedTask && (
+        <TaskDetail
+          task={selectedTask}
+          onClose={() => setSelectedTask(undefined)}
+          onResolveHitl={async (answer) => {
+            if (!selectedTask.acceptance || !selectedTask.runId) return false;
+            const accepted = await resolveFormalHitl({
+              eventId: `formal-hitl:${selectedTask.acceptance.requestId}`,
+              runId: selectedTask.runId,
+              requestId: selectedTask.acceptance.requestId,
+              attemptId: selectedTask.acceptance.attemptId,
+              leaseEpoch: selectedTask.acceptance.leaseEpoch,
+              options: selectedTask.acceptance.options,
+            }, answer);
+            if (accepted) setSelectedTask(undefined);
+            return accepted;
+          }}
+        />
+      )}
     </main>
   );
 }
 
-const CollaborationConversationPanel = ({ projectId, projectName, collapsed, onToggleCollapsed, llmConfig, onSessionCreated, onRuntimeEvent }: {
+const CollaborationConversationPanel = ({ projectId, projectName, collapsed, onToggleCollapsed, llmConfig, onSessionCreated, onRuntimeEvent, initialSessionId, initialEvents, onFormalHitlReply }: {
   projectId: string;
   projectName: string;
   collapsed: boolean;
@@ -370,6 +475,9 @@ const CollaborationConversationPanel = ({ projectId, projectName, collapsed, onT
   llmConfig: ReturnType<typeof normalizeRuntimeLLMConfig>;
   onSessionCreated: (sessionId: string) => void;
   onRuntimeEvent: () => void;
+  initialSessionId?: string;
+  initialEvents: readonly RuntimeEvent[];
+  onFormalHitlReply: (request: FormalHitlReplyRequest, answer: string) => Promise<boolean>;
 }): React.ReactElement => {
   return (
     <aside className={`flex ${collapsed ? 'w-11' : 'w-[390px]'} shrink-0 flex-col border-r border-slate-200 bg-white transition-[width] duration-200`} aria-label="协作对话">
@@ -390,6 +498,9 @@ const CollaborationConversationPanel = ({ projectId, projectName, collapsed, onT
           onCollapse={onToggleCollapsed}
           onSessionCreated={onSessionCreated}
           onRuntimeEvent={onRuntimeEvent}
+          initialSessionId={initialSessionId}
+          initialEvents={initialEvents}
+          onFormalHitlReply={onFormalHitlReply}
           uiDeps={{
             MarkdownContent,
             ChatInputBar,
@@ -470,7 +581,27 @@ const TaskCard = ({ task, selected, onClick }: { task: SupervisorTaskBoardTask; 
   );
 }
 
-const TaskDetail = ({ task, onClose }: { task: SupervisorTaskBoardTask; onClose: () => void }): React.ReactElement => {
+const TaskDetail = ({ task, onClose, onResolveHitl }: {
+  task: SupervisorTaskBoardTask;
+  onClose: () => void;
+  onResolveHitl: (answer: string) => Promise<boolean>;
+}): React.ReactElement => {
+  const [reviewText, setReviewText] = useState('');
+  const [reviewing, setReviewing] = useState(false);
+  const [reviewError, setReviewError] = useState<string>();
+  const submitReview = async (answer: string): Promise<void> => {
+    if (!answer.trim() || reviewing) return;
+    setReviewing(true);
+    setReviewError(undefined);
+    try {
+      const accepted = await onResolveHitl(answer.trim());
+      if (!accepted) setReviewError('提交未成功，请检查提示后重试。');
+    } catch (reason) {
+      setReviewError(reason instanceof Error ? reason.message : '无法提交确认');
+    } finally {
+      setReviewing(false);
+    }
+  };
   return (
     <aside className="flex w-[420px] shrink-0 flex-col border-l border-slate-200 bg-white shadow-xl" aria-label="任务详情">
       <header className="flex items-start gap-3 border-b border-slate-200 p-4">
@@ -490,6 +621,32 @@ const TaskDetail = ({ task, onClose }: { task: SupervisorTaskBoardTask; onClose:
           <dt className="text-slate-400">会话</dt><dd className="break-all font-mono text-[11px] text-slate-500">{task.sessionId}</dd>
         </dl>
         <DetailBlock title="任务说明" value={task.description} />
+        {task.status === 'waiting_hitl' && task.acceptance && task.runId && (
+          <section aria-label="人工确认">
+            <h3 className="mb-2 text-xs font-semibold text-violet-700">等待你的确认</h3>
+            <div className="space-y-3 rounded-xl border border-violet-200 bg-violet-50 p-3">
+              <p className="text-xs leading-5 text-violet-950">{task.acceptance.question}</p>
+              <div className="flex gap-2">
+                <button type="button" disabled={reviewing} onClick={() => { void submitReview('approve'); }}
+                  className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
+                  同意并继续
+                </button>
+                <button type="button" disabled={reviewing} onClick={() => { void submitReview('reject'); }}
+                  className="rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50">
+                  拒绝
+                </button>
+              </div>
+              <textarea value={reviewText} onChange={(event) => setReviewText(event.target.value)} disabled={reviewing}
+                aria-label="其他处理意见" placeholder="也可以填写修改意见或其他处理要求"
+                className="min-h-20 w-full resize-y rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs leading-5 text-slate-900 outline-none focus:border-violet-400 disabled:opacity-50" />
+              <button type="button" disabled={reviewing || !reviewText.trim()} onClick={() => { void submitReview(reviewText); }}
+                className="w-full rounded-lg border border-violet-300 bg-white px-3 py-2 text-xs font-medium text-violet-700 hover:bg-violet-100 disabled:opacity-50">
+                {reviewing ? '正在提交…' : '提交其他内容'}
+              </button>
+              {reviewError && <p role="alert" className="text-xs text-rose-600">{reviewError}</p>}
+            </div>
+          </section>
+        )}
         <DetailBlock title="任务输入" value={taskValue(task.input, 'Supervisor 未记录结构化输入')} />
         {task.failure && <TaskFailureDetail failure={task.failure} />}
         <TaskProducts task={task} />
@@ -524,7 +681,9 @@ const TaskProducts = ({ task }: { task: SupervisorTaskBoardTask }): React.ReactE
                 }}
                 className="block w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-left transition hover:border-indigo-300 hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-400">
                 <div className="flex items-center gap-2 text-xs font-medium text-slate-700"><FileText className="h-3.5 w-3.5 text-indigo-500" />{artifact.name}</div>
-                <p className="mt-1 break-all font-mono text-[10px] leading-4 text-slate-500">{artifact.ref}</p>
+                <p className="mt-1 break-all font-mono text-[10px] leading-4 text-slate-500">
+                  {artifact.ref.startsWith('artifact://') ? 'OriginOS 运行产物 · 已映射到本地文件' : artifact.ref}
+                </p>
                 <div className="mt-2 flex items-center justify-between gap-2">
                   {artifact.operation && <span className="inline-flex rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] text-indigo-600">{artifact.operation}</span>}
                   <span className="ml-auto text-[10px] font-medium text-indigo-600">打开文件</span>

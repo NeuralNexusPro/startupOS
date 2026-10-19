@@ -23,6 +23,23 @@ function response(data: unknown, status = 200): NextResponse {
   }, { status });
 }
 
+function publishErrorMessage(code: string): string {
+  switch (code) {
+    case 'ONTOLOGY_REVISION_CONFLICT':
+      return '项目模型在审阅后发生了变化，请刷新并重新核对草稿。';
+    case 'PUBLISH_CANDIDATES_INVALID':
+    case 'PUBLISH_REJECTED':
+      return '草稿中的部分定义还不能写入项目模型，请让访谈助手补齐对应对象和输入输出。';
+    case 'DRAFT_NOT_READY':
+    case 'TRUSTED_CONFIRMATION_REQUIRED':
+      return '草稿仍有待确认内容，暂时不能发布。';
+    case 'DRAFT_CONTENT_MISMATCH':
+      return '草稿已更新，请刷新后确认最新版本。';
+    default:
+      return '草稿未能写入项目模型，请刷新后重试。';
+  }
+}
+
 function validProjectId(projectId: string): boolean {
   return PROJECT_ID.test(projectId) && !projectId.includes('..');
 }
@@ -109,7 +126,7 @@ export async function POST(
   if (!input) return response({ code: 'INVALID_REVIEW_IDENTITY', message: '确认信息已失效，请刷新草稿后重试。' }, 400);
   try {
     const result = await new InterviewBehaviorDraftService().confirmAndPublishFromTrustedUi({ projectId, ...input });
-    if (!result.ok) return response({ code: result.code, message: '草稿内容已变化或尚未满足发布条件，请重新审阅。' }, 409);
+    if (!result.ok) return response({ code: result.code, message: publishErrorMessage(result.code) }, 409);
     return response({ draft: draftReviewDto(result.draft), recovered: result.recovered ?? false });
   } catch (error) {
     console.error('[interview behavior draft] publish failed', { projectId, operationId: input.operationId, name: error instanceof Error ? error.name : 'UnknownError' });

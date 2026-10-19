@@ -99,6 +99,43 @@ describe('legacy ontology migration', () => {
     });
   });
 
+  it('normalizes project-local ontology store files before explicit migration', () => {
+    const storeFormat = {
+      version: '1.0.0',
+      projectId: 'project-1',
+      ontologyId: 'ontology-project-1',
+      domains: [{ id: 'domain-1', name: '供应商管理', description: '供应商业务模型', confidence: 0.9 }],
+      concepts: [
+        { id: 'supplier', domainId: 'domain-1', name: '供应商', type: 'entity', description: '供应商主体' },
+        { id: 'audit', domainId: 'domain-1', name: '审厂记录', type: 'document', attributes: { result: 'string' } },
+      ],
+      instances: [],
+      relations: [{
+        id: 'supplier-audit', sourceId: 'supplier', targetId: 'audit', type: 'has_audit', cardinality: '1:N',
+      }],
+      createdAt: iso,
+      updatedAt: iso,
+    };
+
+    const preview = previewLegacyOntologyMigration(storeFormat, {
+      projectId: 'project-1', sourceKind: 'ontology', sourceId: 'projects/project-1/ontology/ontology.json',
+    });
+
+    expect(preview.ontology).toMatchObject({
+      id: 'ontology-project-1', projectId: 'project-1', name: '供应商管理',
+    });
+    expect(preview.ontology?.concepts[0]).toMatchObject({ id: 'supplier', attributes: {} });
+    expect(preview.ontology?.concepts[1]?.propertyIds).toEqual(['audit-property-0']);
+    expect(preview.ontology?.properties[0]).toMatchObject({
+      id: 'audit-property-0', conceptId: 'audit', name: 'result', valueType: 'string', required: false,
+    });
+    expect(preview.ontology?.relations[0]).toMatchObject({ id: 'supplier-audit', cardinality: 'one-to-many' });
+    expect(preview.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ severity: 'warning', code: 'LEGACY_FIELD_DEFAULTED', path: 'id' }),
+      expect.objectContaining({ severity: 'warning', code: 'LEGACY_FIELD_DEFAULTED', path: 'concepts' }),
+    ]));
+  });
+
   it('reports invalid references with paths and exposes pure compatibility projections', () => {
     const invalid = previewLegacyOntologyMigration({
       ...legacy,

@@ -154,6 +154,23 @@ async function verifyAsar() {
   }
   if (process.exitCode) return;
 
+  // Web 路由在打包后从 resources/web 解析 server external 包；
+  // 共享 chunk 加载时会 require @originos/pi-agent-adapter，
+  // 缺失会导致 ontology / skills / agent messages 等 API 全部 500。
+  const stagedWebAdapterPackage = path.join(
+    resourcesDir,
+    'web',
+    'packages',
+    'web',
+    'node_modules',
+    '@originos',
+    'pi-agent-adapter',
+    'package.json',
+  );
+  if (!fs.existsSync(stagedWebAdapterPackage)) {
+    fail('resources/web/packages/web/node_modules is missing @originos/pi-agent-adapter (web routes require it at chunk load)');
+  }
+
   const smokeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'originos-win-asar-smoke-'));
   const modules = [
     'dist-electron/core/src/lib/integrations/pi-agent/core/agent.js',

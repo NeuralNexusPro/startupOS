@@ -491,6 +491,7 @@ export class ApprovedProjectTaskCreationService {
         executionContractId: input.contractId,
         contractHash: input.contractHash,
         inputRefs: beforeRun.value.inputRefs,
+        entryDesignNodeId: beforeRun.value.template.designNodeId,
         ...(taskReceipt.parentSessionId
           ? { parentSessionId: taskReceipt.parentSessionId }
           : {}),

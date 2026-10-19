@@ -35,7 +35,8 @@ vi.mock('@originos/core/modules/collaboration-runtime/ui/TopologyGraph', () => (
   ),
 }));
 
-import { resolveProjectArtifactPath, SupervisorTaskBoardWindow } from '../SupervisorTaskBoardWindow';
+import type { SupervisorTaskBoardProject } from '@originos/core/modules/collaboration-runtime/facade';
+import { openTaskArtifact, resolveProjectArtifactPath, restoredConversationEvents, SupervisorTaskBoardWindow } from '../SupervisorTaskBoardWindow';
 
 const projection = {
   generatedAt: '2026-10-13T00:00:00.000Z',
@@ -48,11 +49,17 @@ const projection = {
       { id: 'c', title: '等待 Supervisor 验收', projectId: 'proj-a', projectName: '采购项目', sessionId: 'session-a', description: '产出已上报但尚未验收', status: 'reported', assignedTo: 'buyer', agentName: '采购专员', createdAt: '2026-10-13T00:03:00.000Z', artifacts: [], dataChanges: [] },
       { id: 'd', title: '等待外部授权', projectId: 'proj-a', projectName: '采购项目', sessionId: 'session-a', description: '当前任务受阻', status: 'blocked', assignedTo: 'reviewer', agentName: '质量审核员', createdAt: '2026-10-13T00:04:00.000Z', artifacts: [], dataChanges: [] },
       { id: 'e', title: '自动核验供应商资料', projectId: 'proj-a', projectName: '采购项目', sessionId: 'session-contract', description: '按冻结验收标准核验', status: 'verifying', assignedTo: 'reviewer', agentName: '质量审核员', createdAt: '2026-10-13T00:05:00.000Z', artifacts: [], dataChanges: [] },
-      { id: 'f', title: '等待用户确认准入', projectId: 'proj-a', projectName: '采购项目', sessionId: 'session-contract', description: '验证通过后等待用户确认', status: 'waiting_hitl', assignedTo: 'buyer', agentName: '采购专员', createdAt: '2026-10-13T00:06:00.000Z', acceptance: { mode: 'user', approverRole: 'user', approverName: '用户', requestId: 'hitl-user', attemptId: 'attempt-user' }, artifacts: [], dataChanges: [] },
-      { id: 'g', title: '质量复核确认', projectId: 'proj-a', projectName: '采购项目', sessionId: 'session-contract', description: '验证通过后等待指定角色确认', status: 'waiting_hitl', assignedTo: 'buyer', agentName: '采购专员', createdAt: '2026-10-13T00:07:00.000Z', acceptance: { mode: 'role', approverRole: 'reviewer-role', approverName: '质量负责人', requestId: 'hitl-role', attemptId: 'attempt-role' }, artifacts: [], dataChanges: [] },
+      { id: 'f', title: '等待用户确认准入', projectId: 'proj-a', projectName: '采购项目', sessionId: 'session-contract', runId: 'run-user', description: '验证通过后等待用户确认', status: 'waiting_hitl', assignedTo: 'buyer', agentName: '采购专员', createdAt: '2026-10-13T00:06:00.000Z', acceptance: { mode: 'user', approverRole: 'user', approverName: '用户', requestId: 'hitl-user', attemptId: 'attempt-user', leaseEpoch: 1, question: '是否批准供应商准入？', options: ['approve', 'reject'] }, artifacts: [], dataChanges: [] },
+      { id: 'g', title: '质量复核确认', projectId: 'proj-a', projectName: '采购项目', sessionId: 'session-contract', runId: 'run-role', description: '验证通过后等待指定角色确认', status: 'waiting_hitl', assignedTo: 'buyer', agentName: '采购专员', createdAt: '2026-10-13T00:07:00.000Z', acceptance: { mode: 'role', approverRole: 'reviewer-role', approverName: '质量负责人', requestId: 'hitl-role', attemptId: 'attempt-role', leaseEpoch: 1, question: '是否接受质量复核？', options: ['approve', 'reject'] }, artifacts: [], dataChanges: [] },
       { id: 'h', title: '修订供应商结论', projectId: 'proj-a', projectName: '采购项目', sessionId: 'session-contract', description: '验收拒绝后进入修订', status: 'revision', assignedTo: 'buyer', agentName: '采购专员', createdAt: '2026-10-13T00:08:00.000Z', artifacts: [], dataChanges: [] },
     ],
     conversations: [{
+      sessionId: 'session-contract', status: 'running', updatedAt: '2026-10-13T00:07:00.000Z',
+      entries: [
+        { id: 'mc1', sessionId: 'session-contract', role: 'user', actorId: 'user', actorName: '我', content: '请完成供应商准入', timestamp: '2026-10-13T00:05:00.000Z' },
+        { id: 'mc2', sessionId: 'session-contract', role: 'supervisor', actorId: 'supervisor', actorName: 'Supervisor', content: '已完成自动验证，等待你的确认。', timestamp: '2026-10-13T00:05:30.000Z' },
+      ],
+    }, {
       sessionId: 'session-a', status: 'running', updatedAt: '2026-10-13T00:02:00.000Z',
       entries: [
         { id: 'm1', sessionId: 'session-a', role: 'user', actorId: 'user', actorName: '我', content: '帮我评估供应商准入材料', timestamp: '2026-10-13T00:00:00.000Z' },
@@ -74,9 +81,24 @@ describe('SupervisorTaskBoardWindow', () => {
       .toBe('agents/reviewer/output/report.md');
     expect(resolveProjectArtifactPath('/tmp/root/data/projects/proj-a/output/report.md', 'proj-a'))
       .toBe('output/report.md');
+    expect(resolveProjectArtifactPath('projects/proj-a/collaboration-artifacts/run/T1/attempt.json', 'proj-a'))
+      .toBe('collaboration-artifacts/run/T1/attempt.json');
     expect(resolveProjectArtifactPath('../outside.md', 'proj-a')).toBeNull();
     expect(resolveProjectArtifactPath('/tmp/outside.md', 'proj-a')).toBeNull();
     expect(resolveProjectArtifactPath('C:\\temp\\outside.md', 'proj-a')).toBeNull();
+  });
+
+  it('restores Supervisor history and formal HITL into the same conversation', (): void => {
+    const restored = restoredConversationEvents(projection.projects[0] as unknown as SupervisorTaskBoardProject);
+    expect(restored.sessionId).toBe('session-contract');
+    expect(restored.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'USER_INPUT', payload: { message: '请完成供应商准入' } }),
+      expect.objectContaining({ type: 'ASSISTANT_MESSAGE', payload: { content: '已完成自动验证，等待你的确认。' } }),
+      expect.objectContaining({
+        type: 'HUMAN_REVIEW_REQUEST',
+        payload: expect.objectContaining({ requestId: 'hitl-user', runId: 'run-user', question: '是否批准供应商准入？' }),
+      }),
+    ]));
   });
 
   it('opens file products and business data in their project windows', async (): Promise<void> => {
@@ -104,6 +126,44 @@ describe('SupervisorTaskBoardWindow', () => {
       expect.objectContaining({ projectId: 'proj-a', ontologyId: 'ontology-proj-a' }),
       expect.objectContaining({ metadata: expect.objectContaining({ entryType: 'project-workspace', projectId: 'proj-a' }) }),
     );
+  });
+
+  it('resolves contract artifact refs before opening the persisted file', async (): Promise<void> => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ path: 'projects/proj-a/collaboration-artifacts/run-a/T1/attempt-a.json' }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const opened = await openTaskArtifact(
+      projection.projects[0].tasks[0] as never,
+      'artifact://collaboration/proj-a/run-a/T1/attempt-a',
+    );
+    expect(opened).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith('/api/collaboration/task-board', expect.objectContaining({
+      method: 'POST',
+      body: expect.stringContaining('resolve-artifact'),
+    }));
+    expect(openLocalFile).toHaveBeenCalledWith('projects/proj-a/collaboration-artifacts/run-a/T1/attempt-a.json');
+  });
+
+  it('lets the user submit approve, reject, or free-form review content from task detail', async (): Promise<void> => {
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') return { ok: true, json: async () => ({ success: true }) };
+      return { ok: true, json: async () => projection };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<SupervisorTaskBoardWindow initialProjectId="proj-a" />);
+    fireEvent.click(await screen.findByText('等待用户确认准入'));
+    const detail = screen.getByRole('complementary', { name: '任务详情' });
+    expect(within(detail).getByText('是否批准供应商准入？')).toBeInTheDocument();
+    expect(within(detail).getByRole('button', { name: '同意并继续' })).toBeInTheDocument();
+    expect(within(detail).getByRole('button', { name: '拒绝' })).toBeInTheDocument();
+    fireEvent.change(within(detail).getByLabelText('其他处理意见'), { target: { value: '请补充风险说明后再提交' } });
+    fireEvent.click(within(detail).getByRole('button', { name: '提交其他内容' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/collaboration/task-board', expect.objectContaining({
+      method: 'POST',
+      body: expect.stringContaining('请补充风险说明后再提交'),
+    })));
   });
 
   it('renders Multica-style status columns grouped by project and opens input/output detail', async (): Promise<void> => {

@@ -6,7 +6,7 @@ import { SolutionExecutionContractStore } from '../../../../lib/features/solutio
 import { body, ontology } from '../../../../lib/features/solution/__tests__/execution-contract-fixtures';
 import { CollaborationExecutionStore, type WorkerReceipt } from '../contract-execution';
 
-it('shares run timers across concurrent WorkItems and cancel disposes them without accepting output', async () => {
+it('observes only the incrementally materialized WorkItem and cancel disposes its timers', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 's936-contract-'));
   const contracts = new SolutionExecutionContractStore(root);
   const original = body();
@@ -28,7 +28,7 @@ it('shares run timers across concurrent WorkItems and cancel disposes them witho
   vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
   const pending = run.workItems.filter(item => item.designNodeId !== 'publish').map(item => execution.executeWorkItem({ runId: run.runId, workItemId: item.id, requestId: item.id, payloadHash: item.id }));
   try {
-    await vi.waitFor(() => expect(releases).toHaveLength(2));
+    await vi.waitFor(() => expect(releases).toHaveLength(1));
     expect(vi.getTimerCount()).toBe(3);
     await execution.cancel(run.runId);
     expect(vi.getTimerCount()).toBe(0);

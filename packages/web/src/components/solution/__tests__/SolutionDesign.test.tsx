@@ -72,6 +72,11 @@ it('mounts contract publishing in the real topology path with the selected exact
   expect(
     await screen.findByRole('heading', { name: '执行契约发布' })
   ).toBeInTheDocument();
+  expect(screen.getByLabelText('解决方案拓扑内容')).toHaveClass(
+    'absolute',
+    'inset-0',
+    'overflow-y-scroll'
+  );
   expect(mocks.readContract).toHaveBeenCalledWith({
     actorId: 'originos.solution-designer',
     projectId: 'p1',

@@ -38,8 +38,13 @@ import {
   buildTopology,
 } from "./supervisor-dag-manifest";
 import { executeMultiAgentDag } from "./supervisor-dag-workflow";
-import { handleSupervisorToolCall, type SupervisorDagCtx, type WorkerResultEntry } from "./supervisor-dag-tools";
-import { hitlResumerRegistry } from "./supervisor-dag-hitl";
+import {
+  handleSupervisorToolCall,
+  settleReportedWorkerTasks,
+  type SupervisorDagCtx,
+  type WorkerResultEntry,
+} from "./supervisor-dag-tools";
+import { clearSupervisorHitlSession, hitlResumerRegistry } from "./supervisor-dag-hitl";
 import { runDispatchWorker } from "./supervisor-dag-dispatch";
 
 // AG.10-T7 拆分 re-export：原单文件公共 API 逐符号原样保留（消费方 import specifier 零变化）
@@ -110,6 +115,18 @@ export async function executeSupervisorDag(
   if (!blackboard) {
     blackboard = new Blackboard(config.sessionId ?? config.projectId, blackboardDir);
   }
+  // Task lifecycle is event-sourced. The protocol observation can be newer than
+  // blackboard.json (for example after an app restart), so recover task state
+  // from the append-only stream before evaluating DAG dependencies.
+  const persistedEvents = await eventStore.read(config.sessionId ?? config.projectId);
+  const recoveredTasks = new Blackboard(config.sessionId ?? config.projectId, blackboardDir)
+    .fromEvents(persistedEvents)
+    .getTasks();
+  if (recoveredTasks.length > 0) {
+    const state = blackboard.toState();
+    blackboard.restoreFromState({ ...state, tasks: recoveredTasks });
+    await blackboard.snapshot();
+  }
   const bb = blackboard;
   const protocol = new ProtocolObserver(bb, `supervisor-${bb.sessionId}`, blackboardDir);
   await registerProtocolObserver(protocol);
@@ -133,6 +150,25 @@ export async function executeSupervisorDag(
 
   // Worker 状态追踪
   const workerResults = new Map<string, WorkerResultEntry>();
+
+  // 恢复每个 Worker 最近一条未终结任务，使 reported 可继续验收，
+  // assigned/running/blocked 可在下一次 dispatch_worker 时原任务续跑。
+  for (const agent of agents) {
+    const latestTask = bb.getTasks()
+      .filter((task) => task.assignedTo === agent.id && task.status !== "completed" && task.status !== "failed")
+      .at(-1);
+    if (!latestTask) continue;
+    workerTaskIds.set(agent.id, latestTask.id);
+    if (latestTask.status === "reported") {
+      const outputValue = latestTask.output;
+      const output = typeof outputValue === "string"
+        ? outputValue
+        : typeof outputValue === "object" && outputValue !== null && typeof (outputValue as { output?: unknown }).output === "string"
+          ? String((outputValue as { output: string }).output)
+          : JSON.stringify(outputValue ?? "");
+      workerResults.set(agent.id, { status: "completed", output, artifacts: [] });
+    }
+  }
 
   // wait_workers 等待器：当 Worker 完成后，通过 Promise.resolve 通知
   const workerCompletionCallbacks = new Map<string, Array<() => void>>();
@@ -195,6 +231,8 @@ export async function executeSupervisorDag(
 
 - 不直接执行业务任务，只负责调度和协调
 - 每个 Worker 只能接受一个明确的子任务
+- Worker 进程结束后任务只是 reported，必须调用 run_verifier 验收通过才是 completed
+- 下游 Worker 只能在所有上游任务都是 completed 后派发
 - 必须在所有 Worker 完成后发出最终汇总
 `;
     await writeFile(agentMdPath, agentMd, "utf-8");
@@ -389,6 +427,7 @@ ${topologySummary}
 
 **第三步：按确认后的方案执行**
 用户确认后，按顺序派发 Worker：
+- dispatch_worker 的 taskTitle 使用 6-20 个字的业务任务名称；完整步骤放在 specificAction，不要把整段描述塞进 taskTitle
 - 每次 dispatch_worker 后立即调用 wait_workers 等待完成
 - Worker 完成后，根据结果决定是否需要继续派发下一个，或向用户报告进展
 - 执行过程中若遇到需要用户决策的情况，再次使用 ask_user_question 询问
@@ -449,7 +488,23 @@ ${topologySummary}
     finalResult = { completedAgents, failedAgents };
   }
 
-  const fullyAccepted = !executionFailed && [...workerTaskIds.values()].every(id => bb.getTask(id)?.status === "completed");
+  // Do not trust the Supervisor model to make the final verifier tool call.
+  // Reconcile reported tasks at the deterministic runtime boundary so a valid
+  // Worker result cannot leave the board in a false partial/failed state.
+  const settled = executionFailed ? [] : await settleReportedWorkerTasks(ctx);
+  if (settled.length > 0) {
+    logRuntime("dag.reported_tasks.settled", {
+      projectId: config.projectId,
+      sessionId: config.sessionId ?? "default",
+      results: settled,
+    });
+  }
+  finalResult = { completedAgents, failedAgents };
+
+  const dispatchedTaskIds = [...workerTaskIds.values()];
+  const fullyAccepted = !executionFailed
+    && dispatchedTaskIds.length > 0
+    && dispatchedTaskIds.every(id => bb.getTask(id)?.status === "completed");
   // Emit SUPERVISOR_AGGREGATE event
   const aggregateEvent: RuntimeEvent = {
     id: `sup-aggregate-${Date.now()}`,
@@ -495,6 +550,9 @@ ${topologySummary}
     events: supervisorEvents,
   };
   } finally {
+    if (config.sessionId) {
+      clearSupervisorHitlSession(config.sessionId);
+    }
     await stopProtocolObserver(bb.sessionId, false, protocol);
   }
 

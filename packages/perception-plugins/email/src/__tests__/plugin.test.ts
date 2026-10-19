@@ -6,8 +6,10 @@ const connect = vi.fn();
 const mailboxOpen = vi.fn();
 const fetchMessages = vi.fn();
 const logout = vi.fn();
+const clientOptions = vi.fn();
 vi.mock('imapflow', () => ({
   ImapFlow: class {
+    constructor(options: unknown) { clientOptions(options); }
     usable = true;
     on = vi.fn();
     connect = connect;
@@ -87,6 +89,23 @@ describe('Email perception plugin', () => {
       uidValidity: '1',
       lastUid: 41,
     });
+  });
+  it('uses the configured IMAP proxy', async () => {
+    mailboxOpen.mockResolvedValue({ uidValidity: '1', uidNext: 1, exists: 0 });
+    const base = context();
+    const host = { ...base, settings: { ...base.settings, proxyUrl: 'socks5://127.0.0.1:10808' } };
+    await new EmailPerceptionPlugin().start(host);
+    expect(clientOptions).toHaveBeenCalledWith(expect.objectContaining({ proxy: 'socks5://127.0.0.1:10808' }));
+  });
+  it('reports socket timeouts as MAIL_TIMEOUT rather than a generic connection failure', async () => {
+    mailboxOpen.mockResolvedValue({ uidValidity: '1', uidNext: 1, exists: 0 });
+    const host = context(undefined, { write: vi.fn() });
+    await new EmailPerceptionPlugin().start(host);
+    const failure = Object.assign(new Error('Connection closed'), { code: 'ETIMEDOUT' });
+    connect.mockRejectedValue(failure);
+    const scheduledPoll = vi.mocked(host.ports.schedule!.every).mock.calls[0]?.[2];
+    await expect(scheduledPoll?.()).rejects.toBe(failure);
+    expect(host.ports.health?.report).toHaveBeenCalledWith({ status: 'degraded', safeCode: 'MAIL_TIMEOUT' });
   });
   it('submits only messages newer than the persisted cursor with complete text', async () => {
     mailboxOpen.mockResolvedValue({

@@ -225,6 +225,39 @@ describe("Topology Parser — Story 9.7", () => {
     expect(topology.edges).toEqual([]);
   });
 
+  it("accepts canonical solution agents that describe responsibility with description", () => {
+    const topology = parseTopology({
+      agents: [
+        {
+          id: "tracker",
+          name: "趋势跟踪 Agent",
+          domain: "技术趋势跟踪",
+          description: "浏览榜单；维护待看清单",
+          skills: ["trend-record"],
+        },
+      ],
+      collaboration: { edges: [] },
+    });
+
+    expect(topology.agents["tracker"]).toMatchObject({
+      responsibility: "浏览榜单；维护待看清单",
+      capabilities: ["浏览榜单", "维护待看清单"],
+      skills: ["trend-record"],
+    });
+  });
+
+  it("does not crash when an imported agent has no responsibility text", () => {
+    const topology = parseTopology({
+      agents: [{ id: "worker", name: "Worker" }],
+      collaboration: { edges: [] },
+    });
+
+    expect(topology.agents["worker"]).toMatchObject({
+      responsibility: "",
+      capabilities: [],
+    });
+  });
+
   // ==========================================================================
   // Entry/Exit points
   // ==========================================================================

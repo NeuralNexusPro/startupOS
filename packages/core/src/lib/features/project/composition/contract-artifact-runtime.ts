@@ -5,6 +5,13 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
 import {
+  assertCollaborationArtifactIdentifier,
+  collaborationArtifactPath,
+  createCollaborationArtifactRef,
+  parseCollaborationArtifactRef,
+} from '../../../../modules/collaboration-runtime/facade';
+
+import {
   buildRoleSystemPrompt,
   loadRoleContext,
   parseStateMachine,
@@ -21,14 +28,8 @@ import type {
 } from '../../agent/server/contract-bound-worker';
 
 
-const ARTIFACT_PROTOCOL = 'artifact:';
-const ARTIFACT_HOST = 'collaboration';
-const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._@:-]*$/;
-
 export function assertIdentifier(value: string, field: string): void {
-  if (!IDENTIFIER.test(value) || value.includes('..')) {
-    throw new TypeError(`Invalid ${field}: ${value}`);
-  }
+  assertCollaborationArtifactIdentifier(value, field);
 }
 
 function stableValue(value: unknown): unknown {
@@ -56,30 +57,7 @@ function artifactPath(
   workItemId: string,
   attemptId: string,
 ): string {
-  for (const [field, value] of Object.entries({ projectId, runId, workItemId, attemptId })) {
-    assertIdentifier(value, field);
-  }
-  // WorkItem IDs include ':' (for example, "run-id:node-id"). Keep the
-  // persisted layout unchanged on Unix while escaping the Windows-forbidden
-  // character in filesystem segments. Artifact refs continue to carry the
-  // original logical IDs and resolve through this same mapping.
-  const segment = (value: string): string => process.platform === 'win32'
-    ? value.replace(/:/g, '%3A')
-    : value;
-  const pathApi = process.platform === 'win32' ? path.win32 : path;
-  const filePath = pathApi.join(
-    dataRoot,
-    'projects',
-    segment(projectId),
-    'collaboration-artifacts',
-    segment(runId),
-    segment(workItemId),
-    `${segment(attemptId)}.json`,
-  );
-  // A temporary artifact adds a UUID suffix and can exceed MAX_PATH even
-  // after escaping ':'. Use Windows' extended-length path for every read and
-  // write, including paths reconstructed from an artifact ref.
-  return process.platform === 'win32' ? pathApi.toNamespacedPath(filePath) : filePath;
+  return collaborationArtifactPath(dataRoot, projectId, runId, workItemId, attemptId);
 }
 
 function artifactRef(
@@ -88,25 +66,11 @@ function artifactRef(
   workItemId: string,
   attemptId: string,
 ): string {
-  return `${ARTIFACT_PROTOCOL}//${ARTIFACT_HOST}/${[
-    projectId,
-    runId,
-    workItemId,
-    attemptId,
-  ].map(encodeURIComponent).join('/')}`;
+  return createCollaborationArtifactRef(projectId, runId, workItemId, attemptId);
 }
 
 export function parseArtifactRef(dataRoot: string, ref: string): string {
-  const parsed = new URL(ref);
-  if (parsed.protocol !== ARTIFACT_PROTOCOL || parsed.hostname !== ARTIFACT_HOST) {
-    throw new TypeError('Unsupported collaboration artifact reference');
-  }
-  const segments = parsed.pathname.split('/').filter(Boolean).map(decodeURIComponent);
-  if (segments.length !== 4) {
-    throw new TypeError('Invalid collaboration artifact reference');
-  }
-  const [projectId, runId, workItemId, attemptId] = segments;
-  return artifactPath(dataRoot, projectId!, runId!, workItemId!, attemptId!);
+  return parseCollaborationArtifactRef(dataRoot, ref);
 }
 
 function messageText(message: { readonly content?: unknown } | undefined): string {
@@ -131,16 +95,74 @@ export function extractJsonObject(content: string): Record<string, unknown> {
   const unwrapped = trimmed.startsWith('```')
     ? trimmed.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
     : trimmed;
-  const value: unknown = JSON.parse(unwrapped);
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new TypeError('Worker result must be a JSON object');
+  const candidates = [unwrapped];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escaped = false;
+  for (let index = 0; index < unwrapped.length; index += 1) {
+    const char = unwrapped[index]!;
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+    if (char === '{') {
+      if (depth === 0) start = index;
+      depth += 1;
+    } else if (char === '}' && depth > 0) {
+      depth -= 1;
+      if (depth === 0 && start >= 0) {
+        candidates.push(unwrapped.slice(start, index + 1));
+        start = -1;
+      }
+    }
   }
-  return value as Record<string, unknown>;
+  let lastError: unknown;
+  for (const candidate of [...new Set(candidates)].reverse()) {
+    try {
+      const value: unknown = JSON.parse(candidate);
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        return value as Record<string, unknown>;
+      }
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new TypeError('Worker result must contain a JSON object');
+}
+
+function latestAssistantContent(messages: readonly { readonly role: string; readonly content?: unknown }[]): string {
+  return messageText([...messages].reverse().find(({ role }) => role === 'assistant'));
 }
 
 function buildWorkerPrompt(request: ContractBoundRuntimeRequest): string {
+  const readOnly = request.target.contract.actions.length === 0
+    && request.expectedOutputRefs.length === 0;
+  const resultContract = readOnly
+    ? [
+        'This is a read-only WorkItem with no bound Action and no ontology output.',
+        'Return exactly one JSON object shaped as {"result":"success","summary":"<actual findings>"}.',
+        'Do not fabricate an outcome, actionId, or ontology output.',
+      ]
+    : [
+        'The final object MUST match: {"outcome":{"actionId":"<one bound action id>","inputFactRefs":[],"outputs":[{"factId":"<stable business fact id>","factTypeId":"<one expected output fact type id>","value":{"<business field>":"<actual value>"},"source":{"sourceType":"runtime","sourceId":"<work item id>"}}],"expectedRevision":0},"result":"success"}.',
+        'Omit currentStateId when there is no state. Never return currentStateId:null.',
+        'Each outputs entry is a canonical fact draft. Do not return factType wrappers, instanceIds, operation summaries, or placeholder values.',
+        'Do not mutate ontology instances or facts with tools. The runtime commits the returned outcome through the Action Gate after verification.',
+      ];
   return JSON.stringify({
-    instruction: 'Execute this frozen WorkItem. Return exactly one JSON object. Include an outcome object with actionId, optional currentStateId, inputFactRefs, outputs and expectedRevision. Do not add markdown fences.',
+    instruction: [
+      'Execute this frozen WorkItem and return exactly one JSON object without markdown fences.',
+      ...resultContract,
+    ].join(' '),
     request: {
       requestId: request.requestId,
       projectId: request.projectId,
@@ -266,12 +288,28 @@ export class AgentManagerContractRuntime implements ContractBoundAgentSkillRunti
       });
       if (signal.aborted) {throw new Error('WORKER_ABORTED');}
       const state = await agent.getSessionState();
-      const assistant = [...state.messages]
+      let assistant = [...state.messages]
         .reverse()
         .find((message) => message.role === 'assistant');
-      const content = messageText(assistant);
+      let content = messageText(assistant);
       if (!content) {throw new Error('WORKER_RESULT_EMPTY');}
-      extractJsonObject(content);
+      try {
+        extractJsonObject(content);
+      } catch {
+        await agent.prompt(JSON.stringify({
+          instruction: 'Your previous response did not contain the required final JSON object. Do not call tools or repeat the work. Using the result already present in this conversation, return only the corrected JSON object required by the frozen WorkItem contract.',
+          expectedOutputRefs: request.expectedOutputRefs,
+          boundActionIds: request.target.contract.actions.map(({ actionId }) => actionId),
+          workItemId: request.workItemId,
+        }), undefined, { completionPolicy: 'task_runtime' });
+        const repaired = await agent.getSessionState();
+        content = latestAssistantContent(repaired.messages);
+        if (!content) {throw new Error('WORKER_RESULT_EMPTY');}
+        extractJsonObject(content);
+        assistant = [...repaired.messages]
+          .reverse()
+          .find((message) => message.role === 'assistant');
+      }
 
       const envelope: ContractArtifactEnvelope = {
         schemaVersion: '1.0.0',

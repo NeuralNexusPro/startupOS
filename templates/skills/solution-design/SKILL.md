@@ -287,7 +287,7 @@ Ask: "Are the divisions reasonable? Any missing scenarios?"
 
 **Trigger phrases:** "confirm plan", "generate manifest", "enter next phase", "确认方案", "生成清单", "进入下一阶段"
 
-**Outcome:** Finalize the solution, generate the execution manifest, and create all Agent and Skill files by invoking the appropriate creator skills.
+**Outcome:** Finalize the solution, generate the execution manifest, and start the internal background materialization task. The current conversation does not batch-create Agent or Skill files.
 
 **Process:**
 
@@ -308,25 +308,21 @@ Ask: "Are the divisions reasonable? Any missing scenarios?"
 
    **If any single file is too large for a single write:** split the file content into multiple write-append calls, or write agents/skills in batches.
 
-3. **Create Agents by invoking creator skills:**
-   For each Agent in the plan, invoke the appropriate creator skill with the plan's specifications:
+3. **Start the internal background materialization task:**
+   - Only after `manifest.json`, `agents.json`, and `skills.json` all have `status: "confirmed"` and the same `solutionVersion`, call:
+     `POST /api/projects/{projectId}/solutions/{solutionVersion}/materialization`
+   - Request body: `{ "solutionId": "{solutionId}" }`. If the manifest has no separate solution ID, use the project ID as `solutionId`.
+   - The endpoint freezes the three confirmed files, returns immediately, and processes one Agent, one Skill, and final validation as persistent internal steps.
+   - This is infrastructure work. It must not create a ProjectTask, collaboration Run, or WorkItem and must not appear on the project task board.
+   - A failed step keeps its reason in `solutions/{version}/materialization-task.json`. After fixing the cause, resume with the same POST body plus `"retryFailed": true`.
+   - Query progress with `GET /api/projects/{projectId}/solutions/{solutionVersion}/materialization?solutionId={solutionId}`.
 
-   - **If `type` is `agent`**: invoke `skills/agent-creator` with the Agent's specification (identity, responsibility, domain, data model, process, skills, collaborations). The agent-creator will handle its 7-step process internally and generate `Agent.md`, `Data.md`, `Process.md`, `Memory.md`, `Taste.md`, `Tool.md` under `agents/{agent-id}/`.
+4. **End this Stage 4 turn after the task is accepted:**
+   - Do not write Agent/Skill files in this conversation turn.
+   - Tell the user materialization is running in the background and provide the solution bundle and status locations.
+   - Only claim completion when the query endpoint returns `status: "completed"`; otherwise report the current step/status without blocking the conversation.
 
-   - **If `type` is `role-agent`**: invoke `skills/role-agent-creator` with the Agent's specification (role background, responsibilities, lifecycle, taste, tools). The role-agent-creator will generate `Agent.md`, `Role.md`, `Taste.md`, `Memory.md`, `Tool.md` under `agents/{role-agent-id}/`.
-
-   Pass the manifest's `agentFiles` content as the pre-collected information so the creator skills can skip interactive questioning and proceed directly to file generation.
-
-4. **Create Skills by invoking the skill creator:**
-   For each Skill in every Agent's plan, first ensure the Agent directory already exists, then invoke `skills/project-skill-creator` with the Skill's specification (id, name, code, description, capability, triggerType, ontologyObjects, contract, dependsOn, skillFileOutline) **in that Agent's working directory**. The skill-creator must generate the SKILL.md file under `agents/{agent-id}/skills/{skill-code}/`.
-
-   必须逐字交接 `skills.json` 中的完整 `contract`，由创建器以单行 JSON 写入 SKILL.md frontmatter，读取后与清单语义一致。不能只在正文描述 I/O。
-
-   Pass the manifest's `skillFileOutline` content as the pre-collected information so the skill-creator can skip the interview phase and proceed directly to SKILL.md generation.
-
-   The project-skill-creator will automatically include `references/ontology-tools.md` into the generated Skill's Tool.md when the Skill operates on ontology data, ensuring the Skill knows how to call the system tools.
-
-5. After all Agents and Skills are created, confirm the file locations to the user.
+The background materializer consumes each Agent specification and each Skill specification exactly from `agents.json` / `skills.json`. Every generated Skill contains both `SKILL.md` and `references/ontology-tools.md`; its SKILL.md frontmatter preserves the complete canonical `contract` as single-line JSON and final validation compares it with `skills.json`.
 
 **Present to user (summary only):**
 
@@ -338,16 +334,11 @@ Ask: "Are the divisions reasonable? Any missing scenarios?"
   Agent 数量: 3
   Skill 总数: 7
 
-已创建 Agent 文件:
-  ├── agents/order-processor/ (Agent.md, Memory.md, Taste.md, Tool.md)
-  ├── agents/inventory-agent/ (Agent.md, Memory.md, Taste.md, Tool.md)
-  └── agents/notification-agent/ (Agent.md, Memory.md, Taste.md, Tool.md)
+Agent / Skill 正在后台物化：
+  状态: solutions/v1.0/materialization-task.json
+  查询: GET /api/projects/{projectId}/solutions/v1.0/materialization
 
-已创建 Skill 文件:
-  ├── agents/order-processor/skills/order-validator/SKILL.md
-  ├── agents/inventory-agent/skills/invoice-generator/SKILL.md
-  ├── agents/notification-agent/skills/status-notifier/SKILL.md
-  └── ...
+该内部任务不会出现在项目任务看板。
 ```
 
 ---
@@ -368,7 +359,7 @@ See `references/collaboration-types.md` for the full table (trigger, notify, dep
 
 - **All planning must derive from the business model** — enforced at Stage 1 (hard gate). In the manifest, include `derivedFrom` for each Agent and Skill.
 - **Conversation output is summary-only** — do not output full Agent engineering file contents or full Skill SKILL.md outlines in the chat. These go into the execution manifest and the created files.
-- **Use creator skills for file generation** — do not write Agent or Skill files directly. Invoke `skills/agent-creator` for `agent` type, `skills/role-agent-creator` for `role-agent` type, and `skills/project-skill-creator` for all Skills. Pass the manifest specifications as pre-collected information to skip interactive questioning.
+- **Use the background materialization boundary for file generation** — after confirming the canonical three-file bundle, start the internal materialization endpoint and end the current Stage 4 turn. Do not batch-write Agent/Skill files in the solution-design conversation. The background materializer implements the installed creator contracts and validates the produced files before completion.
 - **State must be tracked** — every solution file must include a `status` field (`draft`, `reviewing`, or `confirmed`) and a `solutionVersion` field. Iterated versions must include `changesFromPrevious` documenting what changed.
 - **Version iteration requires coverage check** — when creating a new version, verify all business model entities, processes, rules, and constraints from the previous version are still covered. Document any gaps.
 

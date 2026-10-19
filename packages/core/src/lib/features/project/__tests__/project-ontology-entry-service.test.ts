@@ -117,6 +117,53 @@ describe('ProjectOntologyEntryService', () => {
     await expect(new CanonicalOntologyStore(dataRoot).readOntology(projectId)).resolves.toBeNull();
   });
 
+  it('reports document field gaps so the interview can remind the user before completion', async () => {
+    const dataRoot = await root();
+    const projectId = 'project-document-gap';
+    const service = new ProjectOntologyEntryService(dataRoot);
+    const canonical = ontology(projectId);
+    canonical.concepts[0] = { ...canonical.concepts[0]!, name: '供应商审核单', semanticKind: 'document' };
+    const created = await service.initializeCanonicalOntology(projectId, canonical);
+    await writeProject(dataRoot, projectId, { ontologyRef: created });
+
+    await expect(service.resolveProject(projectId)).resolves.toMatchObject({
+      kind: 'canonical',
+      ontology: {
+        documentFieldGapCount: 1,
+        documentFieldGapNames: ['供应商审核单'],
+      },
+    });
+  });
+
+  it('reports every concept whose data shape is not covered by a FactType', async () => {
+    const dataRoot = await root();
+    const projectId = 'project-fact-type-gap';
+    const service = new ProjectOntologyEntryService(dataRoot);
+    const canonical = ontology(projectId);
+    canonical.concepts.push({
+      ...canonical.concepts[0]!,
+      id: 'concept-2',
+      name: '审核单',
+    });
+    canonical.factTypes.push({
+      id: 'fact-concept-1',
+      conceptId: 'concept-1',
+      name: '概念资料',
+      propertyIds: [],
+    });
+    const created = await service.initializeCanonicalOntology(projectId, canonical);
+    await writeProject(dataRoot, projectId, { ontologyRef: created });
+
+    await expect(service.resolveProject(projectId)).resolves.toMatchObject({
+      kind: 'canonical',
+      ontology: {
+        factTypeCount: 1,
+        factTypeGapCount: 1,
+        factTypeGapNames: ['审核单'],
+      },
+    });
+  });
+
   it('returns migration-required for an unmigrated legacy project without writing a snapshot', async () => {
     const dataRoot = await root();
     const projectId = 'project-legacy';
@@ -127,6 +174,60 @@ describe('ProjectOntologyEntryService', () => {
 
     const service = new ProjectOntologyEntryService(dataRoot);
     await expect(service.resolveProject(projectId)).resolves.toEqual({ kind: 'legacy_migration_required', migrationAvailable: true });
+    await expect(new CanonicalOntologyStore(dataRoot).readOntology(projectId)).resolves.toBeNull();
+  });
+
+  it('offers explicit migration when a stale canonical reference still has a legacy source', async () => {
+    const dataRoot = await root();
+    const projectId = 'project-stale-reference';
+    await writeProject(dataRoot, projectId, {
+      ontologyRef: { ontologyId: `ontology-${projectId}`, ontologyVersion: '1.0.0' },
+    });
+    const legacyPath = path.join(dataRoot, 'projects', projectId, 'ontology', 'ontology.json');
+    await fs.mkdir(path.dirname(legacyPath), { recursive: true });
+    await fs.writeFile(legacyPath, JSON.stringify({
+      ontologyId: `ontology-${projectId}`,
+      projectId,
+      version: '1.0.0',
+      domains: [{ id: 'domain-1', name: '采购', description: '采购业务' }],
+      concepts: [{ id: 'concept-1', domainId: 'domain-1', name: '供应商', type: 'entity' }],
+      createdAt: '2026-09-27T00:00:00.000Z',
+      updatedAt: '2026-09-27T00:00:00.000Z',
+    }), 'utf8');
+
+    const service = new ProjectOntologyEntryService(dataRoot);
+    await expect(service.resolveProject(projectId)).resolves.toEqual({
+      kind: 'legacy_migration_required', migrationAvailable: true,
+    });
+    await expect(new CanonicalOntologyStore(dataRoot).readOntology(projectId)).resolves.toBeNull();
+  });
+
+  it('discovers a valid legacy source for a user-triggered dry-run without writing', async () => {
+    const dataRoot = await root();
+    const projectId = 'project-preview';
+    await writeProject(dataRoot, projectId);
+    const now = '2026-09-27T00:00:00.000Z';
+    const legacyPath = path.join(dataRoot, 'projects', projectId, 'ontology', 'ontology.json');
+    await fs.mkdir(path.dirname(legacyPath), { recursive: true });
+    await fs.writeFile(legacyPath, JSON.stringify({
+      id: `ontology-${projectId}`,
+      projectId,
+      name: '旧版业务模型',
+      version: '1.0.0',
+      domains: [{ id: 'domain-1', name: '采购', description: '采购业务', createdAt: now, updatedAt: now }],
+      concepts: [{ id: 'concept-1', domainId: 'domain-1', name: '供应商', type: 'entity', attributes: {}, createdAt: now, updatedAt: now }],
+      instances: [],
+      relations: [],
+      createdAt: now,
+      updatedAt: now,
+    }), 'utf8');
+
+    const service = new ProjectOntologyEntryService(dataRoot);
+    await expect(service.previewLegacyOntology(projectId)).resolves.toMatchObject({
+      sourceKind: 'ontology',
+      ontology: { projectId, concepts: [{ name: '供应商' }] },
+      diagnostics: [],
+    });
     await expect(new CanonicalOntologyStore(dataRoot).readOntology(projectId)).resolves.toBeNull();
   });
 

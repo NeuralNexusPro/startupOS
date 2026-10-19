@@ -10,6 +10,10 @@ import type {
   CollaborationRunSnapshot,
   WorkItemStatus,
 } from '../contract-execution-types';
+import {
+  collaborationArtifactPath,
+  createCollaborationArtifactRef,
+} from '../artifact-reference';
 import { readSupervisorTaskBoard } from '../task-board-projection';
 
 describe('readSupervisorTaskBoard', () => {
@@ -151,7 +155,7 @@ describe('readSupervisorTaskBoard', () => {
             hitlRequests: [{
               requestId: `hitl-${id}`,
               policyId: `policy-${id}`,
-              trigger: 'after_verification' as const,
+              trigger: id === 'user-review' ? 'before_execution' as const : 'after_verification' as const,
               approverRole,
               parentTaskId: binding.parentTaskId,
               parentStepId: binding.parentStepId,
@@ -181,12 +185,75 @@ describe('readSupervisorTaskBoard', () => {
       'revision',
     ]);
     expect(tasks.find((task) => task.id === 'work-user-review')?.acceptance).toMatchObject({
-      mode: 'user', approverRole: 'user', approverName: '用户',
+      mode: 'user', approverRole: 'user', approverName: '用户', question: '是否接受本次产出？',
+      options: ['approve', 'reject'], leaseEpoch: 1,
     });
     expect(tasks.find((task) => task.id === 'work-role-review')?.acceptance).toMatchObject({
       mode: 'role', approverRole: 'reviewer-role', approverName: '质量负责人',
     });
     expect(tasks.every((task) => task.source === 'contract')).toBe(true);
+  });
+
+  it('presents contract worker content and keeps internal receipt envelopes out of file products', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'originos-contract-output-'));
+    const project = path.join(root, 'projects', 'proj-a');
+    const runs = path.join(project, 'collaboration-runs');
+    await mkdir(runs, { recursive: true });
+    await writeFile(path.join(project, 'project.json'), JSON.stringify({ id: 'proj-a', name: '趋势项目' }));
+    const contractBody = body();
+    const runId = 'run-1';
+    const workItemId = 'run-1:analyze';
+    const attemptId = 'run-1:analyze:attempt-1';
+    const binding = {
+      parentTaskId: 'project-task-1', parentStepId: 'step-1', runId,
+      solutionId: contractBody.solutionId, solutionVersion: contractBody.solutionVersion,
+      executionContractId: contractBody.contractId, contractHash: contractBody.contractHash,
+      taskRevision: 1,
+    };
+    const ref = createCollaborationArtifactRef('proj-a', runId, workItemId, attemptId);
+    const filePath = collaborationArtifactPath(root, 'proj-a', runId, workItemId, attemptId);
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, JSON.stringify({
+      schemaVersion: '1.0.0',
+      content: JSON.stringify({
+        outcome: {
+          outputs: [{
+            factId: 'trend-1',
+            factTypeId: 'trend',
+            value: { 项目名: 'openclaw', 一句话定位: '跨平台通用 AI 执行体' },
+          }],
+        },
+        result: 'success',
+      }),
+    }));
+    const snapshot: CollaborationRunSnapshot = {
+      runId, projectId: 'proj-a', binding, contract: contractBody,
+      status: 'running', revision: 1,
+      createdAt: '2026-10-13T00:00:00.000Z', updatedAt: '2026-10-13T00:01:00.000Z',
+      workItems: [{
+        id: workItemId, binding, designNodeId: contractBody.topology.nodes[0]!.id,
+        assignedAgentId: contractBody.agents[0]!.agentId,
+        skillRefs: [], dependsOn: [], inputRefs: [], outputRefs: [],
+        status: 'completed', revision: 1, leaseEpoch: 1,
+        attempts: [{
+          attemptId, leaseEpoch: 1, requestId: 'request-1', payloadHash: 'sha256:request-1',
+          status: 'completed', createdAt: '2026-10-13T00:00:00.000Z', updatedAt: '2026-10-13T00:01:00.000Z',
+          workerReceipt: {
+            receiptId: 'worker-1', outputRefs: [ref], outputHash: 'sha256:output',
+          },
+          verifierResult: { status: 'passed' },
+        }],
+      }],
+    };
+    await writeFile(path.join(runs, 'run-1.json'), JSON.stringify(snapshot));
+
+    const projection = await readSupervisorTaskBoard(root, 'proj-a');
+    const task = projection.projects[0]?.tasks[0];
+
+    expect(task?.output).toContain('**项目名**：openclaw');
+    expect(task?.output).toContain('**一句话定位**：跨平台通用 AI 执行体');
+    expect(task?.artifacts).toEqual([]);
+    expect(JSON.stringify(task)).not.toContain('artifact://');
   });
 
   it('projects dependency-blocked WorkItems as planned instead of actionable pending tasks', async () => {

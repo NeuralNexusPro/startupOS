@@ -16,3 +16,11 @@
 
 - [x] 4.1 `944-T1-D`（串行；依赖：2.1、3.1；角色：Integration/QA subagent；写入：`docs/specs/epic-9/story-9.44/` 与 Proposal evidence）执行 core 定向 Vitest（store 派生 + hitl-notify + 既有 collaboration-runtime 回归）、Core typecheck、`pnpm lint`、`pnpm lint:boundaries`；确认 `project-task-board-*` 相关文件零改动（AC5 回归）；将测试结果回写 Story `testing.md` 并更新 Epic README 状态。**Evidence：** 集成分支回归——ui+facade 107/107、solution 28/28、exports 门禁 VERIFY PASSED、架构自测通过、lint 0 errors、lint:boundaries 990 文件 0 诊断；全量 collaboration-runtime 375/389（14 失败均为基线：capability-matcher 10 + dag-executor 3 已在 0.4.x/主 worktree 复现确认，agent-spawner 1 为环境性 `tsx: command not found`（exit 127），非本改动引入）；AC5 经 `git diff 0.4.x --name-only -- packages/` 核对：13 个变更文件全部位于 collaboration-runtime/lib integrations/desktop main，project-task-board 相关文件零改动。
 - [x] 4.2 `944-T1-E`（串行；依赖：4.1；角色：Proposal integration owner；写入：本 change 的任务/验证证据）运行 `openspec validate add-collaboration-task-board --strict`，完成 Story verification goal（目标：通过 Story 9.44 测试 case），合并 Task branch 到 Proposal 集成分支并完成完整回归，经批准后合并到 `dev` 并清理 worktree；以命令输出、merge commit 和干净 worktree 列表验证。**Evidence：** `openspec validate --strict` valid（合并前复核）；用户批准合并（2026-10-12「合并」）；merge commit `d83d66b`（`proposal/add-collaboration-task-board` 7413fbf → `0.4.x`，--no-ff）；`dev` 已快进至 `d83d66b`；合并后回归——ui+facade 107/107、solution 30/30（含 target/domain 别名兼容测试）、exports 门禁 VERIFY PASSED、lint:boundaries 990 文件 0 诊断、core tsc 仅 5 项 client-hooks 基线错误（0.4.x 存量）。合并前将主 worktree 中与本 Proposal 重叠的未提交改动（changelog/epic-9 README/supervisor-dag 别名兼容/MultiAgentLauncher 拓扑日志/story-9.44 文档）先备份后复位，提案内容合并后按原样重放（未混入 Proposal 分支）；worktree 清理随本次收尾执行。
+
+## 5. 项目看板实时会话补齐
+
+- [x] 5.1 看板会话区以 `conversationOnly` 模式复用 `MultiAgentLauncher`，在 session 创建后沿用 `preconnect` 与 SSE/IPC 事件流，保留 Supervisor 连续消息、HITL、Markdown、附件和原输入条；折叠时保持组件挂载，并以 `onRuntimeEvent` 驱动任务投影刷新。**Evidence：** Web 看板测试 4/4；协作 UI 逻辑与 store 回归 41/41；Desktop TypeScript build 通过；2026-10-14。
+
+## 6. 任务产物导航
+
+- [x] 6.1 Markdown 文件产物卡支持在当前项目工作区编辑器中定位打开，其他文件格式通过系统默认应用打开；业务单据/数据变更卡支持打开当前项目数据窗口；非法、无法归属当前项目或系统打开失败的文件引用显示明确错误；补充路径归一化与窗口导航测试。**Evidence：** Web 任务看板测试 6/6；Desktop 本地文件系统打开测试 3/3；Desktop TypeScript 通过；`lint:boundaries` 998 文件 0 诊断；架构自测 51 用例 × 2 CWD 通过；OpenSpec strict valid；2026-10-15。

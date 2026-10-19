@@ -73,6 +73,12 @@ export const emailManifest: PerceptionPluginManifest = {
         defaultValue: 60,
         min: 15,
       },
+      {
+        key: 'proxyUrl',
+        label: 'IMAP 代理地址（可选）',
+        type: 'text',
+        help: '直连超时时填写，例如 socks5://127.0.0.1:10808',
+      },
     ],
   },
 };
@@ -219,10 +225,15 @@ export class EmailPerceptionPlugin implements PerceptionPlugin {
   }
 }
 function safeCode(error: unknown): string {
+  const code = error && typeof error === 'object' && 'code' in error
+    ? (error as { code?: unknown }).code
+    : undefined;
+  if (typeof code === 'string' && ['ETIMEDOUT', 'CONNECT_TIMEOUT', 'GREETING_TIMEOUT'].includes(code))
+    return 'MAIL_TIMEOUT';
   const value = error instanceof Error ? error.message.toLowerCase() : '';
   return value.includes('auth')
     ? 'MAIL_AUTH_FAILED'
-    : value.includes('timeout')
+    : value.includes('timeout') || value.includes('timed out')
       ? 'MAIL_TIMEOUT'
       : 'MAIL_CONNECTION_FAILED';
 }
@@ -231,7 +242,7 @@ function logMailError(log: PluginLogPort | undefined, stage: string, error: unkn
   catch { /* Diagnostics must not interrupt polling or cleanup. */ }
 }
 function createMailClient(profile: MailConnectorSettings, secret: MailSecret, log?: PluginLogPort): ImapFlow {
-  const client = new ImapFlow({ host: profile.host, port: profile.port, secure: profile.secure, auth: secret.kind === 'oauth2-token' ? { user: profile.username, accessToken: secret.value } : { user: profile.username, pass: secret.value }, logger: false });
+  const client = new ImapFlow({ host: profile.host, port: profile.port, secure: profile.secure, ...(profile.proxyUrl ? { proxy: profile.proxyUrl } : {}), auth: secret.kind === 'oauth2-token' ? { user: profile.username, accessToken: secret.value } : { user: profile.username, pass: secret.value }, logger: false });
   client.on('error', error => logMailError(log, 'mail.connection', error));
   return client;
 }

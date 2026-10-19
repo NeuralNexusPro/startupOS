@@ -85,6 +85,45 @@ describe('ontology tools: create_domain / create_concept write canonical', () =>
 		await fs.rm(root, { recursive: true, force: true });
 	});
 
+	it('query_ontology reads the canonical snapshot so returned concept IDs match instance tools', async () => {
+		const seeded = canonicalOntology();
+		seeded.concepts.push({
+			id: 'concept-canonical', domainId: 'domain-seed', name: '订单', type: 'entity',
+			attributes: {}, createdAt: instant, updatedAt: instant,
+		});
+		seeded.properties.push({
+			id: 'property-title', conceptId: 'concept-canonical', name: '标题', valueType: 'string',
+			required: true, description: '订单标题',
+		});
+		seeded.instances.push({
+			id: 'instance-canonical', conceptId: 'concept-canonical', data: { 标题: '测试订单' },
+			createdAt: instant, updatedAt: instant,
+		});
+		await store.writeOntology('proj-tools', seeded);
+		await fs.mkdir(path.dirname(legacyPath), { recursive: true });
+		await fs.writeFile(legacyPath, JSON.stringify({
+			id: 'ontology-proj-tools', projectId: 'proj-tools', name: 'Legacy', version: '1.0.0',
+			domains: [], concepts: [{ id: 'concept-legacy', name: '订单' }], instances: [], relations: [],
+			createdAt: instant.toISOString(), updatedAt: instant.toISOString(),
+		}));
+
+		const payload = await runTool('query_ontology', { ontologyId: 'ontology-proj-tools' });
+		const ontology = payload['ontology'] as {
+			concepts: Array<{ id: string; attributes: Record<string, { required: boolean }> }>;
+			instances: Array<{ id: string; conceptId: string }>;
+		};
+		expect(payload.success).toBe(true);
+		expect(ontology.concepts).toEqual([
+			expect.objectContaining({
+				id: 'concept-canonical',
+				attributes: { 标题: expect.objectContaining({ required: true }) },
+			}),
+		]);
+		expect(ontology.instances).toEqual([
+			expect.objectContaining({ id: 'instance-canonical', conceptId: 'concept-canonical' }),
+		]);
+	});
+
 	it('create_concept writes the canonical snapshot and never touches the legacy file', async () => {
 		const before = await fs.readFile(canonicalPath, 'utf8');
 

@@ -56,6 +56,7 @@
 | P2.6 | SOP I/O 契约（本体数据流） | ✅ 已完成（本地 0.4.x） | High | Skill inputContract/outputContract、SOP 数据流验证 |
 | P2.7 | Agent-Skill 协作图谱与建模维度扩展 | ✅ 已完成（本地 0.4.x） | High | Workflow/Team 设计视图和 Agent-Skill 拓扑 |
 | P2.8 | Workflow 设计与解决方案执行契约发布 | 🟡 Planning | Critical | 设计门控、不可变契约编译、版本化发布 |
+| P2.9 | Agent 产出验收策略 | 🔄 进行中 | High | 设计自动验收、用户确认或指定角色确认，并门控下游推进 |
 
 ---
 

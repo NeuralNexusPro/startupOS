@@ -291,6 +291,9 @@ describe('ApprovedProjectTaskCreationService', () => {
     });
     expect(test.taskPort.create).toHaveBeenCalledTimes(1);
     expect(test.start).toHaveBeenCalledTimes(1);
+    expect(test.start).toHaveBeenCalledWith(expect.objectContaining({
+      entryDesignNodeId: 'prepare-node',
+    }));
     const ledger = await fs.readFile(path.join(
       test.root,
       'projects/project-1/task-creation/operations.jsonl',

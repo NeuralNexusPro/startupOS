@@ -39,6 +39,8 @@ Story 9.41 负责 Agent/RoleAgent 当前 Session 的直接正式任务。Story P
 - WorkItem 关联 parentTaskId、parentStepId、runId、contractId/version/hash。
 - WorkItem completed 仅表示局部执行完成，不表示父 Step/Task 完成。
 - 并行 WorkItems 由 runtime DAG 管理，不转换为 `pi-tasks` ordered steps。
+- 每个自然语言目标只物化匹配任务模板对应的 WorkItem；能力拓扑只用于后续规划参考，不代表一次 Run 必须完整执行的流水线。
+- 当前任务完成并通过验收后，Run 进入终态。Supervisor 必须结合本轮产出与用户下一条消息重新选择任务模板，禁止在 Run 启动时一次性生成后续任务。
 
 ### FR5 Evidence Bridge
 

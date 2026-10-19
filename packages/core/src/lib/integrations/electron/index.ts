@@ -97,6 +97,7 @@ export {
   writeLocalFile,
   listLocalFiles,
   deleteLocalFile,
+  openLocalFile,
   watchLocalPath,
   unwatchLocalPath,
   subscribeToLocalFsChanges,

@@ -193,8 +193,16 @@ function resolveTarget(input: WorkerExecutionInput): {
       `Frozen skill contract not found: ${node.contractRef}`,
     );
   }
+  const taskTemplate = contract.semanticContext.taskTemplates.find(
+    (template) => template.designNodeId === node.id,
+  );
+  const assignedAgentOwnsSkill = input.workItem.assignedAgentId === '' || Boolean(
+    taskTemplate
+    && taskTemplate.candidateSkillIds.includes(node.contractRef)
+    && taskTemplate.candidateAgentIds.includes(input.workItem.assignedAgentId),
+  );
   if (
-    input.workItem.assignedAgentId !== ''
+    !assignedAgentOwnsSkill
     || input.workItem.skillRefs.length !== 1
     || input.workItem.skillRefs[0] !== node.contractRef
   ) {
@@ -206,9 +214,7 @@ function resolveTarget(input: WorkerExecutionInput): {
   return {
     node,
     target: { kind: 'skill', targetId: node.contractRef, contract: target },
-    taskTemplate: contract.semanticContext.taskTemplates.find(
-      (template) => template.designNodeId === node.id,
-    ),
+    taskTemplate,
   };
 }
 

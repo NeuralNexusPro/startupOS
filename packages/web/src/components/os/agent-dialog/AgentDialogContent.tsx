@@ -193,10 +193,6 @@ export default function AgentDialogContent({ agentId, agentName, agentType: prop
   }, [agentId]);
 
   useEffect(() => {
-    void loadSessionHistory();
-  }, [loadSessionHistory]);
-
-  useEffect(() => {
     setTaskDraft(null);
   }, [sessionId]);
 
@@ -293,10 +289,13 @@ export default function AgentDialogContent({ agentId, agentName, agentType: prop
         const entryType = entryTypeMap[resolvedAgentType] || 'role-agent';
 
         // Call launcher API to initialize agent with all configuration
-        // No restoreSessionId — always create a new session
+        // The launcher also creates/registers the runtime. Give it the exact UI
+        // session id so initializeSession reuses that session instead of creating
+        // a second history file and a second in-memory Agent for every window open.
         const launchResult = await launchEntry({
           entryType,
           entryId: agentId,
+          sessionId,
         });
 
         if (!launchResult.success) {

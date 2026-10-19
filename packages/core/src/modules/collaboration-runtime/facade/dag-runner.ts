@@ -183,6 +183,8 @@ export async function startDag(
   // 正式 WorkItem runtime 自带五阶段确定性推进和进程恢复；HTTP 不等待长任务。
   void runtime.advance({ binding: bound.receipt, requestId }).then(async (snapshot) => {
     const terminal = snapshot.terminalStatus;
+    const stalled = !terminal && snapshot.workItems.some(({ status }) =>
+      status === 'needs_review' || status === 'revision' || status === 'blocked');
     await appendAndEmit(store, {
       id: `formal-run-${Date.now()}`,
       sessionId: id,
@@ -225,11 +227,13 @@ export async function startDag(
       ? 'completed'
       : terminal === 'failed' || terminal === 'canceled'
         ? 'aborted'
-        : 'running';
+        : stalled
+          ? 'aborted'
+          : 'running';
     session.updatedAt = new Date().toISOString();
     await saveProjectSessions(session.projectId);
 
-    if (terminal) {
+    if (terminal || stalled) {
       const pendingMessages = takeSessionMessages(id);
       if (pendingMessages.length > 0) {
         updateFormalObjective(
@@ -300,7 +304,10 @@ export function formalRunStatusMessage(
     return `任务 ${parentTaskId} 执行失败（Run ${snapshot.runId}）：${reason}。请重新发布任务以启动新的 Run。`;
   }
   const blockedItem = snapshot.workItems.find(({ status }) =>
-    status === 'blocked' || status === 'failed');
+    status === 'blocked'
+    || status === 'failed'
+    || status === 'needs_review'
+    || status === 'revision');
   const reason = blockedItem?.attempts.at(-1)?.reason;
   return reason
     ? `任务 ${parentTaskId} 暂未继续推进（Run ${snapshot.runId}）：${reason}。`
@@ -373,6 +380,11 @@ function workItemFailureStage(item: SupervisorWorkItemBindingReceipt['snapshot']
 export async function abortSession(id: string): Promise<void> {
   await stopProtocolObserver(id, true);
   await loadPersistedSessions();
+
+  // Messages queued for the active formal Run belong to that Run's context.
+  // Once the user aborts it they must not be replayed after a later, unrelated
+  // task completes.
+  takeSessionMessages(id);
 
   const session = sessions.get(id);
   if (session) {

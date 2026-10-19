@@ -240,6 +240,61 @@ for (const packageInfo of [
   }
 }
 
+// Web 路由把 @originos/pi-agent-adapter 声明为 server external
+// （next.config.mjs webpack externals + serverComponentsExternalPackages），
+// 编译产物里的共享 chunk 会在加载时 require 该包。workspace 包既不在
+// .pnpm store 也不在根 node_modules 的实体目录里，上面的 hoist 扫描
+// 永远找不到它们；打包后的 Resources/web 解析链上也找不到，导致所有
+// 加载该 chunk 的 API 路由 MODULE_NOT_FOUND。这里按 monorepo 包名把
+// 运行时需要的 workspace 包复制进 web node_modules。只复制运行时
+// 入口（与 electron-builder files 过滤一致），跳过 node_modules，
+// 避免把指向仓库 .pnpm 的符号链接带进打包产物。
+function copyRuntimePackageEntries(packageSource, packageName, destinationNodeModules) {
+  const destination = path.join(destinationNodeModules, ...packageName.split('/'));
+  if (fs.existsSync(path.join(destination, 'package.json'))) {
+    return false;
+  }
+  const requiredEntries = [
+    'package.json',
+    'index.js',
+    'ai.js',
+    'goal.js',
+    'coding-agent.js',
+    'task-runtime.js',
+    'load-runtime.js',
+    'dist',
+  ];
+  fs.mkdirSync(destination, { recursive: true });
+  for (const entry of requiredEntries) {
+    const sourceEntry = path.join(packageSource, entry);
+    if (!fs.existsSync(sourceEntry)) {
+      throw new Error(`Workspace package ${packageName} missing runtime entry: ${entry}`);
+    }
+    const destinationEntry = path.join(destination, entry);
+    fs.rmSync(destinationEntry, { recursive: true, force: true });
+    fs.cpSync(sourceEntry, destinationEntry, { recursive: true, dereference: true, force: true });
+  }
+  const nestedNodeModules = path.join(destination, 'node_modules');
+  fs.rmSync(nestedNodeModules, { recursive: true, force: true });
+  return true;
+}
+
+const workspaceRuntimePackages = [
+  { name: '@originos/pi-agent-adapter', source: path.join(repoRoot, 'packages', 'agent') },
+];
+for (const packageInfo of workspaceRuntimePackages) {
+  if (copyRuntimePackageEntries(packageInfo.source, packageInfo.name, webNodeModules)) {
+    console.log(`[prepare-web-standalone] staged workspace package ${packageInfo.name}`);
+    hoistedCount += 1;
+  }
+}
+for (const stagedName of ['@originos/pi-agent-adapter']) {
+  const stagedPackageJson = path.join(webNodeModules, ...stagedName.split('/'), 'package.json');
+  if (!fs.existsSync(stagedPackageJson)) {
+    throw new Error(`Packaged standalone missing runtime package ${stagedName}`);
+  }
+}
+
 for (let pass = 0; pass < 20; pass += 1) {
   const symlinks = collectSymlinks(target);
   if (symlinks.length === 0) {

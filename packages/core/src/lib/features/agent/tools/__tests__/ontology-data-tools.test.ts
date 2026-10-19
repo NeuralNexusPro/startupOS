@@ -283,4 +283,35 @@ describe('ontology data tools: instance writes go through canonical authoring', 
 		expect(typeof instance.meta.createdAt).toBe('number');
 		expect(instance.ontologyId).toBe('ontology-proj-data');
 	});
+
+	it('get_concept_schema reads canonical properties without requiring a legacy schema copy', async () => {
+		const ontology = (await store.readOntology('proj-data'))!.data;
+		ontology.properties.push({
+			id: 'property-title',
+			conceptId: 'concept-seed',
+			name: '标题',
+			valueType: 'string',
+			required: true,
+			description: '订单标题',
+			metadata: { enumValues: ['普通订单', '紧急订单'] },
+		});
+		await store.writeOntology('proj-data', ontology);
+
+		const payload = await runTool('get_concept_schema', {
+			ontologyId: 'ontology-proj-data',
+			conceptId: 'concept-seed',
+		});
+
+		expect(payload.success).toBe(true);
+		expect(payload['schema']).toMatchObject({
+			ontologyId: 'ontology-proj-data',
+			conceptId: 'concept-seed',
+			name: '订单',
+			fields: [{
+				name: '标题', type: 'string', required: true,
+				enum: ['普通订单', '紧急订单'],
+			}],
+		});
+		await expect(fs.access(legacyOntologyPath)).rejects.toMatchObject({ code: 'ENOENT' });
+	});
 });

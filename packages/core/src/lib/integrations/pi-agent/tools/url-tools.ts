@@ -59,7 +59,9 @@ const GenerateFileUrlParamsSchema = Type.Object({
 });
 
 /**
- * 生成文件访问 URL 工具
+ * 生成文件访问 URL 工具。
+ *
+ * @deprecated OriginOS 文件内容统一通过 open_file 打开，不再向 Agent 暴露本工具。
  *
  * 将生成的文件转换为可通过 HTTP 访问的 URL
  * 支持的文件类型：图片、PDF、JSON、文本等
@@ -70,7 +72,7 @@ const GenerateFileUrlTool: ToolRegistration = {
   description: "为生成的文件创建可通过 HTTP 访问的 URL。支持图片、PDF、JSON 等文件类型。返回完整的访问地址，用户可以直接在浏览器中打开。",
   parameters: GenerateFileUrlParamsSchema,
   category: "system",
-  enabled: true,
+  enabled: false,
   async execute(
     toolCallId: string,
     params: Static<typeof GenerateFileUrlParamsSchema>,

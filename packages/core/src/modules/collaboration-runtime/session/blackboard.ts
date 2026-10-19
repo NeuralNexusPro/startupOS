@@ -146,8 +146,8 @@ export class Blackboard {
 
       case "TASK_CREATED": {
         const task = event.payload["task"] as TaskItem;
-        if (task) {
-          this.tasks.push(task);
+        if (task && !this.tasks.some((item) => item.id === task.id)) {
+          this.tasks.push({ ...task });
         }
         break;
       }
@@ -166,6 +166,50 @@ export class Blackboard {
         const taskId = event.payload["taskId"] as string;
         const task = this.tasks.find((t) => t.id === taskId);
         if (task) task.status = "running";
+        break;
+      }
+
+      case "TASK_REASSIGNED": {
+        const taskId = event.payload["taskId"] as string;
+        const task = this.tasks.find((t) => t.id === taskId);
+        if (task) {
+          task.assignedTo = event.payload["agentId"] as string;
+          task.status = "assigned";
+          delete task.completedAt;
+          delete task.failure;
+          delete task.blocked;
+        }
+        break;
+      }
+
+      case "TASK_BLOCKED": {
+        const taskId = event.payload["taskId"] as string;
+        const task = this.tasks.find((t) => t.id === taskId);
+        if (task && task.status !== "completed" && task.status !== "failed") {
+          const resumeStatus = task.status;
+          task.status = "blocked";
+          task.blocked = {
+            reason: typeof event.payload["reason"] === "string" ? event.payload["reason"] as string : "任务等待外部条件。",
+            waitingFor: Array.isArray(event.payload["waitingFor"])
+              ? (event.payload["waitingFor"] as unknown[]).filter((item): item is string => typeof item === "string")
+              : [],
+            blockedAt: event.timestamp,
+            resumeStatus: resumeStatus === "blocked" ? (task.blocked?.resumeStatus ?? "assigned") : resumeStatus,
+          };
+        }
+        break;
+      }
+
+      case "TASK_RESUMED": {
+        const taskId = event.payload["taskId"] as string;
+        const task = this.tasks.find((t) => t.id === taskId);
+        if (task?.status === "blocked") {
+          const requestedStatus = event.payload["status"];
+          task.status = requestedStatus === "pending" || requestedStatus === "assigned" || requestedStatus === "running" || requestedStatus === "reported"
+            ? requestedStatus
+            : task.blocked?.resumeStatus ?? "assigned";
+          delete task.blocked;
+        }
         break;
       }
 
@@ -192,6 +236,18 @@ export class Blackboard {
         if (task) {
           task.status = "failed";
           task.completedAt = event.timestamp;
+          const reason = typeof event.payload["error"] === "string"
+            ? event.payload["error"] as string
+            : "任务执行失败，但运行时未提供具体原因。";
+          task.output = { error: reason };
+          task.failure = {
+            stage: typeof event.payload["stage"] === "string" ? event.payload["stage"] as string : "worker-execution",
+            reason,
+            ...(typeof event.payload["code"] === "string" ? { code: event.payload["code"] as string } : {}),
+            ...(typeof event.payload["toolName"] === "string" ? { toolName: event.payload["toolName"] as string } : {}),
+            ...(typeof event.payload["exitCode"] === "number" ? { exitCode: event.payload["exitCode"] as number } : {}),
+            occurredAt: event.timestamp,
+          };
         }
         break;
       }
@@ -551,17 +607,57 @@ export class Blackboard {
         `Task ${taskId} cannot be failed (status: ${task.status})`
       );
     task.status = "failed";
+    delete task.blocked;
     task.completedAt = new Date().toISOString();
     if (reason !== undefined) {
       task.output = { error: reason };
+      task.failure = {
+        stage: "worker-execution",
+        reason,
+        occurredAt: task.completedAt ?? new Date().toISOString(),
+      };
     }
   }
 
   reassignTask(taskId: string, agentId: string): void {
     const task = this.findTask(taskId);
     if (!task) throw new Error(`Task ${taskId} not found`);
+    if (task.status === "completed" || task.status === "reported") {
+      throw new Error(`Task ${taskId} cannot be reassigned (status: ${task.status})`);
+    }
     task.assignedTo = agentId;
     task.status = "assigned";
+    delete task.completedAt;
+    delete task.failure;
+    delete task.blocked;
+  }
+
+  blockTask(taskId: string, reason: string, waitingFor: string[] = []): void {
+    const task = this.findTask(taskId);
+    if (!task) throw new Error(`Task ${taskId} not found`);
+    if (task.status === "completed" || task.status === "failed") {
+      throw new Error(`Task ${taskId} cannot be blocked (status: ${task.status})`);
+    }
+    const resumeStatus = task.status === "blocked"
+      ? task.blocked?.resumeStatus ?? "assigned"
+      : task.status;
+    task.status = "blocked";
+    task.blocked = {
+      reason,
+      waitingFor: [...waitingFor],
+      blockedAt: new Date().toISOString(),
+      resumeStatus,
+    };
+  }
+
+  resumeTask(taskId: string, status?: "pending" | "assigned" | "running" | "reported"): void {
+    const task = this.findTask(taskId);
+    if (!task) throw new Error(`Task ${taskId} not found`);
+    if (task.status !== "blocked") {
+      throw new Error(`Task ${taskId} cannot be resumed (status: ${task.status})`);
+    }
+    task.status = status ?? task.blocked?.resumeStatus ?? "assigned";
+    delete task.blocked;
   }
 
   getTask(taskId: string): TaskItem | undefined {
