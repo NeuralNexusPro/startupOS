@@ -15,6 +15,7 @@ import { Blackboard } from "../../../modules/collaboration-runtime/session/black
 import { FsEventStore } from "../../../modules/collaboration-runtime/session/fs-event-store";
 import type { RuntimeEvent } from "../../../modules/collaboration-runtime/session/types";
 import type { RuntimeLLMConfig } from "../../../lib/integrations/pi-agent/llm-config";
+import type { CollaborationMessageIntent } from "../../../types/collaboration-message";
 
 import {
   sessions,
@@ -78,7 +79,7 @@ function expandAttachmentPaths(message: string, attachmentsAbsDir: string): stri
 
 /** 用户回复 Human Review 请求 — Story 9.34: 路由到 Supervisor，不再直接 resume Worker */
 export async function respondToHumanReview(id: string, _agentId: string, response: string): Promise<{ success: boolean; error?: string }> {
-  return sendMessageToSupervisor(id, response);
+  return sendMessageToSupervisor(id, response, _agentId, undefined, "hitl_response");
 }
 
 export async function sendMessageToSupervisor(
@@ -86,6 +87,7 @@ export async function sendMessageToSupervisor(
   message: string,
   workerId?: string,
   llmConfig?: RuntimeLLMConfig | null,
+  intent: CollaborationMessageIntent = workerId ? "hitl_response" : "new_objective",
 ): Promise<{ success: boolean; error?: string }> {
   await loadPersistedSessions();
 
@@ -124,6 +126,7 @@ export async function sendMessageToSupervisor(
     projectId: session.projectId,
     status: session.status,
     workerId: workerId ?? null,
+    intent,
     messageChars: message.length,
   });
 
@@ -182,7 +185,7 @@ export async function sendMessageToSupervisor(
     sessionId: id,
     seq: 0,
     type: "USER_REPLY_TO_SUPERVISOR" as const,
-    payload: { to: "supervisor", message: expandedMessage, workerId: workerId ?? null },
+    payload: { to: "supervisor", message: expandedMessage, workerId: workerId ?? null, intent },
     source: "user",
     target: "supervisor",
     timestamp: new Date().toISOString(),
@@ -199,7 +202,11 @@ export async function sendMessageToSupervisor(
   if (canStartNextRun) {
     updateFormalObjective(
       session,
-      buildContinuationGoal(session.globalGoal, [expandedMessage]),
+      buildContinuationGoal(
+        session.globalGoal,
+        [expandedMessage],
+        intent === "continue_previous" ? "continue_previous" : "new_objective",
+      ),
     );
     if (!_startDag) {
       return { success: false, error: "Collaboration runtime is not initialized" };

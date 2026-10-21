@@ -6,6 +6,7 @@ interface MessageRouteBody {
   message?: unknown;
   to?: unknown;
   workerId?: unknown;
+  intent?: unknown;
   llmConfig?: RuntimeLLMConfig;
 }
 
@@ -26,6 +27,11 @@ export async function POST(
     const message = typeof body.message === "string" ? body.message.trim() : "";
     const to = body.to;
     const workerId = typeof body.workerId === "string" ? body.workerId : undefined;
+    const intent = body.intent === "continue_previous" || body.intent === "hitl_response"
+      ? body.intent
+      : workerId
+        ? "hitl_response"
+        : "new_objective";
     const llmConfig = (body.llmConfig && typeof body.llmConfig === "object") ? body.llmConfig : undefined;
     persistRuntimeLLMConfig(llmConfig);
 
@@ -46,7 +52,7 @@ export async function POST(
     const { sendMessageToSupervisor } = await import("@originos/core/modules/collaboration-runtime/facade");
     const { getProjectContractRuntimeComposition } = await import('@/services/ontologyCrossPackageService');
     getProjectContractRuntimeComposition();
-    const result = await sendMessageToSupervisor(params.id, message, workerId, llmConfig);
+    const result = await sendMessageToSupervisor(params.id, message, workerId, llmConfig, intent);
     if (!result.success) {
       return NextResponse.json(
         { error: result.error ?? "Failed to send message" },

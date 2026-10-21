@@ -29,6 +29,11 @@ const factRef: CanonicalFactReference = {
   factVersion: '1',
 };
 
+const businessKeyFactRef: CanonicalFactReference = {
+  ...factRef,
+  factId: 'philosophy-entry:多端共享同一核心',
+};
+
 function contract(): SolutionExecutionContract {
   return {
     schemaVersion: '1.0.0',
@@ -216,6 +221,7 @@ class MemoryTaskPort implements ApprovedProjectTaskPort {
 async function harness(options: {
   published?: PublishedSolutionExecutionContract;
   start?: (task: ApprovedProjectTaskReceipt) => Promise<CollaborationRunSnapshot>;
+  fact?: CanonicalFactReference;
 } = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'originos-task-create-'));
   roots.push(root);
@@ -236,7 +242,7 @@ async function harness(options: {
   const queryFacts = vi.fn(async () => ({
     ok: true as const,
     facts: [{
-      ref: factRef,
+      ref: options.fact ?? factRef,
       value: { stateId: 'ready' },
       source: { sourceType: 'manual' as const, sourceId: 'user-1' },
       operationId: 'fact-op-1',
@@ -273,6 +279,17 @@ afterEach(async () => {
 });
 
 describe('ApprovedProjectTaskCreationService', () => {
+  it('accepts a canonical fact business key containing Unicode characters', async () => {
+    const test = await harness({ fact: businessKeyFactRef });
+
+    const result = await test.service.create(input({
+      semanticInputs: [{ slotId: 'order-slot', factRef: businessKeyFactRef }],
+    }));
+
+    expect(result).toMatchObject({ ok: true });
+    expect(test.taskPort.create).toHaveBeenCalledTimes(1);
+  });
+
   it('creates one Task then one contract-bound Run and replays the authoritative receipt', async () => {
     const test = await harness();
     const first = await test.service.create(input());

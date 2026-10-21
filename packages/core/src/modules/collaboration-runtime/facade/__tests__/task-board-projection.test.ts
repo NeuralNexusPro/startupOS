@@ -281,6 +281,67 @@ describe('readSupervisorTaskBoard', () => {
     });
   });
 
+  it('recovers project files declared by a canonical output rootPath for pre-metadata receipts', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'originos-contract-board-files-'));
+    const project = path.join(root, 'projects', 'proj-a');
+    const runs = path.join(project, 'collaboration-runs');
+    const target = path.join(project, 'agents', 'curator', 'skills', 'organize-wiki');
+    await mkdir(runs, { recursive: true });
+    await mkdir(path.join(target, 'wiki', 'concepts'), { recursive: true });
+    await writeFile(path.join(project, 'project.json'), JSON.stringify({ id: 'proj-a', name: '知识项目' }));
+    await writeFile(path.join(project, 'project-collaboration-context.json'), JSON.stringify({ agents: [{ id: 'curator', name: '知识沉淀 Agent' }] }));
+    await writeFile(path.join(target, 'wiki', 'SUMMARY.md'), '# 总览');
+    await writeFile(path.join(target, 'wiki', 'concepts', '理念.md'), '# 理念');
+
+    const contractBody = body();
+    const node = contractBody.topology.nodes[0]!;
+    const contract = {
+      ...contractBody,
+      topology: { ...contractBody.topology, nodes: [{ ...node, id: 'organize-wiki', contractRef: 'organize-wiki', kind: 'skill' as const }] },
+      agents: [{ ...contractBody.agents[0]!, agentId: 'curator' }],
+    };
+    const runId = 'run-files';
+    const workItemId = 'run-files:organize-wiki';
+    const attemptId = 'run-files:organize-wiki:attempt-1';
+    const binding = {
+      parentTaskId: 'task-files', parentStepId: 'step-files', runId,
+      solutionId: contract.solutionId, solutionVersion: contract.solutionVersion,
+      executionContractId: contract.contractId, contractHash: contract.contractHash, taskRevision: 1,
+    };
+    const ref = createCollaborationArtifactRef('proj-a', runId, workItemId, attemptId);
+    const receiptPath = collaborationArtifactPath(root, 'proj-a', runId, workItemId, attemptId);
+    await mkdir(path.dirname(receiptPath), { recursive: true });
+    await writeFile(receiptPath, JSON.stringify({
+      schemaVersion: '1.0.0',
+      content: JSON.stringify({
+        outcome: { outputs: [{ value: { rootPath: 'wiki/' } }] },
+        result: 'success',
+      }),
+    }));
+    const snapshot: CollaborationRunSnapshot = {
+      runId, projectId: 'proj-a', binding, contract,
+      status: 'completed', revision: 1,
+      createdAt: '2026-10-13T00:00:00.000Z', updatedAt: '2026-10-13T00:01:00.000Z',
+      workItems: [{
+        id: workItemId, binding, designNodeId: 'organize-wiki', assignedAgentId: 'curator',
+        skillRefs: [], dependsOn: [], inputRefs: [], outputRefs: [], status: 'completed', revision: 1, leaseEpoch: 1,
+        attempts: [{
+          attemptId, leaseEpoch: 1, requestId: 'request-files', payloadHash: 'sha256:files', status: 'completed',
+          createdAt: '2026-10-13T00:00:00.000Z', updatedAt: '2026-10-13T00:01:00.000Z',
+          workerReceipt: { receiptId: 'worker-files', outputRefs: [ref], outputHash: 'sha256:output' },
+          verifierResult: { status: 'passed' },
+        }],
+      }],
+    };
+    await writeFile(path.join(runs, `${runId}.json`), JSON.stringify(snapshot));
+
+    const projection = await readSupervisorTaskBoard(root, 'proj-a');
+    expect(projection.projects[0]?.tasks[0]?.artifacts).toEqual(expect.arrayContaining([
+      { kind: 'file', name: 'SUMMARY.md', ref: 'agents/curator/skills/organize-wiki/wiki/SUMMARY.md', operation: '产出' },
+      { kind: 'file', name: '理念.md', ref: 'agents/curator/skills/organize-wiki/wiki/concepts/理念.md', operation: '产出' },
+    ]));
+  });
+
   it('projects dependency-blocked WorkItems as planned instead of actionable pending tasks', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'originos-contract-board-planned-'));
     const project = path.join(root, 'projects', 'proj-a');

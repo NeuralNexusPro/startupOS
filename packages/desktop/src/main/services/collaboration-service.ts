@@ -222,7 +222,7 @@ export class CollaborationService {
 
     ipcMain.handle(
       IPC_CHANNELS.COLLAB_SESSION_MESSAGE_POST,
-      async (_event, request: { sessionId: string; message: string; workerId?: string; llmConfig?: unknown }): Promise<IpcResponse<unknown>> => {
+      async (_event, request: { sessionId: string; message: string; workerId?: string; llmConfig?: unknown; intent?: 'new_objective' | 'continue_previous' | 'hitl_response' }): Promise<IpcResponse<unknown>> => {
         try {
           if (!request.sessionId || !request.message) {
             return {
@@ -242,7 +242,7 @@ export class CollaborationService {
           });
           persistRuntimeLLMConfig(llmConfig);
           const f = await getFacade();
-          const result = await f.sendMessageToSupervisor(request.sessionId, request.message, request.workerId, llmConfig);
+          const result = await f.sendMessageToSupervisor(request.sessionId, request.message, request.workerId, llmConfig, request.intent);
           logRuntime('ipc.message.result', {
             sessionId: request.sessionId,
             success: result.success,

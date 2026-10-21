@@ -143,6 +143,78 @@ function latestAssistantContent(messages: readonly { readonly role: string; read
   return messageText([...messages].reverse().find(({ role }) => role === 'assistant'));
 }
 
+interface FileSnapshotEntry {
+  readonly size: number;
+  readonly modifiedAt: number;
+}
+
+async function snapshotFiles(root: string): Promise<Map<string, FileSnapshotEntry>> {
+  const files = new Map<string, FileSnapshotEntry>();
+  const visit = async (directory: string): Promise<void> => {
+    const entries = await fs.readdir(directory, { withFileTypes: true }).catch((error: unknown) => {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw error;
+    });
+    await Promise.all(entries.map(async (entry) => {
+      const absolute = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        await visit(absolute);
+      } else if (entry.isFile()) {
+        const stat = await fs.stat(absolute);
+        files.set(absolute, { size: stat.size, modifiedAt: stat.mtimeMs });
+      }
+    }));
+  };
+  await visit(root);
+  return files;
+}
+
+function declaredRootPaths(value: Record<string, unknown>): string[] {
+  const outcome = value['outcome'];
+  const outputs = outcome && typeof outcome === 'object' && !Array.isArray(outcome)
+    ? (outcome as Record<string, unknown>)['outputs']
+    : undefined;
+  if (!Array.isArray(outputs)) return [];
+  return outputs.flatMap((output) => {
+    if (!output || typeof output !== 'object' || Array.isArray(output)) return [];
+    const businessValue = (output as Record<string, unknown>)['value'];
+    if (!businessValue || typeof businessValue !== 'object' || Array.isArray(businessValue)) return [];
+    const rootPath = (businessValue as Record<string, unknown>)['rootPath'];
+    return typeof rootPath === 'string' && rootPath.trim() ? [rootPath.trim()] : [];
+  });
+}
+
+async function producedFiles(
+  projectRoot: string,
+  workingDirectory: string,
+  before: ReadonlyMap<string, FileSnapshotEntry>,
+  parsed: Record<string, unknown>,
+): Promise<ContractArtifactEnvelope['files']> {
+  const after = await snapshotFiles(workingDirectory);
+  const selected = new Map<string, 'created' | 'updated' | 'produced'>();
+  for (const [absolute, current] of after) {
+    const previous = before.get(absolute);
+    if (!previous) selected.set(absolute, 'created');
+    else if (previous.size !== current.size || previous.modifiedAt !== current.modifiedAt) selected.set(absolute, 'updated');
+  }
+  for (const declared of declaredRootPaths(parsed)) {
+    const absolute = path.resolve(workingDirectory, declared);
+    const relativeToWorking = path.relative(workingDirectory, absolute);
+    if (relativeToWorking.startsWith('..') || path.isAbsolute(relativeToWorking)) continue;
+    const stat = await fs.stat(absolute).catch(() => null);
+    if (stat?.isFile()) selected.set(absolute, selected.get(absolute) ?? 'produced');
+    if (stat?.isDirectory()) {
+      const declaredFiles = await snapshotFiles(absolute);
+      for (const file of declaredFiles.keys()) selected.set(file, selected.get(file) ?? 'produced');
+    }
+  }
+  return [...selected.entries()].flatMap(([absolute, operation]) => {
+    const relative = path.relative(projectRoot, absolute);
+    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return [];
+    return [{ path: relative.split(path.sep).join('/'), operation }];
+  }).sort((left, right) => left.path.localeCompare(right.path));
+}
+
 interface UpstreamArtifactPromptInput {
   readonly ref: string;
   readonly targetId: string;
@@ -316,6 +388,8 @@ export class AgentManagerContractRuntime implements ContractBoundAgentSkillRunti
     const persisted = await this.recoverPersistedArtifact(request);
     if (persisted) {return persisted;}
     const workingDirectory = await resolveTargetDirectory(this.dataRoot, request);
+    const projectRoot = path.join(this.dataRoot, 'projects', request.projectId);
+    const filesBeforeExecution = await snapshotFiles(workingDirectory);
     const agentType = request.target.kind === 'agent' ? 'role-agent' : 'skill';
     const systemPrompt = await loadTargetSystemPrompt(workingDirectory, request);
     const agent = await this.agents.getOrCreateAgent(
@@ -379,6 +453,7 @@ export class AgentManagerContractRuntime implements ContractBoundAgentSkillRunti
         attemptId: request.attemptId,
         targetId: request.target.targetId,
         content,
+        files: await producedFiles(projectRoot, workingDirectory, filesBeforeExecution, parsed),
         createdAt: new Date().toISOString(),
       };
       const filePath = artifactPath(

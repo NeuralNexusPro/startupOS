@@ -137,12 +137,26 @@ export async function startDag(
 
   const requestId = session.executionRequestId ?? `request:${id}`;
   session.executionRequestId = requestId;
-  const bound = await runtime.bind({
-    projectId: session.projectId,
-    collaborationSessionId: id,
-    requestId,
-    objective: session.globalGoal ?? '',
-  });
+  let bound;
+  try {
+    bound = await runtime.bind({
+      projectId: session.projectId,
+      collaborationSessionId: id,
+      requestId,
+      objective: session.globalGoal ?? '',
+    });
+  } catch (error: unknown) {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.error(`[collaboration] formal binding ${id} failed:`, error);
+    const gaps = [{
+      code: 'SUPERVISOR_BINDING_FAILED',
+      message: `任务契约绑定失败：${reason}`,
+      remediation: '请修正契约或事实输入后重试；本次会话已恢复为可重新发布状态。',
+      path: 'binding',
+    }];
+    await reportDesignGaps(store, session, id, gaps);
+    return { status: 'design_gap', result: { gaps } };
+  }
   if (bound.ok === false) {
     await reportDesignGaps(store, session, id, bound.gaps);
     return { status: 'design_gap', result: { gaps: bound.gaps } };

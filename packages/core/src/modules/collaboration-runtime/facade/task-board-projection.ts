@@ -11,7 +11,7 @@ import type {
   WorkItemHitlRequest,
   WorkItemStatus,
 } from "./contract-execution-types";
-import { readContractWorkerOutput } from './contract-worker-output';
+import { readContractWorkerProjection } from './contract-worker-output';
 
 export type SupervisorTaskBoardStatus = WorkItemStatus | "planned";
 
@@ -548,9 +548,19 @@ async function contractRunTasks(
       const collaborationSession = collaborationSessionByRunId.get(run.runId);
       const attempt = item.attempts.at(-1);
       const description = contractTaskDescription(run, item.designNodeId);
-      const output = attempt?.workerReceipt
-        ? await readContractWorkerOutput(dataRoot, attempt.workerReceipt.outputRefs)
-        : undefined;
+      const topologyNode = run.contract.topology.nodes.find(({ id }) => id === item.designNodeId);
+      const targetDirectory = topologyNode?.kind === 'skill'
+        ? path.join(projectDirectory, 'agents', item.assignedAgentId, 'skills', topologyNode.contractRef)
+        : topologyNode?.kind === 'agent'
+          ? path.join(projectDirectory, 'agents', item.assignedAgentId)
+          : undefined;
+      const workerProjection = attempt?.workerReceipt
+        ? await readContractWorkerProjection(dataRoot, attempt.workerReceipt.outputRefs, {
+            projectId,
+            ...(targetDirectory ? { targetDirectory } : {}),
+          })
+        : { files: [] };
+      const output = workerProjection.output;
       const acceptance = item.status === "waiting_hitl"
         ? pendingAcceptance(item.attempts, agentNames)
         : undefined;
@@ -589,8 +599,13 @@ async function contractRunTasks(
         designNodeId: item.designNodeId,
         ...(failure ? { failure } : {}),
         ...(acceptance ? { acceptance } : {}),
-        // outputRefs are runtime receipt envelopes, not files created for the user.
-        artifacts: [],
+        // Internal receipt refs remain hidden; only project-local user deliverables are exposed.
+        artifacts: workerProjection.files.map((file) => ({
+          kind: 'file',
+          name: path.basename(file.path),
+          ref: file.path,
+          operation: file.operation === 'created' ? '创建' : file.operation === 'updated' ? '更新' : '产出',
+        })),
         dataChanges: [],
       };
     }));

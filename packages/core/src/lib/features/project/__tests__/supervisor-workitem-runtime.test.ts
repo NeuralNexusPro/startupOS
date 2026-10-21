@@ -207,6 +207,47 @@ describe('ProjectSupervisorWorkItemRuntime', () => {
     }));
   });
 
+  it('resolves an existing canonical fact for the selected template input', async () => {
+    const frozen = contract(['organize-wiki']);
+    const factType = {
+      ontologyId: 'ontology-1', ontologyVersion: '1',
+      conceptId: 'concept-1', factTypeId: 'philosophy-entry',
+    };
+    frozen.agents[0]!.inputs = [{ factType, required: true }];
+    frozen.semanticContext.objectSlots = [{
+      id: 'philosophy-slot',
+      concept: { ontologyId: 'ontology-1', ontologyVersion: '1', conceptId: 'concept-1' },
+      required: false,
+      resolution: { status: 'confirmed', evidenceSourceRefIds: ['interview-1'] },
+    }];
+    frozen.semanticContext.taskTemplates[0]!.objective = '重新生成学习 wiki';
+    const factRef = { ...factType, factId: 'philosophy:cache', factVersion: '2' };
+    const create = vi.fn(async () => ({ ok: true as const, receipt: receipt(run(frozen)) }));
+    const runtime = new ProjectSupervisorWorkItemRuntime({
+      contractCatalog: { listProject: async () => [{ contract: frozen }] },
+      contractPort: { verifyIntegrity: async () => ({ valid: true }) },
+      taskCreation: { create },
+      factPort: {
+        queryFacts: vi.fn(async () => ({ ok: true as const, facts: [{
+          ref: factRef,
+          value: {},
+          source: { sourceType: 'runtime' as const, sourceId: 'prior-run' },
+          operationId: 'operation-1',
+          revision: 2,
+          acceptedAt: new Date('2026-10-20T00:00:00.000Z'),
+        }] })),
+      },
+      executionPort: { executeWorkItem: vi.fn(), inspect: vi.fn(), recover: vi.fn() },
+    });
+
+    await runtime.bind(input('重新生成一下 wiki'));
+
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      taskTemplateId: 'organize-wiki',
+      semanticInputs: [{ slotId: 'philosophy-slot', factRef }],
+    }));
+  });
+
   it.each([
     ['帮我看一下今天 GitHub Trending 有哪些值得关注的新项目', 'track-trends'],
     ['梳理待看清单，推荐几个值得深入研究的候选', 'triage-watchlist'],

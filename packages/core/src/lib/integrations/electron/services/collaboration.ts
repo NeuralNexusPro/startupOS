@@ -1,6 +1,7 @@
 import { getIpcRenderer, isElectron } from '../env';
 import { IPC_CHANNELS, type IpcResponse } from '../ipc-protocol';
 import { normalizeRuntimeLLMConfig } from '../../pi-agent/llm-config';
+import type { CollaborationMessageIntent } from '../../../../types/collaboration-message';
 
 async function readJsonResponse<T>(response: Response): Promise<T> {
   const payload = (await response.json()) as T;
@@ -112,20 +113,21 @@ export async function sendCollaborationMessage(
   message: string,
   workerId?: string,
   llmConfig?: import('../../pi-agent/llm-config').RuntimeLLMConfig | null,
+  intent: CollaborationMessageIntent = workerId ? 'hitl_response' : 'new_objective',
 ): Promise<IpcResponse<unknown>> {
   const normalizedLlmConfig = normalizeRuntimeLLMConfig(llmConfig);
 
   if (isElectron()) {
     return getIpcRenderer().invoke<IpcResponse<unknown>>(
       IPC_CHANNELS.COLLAB_SESSION_MESSAGE_POST,
-      { sessionId, message, workerId, llmConfig: normalizedLlmConfig }
+      { sessionId, message, workerId, llmConfig: normalizedLlmConfig, intent }
     );
   }
 
   const response = await fetch(`/api/collaboration/sessions/${encodeURIComponent(sessionId)}/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, to: 'supervisor', workerId, llmConfig: normalizedLlmConfig }),
+    body: JSON.stringify({ message, to: 'supervisor', workerId, llmConfig: normalizedLlmConfig, intent }),
   });
   return readJsonResponse<IpcResponse<unknown>>(response);
 }

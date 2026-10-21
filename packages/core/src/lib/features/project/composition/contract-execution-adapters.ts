@@ -35,25 +35,9 @@ import type {
   VersionedContractVerifier,
   VersionedEvidenceSchema,
 } from '../../../../modules/collaboration-runtime/integrations';
+import { parseOntologyFactRef } from '../ontology-fact-reference';
 
-export function parseOntologyFactRef(ref: string): CanonicalFactReference | null {
-  if (!ref.startsWith('ontology-fact:')) {return null;}
-  const segments = ref.split(':');
-  if (segments.length !== 7) {return null;}
-  const [, ontologyId, ontologyVersion, conceptId, factTypeId, factId, factVersion] = segments;
-  if (![ontologyId, ontologyVersion, conceptId, factTypeId, factId, factVersion]
-    .every((value) => Boolean(value?.trim()))) {
-    return null;
-  }
-  return {
-    ontologyId: ontologyId!,
-    ontologyVersion: ontologyVersion!,
-    conceptId: conceptId!,
-    factTypeId: factTypeId!,
-    factId: factId!,
-    factVersion: factVersion!,
-  };
-}
+export { parseOntologyFactRef } from '../ontology-fact-reference';
 
 export class CanonicalReadiness implements WorkItemReadinessPort {
   constructor(

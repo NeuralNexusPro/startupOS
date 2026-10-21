@@ -16,6 +16,10 @@ import type {
   SolutionTaskTemplate,
 } from '../solution';
 import type { ApprovedProjectTaskCreationService } from './project-task-creation';
+import type {
+  ProjectTaskCreationFactPort,
+  ProjectTaskSemanticInput,
+} from './project-task-creation';
 
 const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._@:-]*$/;
 const MAX_SCHEDULER_PASSES = 256;
@@ -29,6 +33,7 @@ export interface ProjectSupervisorWorkItemRuntimeDependencies {
   readonly contractCatalog: SolutionExecutionContractCatalogPort;
   readonly contractPort: Pick<SolutionExecutionContractPort, 'verifyIntegrity'>;
   readonly taskCreation: Pick<ApprovedProjectTaskCreationService, 'create'>;
+  readonly factPort?: ProjectTaskCreationFactPort;
   readonly executionPort: Pick<
     CollaborationExecutionPort,
     'executeWorkItem' | 'inspect' | 'recover'
@@ -188,6 +193,10 @@ export class ProjectSupervisorWorkItemRuntime implements SupervisorWorkItemRunti
     const selected = this.selectCandidate(candidates, objective);
     if (selected.ok === false) return selected;
     const { contract } = selected.candidate.published;
+    const semanticInputs = await this.resolveSemanticInputs(
+      input.projectId,
+      selected.candidate,
+    );
 
     const created = await this.dependencies.taskCreation.create({
       projectId: input.projectId,
@@ -197,7 +206,7 @@ export class ProjectSupervisorWorkItemRuntime implements SupervisorWorkItemRunti
       contractHash: contract.contractHash,
       taskTemplateId: selected.candidate.template.id,
       objective,
-      semanticInputs: [],
+      semanticInputs,
       requestId: input.requestId,
     });
     if (created.ok === false) {
@@ -230,6 +239,53 @@ export class ProjectSupervisorWorkItemRuntime implements SupervisorWorkItemRunti
         snapshot: receipt.run,
       },
     };
+  }
+
+  private async resolveSemanticInputs(
+    projectId: string,
+    candidate: Candidate,
+  ): Promise<readonly ProjectTaskSemanticInput[]> {
+    if (!this.dependencies.factPort) return [];
+    const { contract } = candidate.published;
+    const agentInputs = candidate.template.candidateAgentIds.flatMap((agentId) =>
+      contract.agents.find((agent) => agent.agentId === agentId)?.inputs ?? []);
+    const skillInputs = candidate.template.candidateSkillIds.flatMap((skillId) =>
+      contract.skills.find((skill) => skill.skillId === skillId)?.inputs ?? []);
+    const required = new Map<string, (typeof agentInputs)[number]['factType']>();
+    for (const input of [...agentInputs, ...skillInputs]) {
+      if (!input.required) continue;
+      const { factType } = input;
+      required.set([
+        factType.ontologyId,
+        factType.ontologyVersion,
+        factType.conceptId,
+        factType.factTypeId,
+      ].join('/'), factType);
+    }
+
+    const resolved: ProjectTaskSemanticInput[] = [];
+    const usedSlots = new Set<string>();
+    for (const factType of required.values()) {
+      const slot = contract.semanticContext.objectSlots.find(({ concept }) =>
+        concept.ontologyId === factType.ontologyId
+        && concept.ontologyVersion === factType.ontologyVersion
+        && concept.conceptId === factType.conceptId);
+      if (!slot || usedSlots.has(slot.id)) continue;
+      const result = await this.dependencies.factPort.queryFacts({
+        projectId,
+        ontologyId: factType.ontologyId,
+        ontologyVersion: factType.ontologyVersion,
+        conceptId: factType.conceptId,
+        factTypeId: factType.factTypeId,
+        latestOnly: true,
+      });
+      if (!result.ok || result.facts.length < 1) continue;
+      const latest = result.facts.reduce((left, right) =>
+        right.acceptedAt.getTime() >= left.acceptedAt.getTime() ? right : left);
+      resolved.push({ slotId: slot.id, factRef: latest.ref });
+      usedSlots.add(slot.id);
+    }
+    return resolved;
   }
 
   async advance(input: AdvanceSupervisorWorkItemsInput): Promise<CollaborationRunSnapshot> {

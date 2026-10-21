@@ -72,7 +72,7 @@ describe("sendMessageToSupervisor", () => {
     const result = await sendMessageToSupervisor("sess-1", "continue with a new goal");
 
     expect(result.success).toBe(true);
-    expect(session.globalGoal).toContain("continue with a new goal");
+    expect(session.globalGoal).toBe("continue with a new goal");
     expect(session.executionRequestId).toMatch(/^request:[a-f0-9]{64}$/);
     expect(session.executionRequestId).not.toBe("request:old");
     expect(session.formalExecution).toBeUndefined();

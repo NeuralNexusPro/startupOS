@@ -10,6 +10,7 @@ import type {
   OntologyCrossPackageWorkItemRecoveryPort,
   OntologyCrossPackageWorkItemRecoveryResult,
 } from './ontology-cross-package-contract';
+import { serializeOntologyFactRef } from './ontology-fact-reference';
 
 type RecoveryExecutionPort = Pick<
   CollaborationExecutionPort,
@@ -17,15 +18,7 @@ type RecoveryExecutionPort = Pick<
 >;
 
 function factRef(ref: CanonicalFactReference): string {
-  return [
-    'ontology-fact',
-    ref.ontologyId,
-    ref.ontologyVersion,
-    ref.conceptId,
-    ref.factTypeId,
-    ref.factId,
-    ref.factVersion,
-  ].join(':');
+  return serializeOntologyFactRef(ref);
 }
 
 function contentHash(input: OntologyCrossPackageWorkItemRecoveryInput): string {

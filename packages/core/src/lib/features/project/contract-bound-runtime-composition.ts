@@ -153,6 +153,7 @@ export function createProjectContractRuntimeComposition(
     contractCatalog: contractStore,
     contractPort,
     taskCreation,
+    factPort: osdk,
     executionPort,
   });
   registerSupervisorWorkItemRuntimePort(supervisorWorkItems);

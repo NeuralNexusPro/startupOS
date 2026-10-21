@@ -20,6 +20,7 @@ import {
   type CollaborationMutationLockPort,
 } from '../../../modules/collaboration-runtime/facade';
 import type { ProjectTaskDetail } from './task-board';
+import { serializeOntologyFactRef } from './ontology-fact-reference';
 
 const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._@:-]*$/;
 const LEDGER_SCHEMA_VERSION = 1 as const;
@@ -220,6 +221,12 @@ function assertIdentifier(value: string, field: string): void {
   }
 }
 
+function assertCanonicalFactId(value: string, field: string): void {
+  if (!value.trim() || value.length > 1_024 || /[\u0000-\u001f\u007f]/u.test(value)) {
+    throw new ProjectTaskCreationError('INVALID_REQUEST', `Invalid ${field}: ${value}`);
+  }
+}
+
 function stableValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stableValue);
   if (value && typeof value === 'object') {
@@ -244,15 +251,7 @@ function inputHash(input: CreateApprovedProjectTaskInput): string {
 }
 
 function factRefString(ref: CanonicalFactReference): string {
-  return [
-    'ontology-fact',
-    ref.ontologyId,
-    ref.ontologyVersion,
-    ref.conceptId,
-    ref.factTypeId,
-    ref.factId,
-    ref.factVersion,
-  ].join(':');
+  return serializeOntologyFactRef(ref);
 }
 
 function gap(
@@ -305,7 +304,9 @@ function validateInput(input: CreateApprovedProjectTaskInput): void {
     }
     slots.add(slotId);
     for (const [field, value] of Object.entries(factRef)) {
-      assertIdentifier(value, `semanticInputs[${index}].factRef.${field}`);
+      const path = `semanticInputs[${index}].factRef.${field}`;
+      if (field === 'factId') assertCanonicalFactId(value, path);
+      else assertIdentifier(value, path);
     }
   });
 }
@@ -350,6 +351,28 @@ function templateProducedFactTypes(
   const skills = template.candidateSkillIds.flatMap((skillId) =>
     contract.skills.find((candidate) => candidate.skillId === skillId)?.outputs ?? []);
   return [...agents, ...skills].map(({ factType }) => factType);
+}
+
+function templateRequiredInputFactTypes(
+  contract: SolutionExecutionContract,
+  template: SolutionTaskTemplate,
+) {
+  const agents = template.candidateAgentIds.flatMap((agentId) =>
+    contract.agents.find((candidate) => candidate.agentId === agentId)?.inputs ?? []);
+  const skills = template.candidateSkillIds.flatMap((skillId) =>
+    contract.skills.find((candidate) => candidate.skillId === skillId)?.inputs ?? []);
+  const unique = new Map<string, (typeof agents)[number]['factType']>();
+  for (const input of [...agents, ...skills]) {
+    if (!input.required) continue;
+    const { factType } = input;
+    unique.set([
+      factType.ontologyId,
+      factType.ontologyVersion,
+      factType.conceptId,
+      factType.factTypeId,
+    ].join('/'), factType);
+  }
+  return [...unique.values()];
 }
 
 function factState(value: Readonly<Record<string, unknown>>): string | undefined {
@@ -612,8 +635,17 @@ export class ApprovedProjectTaskCreationService {
     if (gaps.length || !template) return { ok: false, gaps };
 
     const producedFactTypes = templateProducedFactTypes(contract, template);
-    const requiredExternalInputs = contract.topology.externalInputs.filter((expected) =>
+    const templateRequiredInputs = templateRequiredInputFactTypes(contract, template);
+    const scopedRequiredInputs = templateRequiredInputs.length > 0
+      ? templateRequiredInputs
+      : contract.topology.externalInputs;
+    const requiredExternalInputs = scopedRequiredInputs.filter((expected) =>
       !producedFactTypes.some((produced) => sameFactType(produced, expected)));
+    const relevantInputConcepts = new Set(requiredExternalInputs.map((factType) => [
+      factType.ontologyId,
+      factType.ontologyVersion,
+      factType.conceptId,
+    ].join('/')));
     const producedConcepts = new Set(producedFactTypes.map((factType) => [
       factType.ontologyId,
       factType.ontologyVersion,
@@ -676,6 +708,12 @@ export class ApprovedProjectTaskCreationService {
     ]));
     for (const slot of contract.semanticContext.objectSlots) {
       const ref = bySlot.get(slot.id);
+      const slotConceptKey = [
+        slot.concept.ontologyId,
+        slot.concept.ontologyVersion,
+        slot.concept.conceptId,
+      ].join('/');
+      if (!relevantInputConcepts.has(slotConceptKey) && !ref) continue;
       const producedByTemplate = producedConcepts.has([
         slot.concept.ontologyId,
         slot.concept.ontologyVersion,

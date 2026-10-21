@@ -30,6 +30,11 @@ export interface ContractArtifactEnvelope {
   readonly attemptId: string;
   readonly targetId: string;
   readonly content: string;
+  /** User-facing files produced by this attempt. Paths are relative to the project root. */
+  readonly files?: readonly {
+    readonly path: string;
+    readonly operation: 'created' | 'updated' | 'produced';
+  }[];
   readonly createdAt: string;
 }
 

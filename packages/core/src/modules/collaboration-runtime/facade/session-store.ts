@@ -23,6 +23,7 @@ import { OrphanReconciler } from "../../../modules/collaboration-runtime/session
 import type { CollaborationSession, RuntimeEvent } from "../../../modules/collaboration-runtime/session/types";
 import { normalizeRuntimeLLMConfig, type RuntimeLLMConfig } from "../../../lib/integrations/pi-agent/llm-config";
 import { readUserConfigWithProductDefaults, userLLMConfigToRuntimeLLMConfig } from "../../../lib/features/user-config";
+import type { CollaborationMessageIntent } from "../../../types/collaboration-message";
 
 // ============================================================================
 // Session 管理（内存 + 磁盘持久化，Phase 3 升级数据库前用文件存储）
@@ -68,14 +69,25 @@ export function takeSessionMessages(sessionId: string): string[] {
   return queued;
 }
 
-export function buildContinuationGoal(previousGoal: string | undefined, messages: string[]): string {
+export function buildContinuationGoal(
+  previousGoal: string | undefined,
+  messages: string[],
+  intent: Extract<CollaborationMessageIntent, "new_objective" | "continue_previous"> = "new_objective",
+): string {
   const previous = (previousGoal ?? "").trim().slice(-4_000);
   const updates = messages.map((message) => message.trim()).filter(Boolean).join("\n").slice(-4_000);
+
+  // Message intent is part of the protocol. Never infer it from natural-language
+  // keywords: regular chat input is a new objective, while an explicit product
+  // action may request continuation of the previous objective.
+  if (intent === "new_objective" || !previous) {
+    return updates;
+  }
   return [
-    "继续同一协作会话，请结合上一轮目标与用户最新补充直接推进，不要重新扫描完整事件日志。",
-    previous ? `上一轮目标：\n${previous}` : "",
-    updates ? `用户最新补充：\n${updates}` : "",
-  ].filter(Boolean).join("\n\n");
+    "继续执行上一轮目标，不要重新扫描已经完成的步骤。以下内容是用户本轮补充：",
+    `上一轮目标：\n${previous}`,
+    ...(updates ? [`用户补充：\n${updates}`] : []),
+  ].join("\n\n");
 }
 
 function formalExecutionRequestId(sessionId: string, objective: string): string {

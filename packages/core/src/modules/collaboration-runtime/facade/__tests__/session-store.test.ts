@@ -151,12 +151,21 @@ describe("formal run continuation queue", () => {
     expect(takeSessionMessages("session-queue")).toEqual([]);
   });
 
-  it("builds a bounded continuation objective with prior goal and updates", () => {
-    const goal = buildContinuationGoal("完成供应商准入", ["补充风险分级", "输出 Markdown"]);
+  it("routes an explicit follow-up only by the latest user objective", () => {
+    expect(buildContinuationGoal("浏览 GitHub Trending", ["重新生成一下 wiki"]))
+      .toBe("重新生成一下 wiki");
+  });
+
+  it("inherits the prior objective only for an explicit continuation intent", () => {
+    const goal = buildContinuationGoal("完成供应商准入", ["补充检查异常项"], "continue_previous");
 
     expect(goal).toContain("上一轮目标：\n完成供应商准入");
-    expect(goal).toContain("用户最新补充：\n补充风险分级\n输出 Markdown");
-    expect(goal.length).toBeLessThanOrEqual(8_100);
+    expect(goal).toContain("用户补充：\n补充检查异常项");
+  });
+
+  it("does not infer continuation from natural-language wording", () => {
+    expect(buildContinuationGoal("浏览 GitHub Trending", ["继续生成 wiki"]))
+      .toBe("继续生成 wiki");
   });
 
   it("keeps the binding for the same objective and clears it for a new objective", () => {
