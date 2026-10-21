@@ -24,7 +24,7 @@ export { subscribeToEvents, subscribeToRuntimeEvents, unsubscribeFromEvents, cli
 // ============================================================================
 // Re-export — dag-runner 公共 API
 // ============================================================================
-export { executeSession, abortSession } from "./dag-runner";
+export { executeSession, abortSession, synchronizeFormalRunSnapshot } from "./dag-runner";
 export {
   CollaborationExecutionStore,
   type CollaborationExecutionPort,

@@ -11,7 +11,7 @@ import type {
   WorkItemHitlRequest,
   WorkItemStatus,
 } from "./contract-execution-types";
-import { parseCollaborationArtifactRef } from './artifact-reference';
+import { readContractWorkerOutput } from './contract-worker-output';
 
 export type SupervisorTaskBoardStatus = WorkItemStatus | "planned";
 
@@ -48,6 +48,7 @@ export interface SupervisorTaskFailure {
   stage: "readiness" | "worker" | "verifier" | "outcome" | "evidence" | "unknown";
   code: string;
   reason: string;
+  occurredAt: string;
   recoveryAction: "retry" | "review" | "resolve_hitl" | "fix_input";
 }
 
@@ -118,70 +119,6 @@ interface BlackboardFile {
   data?: {
     artifacts?: Record<string, BlackboardArtifact>;
   };
-}
-
-interface ContractArtifactEnvelopeProjection {
-  schemaVersion?: string;
-  content?: string;
-}
-
-function formatBusinessValue(value: unknown): string {
-  if (value === null || value === undefined) return '';
-  if (typeof value === 'string') return value;
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-  if (Array.isArray(value)) {
-    return value.map((item) => `- ${formatBusinessValue(item)}`).join('\n');
-  }
-  if (typeof value === 'object') {
-    return Object.entries(value as Record<string, unknown>)
-      .map(([key, child]) => `**${key}**：${formatBusinessValue(child)}`)
-      .join('\n\n');
-  }
-  return String(value);
-}
-
-function presentContractWorkerContent(content: unknown): string | undefined {
-  if (!content || typeof content !== 'object' || Array.isArray(content)) return undefined;
-  const record = content as Record<string, unknown>;
-  if (typeof record['summary'] === 'string' && record['summary'].trim()) {
-    return record['summary'].trim();
-  }
-  const outcome = record['outcome'];
-  if (outcome && typeof outcome === 'object' && !Array.isArray(outcome)) {
-    const outputs = (outcome as Record<string, unknown>)['outputs'];
-    if (Array.isArray(outputs)) {
-      const rendered = outputs.flatMap((output) => {
-        if (!output || typeof output !== 'object' || Array.isArray(output)) return [];
-        const value = (output as Record<string, unknown>)['value'];
-        const text = formatBusinessValue(value).trim();
-        return text ? [text] : [];
-      });
-      if (rendered.length) return rendered.join('\n\n---\n\n');
-    }
-  }
-  if (typeof record['result'] === 'string' && record['result'] !== 'success') {
-    return record['result'];
-  }
-  return undefined;
-}
-
-async function readContractWorkerOutput(
-  dataRoot: string,
-  refs: readonly string[],
-): Promise<string | undefined> {
-  for (const ref of refs) {
-    if (!ref.startsWith('artifact://collaboration/')) continue;
-    try {
-      const raw = await fs.readFile(parseCollaborationArtifactRef(dataRoot, ref), 'utf8');
-      const envelope = JSON.parse(raw) as ContractArtifactEnvelopeProjection;
-      if (typeof envelope.content !== 'string') continue;
-      const presented = presentContractWorkerContent(JSON.parse(envelope.content) as unknown);
-      if (presented) return presented;
-    } catch {
-      // A missing/corrupt internal receipt must not break the complete task-board projection.
-    }
-  }
-  return undefined;
 }
 
 interface AgentDisplayEntry {
@@ -288,6 +225,50 @@ function conversationEntries(
     }
   }
   return entries.slice(-120);
+}
+
+function appendHistoricalContractOutputs(
+  sessionId: string,
+  entries: SupervisorTaskBoardConversationEntry[],
+  events: RuntimeEvent[],
+  tasks: SupervisorTaskBoardTask[],
+): SupervisorTaskBoardConversationEntry[] {
+  const sessionRunIds = new Set(events.flatMap((event) =>
+    typeof event.payload['runId'] === 'string' ? [event.payload['runId']] : []));
+  const projectedRunIds = new Set(events.flatMap((event) =>
+    event.type === 'ASSISTANT_MESSAGE'
+      && event.payload['kind'] === 'formal-run-result'
+      && typeof event.payload['runId'] === 'string'
+      ? [event.payload['runId']]
+      : []));
+  const historicalOutputs = tasks.flatMap((task) => {
+    if ((task.sessionId !== sessionId && (!task.runId || !sessionRunIds.has(task.runId)))
+      || task.status !== 'completed'
+      || !task.runId
+      || projectedRunIds.has(task.runId)
+      || typeof task.output !== 'string'
+      || !task.output.trim()) {
+      return [];
+    }
+    const actorName = task.agentName ?? task.assignedTo ?? 'Agent';
+    const completionMessage = events.find((event) =>
+      event.type === 'ASSISTANT_MESSAGE'
+      && typeof event.payload['content'] === 'string'
+      && event.payload['content'].includes(task.runId as string)
+      && event.payload['content'].includes('已完成'));
+    return [{
+      id: `formal-output:${task.runId}:${task.id}`,
+      sessionId,
+      role: 'supervisor' as const,
+      actorId: task.assignedTo ?? 'supervisor',
+      actorName,
+      content: `### ${actorName} 的产出\n\n${task.output.trim()}`,
+      timestamp: completionMessage?.timestamp ?? task.completedAt ?? task.createdAt,
+    }];
+  });
+  return [...entries, ...historicalOutputs]
+    .sort((left, right) => left.timestamp.localeCompare(right.timestamp))
+    .slice(-120);
 }
 
 function extractAssistantText(value: unknown): unknown {
@@ -491,7 +472,7 @@ function workItemFailure(
 ): SupervisorTaskFailure | undefined {
   const attempt = item.attempts.at(-1);
   if (!attempt?.reason) return undefined;
-  const stage = !attempt.readinessReceipt
+  const stage = !attempt.readinessReceipt || attempt.readinessReceipt.status === "blocked"
     ? "readiness"
     : !attempt.workerReceipt
       ? "worker"
@@ -506,6 +487,7 @@ function workItemFailure(
     stage,
     code: attempt.reason.split(":", 1)[0] || "WORKITEM_FAILED",
     reason: attempt.reason,
+    occurredAt: attempt.updatedAt,
     recoveryAction: item.status === "waiting_hitl"
       ? "resolve_hitl"
       : item.status === "needs_review"
@@ -534,6 +516,7 @@ function legacyTaskFailure(
     stage,
     code: failure.code ?? "LEGACY_TASK_FAILED",
     reason: failure.reason,
+    occurredAt: failure.occurredAt,
     recoveryAction: stage === "readiness" ? "fix_input" : "retry",
   };
 }
@@ -690,7 +673,12 @@ async function projectTaskGroup(dataRoot: string, projectId: string): Promise<Su
           : {}),
       };
     });
-    const entries = conversationEntries(sessionId, events, agentNames);
+    const entries = appendHistoricalContractOutputs(
+      sessionId,
+      conversationEntries(sessionId, events, agentNames),
+      events,
+      formalTasks,
+    );
     return {
       tasks,
       conversation: entries.length > 0 ? {

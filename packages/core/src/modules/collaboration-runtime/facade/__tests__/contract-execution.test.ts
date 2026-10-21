@@ -1,4 +1,4 @@
-import { mkdtemp } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
@@ -315,6 +315,63 @@ describe('WorkItem execution ledger', () => {
     expect(publish).toBeUndefined();
     expect(calls).toEqual({ worker: 0, verifier: 0, evidence: 0 });
     expect((await execution.inspect(run.runId)).workItems).toHaveLength(1);
+  });
+
+  it('materializes only the next topology wave after upstream output is accepted', async () => {
+    const { execution, run } = await executableSetup();
+    const prepare = run.workItems[0]!;
+    const completed = await execution.executeWorkItem({
+      runId: run.runId,
+      workItemId: prepare.id,
+      requestId: 'request-materialize-1',
+      payloadHash: 'sha256:materialize-1',
+    });
+
+    expect(completed.terminalStatus).toBe('completed');
+    expect(completed.workItems).toHaveLength(1);
+
+    const expanded = await execution.materializeReadyWorkItems(run.runId);
+    const publish = expanded.workItems.find(
+      (item) => item.designNodeId === 'publish',
+    );
+
+    expect(expanded.terminalStatus).toBeUndefined();
+    expect(expanded.status).toBe('running');
+    expect(expanded.workItems).toHaveLength(2);
+    expect(publish).toMatchObject({
+      status: 'pending',
+      dependsOn: [prepare.id],
+    });
+  });
+
+  it('repairs a stale running projection when every materialized WorkItem completed', async () => {
+    const { contract, dataRoot, execution, run } = await executableSetup();
+    const prepare = run.workItems[0]!;
+    const prepared = await execution.executeWorkItem({
+      runId: run.runId,
+      workItemId: prepare.id,
+      requestId: 'request-terminal-repair-1',
+      payloadHash: 'sha256:terminal-repair-1',
+    });
+    expect(prepared.terminalStatus).toBe('completed');
+    const expanded = await execution.materializeReadyWorkItems(run.runId);
+
+    const runFile = path.join(
+      dataRoot,
+      'projects',
+      contract.projectId,
+      'collaboration-runs',
+      `${run.runId}.json`,
+    );
+    const persisted = JSON.parse(await readFile(runFile, 'utf8')) as Record<string, unknown>;
+    persisted['workItems'] = expanded.workItems.map((item) => ({ ...item, status: 'completed' }));
+    delete persisted['terminalStatus'];
+    persisted['status'] = 'running';
+    await writeFile(runFile, JSON.stringify(persisted));
+
+    const repaired = await execution.materializeReadyWorkItems(run.runId);
+    expect(repaired.terminalStatus).toBe('completed');
+    expect((await execution.inspect(run.runId)).terminalStatus).toBe('completed');
   });
 
   it('records intent, receipt, verification and evidence once for an idempotent request', async () => {

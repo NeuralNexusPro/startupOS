@@ -529,6 +529,17 @@ export const MultiAgentLauncher: React.FC<MultiAgentLauncherProps> = ({
 
   useEffect(() => {
     if (!initialSessionId || sessionId !== initialSessionId) return;
+    const seenEventIds = new Set(events.flatMap((event) => {
+      const canonicalId = event.id.startsWith('restored:') ? event.id.slice('restored:'.length) : event.id;
+      return [event.id, canonicalId];
+    }));
+    for (const event of initialEvents) {
+      const canonicalId = event.id.startsWith('restored:') ? event.id.slice('restored:'.length) : event.id;
+      if (seenEventIds.has(event.id) || seenEventIds.has(canonicalId)) continue;
+      useCollaborationUi.getState().addEvent(event);
+      seenEventIds.add(event.id);
+      seenEventIds.add(canonicalId);
+    }
     const updates = reconcileFormalHitlProjection(events, initialEvents, initialSessionId);
     if (!updates.length) return;
     for (const event of updates) useCollaborationUi.getState().addEvent(event);

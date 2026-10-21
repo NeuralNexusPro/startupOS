@@ -10,6 +10,7 @@ import {
   createSession,
   generateId,
   getProjectStateDir,
+  hydratePersistedSessions,
   queueSessionMessage,
   sessions,
   saveProjectSessions,
@@ -185,4 +186,29 @@ describe("formal run continuation queue", () => {
     expect(session.executionRequestId).not.toBe(requestId);
     expect(session.formalExecution).toBeUndefined();
   });
+});
+
+describe("persisted collaboration history recovery", () => {
+  beforeEach(() => {
+    sessions.clear();
+  });
+
+  it.each(["completed", "aborted", "terminated"] as const)(
+    "hydrates a %s session so a historical conversation can start its next run",
+    (status) => {
+      const historical: CollaborationSession = {
+        id: `historical-${status}`,
+        projectId: "proj-history-recovery",
+        globalGoal: "上一轮目标",
+        status,
+        createdAt: "2026-10-19T00:00:00.000Z",
+        updatedAt: "2026-10-19T00:01:00.000Z",
+        config: {},
+      };
+
+      hydratePersistedSessions([historical]);
+
+      expect(sessions.get(historical.id)).toEqual(historical);
+    },
+  );
 });

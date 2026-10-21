@@ -323,6 +323,23 @@ export const SupervisorTaskBoardWindow = ({ initialProjectId, initialProjectName
     return true;
   }, [initialProjectId, load, restoredConversation.sessionId]);
 
+  const retryFormalRun = useCallback(async (runId: string): Promise<boolean> => {
+    if (!initialProjectId) return false;
+    setError(undefined);
+    const response = await fetch('/api/collaboration/task-board', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'retry-run', projectId: initialProjectId, runId }),
+    });
+    const payload = await response.json() as { error?: string };
+    if (!response.ok) {
+      setError(payload.error ?? '无法重试任务');
+      return false;
+    }
+    await load();
+    return true;
+  }, [initialProjectId, load]);
+
   const visibleProjects = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return (projection?.projects ?? [])
@@ -461,6 +478,12 @@ export const SupervisorTaskBoardWindow = ({ initialProjectId, initialProjectName
             if (accepted) setSelectedTask(undefined);
             return accepted;
           }}
+          onRetry={async () => {
+            if (!selectedTask.runId) return false;
+            const retried = await retryFormalRun(selectedTask.runId);
+            if (retried) setSelectedTask(undefined);
+            return retried;
+          }}
         />
       )}
     </main>
@@ -581,10 +604,11 @@ const TaskCard = ({ task, selected, onClick }: { task: SupervisorTaskBoardTask; 
   );
 }
 
-const TaskDetail = ({ task, onClose, onResolveHitl }: {
+const TaskDetail = ({ task, onClose, onResolveHitl, onRetry }: {
   task: SupervisorTaskBoardTask;
   onClose: () => void;
   onResolveHitl: (answer: string) => Promise<boolean>;
+  onRetry: () => Promise<boolean>;
 }): React.ReactElement => {
   const [reviewText, setReviewText] = useState('');
   const [reviewing, setReviewing] = useState(false);
@@ -645,6 +669,27 @@ const TaskDetail = ({ task, onClose, onResolveHitl }: {
               </button>
               {reviewError && <p role="alert" className="text-xs text-rose-600">{reviewError}</p>}
             </div>
+          </section>
+        )}
+        {task.status === 'needs_review' && task.runId && (
+          <section aria-label="任务重试">
+            <button
+              type="button"
+              disabled={reviewing}
+              onClick={() => {
+                setReviewing(true);
+                setReviewError(undefined);
+                void onRetry().then((accepted) => {
+                  if (!accepted) setReviewError('重试未成功，请检查错误详情。');
+                }).catch((reason: unknown) => {
+                  setReviewError(reason instanceof Error ? reason.message : '无法重试任务');
+                }).finally(() => setReviewing(false));
+              }}
+              className="w-full rounded-lg bg-rose-600 px-3 py-2 text-xs font-medium text-white hover:bg-rose-700 disabled:opacity-50"
+            >
+              {reviewing ? '正在重试…' : '修复后重试并继续协同图'}
+            </button>
+            {reviewError && <p role="alert" className="mt-2 text-xs text-rose-600">{reviewError}</p>}
           </section>
         )}
         <DetailBlock title="任务输入" value={taskValue(task.input, 'Supervisor 未记录结构化输入')} />

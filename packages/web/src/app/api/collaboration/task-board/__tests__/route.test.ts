@@ -2,12 +2,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const inspect = vi.fn();
 const resolveHitl = vi.fn();
+const advanceRun = vi.fn();
+const retryRun = vi.fn();
+const synchronizeFormalRunSnapshot = vi.fn();
 
-vi.mock('@originos/core/modules/collaboration-runtime/facade', () => ({
-  readSupervisorTaskBoard: vi.fn(),
-}));
+vi.mock('@originos/core/modules/collaboration-runtime/facade', async () => {
+  const actual = await vi.importActual<typeof import('@originos/core/modules/collaboration-runtime/facade')>(
+    '@originos/core/modules/collaboration-runtime/facade',
+  );
+  return { ...actual, readSupervisorTaskBoard: vi.fn(), synchronizeFormalRunSnapshot };
+});
 vi.mock('@/services/ontologyCrossPackageService', () => ({
-  getProjectContractRuntimeComposition: () => ({ executionPort: { inspect, resolveHitl } }),
+  getProjectContractRuntimeComposition: () => ({
+    executionPort: { inspect, resolveHitl },
+    supervisorWorkItems: { advanceRun, retryRun },
+  }),
 }));
 
 const { POST } = await import('../route');
@@ -17,6 +26,8 @@ describe('POST /api/collaboration/task-board', () => {
     vi.clearAllMocks();
     inspect.mockResolvedValue({ projectId: 'proj-a' });
     resolveHitl.mockResolvedValue({ runId: 'run-a', projectId: 'proj-a' });
+    advanceRun.mockResolvedValue({ runId: 'run-a', projectId: 'proj-a', terminalStatus: 'completed' });
+    retryRun.mockResolvedValue({ runId: 'run-a', projectId: 'proj-a', terminalStatus: 'completed' });
   });
 
   it('resolves a formal HITL decision through the contract ledger', async () => {
@@ -34,6 +45,10 @@ describe('POST /api/collaboration/task-board', () => {
       runId: 'run-a', requestId: 'hitl-a', attemptId: 'attempt-a', leaseEpoch: 2,
       decision: 'approve', decisionRef: 'task-board:hitl-a:approve',
     });
+    expect(advanceRun).toHaveBeenCalledWith('run-a', 'hitl-hitl-a');
+    expect(synchronizeFormalRunSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: 'run-a', terminalStatus: 'completed' }),
+    );
   });
 
   it('records free-form review content as an edit decision', async () => {
@@ -53,6 +68,26 @@ describe('POST /api/collaboration/task-board', () => {
       editedPayloadHash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
       decisionRef: expect.stringMatching(/^task-board:hitl-a:edit:sha256:[a-f0-9]{64}$/),
     }));
+    expect(advanceRun).not.toHaveBeenCalled();
+    expect(synchronizeFormalRunSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: 'run-a' }),
+    );
+  });
+
+  it('retries a needs-review run through the Supervisor scheduler', async () => {
+    const response = await POST(new Request('http://localhost/api/collaboration/task-board', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'retry-run', projectId: 'proj-a', runId: 'run-a',
+      }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(retryRun).toHaveBeenCalledWith('run-a', expect.stringMatching(/^retry-\d+$/));
+    expect(synchronizeFormalRunSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: 'run-a', terminalStatus: 'completed' }),
+    );
   });
 
   it('resolves an artifact protocol ref to its persisted project file', async () => {

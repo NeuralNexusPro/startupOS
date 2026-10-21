@@ -6,7 +6,6 @@ import type {
   BindSupervisorWorkItemResult,
   CollaborationExecutionPort,
   CollaborationRunSnapshot,
-  SupervisorWorkItemBindingReceipt,
   SupervisorWorkItemDesignGap,
   SupervisorWorkItemRuntimePort,
 } from '../../../modules/collaboration-runtime/facade';
@@ -33,7 +32,7 @@ export interface ProjectSupervisorWorkItemRuntimeDependencies {
   readonly executionPort: Pick<
     CollaborationExecutionPort,
     'executeWorkItem' | 'inspect' | 'recover'
-  >;
+  > & Partial<Pick<CollaborationExecutionPort, 'materializeReadyWorkItems'>>;
 }
 
 function assertIdentifier(value: string, field: string): void {
@@ -121,15 +120,16 @@ function candidateScore(candidate: Candidate, objective: string): number {
 }
 
 function attemptPayloadHash(
-  binding: SupervisorWorkItemBindingReceipt,
+  snapshot: CollaborationRunSnapshot,
+  requestId: string,
   workItemId: string,
 ): string {
   return `sha256:${createHash('sha256').update(JSON.stringify({
-    projectId: binding.projectId,
-    requestId: binding.requestId,
-    runId: binding.runId,
+    projectId: snapshot.projectId,
+    requestId,
+    runId: snapshot.runId,
     workItemId,
-    contractHash: binding.contractHash,
+    contractHash: snapshot.binding.contractHash,
   })).digest('hex')}`;
 }
 
@@ -141,7 +141,10 @@ function attemptRequestId(
   return `${baseRequestId}:work-item:${designNodeId}:attempt:${attemptNumber}`;
 }
 
-function runnableItems(snapshot: CollaborationRunSnapshot) {
+function runnableItems(
+  snapshot: CollaborationRunSnapshot,
+  retryNeedsReview = false,
+) {
   const completed = new Set(snapshot.workItems
     .filter(({ status }) => status === 'completed')
     .map(({ id }) => id));
@@ -149,7 +152,13 @@ function runnableItems(snapshot: CollaborationRunSnapshot) {
     (
       item.status === 'pending'
       || item.status === 'assigned'
-      || (item.status === 'blocked' && item.attempts.length < snapshot.contract.budget.maxAttempts)
+      || (item.status === 'blocked'
+        && item.attempts.filter(({ workerReceipt }) => Boolean(workerReceipt)).length
+          < snapshot.contract.budget.maxAttempts)
+      || (retryNeedsReview
+        && item.status === 'needs_review'
+        && item.attempts.filter(({ workerReceipt }) => Boolean(workerReceipt)).length
+          < snapshot.contract.budget.maxAttempts)
     )
     && item.dependsOn.every((dependency) => completed.has(dependency)));
 }
@@ -225,25 +234,50 @@ export class ProjectSupervisorWorkItemRuntime implements SupervisorWorkItemRunti
 
   async advance(input: AdvanceSupervisorWorkItemsInput): Promise<CollaborationRunSnapshot> {
     assertIdentifier(input.requestId, 'requestId');
-    let snapshot = await this.dependencies.executionPort.recover(input.binding.runId);
+    return this.advanceRun(input.binding.runId, input.requestId);
+  }
+
+  async advanceRun(runId: string, requestId: string): Promise<CollaborationRunSnapshot> {
+    return this.runScheduler(runId, requestId, false);
+  }
+
+  async retryRun(runId: string, requestId: string): Promise<CollaborationRunSnapshot> {
+    return this.runScheduler(runId, requestId, true);
+  }
+
+  private async runScheduler(
+    runId: string,
+    requestId: string,
+    retryNeedsReview: boolean,
+  ): Promise<CollaborationRunSnapshot> {
+    assertIdentifier(runId, 'runId');
+    assertIdentifier(requestId, 'requestId');
+    let snapshot = await this.dependencies.executionPort.recover(runId);
     for (let pass = 0; pass < MAX_SCHEDULER_PASSES; pass += 1) {
+      if (this.dependencies.executionPort.materializeReadyWorkItems
+        && snapshot.status !== 'canceled'
+        && snapshot.status !== 'paused'
+        && snapshot.terminalStatus !== 'failed') {
+        snapshot = await this.dependencies.executionPort.materializeReadyWorkItems(
+          snapshot.runId,
+        );
+      }
       if (snapshot.terminalStatus || snapshot.status !== 'running') return snapshot;
-      const runnable = runnableItems(snapshot);
+      const runnable = runnableItems(snapshot, retryNeedsReview);
       if (runnable.length === 0) return snapshot;
       await Promise.all(runnable.map(async (item) => {
         const attemptNumber = item.attempts.length + 1;
         await this.dependencies.executionPort.executeWorkItem({
           runId: snapshot.runId,
           workItemId: item.id,
-          requestId: attemptRequestId(input.requestId, item.designNodeId, attemptNumber),
-          payloadHash: attemptPayloadHash(input.binding, item.id),
+          requestId: attemptRequestId(requestId, item.designNodeId, attemptNumber),
+          payloadHash: attemptPayloadHash(snapshot, requestId, item.id),
         });
       }));
       // 每个 executeWorkItem 返回的快照只代表该次 mutation 完成时的视图。
       // 一轮并行节点全部 settle 后重新读取权威账本，避免用最后返回者的旧视图
       // 覆盖其他并行 WorkItem 的进展。
       snapshot = await this.dependencies.executionPort.inspect(snapshot.runId);
-      if (snapshot.terminalStatus || snapshot.status !== 'running') return snapshot;
       const settled = runnable.every(({ id }) =>
         snapshot.workItems.find((candidate) => candidate.id === id)?.status === 'completed');
       if (!settled) return snapshot;

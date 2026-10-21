@@ -199,17 +199,37 @@ describe('readSupervisorTaskBoard', () => {
     const project = path.join(root, 'projects', 'proj-a');
     const runs = path.join(project, 'collaboration-runs');
     await mkdir(runs, { recursive: true });
+    const session = path.join(project, 'collaboration-sessions', 'session-contract');
+    await mkdir(session, { recursive: true });
     await writeFile(path.join(project, 'project.json'), JSON.stringify({ id: 'proj-a', name: '趋势项目' }));
+    await writeFile(path.join(project, 'project-collaboration-context.json'), JSON.stringify({
+      agents: [{ id: 'preparer', name: '趋势研究员' }],
+    }));
     const contractBody = body();
     const runId = 'run-1';
     const workItemId = 'run-1:analyze';
     const attemptId = 'run-1:analyze:attempt-1';
     const binding = {
       parentTaskId: 'project-task-1', parentStepId: 'step-1', runId,
+      parentSessionId: 'session-contract',
       solutionId: contractBody.solutionId, solutionVersion: contractBody.solutionVersion,
       executionContractId: contractBody.contractId, contractHash: contractBody.contractHash,
       taskRevision: 1,
     };
+    await writeFile(path.join(project, 'collaboration-sessions', 'collaboration-sessions.state.json'), JSON.stringify({
+      sessions: [{
+        id: 'session-contract', projectId: 'proj-a', status: 'completed',
+        globalGoal: '跟踪技术趋势', createdAt: '2026-10-13T00:00:00.000Z',
+        updatedAt: '2026-10-13T00:01:00.000Z',
+        formalExecution: { requestId: 'request-1', parentTaskId: binding.parentTaskId, parentStepId: binding.parentStepId, runId },
+      }],
+    }));
+    await writeFile(path.join(session, 'events.jsonl'), `${JSON.stringify({
+      id: 'status-message', sessionId: 'session-contract', seq: 1,
+      type: 'ASSISTANT_MESSAGE', source: 'supervisor',
+      payload: { content: '任务已完成，产出已写入任务看板。' },
+      timestamp: '2026-10-13T00:01:00.000Z',
+    })}\n`);
     const ref = createCollaborationArtifactRef('proj-a', runId, workItemId, attemptId);
     const filePath = collaborationArtifactPath(root, 'proj-a', runId, workItemId, attemptId);
     await mkdir(path.dirname(filePath), { recursive: true });
@@ -254,6 +274,11 @@ describe('readSupervisorTaskBoard', () => {
     expect(task?.output).toContain('**一句话定位**：跨平台通用 AI 执行体');
     expect(task?.artifacts).toEqual([]);
     expect(JSON.stringify(task)).not.toContain('artifact://');
+    expect(projection.projects[0]?.conversations[0]?.entries.at(-1)).toMatchObject({
+      role: 'supervisor',
+      actorName: '趋势研究员',
+      content: expect.stringContaining('**项目名**：openclaw'),
+    });
   });
 
   it('projects dependency-blocked WorkItems as planned instead of actionable pending tasks', async () => {
@@ -497,10 +522,24 @@ describe('readSupervisorTaskBoard', () => {
         stage: 'worker',
         code: 'WORKER_TIMEOUT',
         reason: 'WORKER_TIMEOUT:模型调用超时',
+        occurredAt: '2026-10-13T00:01:00.000Z',
         recoveryAction: 'retry',
       },
     });
     expect(projection.projects[0]?.tasks.map((task) => task.id)).not.toContain('legacy-task');
     expect(projection.projects[0]?.conversations[0]?.sessionId).toBe('session-a');
+
+    snapshot.workItems[0]!.status = 'blocked';
+    snapshot.workItems[0]!.attempts[0]!.status = 'blocked';
+    snapshot.workItems[0]!.attempts[0]!.reason = 'INPUT_FACT_NOT_FOUND:fact-type-missing';
+    snapshot.workItems[0]!.attempts[0]!.readinessReceipt!.status = 'blocked';
+    await writeFile(path.join(runs, 'run-a.json'), JSON.stringify(snapshot));
+    const blockedProjection = await readSupervisorTaskBoard(root, 'proj-a');
+    expect(blockedProjection.projects[0]?.tasks[0]?.failure).toMatchObject({
+      stage: 'readiness',
+      code: 'INPUT_FACT_NOT_FOUND',
+      occurredAt: '2026-10-13T00:01:00.000Z',
+      recoveryAction: 'fix_input',
+    });
   });
 });

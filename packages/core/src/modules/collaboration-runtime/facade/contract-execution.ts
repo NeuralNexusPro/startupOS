@@ -36,6 +36,7 @@ import type {
 } from './contract-execution-types';
 import {
   DEFAULT_CLAIM_TTL_MS,
+  aggregateRun,
   assertIntegrity,
   clone,
   createWorkItems,
@@ -441,6 +442,63 @@ export class CollaborationExecutionStore implements CollaborationExecutionPort {
       if (snapshot.status !== 'running') break;
     }
     return snapshot;
+  }
+
+  /** Materialize only the next topology wave after every predecessor completes. */
+  async materializeReadyWorkItems(runId: string): Promise<CollaborationRunSnapshot> {
+    identifier(runId, 'runId');
+    return this.mutate(runId, (current) => {
+      if (current.status === 'canceled' || current.status === 'paused'
+        || current.terminalStatus === 'failed') return current;
+
+      const existingNodeIds = new Set(
+        current.workItems.map(({ designNodeId }) => designNodeId),
+      );
+      const completedNodeIds = new Set(current.workItems
+        .filter(({ status }) => status === 'completed')
+        .map(({ designNodeId }) => designNodeId));
+      const readyNodeIds = current.contract.topology.nodes
+        .filter(({ id }) => !existingNodeIds.has(id))
+        .filter(({ id }) => {
+          const incoming = current.contract.topology.edges.filter(
+            (edge) => edge.toNodeId === id,
+          );
+          return incoming.length > 0
+            && incoming.every((edge) => completedNodeIds.has(edge.fromNodeId));
+        })
+        .map(({ id }) => id);
+      // A previous host may have persisted the last WorkItem completion before
+      // the run-level terminal projection was written. Re-aggregate even when
+      // there is no next wave so recovery deterministically closes such runs.
+      if (readyNodeIds.length === 0) {
+        const aggregated = aggregateRun(current);
+        if (aggregated.terminalStatus === current.terminalStatus
+          && aggregated.status === current.status) return current;
+        return {
+          ...aggregated,
+          revision: current.revision + 1,
+          updatedAt: this.now(),
+        };
+      }
+
+      return aggregateRun({
+        ...current,
+        workItems: [
+          ...current.workItems,
+          ...createWorkItems(
+            current.contract,
+            current.binding,
+            [],
+            readyNodeIds,
+          ),
+        ],
+        status: 'running',
+        terminalStatus: undefined,
+        failureReason: undefined,
+        revision: current.revision + 1,
+        updatedAt: this.now(),
+      });
+    });
   }
 
   async resolveHitl(

@@ -164,6 +164,18 @@ function validateContract(
     }
     validateActionBinding(ontology, indexes, binding, path, `${basePath}permissions`, permissions, issues);
   });
+
+  const actionOutputFactTypeIds = new Set(contract.actions.flatMap(({ actionId }) =>
+    indexes.actions.get(actionId)?.outputFactTypeIds ?? []));
+  contract.outputs.forEach(({ factType }, index) => {
+    if (!actionOutputFactTypeIds.has(factType.factTypeId)) {
+      issues.push(issue(
+        'OUTPUT_FACT_TYPE_NOT_ALLOWED',
+        `${basePath}outputs[${index}].factType.factTypeId`,
+        `Output fact type ${factType.factTypeId} is not produced by any bound action`,
+      ));
+    }
+  });
   return issues;
 }
 

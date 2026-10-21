@@ -35,6 +35,20 @@ describe('formalRunStatusMessage', () => {
     expect(message).toContain('启动新的 Run');
   });
 
+  it('includes completed worker output in the Supervisor conversation message', () => {
+    const message = formalRunStatusMessage('T1', snapshot({
+      terminalStatus: 'completed',
+    }), [{
+      agentId: 'trend-agent',
+      output: '**项目名**：openclaw',
+    }]);
+
+    expect(message).toContain('任务 T1 已完成');
+    expect(message).toContain('### trend-agent 的产出');
+    expect(message).toContain('**项目名**：openclaw');
+    expect(message).not.toContain('已写入任务看板');
+  });
+
   it('reports a review-stalled worker reason instead of a generic running status', () => {
     const message = formalRunStatusMessage('T1', snapshot({
       workItems: [{

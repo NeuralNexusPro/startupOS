@@ -15,6 +15,7 @@ import { FsEventStore } from "../../../modules/collaboration-runtime/session/fs-
 import { getGlobalSpawner } from "../../../modules/collaboration-runtime/sandbox";
 import type { CollaborationSession, RuntimeEvent } from "../../../modules/collaboration-runtime/session/types";
 import type { CollaborationRunSnapshot } from './contract-execution-types';
+import { readContractWorkerOutput } from './contract-worker-output';
 
 import {
   sessions,
@@ -182,67 +183,7 @@ export async function startDag(
 
   // 正式 WorkItem runtime 自带五阶段确定性推进和进程恢复；HTTP 不等待长任务。
   void runtime.advance({ binding: bound.receipt, requestId }).then(async (snapshot) => {
-    const terminal = snapshot.terminalStatus;
-    const stalled = !terminal && snapshot.workItems.some(({ status }) =>
-      status === 'needs_review' || status === 'revision' || status === 'blocked');
-    await appendAndEmit(store, {
-      id: `formal-run-${Date.now()}`,
-      sessionId: id,
-      seq: 0,
-      type: terminal === 'completed' ? 'DAG_COMPLETE' : terminal === 'failed' ? 'DAG_FAIL' : 'CHECKPOINT',
-      payload: {
-        authority: 'collaboration-workitem-ledger',
-        parentTaskId: bound.receipt.parentTaskId,
-        runId: snapshot.runId,
-        runStatus: snapshot.status,
-        terminalStatus: terminal,
-        failureReason: snapshot.failureReason,
-        workItems: snapshot.workItems.map((item) => ({
-          workItemId: item.id,
-          agentId: item.assignedAgentId,
-          status: item.status,
-          failureStage: workItemFailureStage(item),
-          failureReason: item.attempts.at(-1)?.reason,
-          outputRefs: item.attempts.at(-1)?.workerReceipt?.outputRefs ?? item.outputRefs,
-        })),
-      },
-      source: 'supervisor',
-      timestamp: new Date().toISOString(),
-    });
-    await appendAndEmit(store, {
-      id: `formal-run-message-${Date.now()}`,
-      sessionId: id,
-      seq: 0,
-      type: 'ASSISTANT_MESSAGE',
-      payload: {
-        content: formalRunStatusMessage(
-          bound.receipt.parentTaskId,
-          snapshot,
-        ),
-      },
-      source: 'supervisor',
-      timestamp: new Date().toISOString(),
-    });
-    session.status = terminal === 'completed'
-      ? 'completed'
-      : terminal === 'failed' || terminal === 'canceled'
-        ? 'aborted'
-        : stalled
-          ? 'aborted'
-          : 'running';
-    session.updatedAt = new Date().toISOString();
-    await saveProjectSessions(session.projectId);
-
-    if (terminal || stalled) {
-      const pendingMessages = takeSessionMessages(id);
-      if (pendingMessages.length > 0) {
-        updateFormalObjective(
-          session,
-          buildContinuationGoal(session.globalGoal, pendingMessages),
-        );
-        await startDag(session, store, id);
-      }
-    }
+    await synchronizeFormalRunSnapshot(snapshot, id);
   }).catch(async (error: unknown) => {
     const reason = error instanceof Error ? error.message : String(error);
     console.error(`[collaboration] formal execution ${id} failed:`, error);
@@ -290,9 +231,15 @@ export async function startDag(
 export function formalRunStatusMessage(
   parentTaskId: string,
   snapshot: Pick<CollaborationRunSnapshot, 'runId' | 'status' | 'terminalStatus' | 'failureReason' | 'workItems'>,
+  workerOutputs: readonly { agentId: string; output: string }[] = [],
 ): string {
   if (snapshot.terminalStatus === 'completed') {
-    return `任务 ${parentTaskId} 已完成，Run ${snapshot.runId} 的产出与验收结果已写入任务看板。`;
+    const renderedOutputs = workerOutputs
+      .map(({ agentId, output }) => `### ${agentId} 的产出\n\n${output}`)
+      .join('\n\n---\n\n');
+    return renderedOutputs
+      ? `任务 ${parentTaskId} 已完成。\n\n${renderedOutputs}`
+      : `任务 ${parentTaskId} 已完成，Run ${snapshot.runId} 的产出与验收结果已写入任务看板。`;
   }
   if (snapshot.terminalStatus === 'canceled') {
     return `任务 ${parentTaskId} 已取消（Run ${snapshot.runId}）。`;
@@ -317,6 +264,106 @@ export function formalRunStatusMessage(
 async function appendAndEmit(store: FsEventStore, event: RuntimeEvent): Promise<void> {
   await store.append(event);
   eventEmitter.emit(event);
+}
+
+/**
+ * Projects a formal Run ledger snapshot back into its Supervisor conversation.
+ * HITL and manual retry routes use the same boundary as background execution so
+ * the board, conversation and persisted session cannot disagree about terminal state.
+ */
+export async function synchronizeFormalRunSnapshot(
+  snapshot: CollaborationRunSnapshot,
+  preferredSessionId?: string,
+): Promise<void> {
+  await loadPersistedSessions();
+  const sessionId = [preferredSessionId, snapshot.binding.parentSessionId]
+    .find((candidate): candidate is string => Boolean(candidate && sessions.has(candidate)))
+    ?? [...sessions.values()].find(({ formalExecution }) =>
+      formalExecution?.runId === snapshot.runId)?.id;
+  if (!sessionId) return;
+  const session = sessions.get(sessionId);
+  if (!session) return;
+  let store = eventStores.get(sessionId);
+  if (!store) {
+    store = new FsEventStore(path.join(
+      getDataRoot(),
+      'projects',
+      session.projectId,
+      'collaboration-sessions',
+    ));
+    eventStores.set(sessionId, store);
+  }
+
+  const terminal = snapshot.terminalStatus;
+  const stalled = !terminal && snapshot.workItems.some(({ status }) =>
+    status === 'needs_review' || status === 'revision' || status === 'blocked');
+  const timestamp = new Date().toISOString();
+  await appendAndEmit(store, {
+    id: `formal-run-${snapshot.runId}-${snapshot.revision}`,
+    sessionId,
+    seq: 0,
+    type: terminal === 'completed' ? 'DAG_COMPLETE' : terminal === 'failed' ? 'DAG_FAIL' : 'CHECKPOINT',
+    payload: {
+      authority: 'collaboration-workitem-ledger',
+      parentTaskId: snapshot.binding.parentTaskId,
+      runId: snapshot.runId,
+      runStatus: snapshot.status,
+      terminalStatus: terminal,
+      failureReason: snapshot.failureReason,
+      workItems: snapshot.workItems.map((item) => ({
+        workItemId: item.id,
+        agentId: item.assignedAgentId,
+        status: item.status,
+        failureStage: workItemFailureStage(item),
+        failureReason: item.attempts.at(-1)?.reason,
+        outputRefs: item.attempts.at(-1)?.workerReceipt?.outputRefs ?? item.outputRefs,
+      })),
+    },
+    source: 'supervisor',
+    timestamp,
+  });
+  const workerOutputs = (await Promise.all(snapshot.workItems.map(async (item) => {
+    const refs = item.attempts.at(-1)?.workerReceipt?.outputRefs ?? item.outputRefs;
+    const output = await readContractWorkerOutput(getDataRoot(), refs);
+    return output ? { agentId: item.assignedAgentId, output } : undefined;
+  }))).filter((item): item is { agentId: string; output: string } => Boolean(item));
+  await appendAndEmit(store, {
+    id: `formal-run-message-${snapshot.runId}-${snapshot.revision}`,
+    sessionId,
+    seq: 0,
+    type: 'ASSISTANT_MESSAGE',
+    payload: {
+      content: formalRunStatusMessage(
+        snapshot.binding.parentTaskId,
+        snapshot,
+        workerOutputs,
+      ),
+      runId: snapshot.runId,
+      kind: workerOutputs.length > 0 ? 'formal-run-result' : 'formal-run-status',
+    },
+    source: 'supervisor',
+    timestamp,
+  });
+  session.status = terminal === 'completed'
+    ? 'completed'
+    : terminal === 'failed' || terminal === 'canceled'
+      ? 'aborted'
+      : stalled
+        ? 'aborted'
+        : 'running';
+  session.updatedAt = timestamp;
+  await saveProjectSessions(session.projectId);
+
+  if (terminal || stalled) {
+    const pendingMessages = takeSessionMessages(sessionId);
+    if (pendingMessages.length > 0) {
+      updateFormalObjective(
+        session,
+        buildContinuationGoal(session.globalGoal, pendingMessages),
+      );
+      await startDag(session, store, sessionId);
+    }
+  }
 }
 
 async function persistFormalBinding(
@@ -368,7 +415,7 @@ async function reportDesignGaps(
 function workItemFailureStage(item: SupervisorWorkItemBindingReceipt['snapshot']['workItems'][number]): string | undefined {
   const attempt = item.attempts.at(-1);
   if (!attempt?.reason) return undefined;
-  if (!attempt.readinessReceipt) return 'readiness';
+  if (!attempt.readinessReceipt || attempt.readinessReceipt.status === 'blocked') return 'readiness';
   if (!attempt.workerReceipt) return 'worker';
   if (!attempt.verifierResult) return 'verifier';
   if (!attempt.outcomeReceipt) return 'outcome';

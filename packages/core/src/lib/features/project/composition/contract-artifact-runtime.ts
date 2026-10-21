@@ -143,7 +143,33 @@ function latestAssistantContent(messages: readonly { readonly role: string; read
   return messageText([...messages].reverse().find(({ role }) => role === 'assistant'));
 }
 
-function buildWorkerPrompt(request: ContractBoundRuntimeRequest): string {
+interface UpstreamArtifactPromptInput {
+  readonly ref: string;
+  readonly targetId: string;
+  readonly content: Record<string, unknown>;
+}
+
+async function loadUpstreamArtifacts(
+  dataRoot: string,
+  request: ContractBoundRuntimeRequest,
+): Promise<readonly UpstreamArtifactPromptInput[]> {
+  const artifacts: UpstreamArtifactPromptInput[] = [];
+  for (const ref of request.inputRefs.artifactRefs) {
+    const raw = await fs.readFile(parseArtifactRef(dataRoot, ref), 'utf8');
+    const envelope = JSON.parse(raw) as ContractArtifactEnvelope;
+    artifacts.push({
+      ref,
+      targetId: envelope.targetId,
+      content: extractJsonObject(envelope.content),
+    });
+  }
+  return artifacts;
+}
+
+function buildWorkerPrompt(
+  request: ContractBoundRuntimeRequest,
+  upstreamArtifacts: readonly UpstreamArtifactPromptInput[],
+): string {
   const readOnly = request.target.contract.actions.length === 0
     && request.expectedOutputRefs.length === 0;
   const resultContract = readOnly
@@ -154,6 +180,7 @@ function buildWorkerPrompt(request: ContractBoundRuntimeRequest): string {
       ]
     : [
         'The final object MUST match: {"outcome":{"actionId":"<one bound action id>","inputFactRefs":[],"outputs":[{"factId":"<stable business fact id>","factTypeId":"<one expected output fact type id>","value":{"<business field>":"<actual value>"},"source":{"sourceType":"runtime","sourceId":"<work item id>"}}],"expectedRevision":0},"result":"success"}.',
+        'For a batch or list objective, return one outputs entry for every selected business record. Entries may share the same factTypeId, but each must have a distinct stable factId. Never collapse a requested batch into one sample record.',
         'Omit currentStateId when there is no state. Never return currentStateId:null.',
         'Each outputs entry is a canonical fact draft. Do not return factType wrappers, instanceIds, operation summaries, or placeholder values.',
         'Do not mutate ontology instances or facts with tools. The runtime commits the returned outcome through the Action Gate after verification.',
@@ -179,10 +206,32 @@ function buildWorkerPrompt(request: ContractBoundRuntimeRequest): string {
       semanticContext: request.semanticContext,
       requiredPermissions: request.requiredPermissions,
       inputRefs: request.inputRefs,
+      upstreamArtifacts,
       expectedOutputRefs: request.expectedOutputRefs,
       checkpointRef: request.checkpointRef,
     },
   });
+}
+
+function missingRequiredOutputRefs(
+  value: Record<string, unknown>,
+  request: ContractBoundRuntimeRequest,
+): readonly string[] {
+  const required = request.target.contract.outputs
+    .filter(({ required: isRequired }) => isRequired)
+    .map(({ factType }) => factType.factTypeId);
+  if (required.length === 0) return [];
+  const outcome = value['outcome'];
+  const outputs = outcome && typeof outcome === 'object' && !Array.isArray(outcome)
+    ? (outcome as Record<string, unknown>)['outputs']
+    : undefined;
+  const produced = new Set(Array.isArray(outputs)
+    ? outputs.flatMap((item) => item && typeof item === 'object' && !Array.isArray(item)
+      && typeof (item as Record<string, unknown>)['factTypeId'] === 'string'
+      ? [(item as Record<string, unknown>)['factTypeId'] as string]
+      : [])
+    : []);
+  return required.filter((factTypeId) => !produced.has(factTypeId));
 }
 
 async function firstExisting(candidates: readonly string[]): Promise<string | null> {
@@ -283,7 +332,8 @@ export class AgentManagerContractRuntime implements ContractBoundAgentSkillRunti
     signal.addEventListener('abort', abort, { once: true });
     try {
       if (signal.aborted) {throw new Error('WORKER_ABORTED');}
-      await agent.prompt(buildWorkerPrompt(request), undefined, {
+      const upstreamArtifacts = await loadUpstreamArtifacts(this.dataRoot, request);
+      await agent.prompt(buildWorkerPrompt(request, upstreamArtifacts), undefined, {
         completionPolicy: 'task_runtime',
       });
       if (signal.aborted) {throw new Error('WORKER_ABORTED');}
@@ -293,19 +343,29 @@ export class AgentManagerContractRuntime implements ContractBoundAgentSkillRunti
         .find((message) => message.role === 'assistant');
       let content = messageText(assistant);
       if (!content) {throw new Error('WORKER_RESULT_EMPTY');}
+      let parsed: Record<string, unknown>;
       try {
-        extractJsonObject(content);
+        parsed = extractJsonObject(content);
+        const missing = missingRequiredOutputRefs(parsed, request);
+        if (missing.length > 0) throw new Error(`WORKER_REQUIRED_OUTPUT_MISSING:${missing.join(',')}`);
       } catch {
         await agent.prompt(JSON.stringify({
-          instruction: 'Your previous response did not contain the required final JSON object. Do not call tools or repeat the work. Using the result already present in this conversation, return only the corrected JSON object required by the frozen WorkItem contract.',
+          instruction: 'Your previous response did not contain a valid final JSON object with every required output FactType. Do not call tools or repeat the work. Use the frozen upstreamArtifacts already present in this conversation and return only the corrected JSON object required by the WorkItem contract.',
           expectedOutputRefs: request.expectedOutputRefs,
+          requiredOutputRefs: request.target.contract.outputs
+            .filter(({ required: isRequired }) => isRequired)
+            .map(({ factType }) => factType.factTypeId),
           boundActionIds: request.target.contract.actions.map(({ actionId }) => actionId),
           workItemId: request.workItemId,
         }), undefined, { completionPolicy: 'task_runtime' });
         const repaired = await agent.getSessionState();
         content = latestAssistantContent(repaired.messages);
         if (!content) {throw new Error('WORKER_RESULT_EMPTY');}
-        extractJsonObject(content);
+        parsed = extractJsonObject(content);
+        const missing = missingRequiredOutputRefs(parsed, request);
+        if (missing.length > 0) {
+          throw new Error(`WORKER_REQUIRED_OUTPUT_MISSING:${missing.join(',')}`);
+        }
         assistant = [...repaired.messages]
           .reverse()
           .find((message) => message.role === 'assistant');
