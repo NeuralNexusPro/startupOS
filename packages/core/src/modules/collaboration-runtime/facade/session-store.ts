@@ -35,6 +35,7 @@ declare global {
   var __collaborationEventStores: Map<string, FsEventStore> | undefined;
   // eslint-disable-next-line no-var
   var __collaborationBlackboards: Map<string, Blackboard> | undefined;
+  // eslint-disable-next-line no-var
   var __collaborationPendingMessages: Map<string, string[]> | undefined;
 }
 
@@ -191,6 +192,23 @@ export function getRuntime(emitter: EventEmitter, agentDefinitionParser?: import
 
 let persistenceInitialized = false;
 
+/**
+ * Hydrate every persisted conversation, including terminal runs.
+ *
+ * A completed/aborted/terminated Run has no live worker, but its conversation
+ * remains resumable: the next user message creates a fresh formal Run in the
+ * same board conversation. Dropping terminal sessions here makes the UI able
+ * to render the persisted event log while the message route reports
+ * `Session ... not found` after an application restart.
+ */
+export function hydratePersistedSessions(
+  persisted: readonly CollaborationSession[],
+): void {
+  for (const session of persisted) {
+    sessions.set(session.id, session);
+  }
+}
+
 /** 从磁盘加载已保存的会话，并运行孤儿回收 */
 export async function loadPersistedSessions(): Promise<void> {
   if (persistenceInitialized) {return;}
@@ -201,12 +219,7 @@ export async function loadPersistedSessions(): Promise<void> {
     const projectIds = await readdir(STATE_ROOT_DIR);
     for (const projectId of projectIds) {
       const persisted = await new OrphanReconciler(getProjectStateDir(projectId)).loadSessions();
-      for (const session of persisted) {
-        if (session.status === "terminated" || session.status === "completed" || session.status === "aborted") {
-          continue;
-        }
-        sessions.set(session.id, session);
-      }
+      hydratePersistedSessions(persisted);
     }
   } catch {
     // ignore empty state root

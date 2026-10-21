@@ -314,6 +314,68 @@ describe('ProjectSupervisorWorkItemRuntime', () => {
     expect(executeWorkItem.mock.calls.map(([call]) => call.workItemId)).toEqual(['wi-1', 'wi-2']);
   });
 
+  it('materializes and executes downstream topology waves after the entry completes', async () => {
+    const frozen = contract(['template-1', 'template-2']);
+    frozen.topology.edges = [{
+      fromNodeId: 'node-1',
+      toNodeId: 'node-2',
+      factType: {
+        ontologyId: 'ontology-1', ontologyVersion: '1',
+        conceptId: 'concept-1', factTypeId: 'fact-1',
+      },
+    }];
+    const initial = run(frozen);
+    const first = initial.workItems[0]!;
+    const entryCompleted = {
+      ...initial,
+      revision: 2,
+      terminalStatus: 'completed' as const,
+      workItems: [{ ...first, status: 'completed' as const }],
+    };
+    const second = workItem(initial.binding, 'wi-2', 'node-2', [first.id]);
+    const expanded = {
+      ...entryCompleted,
+      revision: 3,
+      terminalStatus: undefined,
+      workItems: [...entryCompleted.workItems, second],
+    };
+    const allCompleted = {
+      ...expanded,
+      revision: 4,
+      terminalStatus: 'completed' as const,
+      workItems: [expanded.workItems[0]!, { ...second, status: 'completed' as const }],
+    };
+    const materializeReadyWorkItems = vi.fn()
+      .mockResolvedValueOnce(initial)
+      .mockResolvedValueOnce(expanded)
+      .mockResolvedValueOnce(allCompleted);
+    const executeWorkItem = vi.fn()
+      .mockResolvedValueOnce(entryCompleted)
+      .mockResolvedValueOnce(allCompleted);
+    const runtime = new ProjectSupervisorWorkItemRuntime({
+      contractCatalog: { listProject: async () => [] },
+      contractPort: { verifyIntegrity: async () => ({ valid: true }) },
+      taskCreation: { create: vi.fn() },
+      executionPort: {
+        recover: vi.fn(async () => initial),
+        inspect: vi.fn()
+          .mockResolvedValueOnce(entryCompleted)
+          .mockResolvedValueOnce(allCompleted),
+        executeWorkItem,
+        materializeReadyWorkItems,
+      },
+    });
+
+    const result = await runtime.advanceRun('run-1', 'request-1');
+
+    expect(result.terminalStatus).toBe('completed');
+    expect(executeWorkItem.mock.calls.map(([call]) => call.workItemId)).toEqual([
+      first.id,
+      second.id,
+    ]);
+    expect(materializeReadyWorkItems).toHaveBeenCalledTimes(3);
+  });
+
   it('executes independent WorkItems in the same topology wave concurrently', async () => {
     const frozen = contract(['template-1', 'template-2']);
     const initial = run(frozen);
@@ -414,6 +476,51 @@ describe('ProjectSupervisorWorkItemRuntime', () => {
     expect(executeWorkItem).toHaveBeenCalledWith(expect.objectContaining({
       workItemId: 'wi-1',
       requestId: 'request-1:work-item:node-1:attempt:2',
+    }));
+  });
+
+  it('retries a needs-review WorkItem only through the explicit retry path', async () => {
+    const frozen = contract();
+    const initial = run(frozen);
+    const reviewItem: CollaborationWorkItem = {
+      ...initial.workItems[0]!,
+      status: 'needs_review',
+      revision: 1,
+      leaseEpoch: 1,
+      attempts: [{
+        attemptId: 'attempt-1', leaseEpoch: 1,
+        requestId: 'request-1:work-item:node-1:attempt:1', payloadHash: HASH,
+        status: 'needs_review', createdAt: '2026-10-16T00:00:00.000Z',
+        updatedAt: '2026-10-16T00:00:01.000Z', reason: 'OUTPUT_FACT_TYPE_NOT_ALLOWED',
+      }],
+    };
+    const needsReview = { ...initial, workItems: [reviewItem] };
+    const completed = {
+      ...needsReview,
+      terminalStatus: 'completed' as const,
+      workItems: [{ ...reviewItem, status: 'completed' as const }],
+    };
+    const executeWorkItem = vi.fn(async () => completed);
+    const runtime = new ProjectSupervisorWorkItemRuntime({
+      contractCatalog: { listProject: async () => [] },
+      contractPort: { verifyIntegrity: async () => ({ valid: true }) },
+      taskCreation: { create: vi.fn() },
+      executionPort: {
+        recover: vi.fn(async () => needsReview),
+        inspect: vi.fn(async () => completed),
+        executeWorkItem,
+      },
+    });
+
+    expect((await runtime.advanceRun('run-1', 'request-normal')).workItems[0]?.status)
+      .toBe('needs_review');
+    expect(executeWorkItem).not.toHaveBeenCalled();
+
+    expect((await runtime.retryRun('run-1', 'request-retry')).terminalStatus)
+      .toBe('completed');
+    expect(executeWorkItem).toHaveBeenCalledWith(expect.objectContaining({
+      workItemId: 'wi-1',
+      requestId: 'request-retry:work-item:node-1:attempt:2',
     }));
   });
 });

@@ -404,6 +404,7 @@ export interface CollaborationExecutionPort {
     input: WorkItemExecutionRequest,
   ): Promise<CollaborationRunSnapshot>;
   recover(runId: string): Promise<CollaborationRunSnapshot>;
+  materializeReadyWorkItems(runId: string): Promise<CollaborationRunSnapshot>;
   resolveHitl(
     input: ResolveWorkItemHitlInput,
   ): Promise<CollaborationRunSnapshot>;

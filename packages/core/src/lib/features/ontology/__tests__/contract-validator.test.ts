@@ -134,6 +134,24 @@ describe('canonical contract validator', () => {
     ]));
   });
 
+  it('rejects contract outputs that no bound Action is allowed to produce', () => {
+    const contract = agent();
+    contract.outputs.push({
+      factType: {
+        ontologyId: 'orders', ontologyVersion: '3',
+        conceptId: 'customer', factTypeId: 'customer-profile',
+      },
+      required: false,
+    });
+
+    expect(validateCanonicalContract(ontology(), contract).issues).toEqual(
+      expect.arrayContaining([expect.objectContaining({
+        code: 'OUTPUT_FACT_TYPE_NOT_ALLOWED',
+        path: 'outputs[1].factType.factTypeId',
+      })]),
+    );
+  });
+
   it('accepts a connected flow and does not modify its inputs', () => {
     const model = ontology();
     const value = flow();

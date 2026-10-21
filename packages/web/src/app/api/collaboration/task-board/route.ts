@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import { createHash } from 'node:crypto';
 
-import { readSupervisorTaskBoard } from '@originos/core/modules/collaboration-runtime/facade';
+import {
+  readSupervisorTaskBoard,
+  synchronizeFormalRunSnapshot,
+} from '@originos/core/modules/collaboration-runtime/facade';
 import { resolveContractArtifactProjectPath } from '@originos/core/lib/features/project';
 import { getDataRoot } from '@originos/core/lib/paths';
 import { getProjectContractRuntimeComposition } from '@/services/ontologyCrossPackageService';
@@ -21,7 +24,7 @@ export async function GET(request: Request): Promise<NextResponse> {
 }
 
 interface ResolveHitlBody {
-  action?: 'resolve-hitl' | 'resolve-artifact';
+  action?: 'resolve-hitl' | 'resolve-artifact' | 'retry-run';
   projectId?: string;
   artifactRef?: string;
   runId?: string;
@@ -53,6 +56,23 @@ export async function POST(request: Request): Promise<NextResponse> {
         path: resolveContractArtifactProjectPath(getDataRoot(), projectId, artifactRef),
       });
     }
+    if (body.action === 'retry-run') {
+      const runId = body.runId?.trim();
+      if (!projectId || !runId) {
+        return NextResponse.json({ error: '缺少项目或 Run。' }, { status: 400 });
+      }
+      const { executionPort, supervisorWorkItems } = getProjectContractRuntimeComposition();
+      const current = await executionPort.inspect(runId);
+      if (current.projectId !== projectId) {
+        return NextResponse.json({ error: 'Run 不属于当前项目。' }, { status: 409 });
+      }
+      const snapshot = await supervisorWorkItems.retryRun(
+        runId,
+        `retry-${Date.now()}`,
+      );
+      await synchronizeFormalRunSnapshot(snapshot);
+      return NextResponse.json({ success: true, data: snapshot });
+    }
     const runId = body.runId?.trim();
     const requestId = body.requestId?.trim();
     const attemptId = body.attemptId?.trim();
@@ -61,7 +81,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     if (!projectId || !runId || !requestId || !attemptId || !Number.isInteger(body.leaseEpoch) || !decision) {
       return NextResponse.json({ error: '请选择“同意”“拒绝”，或填写具体修改意见。' }, { status: 400 });
     }
-    const { executionPort } = getProjectContractRuntimeComposition();
+    const { executionPort, supervisorWorkItems } = getProjectContractRuntimeComposition();
     const current = await executionPort.inspect(runId);
     if (current.projectId !== projectId) {
       return NextResponse.json({ error: 'HITL 请求不属于当前项目。' }, { status: 409 });
@@ -69,7 +89,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     const editedPayloadHash = decision === 'edit'
       ? `sha256:${createHash('sha256').update(answer).digest('hex')}`
       : undefined;
-    const snapshot = await executionPort.resolveHitl({
+    let snapshot = await executionPort.resolveHitl({
       runId,
       requestId,
       attemptId,
@@ -78,6 +98,13 @@ export async function POST(request: Request): Promise<NextResponse> {
       decisionRef: `task-board:${requestId}:${decision}${editedPayloadHash ? `:${editedPayloadHash}` : ''}`,
       ...(editedPayloadHash ? { editedPayloadHash } : {}),
     });
+    if (decision === 'approve') {
+      snapshot = await supervisorWorkItems.advanceRun(
+        runId,
+        `hitl-${requestId}`,
+      );
+    }
+    await synchronizeFormalRunSnapshot(snapshot);
     return NextResponse.json({ success: true, data: snapshot });
   } catch (error) {
     return NextResponse.json(

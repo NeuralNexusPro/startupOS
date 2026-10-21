@@ -296,7 +296,13 @@ export function newAttemptBudgetFailure(
   snapshot: CollaborationRunSnapshot,
   item: CollaborationWorkItem,
 ): string | undefined {
-  if (item.attempts.length >= snapshot.contract.budget.maxAttempts) {
+  // Readiness-only blocks did not invoke a Worker and therefore must not burn
+  // the execution retry budget. Otherwise a temporarily missing upstream fact
+  // can consume the last attempt before the dependency becomes available.
+  const executionAttempts = item.attempts.filter(
+    ({ readinessReceipt }) => readinessReceipt?.status !== 'blocked',
+  ).length;
+  if (executionAttempts >= snapshot.contract.budget.maxAttempts) {
     return 'MAX_ATTEMPTS_EXCEEDED';
   }
   return runtimeBudgetFailure(clock, snapshot);
@@ -352,7 +358,10 @@ export function receiptBudgetFailure(
   ) {
     return 'MAX_DURATION_EXCEEDED';
   }
-  if (item.attempts.length > snapshot.contract.budget.maxAttempts) {
+  const executionAttempts = item.attempts.filter(
+    ({ readinessReceipt }) => readinessReceipt?.status !== 'blocked',
+  ).length;
+  if (executionAttempts > snapshot.contract.budget.maxAttempts) {
     return 'MAX_ATTEMPTS_EXCEEDED';
   }
   return undefined;

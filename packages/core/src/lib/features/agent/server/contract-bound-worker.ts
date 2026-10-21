@@ -116,6 +116,16 @@ function classifyInputRefs(refs: readonly string[]): ContractBoundWorkerInputRef
   };
 }
 
+function workerInputRefs(input: WorkerExecutionInput): ContractBoundWorkerInputRefs {
+  const upstreamArtifactRefs = input.workItem.dependsOn.flatMap((dependencyId) => {
+    const dependency = input.run.workItems.find(({ id }) => id === dependencyId);
+    return dependency?.attempts.at(-1)?.workerReceipt?.outputRefs ?? [];
+  });
+  return classifyInputRefs([
+    ...new Set([...input.workItem.inputRefs, ...upstreamArtifactRefs]),
+  ]);
+}
+
 function previousCheckpoint(
   workItem: CollaborationWorkItem,
   attempt: WorkItemAttempt,
@@ -349,7 +359,11 @@ export class ContractBoundAgentSkillWorker implements WorkItemWorkerPort {
         : {}),
       semanticContext: structuredClone(input.run.contract.semanticContext),
       requiredPermissions: [...resolved.target.contract.permissions],
-      inputRefs: classifyInputRefs(input.workItem.inputRefs),
+      // FactType IDs are sufficient for readiness, but a Worker needs the
+      // verified upstream business output as evidence. Pass the immutable
+      // upstream artifacts as well so a downstream Skill never has to guess
+      // or query a legacy instance projection for its inputs.
+      inputRefs: workerInputRefs(input),
       expectedOutputRefs: [...input.workItem.outputRefs],
       ...(checkpointRef ? { checkpointRef } : {}),
     };
