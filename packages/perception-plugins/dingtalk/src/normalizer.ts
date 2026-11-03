@@ -18,9 +18,11 @@ export class DingTalkStreamNormalizer {
     const isMention =
       isChatbot &&
       (data['isInAtList'] === true || readArray(data, 'atUsers').length > 0);
+    const staffId = readString(data, 'senderStaffId');
+    const senderId = readString(data, 'senderId');
     const actorId =
-      readString(data, 'senderId') ??
-      readString(data, 'senderStaffId') ??
+      (staffId?.trim() ? staffId : undefined) ??
+      (senderId?.trim() ? senderId : undefined) ??
       'unknown';
     const content = readObject(data, 'text');
     const resource = readObject(data, 'content');

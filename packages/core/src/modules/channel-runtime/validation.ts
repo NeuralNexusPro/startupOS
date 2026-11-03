@@ -6,6 +6,7 @@ import {
 } from './types';
 
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,255}$/;
+const EXTERNAL_ID = /^[A-Za-z0-9$][A-Za-z0-9._:@/+$=-]{0,255}$/;
 const MAX_TEXT_LENGTH = 1_000_000;
 const MAX_ATTACHMENTS = 100;
 const ORIGINS = new Set(['originos-ui', 'email', 'wecom', 'feishu', 'dingtalk']);
@@ -15,8 +16,8 @@ export function validateChannelInboundMessage(message: ChannelInboundMessage): C
   if (!ORIGINS.has(message.origin)) throw new Error('CHANNEL_ORIGIN_UNSUPPORTED');
   assertId(message.id, 'CHANNEL_MESSAGE_ID_INVALID');
   assertId(message.connectorId, 'CHANNEL_CONNECTOR_ID_INVALID');
-  assertId(message.conversationId, 'CHANNEL_CONVERSATION_ID_INVALID');
-  assertId(message.actorId, 'CHANNEL_ACTOR_ID_INVALID');
+  assertExternalId(message.conversationId, 'CHANNEL_CONVERSATION_ID_INVALID');
+  assertExternalId(message.actorId, 'CHANNEL_ACTOR_ID_INVALID');
   if (message.actorDisplayName !== undefined && (typeof message.actorDisplayName !== 'string' || message.actorDisplayName.length > 1024)) {
     throw new Error('CHANNEL_ACTOR_NAME_INVALID');
   }
@@ -64,6 +65,10 @@ export function isExternallyVisibleOutput(event: AgentOutputEvent): boolean {
 
 function assertId(value: string, code: string): void {
   if (!SAFE_ID.test(value)) throw new Error(code);
+}
+
+function assertExternalId(value: string, code: string): void {
+  if (!EXTERNAL_ID.test(value)) throw new Error(code);
 }
 
 // Skill and agent IDs are directory names, not ASCII transport identifiers.

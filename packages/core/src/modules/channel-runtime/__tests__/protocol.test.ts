@@ -28,6 +28,15 @@ describe('channel protocol', () => {
     ] as const) expect(validateChannelRuntimeTarget(target)).toEqual(target);
   });
 
+  it('accepts opaque DingTalk actor and conversation identifiers without loosening internal IDs', () => {
+    expect(validateChannelInboundMessage(message({
+      origin: 'dingtalk',
+      actorId: '$:LWCP_v1:$encodedSender',
+      conversationId: 'cid+opaque==',
+    }))).toMatchObject({ actorId: '$:LWCP_v1:$encodedSender', conversationId: 'cid+opaque==' });
+    expect(() => validateChannelInboundMessage(message({ connectorId: 'connector+unsafe' }))).toThrow('CHANNEL_CONNECTOR_ID_INVALID');
+  });
+
   it('rejects empty content, unsupported origins, unsafe reply handles and invalid targets', () => {
     expect(() => validateChannelInboundMessage(message({ content: {} }))).toThrow('CHANNEL_CONTENT_EMPTY');
     expect(() => validateChannelInboundMessage(message({ origin: 'unknown' as 'wecom' }))).toThrow('CHANNEL_ORIGIN_UNSUPPORTED');
