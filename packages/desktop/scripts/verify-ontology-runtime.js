@@ -345,13 +345,17 @@ async function verifyFrozenWorkItem() {
   };
   let promptCalls = 0;
   let content = '';
+  const taskProjection = {
+    taskId: 'smoke-task',
+    steps: [{ id: 'smoke-step' }],
+  };
   const host = {
     sessions: {
       listTaskRuntimeSessions: async () => [{
         sessionId: 'smoke-session',
         projectId,
         updatedAt: Date.now(),
-        taskRuntime: { execution: { projection: { taskId: 'smoke-task' } } },
+        taskRuntime: { execution: { projection: taskProjection } },
       }],
       getSession: async () => ({
         sessionId: 'smoke-session', projectId, messages: [], createdAt: Date.now(), updatedAt: Date.now(),
@@ -396,6 +400,7 @@ async function verifyFrozenWorkItem() {
         }),
       }),
       getOrCreateTaskRuntime: async () => ({
+        getSnapshot: () => ({ projection: taskProjection }),
         recordVerifiedEvidence: async ({ requestId }) => ({
           eventId: `smoke-${requestId}`,
           revisionAfter: 1,
