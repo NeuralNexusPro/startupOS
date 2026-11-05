@@ -178,6 +178,6 @@ linux:
 
 publish:
   provider: generic
-  url: https://cdn.artseeu.cn/originos-ce/updates/stable/
+  url: https://cdn.wolfgaze.cn/originos-ce/updates/stable/
   channel: stable
   updaterCacheDirName: originos-ce-updater

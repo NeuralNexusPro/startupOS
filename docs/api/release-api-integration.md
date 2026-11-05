@@ -36,9 +36,9 @@ ORIGINOS_RELEASE_API_KEY=your_api_key_here
 ```json
 {
   "version": "0.1.12",
-  "win_x64_url": "https://cdn.artseeu.cn/originos-ce/updates/stable/OriginOS%20CE-0.1.12-x64.exe",
-  "mac_arm64_url": "https://cdn.artseeu.cn/originos-ce/updates/stable/OriginOS%20CE-0.1.12-arm64.dmg",
-  "mac_x64_url": "https://cdn.artseeu.cn/originos-ce/updates/stable/OriginOS%20CE-0.1.12-x64.dmg"
+  "win_x64_url": "https://cdn.wolfgaze.cn/originos-ce/updates/stable/OriginOS%20CE-0.1.12-x64.exe",
+  "mac_arm64_url": "https://cdn.wolfgaze.cn/originos-ce/updates/stable/OriginOS%20CE-0.1.12-arm64.dmg",
+  "mac_x64_url": "https://cdn.wolfgaze.cn/originos-ce/updates/stable/OriginOS%20CE-0.1.12-x64.dmg"
 }
 ```
 
@@ -86,9 +86,9 @@ curl -X POST https://wolfgaze.cn/api/originos-release \
   -H "x-api-key: YOUR_API_KEY" \
   -d '{
     "version": "0.1.11",
-    "win_x64_url": "https://cdn.artseeu.cn/originos-ce/updates/stable/OriginOS%20CE-0.1.11-x64.exe",
-    "mac_arm64_url": "https://cdn.artseeu.cn/originos-ce/updates/stable/OriginOS%20CE-0.1.11-arm64.dmg",
-    "mac_x64_url": "https://cdn.artseeu.cn/originos-ce/updates/stable/OriginOS%20CE-0.1.11-x64.dmg"
+    "win_x64_url": "https://cdn.wolfgaze.cn/originos-ce/updates/stable/OriginOS%20CE-0.1.11-x64.exe",
+    "mac_arm64_url": "https://cdn.wolfgaze.cn/originos-ce/updates/stable/OriginOS%20CE-0.1.11-arm64.dmg",
+    "mac_x64_url": "https://cdn.wolfgaze.cn/originos-ce/updates/stable/OriginOS%20CE-0.1.11-x64.dmg"
   }'
 ```
 
@@ -113,9 +113,9 @@ curl -X POST https://wolfgaze.cn/api/originos-release \
 
 脚本会自动生成以下格式的下载地址：
 
-- **Windows**: `https://cdn.artseeu.cn/originos-ce/updates/stable/OriginOS%20CE-{version}-x64.exe`
-- **macOS ARM64**: `https://cdn.artseeu.cn/originos-ce/updates/stable/OriginOS%20CE-{version}-arm64.dmg`
-- **macOS x64**: `https://cdn.artseeu.cn/originos-ce/updates/stable/OriginOS%20CE-{version}-x64.dmg`
+- **Windows**: `https://cdn.wolfgaze.cn/originos-ce/updates/stable/OriginOS%20CE-{version}-x64.exe`
+- **macOS ARM64**: `https://cdn.wolfgaze.cn/originos-ce/updates/stable/OriginOS%20CE-{version}-arm64.dmg`
+- **macOS x64**: `https://cdn.wolfgaze.cn/originos-ce/updates/stable/OriginOS%20CE-{version}-x64.dmg`
 
 其中 `{version}` 会被替换为 `package.json` 中的版本号。
 

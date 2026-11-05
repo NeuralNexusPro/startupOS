@@ -624,7 +624,7 @@ async function notifyReleaseService(version, baseUrl, prefix, options = {}) {
   }
 
   // Build download URLs
-  const cdnBase = ensureTrailingSlash(baseUrl || 'https://cdn.artseeu.cn/originos-ce/updates/stable/');
+  const cdnBase = ensureTrailingSlash(baseUrl || 'https://cdn.wolfgaze.cn/originos-ce/updates/stable/');
   const releaseNotes = buildReleaseNotes(version);
 
   const releaseData = {

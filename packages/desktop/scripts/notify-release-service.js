@@ -33,7 +33,7 @@ function loadEnvFiles() {
 
 loadEnvFiles();
 
-const baseUrl = process.env.ORIGINOS_UPDATE_BASE_URL || 'https://cdn.artseeu.cn/originos-ce/updates/stable/';
+const baseUrl = process.env.ORIGINOS_UPDATE_BASE_URL || 'https://cdn.wolfgaze.cn/originos-ce/updates/stable/';
 const cdnBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
 const releaseNotes = buildReleaseNotes(version);
 

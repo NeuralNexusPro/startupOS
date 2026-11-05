@@ -38,6 +38,7 @@ permissions:
 env:
   NODE_VERSION: "24"
   PNPM_VERSION: "9.15.9"
+  ORIGINOS_UPDATE_BASE_URL: "https://cdn.wolfgaze.cn/originos-ce/updates/stable/"
 
 jobs:
   windows:
@@ -327,14 +328,12 @@ jobs:
           QINIU_AK: ${{ secrets.QINIU_AK }}
           QINIU_AS: ${{ secrets.QINIU_AS }}
           QINIU_BUCKET: ${{ secrets.QINIU_BUCKET }}
-          ORIGINOS_UPDATE_BASE_URL: ${{ secrets.ORIGINOS_UPDATE_BASE_URL }}
           ORIGINOS_RELEASE_API_URL: ${{ secrets.ORIGINOS_RELEASE_API_URL }}
           ORIGINOS_RELEASE_API_KEY: ${{ secrets.ORIGINOS_RELEASE_API_KEY }}
         run: |
           test -n "$QINIU_AK"
           test -n "$QINIU_AS"
           test -n "$QINIU_BUCKET"
-          test -n "$ORIGINOS_UPDATE_BASE_URL"
           test -n "$ORIGINOS_RELEASE_API_URL"
           test -n "$ORIGINOS_RELEASE_API_KEY"
 
@@ -349,7 +348,6 @@ jobs:
           QINIU_FORCE: ${{ inputs.resume_existing == 'true' && '0' || '1' }}
           QINIU_RESUME_EXISTING: ${{ inputs.resume_existing == 'true' && '1' || '0' }}
           QINIU_SKIP_LOCAL_PACKAGE_VERIFY: "1"
-          ORIGINOS_UPDATE_BASE_URL: ${{ secrets.ORIGINOS_UPDATE_BASE_URL }}
           ORIGINOS_RELEASE_API_URL: ${{ secrets.ORIGINOS_RELEASE_API_URL }}
           ORIGINOS_RELEASE_API_KEY: ${{ secrets.ORIGINOS_RELEASE_API_KEY }}
         run: pnpm publish:qiniu
